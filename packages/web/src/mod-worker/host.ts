@@ -24,9 +24,11 @@
  *   and the host's `net` domain puts the value into the request.
  */
 
+import { disposeApi2Host } from "../mod-api2-host";
 import {
   API2_HOOK_NAMES,
   api2PolicyEffects,
+  api2NotGranted,
   api2Refused,
   api2Unavailable,
   apiRangeVerdict,
@@ -180,6 +182,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   let pinging = false;
   const asks = new Map<number, PendingAsk>();
   const subscriptions = new Map<number, { readonly id: string }>();
+  const backupSubscriptions = new Map<number, { readonly id: string }>();
   const callTimes: number[] = [];
 
   let resolveReady: (value: WorkerReady) => void = () => undefined;
@@ -441,11 +444,42 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       return host.events.off(subscription);
     }
     if (method === "ui.mount") {
-      const [panel, callbackId] = args;
+      const [panel, callbackId, dismissId] = args;
       const onAction = Number.isSafeInteger(callbackId) && (callbackId as number) > 0
-        ? (action: string): void => post({ type: "ui.action", ...envelope(), callbackId: callbackId as number, action: String(action) })
+        ? (action: string, value?: string | boolean): void => post({ type: "ui.action", ...envelope(), callbackId: callbackId as number, action: String(action), ...(value === undefined ? {} : { value }) })
         : undefined;
-      return host.ui.mount(panel as never, onAction);
+      const onDismiss = Number.isSafeInteger(dismissId) && (dismissId as number) > 0
+        ? (): void => post({ type: "ui.dismissed", ...envelope(), callbackId: dismissId as number })
+        : undefined;
+      return host.ui.mount(panel as never, onAction, onDismiss);
+    }
+    if (method === "ui.commands.register" || method === "ui.gameMenu.register") {
+      const [id, label, callbackId] = args;
+      if (typeof id !== "string" || typeof label !== "string" || !Number.isSafeInteger(callbackId) || (callbackId as number) <= 0) {
+        return api2Refused("bad-call", "a UI action needs an id, label and callback id");
+      }
+      const run = (): void => post({ type: "ui.action", ...envelope(), callbackId: callbackId as number, action: id });
+      return method === "ui.commands.register"
+        ? host.ui.commands.register(id, label, run)
+        : host.ui.gameMenu.register(id, label, run);
+    }
+    if (method.startsWith("backupFolder.")) {
+      if (!host.meta.granted("backup:folder")) return api2NotGranted("backup:folder");
+      if (!host.backupFolder) return api2Unavailable("this front end has no backup folder");
+      if (method === "backupFolder.onSave") {
+        const callbackId = args[0];
+        if (!Number.isSafeInteger(callbackId) || (callbackId as number) <= 0 || backupSubscriptions.has(callbackId as number)) return api2Refused("bad-call", "backup subscription needs a fresh callback id");
+        const result = await host.backupFolder.onSave((file) => post({ type: "backup.save", ...envelope(), callbackId: callbackId as number, file }));
+        if (!result.ok) return result;
+        backupSubscriptions.set(callbackId as number, result.value);
+        return { ok: true, value: { id: String(callbackId) } };
+      }
+      if (method === "backupFolder.off") {
+        const callbackId = Number((args[0] as { id?: unknown } | null)?.id);
+        const subscription = backupSubscriptions.get(callbackId);
+        backupSubscriptions.delete(callbackId);
+        return subscription ? host.backupFolder.off(subscription) : { ok: true, value: null };
+      }
     }
     if (method === "content.asset" && deps.readAsset) {
       const path = args[0];
@@ -562,6 +596,9 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     const host = api;
     for (const subscription of subscriptions.values()) void host?.events.off(subscription);
     subscriptions.clear();
+    for (const subscription of backupSubscriptions.values()) void host?.backupFolder?.off(subscription);
+    backupSubscriptions.clear();
+    if (host) disposeApi2Host(host);
     rejectReady(new Error("the mod's Worker stopped before it was ready"));
     deps.onTeardown?.();
   };

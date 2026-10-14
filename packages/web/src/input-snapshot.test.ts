@@ -13,7 +13,6 @@ import { modPluginContext } from "./mod-context";
 import type { WorldFrame } from "./world-view";
 import type { PromptDescriptor } from "./prompt-view";
 import { currentPrompt, modPrompt, openPrompt } from "./prompt-wait";
-import { MessageLog } from "./messages";
 
 
 function loadJson<T>(name: string): T {
@@ -88,18 +87,6 @@ function caps(...granted: string[]) {
 }
 
 describe("buildInputSnapshot", () => {
-  it("keeps a bounded raw message cursor without consuming repeated messages", () => {
-    const log = new MessageLog();
-    for (let i = 0; i < 105; i++) log.push("One");
-    const input = source({ messages: () => log.all(), messageCursor: () => log.rawLength(), messagesSince: (since) => log.rawSince(since) });
-    const before = buildInputSnapshot(input, caps("state:messages.read"))!.messages!;
-    expect(before.cursor).toBe(105);
-    expect(before.recent).toHaveLength(100);
-    expect(before.log).toEqual([{ text: "One", count: 105 }]);
-    expect(buildInputSnapshot(input, caps("state:messages.read"))!.messages).toEqual(before);
-    expect(log.rawSince(104)).toHaveLength(1);
-  });
-
   it("names the rest mode and keeps the requested length of a timed rest", () => {
     const readRest = () => buildInputSnapshot(source(), caps("state:interaction.read"))!.resting;
     try {

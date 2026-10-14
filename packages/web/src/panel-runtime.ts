@@ -381,6 +381,10 @@ export function closeTopModPanel(): boolean {
   return true;
 }
 
+export function topModPanelId(): string | null {
+  return topPanel()?.id ?? null;
+}
+
 /**
  * Stop accepting new panels. Called at the START of teardown, before the mods'
  * own `uninstall()` - see this module's header for why the panels themselves

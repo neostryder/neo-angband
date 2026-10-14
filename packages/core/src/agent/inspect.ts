@@ -1,16 +1,13 @@
 /** Read-pure answers from the game's inspection and selection code. */
-import { FEAT, IGNORE_TYPE_ENTRIES, TERRAIN_FLAG_ENTRIES, TF, TMD, TRF } from "../generated/index.js";
+import { FEAT, IGNORE_TYPE_ENTRIES, TERRAIN_FLAG_ENTRIES, TF, TMD } from "../generated/index.js";
 import { DDGRID } from "../loc.js";
 import type { EffectRecordJson } from "../obj/types.js";
 import type { GameState } from "../game/context.js";
 import { knownDescOf, objectKindName } from "../game/describe.js";
 import { USE_MODE, floorPile, scanItems } from "../game/floor.js";
 import { gearGet } from "../game/gear.js";
-import { knownFeat, knownFloorObject, knownIsClosedDoor, knownIsDiggable, knownIsOpenDoor, knownPile, squareIsKnown } from "../game/known.js";
-import { squareIsDisarmableTrap, squareKnownTraps } from "../game/trap.js";
-import { monsterIsKnown } from "./known-world.js";
-import { objectKnownShadow } from "../obj/known-object.js";
-import { SQUARE } from "../generated/index.js";
+import { knownFeat, knownFloorObject, knownIsClosedDoor, knownIsDiggable, knownIsOpenDoor, squareIsKnown } from "../game/known.js";
+import { squareIsDisarmableTrap } from "../game/trap.js";
 import { findPath } from "../game/player-path.js";
 import { squareIsUnlockedDoor } from "../game/cave-cmd.js";
 import { objectCombatValues, objectInfoTextblock } from "../game/object-inspect.js";
@@ -204,7 +201,7 @@ function itemSelection(state: GameState, code: string): { mode: number; test: (o
 }
 
 /** Use the player's remembered features and visible monsters for geometry. */
-function knownChunk(state: GameState, knowledgeSafe = false): Chunk {
+function knownChunk(state: GameState): Chunk {
   const live = state.chunk;
   const known = new Chunk(live.features, live.height, live.width);
   for (let y = 0; y < live.height; y++) {
@@ -212,41 +209,12 @@ function knownChunk(state: GameState, knowledgeSafe = false): Chunk {
       const at = { x, y };
       known.setFeat(at, squareIsKnown(state, at) ? knownFeat(state, at) : FEAT.FLOOR);
       const midx = live.mon(at);
-      if (midx > 0 && state.monsters[midx] && (knowledgeSafe ? monsterIsKnown(state, state.monsters[midx]!) : monsterIsVisible(state.monsters[midx]!))) {
+      if (midx > 0 && state.monsters[midx] && monsterIsVisible(state.monsters[midx]!)) {
         known.setMon(at, midx);
       }
     }
   }
   return known;
-}
-
-function knownSelection(state: GameState): { state: GameState; permitted: Set<GameObject> } {
-  const shadows = new Map<GameObject, GameObject>();
-  const shadow = (obj: GameObject): GameObject => {
-    let known = shadows.get(obj);
-    if (!known) {
-      known = objectKnownShadow(obj, state.actor.player, state.runeEnv, knownDescOf(state, true));
-      shadows.set(obj, known);
-    }
-    return known;
-  };
-  const store = new Map(Array.from(state.gear.store, ([handle, obj]) => [handle, shadow(obj)]));
-  const gear = { ...state.gear, store };
-  const floor = new Map<number, GameObject[]>();
-  const grid = state.actor.grid;
-  const key = grid.y * state.chunk.width + grid.x;
-  const pile = state.floor.get(key) ?? [];
-  floor.set(key, pile.map(shadow));
-  const permitted = new Set(store.values());
-  if (state.chunk.sqinfoHas(grid, SQUARE.SEEN)) {
-    for (const obj of pile) {
-      const memory = knownFloorObject(state, grid, obj);
-      if (memory && !memory.sensed) permitted.add(shadow(obj));
-    }
-  }
-  return { state: { ...state, gear, floor,
-    actor: { ...state.actor, combat: state.actor.knownCombat },
-    runeEnv: { ...state.runeEnv, slotObject: (slot) => gearGet(gear, state.actor.player.equipment[slot] ?? 0) ?? null } }, permitted };
 }
 
 export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: AgentCapabilities) {
@@ -317,17 +285,14 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
       return freeze({ token: at(), slots });
     }),
     itemTester: gate(caps, "inventory", (code: string): ItemTesterResult => {
-      const known = deps.knowledgeSafe ? knownSelection(state) : null;
-      const selectionState = known?.state ?? state;
-      const selection = itemSelection(selectionState, code);
+      const selection = itemSelection(state, code);
       if (!selection) return freeze({ token: at(), items: [] });
-      const objects = new Set(scanItems(selectionState, state.gear.store.size + state.z.floorSize, selection.mode,
-        (obj) => (!known || known.permitted.has(obj)) && selection.test(obj)));
+      const objects = new Set(scanItems(state, state.gear.store.size + state.z.floorSize, selection.mode, selection.test));
       const from = state.actor.grid;
-      const pile = floorPile(selectionState, from);
+      const pile = floorPile(state, from);
       const items: ItemTesterResult["items"][number][] = [];
       const addHandle = (handle: number) => {
-        if (objects.has(gearGet(selectionState.gear, handle)!)) items.push({ handle });
+        if (objects.has(gearGet(state.gear, handle)!)) items.push({ handle });
       };
       /* The prompt labels inventory in upkeep->inven order, then equipment,
        * quiver and floor. scanItems supplies the tester result above; these
@@ -341,7 +306,7 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
       return freeze({ token: at(), items });
     }),
     projectionPath: gate(caps, "map", (to: { x: number; y: number }): GridInspectResult => {
-      const grids = valid(to) ? projectPath(knownChunk(state, deps.knowledgeSafe), state.z.maxRange, state.actor.grid, to, PROJECT.INFO | PROJECT.STOP) : [];
+      const grids = valid(to) ? projectPath(knownChunk(state), state.z.maxRange, state.actor.grid, to, PROJECT.INFO | PROJECT.STOP) : [];
       return freeze({ token: at(), grids });
     }),
     blastArea: gate(caps, "map", (to: { x: number; y: number }, radius: number, arc?: number): BlastAreaResult => {
@@ -353,7 +318,7 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
       if (!valid(to) || !Number.isSafeInteger(radius) || radius < 1) return freeze({ token: at(), grids: [], ...metadata });
       /* effect_handler_BREATH's projection: PROJECT_ARC with the cone's width
        * and a source diameter of 4, widened as the cone narrows. */
-      const grids = computeProjection(knownChunk(state, deps.knowledgeSafe), { origin: state.actor.grid, finish: to, rad: radius,
+      const grids = computeProjection(knownChunk(state), { origin: state.actor.grid, finish: to, rad: radius,
         typ: 0, flg: PROJECT.INFO | PROJECT.STOP | PROJECT.KILL | (degrees !== null ? PROJECT.ARC : 0),
         maxRange: state.z.maxRange, dam: 0,
         ...(degrees !== null ? { degreesOfArc: degrees, diameterOfSource: arcDiameter(4, degrees) } : {}) }).grids;
@@ -363,7 +328,7 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
       if (!valid(to) || !squareIsKnown(state, to) || (state.actor.player.timed[TMD.CONFUSED] ?? 0) > 0) return null;
       /* find_path reads chunk predicates; give it the remembered features,
        * while its own distance and tie-breaking code chooses the route. */
-      const path = findPath({ ...state, chunk: knownChunk(state, deps.knowledgeSafe) }, state.actor.grid, to);
+      const path = findPath({ ...state, chunk: knownChunk(state) }, state.actor.grid, to);
       if (path.length < 0) return null;
       const grids: { x: number; y: number }[] = [];
       let { x, y } = state.actor.grid;
@@ -387,18 +352,14 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
         if (knownIsDiggable(state, to) || (knownIsClosedDoor(state, to) && !features.featHas(feat, TF.PERMANENT))) codes.push("tunnel");
         if (knownIsClosedDoor(state, to)) codes.push("open");
         if (knownIsOpenDoor(state, to)) codes.push("close");
-        const disarmable = deps.knowledgeSafe
-          ? squareKnownTraps(state.known, to).some((kind, index) => kind.flags.has(TRF.TRAP) &&
-            !state.known.trapDisabled?.get(to.y * state.chunk.width + to.x)?.[index])
-          : squareIsDisarmableTrap(state, to) || (knownIsClosedDoor(state, to) && squareIsUnlockedDoor(state, to, deps.inspect?.trapDeps));
-        if (disarmable) codes.push("disarm");
+        if (squareIsDisarmableTrap(state, to) || (knownIsClosedDoor(state, to) && squareIsUnlockedDoor(state, to, deps.inspect?.trapDeps))) codes.push("disarm");
         /* A walk into a monster is the registered melee command. */
         if (featIsPassable(features, feat)) codes.push("walk");
       }
       if (here) {
         if (features.featHas(feat, TF.UPSTAIR) && !(state.options?.get("birth_force_descend") ?? false)) codes.push("ascend");
         if (features.featHas(feat, TF.DOWNSTAIR) && (state.levelTopology ? state.levelTopology.canTravel(state.chunk.depth, 1) : state.chunk.depth < state.z.maxDepth - 1)) codes.push("descend");
-        if ((deps.knowledgeSafe ? knownPile(state, to) : floorPile(state, to)).length > 0) codes.push("pickup");
+        if (floorPile(state, to).length > 0) codes.push("pickup");
       }
       return freeze({ token: at(), codes });
     }),

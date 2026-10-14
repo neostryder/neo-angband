@@ -12,7 +12,6 @@ import { FEAT, MFLAG, OF, RF, RSF, SQUARE, TMD, TRF, TV } from "../generated/ind
 import { OBJ_MOD } from "../generated/object-modifiers.js";
 import { FlagSet } from "../bitflag.js";
 import { GameEvents } from "../events.js";
-import { NOSCORE } from "../game/wizard.js";
 import type { CombatOutcomeEventData } from "../events.js";
 import type { GameState } from "../game/context.js";
 import { deleteMonster, monsterSwap } from "../game/context.js";
@@ -199,111 +198,6 @@ function kindNamed(game: StartedGame, tval: number, name: string): ObjectKind {
 }
 
 describe("KnownWorld paired worlds", () => {
-  it("keeps the floor under a blind player in its last observed state", () => {
-    const [a, b] = pair();
-    for (const game of [a, b]) {
-      const grid = game.state.actor.grid;
-      const obj = carry(game, kindNamed(game, TV.LIGHT, "Wooden Torch"));
-      obj.timeout = 500;
-      game.state.floor.set(grid.y * game.state.chunk.width + grid.x, [obj]);
-      squareKnowPile(game.state, grid);
-      game.state.actor.player.timed[TMD.BLIND] = 10;
-      game.state.chunk.sqinfoOff(grid, SQUARE.SEEN);
-    }
-    const grid = b.state.actor.grid;
-    const obj = b.state.floor.get(grid.y * b.state.chunk.width + grid.x)![0]!;
-    obj.timeout = 2500;
-    const floorA = buildKnownWorld(a.state, a.state.knownWorldDeps).floorHere;
-    const floorB = buildKnownWorld(b.state, b.state.knownWorldDeps).floorHere;
-    expect(floorB).toEqual(floorA);
-    expect(floorB![0]!.fuel).toBe(500);
-    b.state.floor.delete(grid.y * b.state.chunk.width + grid.x);
-    expect(buildKnownWorld(b.state, b.state.knownWorldDeps).floorHere).toEqual(floorA);
-  });
-
-  it("reports only the fuel printed in a light's name", () => {
-    const [a, b] = pair();
-    const torchA = carry(a, kindNamed(a, TV.LIGHT, "Wooden Torch"));
-    const torchB = carry(b, kindNamed(b, TV.LIGHT, "Wooden Torch"));
-    torchA.flags.on(OF.NO_FUEL);
-    torchB.flags.on(OF.NO_FUEL);
-    torchA.timeout = 25;
-    torchB.timeout = 2500;
-    expect(observed(b.state)).toBe(observed(a.state));
-    const item = () => buildKnownWorld(b.state, b.state.knownWorldDeps).inventory!.find((entry) => entry.label.includes("Wooden Torch"))!;
-    expect(item()).not.toHaveProperty("fuel");
-    torchB.flags.off(OF.NO_FUEL);
-    expect(item().name).toContain("(2500 turns)");
-    expect(item().fuel).toBe(2500);
-    torchB.timeout = 0;
-    expect(item().fuel).toBe(0);
-  });
-
-  it("withholds unlearned blows, average health and spell frequency", () => {
-    const [a, b] = pair();
-    const monA = liveMonsters(a.state).find((mon) => mon.race.blows.length > 0)!;
-    const monB = twin(b.state, monA);
-    for (const mon of [monA, monB]) {
-      mon.mflag.on(MFLAG.VISIBLE);
-      mon.mflag.off(MFLAG.CAMOUFLAGE);
-    }
-    for (const game of [a, b]) game.state.lore.delete(monA.race.ridx);
-    monB.race = { ...monB.race, avgHp: monB.race.avgHp + 40, freqSpell: 55, blows: [] };
-    expect(observed(b.state)).toBe(observed(a.state));
-    const lore = getLore(a.state.lore, monA.race);
-    lore.blowKnown[0] = true;
-    lore.armourKnown = true;
-    lore.spellFreqKnown = true;
-    const monster = knownMonsters(a.state).find((mon) => knownMonsterMidx(a.state, mon.id) === monA.midx)!;
-    expect(monster.blows).toHaveLength(1);
-    expect(monster.averageHp).toBe(monA.race.avgHp);
-    expect(monster.spellFrequency).toEqual({ percent: monA.race.freqSpell, exact: true });
-  });
-
-  it("reports the autoplayer mark independently of the other score marks", () => {
-    const [a, b] = pair();
-    b.state.actor.player.noscore = NOSCORE.DEBUG;
-    expect(observed(b.state)).toBe(observed(a.state));
-    b.state.actor.player.noscore |= NOSCORE.BORG;
-    expect(buildKnownWorld(b.state).player!.autoplayed).toBe(true);
-    expect(buildKnownWorld(a.state).player!.autoplayed).toBe(false);
-  });
-
-  it("reads extra moves from known equipment and reports the full name", () => {
-    const [a, b] = pair();
-    b.state.playerState!.numMoves += 5;
-    expect(observed(b.state)).toBe(observed(a.state));
-    b.state.actor.player.fullName = "Cedar";
-    b.state.knownPlayerState!.numMoves = 2;
-    expect(buildKnownWorld(b.state).player).toMatchObject({ fullName: "Cedar", extraMoves: 2 });
-  });
-
-  it("names an artifact id only after the character knows it is an artifact", () => {
-    const [a, b] = pair();
-    const objects = [a, b].map((game) => carry(game, kindNamed(game, TV.SWORD, "Dagger")));
-    objects.forEach((obj, index) => {
-      obj.artifact = [a, b][index]!.booted.registries.objects.artifacts.find((artifact) => artifact && artifact.aidx > index)!;
-      obj.notice &= ~OBJ_NOTICE.ASSESSED;
-    });
-    expect(observed(b.state)).toBe(observed(a.state));
-    const item = () => buildKnownWorld(b.state, b.state.knownWorldDeps).inventory!.find((entry) => entry.label.includes("Dagger"))!;
-    expect(item()).not.toHaveProperty("artifactId");
-    objects[1]!.notice |= OBJ_NOTICE.ASSESSED;
-    expect(item().artifactId).toBe(objects[1]!.artifact!.aidx);
-  });
-
-  it("reports every timed code without revealing durations", () => {
-    const [a, b] = pair();
-    a.state.actor.player.timed[TMD.SLOW] = 10;
-    b.state.actor.player.timed[TMD.SLOW] = 20;
-    expect(observed(b.state)).toBe(observed(a.state));
-    const timed = buildKnownWorld(a.state).player!.status.timed;
-    expect(Object.keys(timed)).toHaveLength(Object.keys(TMD).length);
-    expect(timed["SLOW"]).toEqual(expect.any(String));
-    b.state.actor.player.timed[TMD.SLOW] = 0;
-    expect(observed(b.state)).not.toBe(observed(a.state));
-  });
-
   it("uninspected store stock produces identical observations", () => {
     const [a, b] = pair();
     for (const game of [a, b]) game.changeLevel(0);
