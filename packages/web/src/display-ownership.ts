@@ -47,9 +47,6 @@ export function createDisplayOwnership(display: ModDisplay) {
     forMod(id: string): ModDisplay {
       return {
         snapshot: () => display.snapshot(),
-        ...(display.cellAt ? { cellAt: (x: number, y: number) => display.cellAt!(x, y) } : {}),
-        ...(display.frame ? { frame: () => display.frame!() } : {}),
-        ...(display.onFrame ? { onFrame: (listener: () => void) => display.onFrame!(listener) } : {}),
         onKey: (listener) => display.onKey(listener),
         setGrid: (value) => grid.set(id, value, value === null),
         getGrid: () => grid.get(),

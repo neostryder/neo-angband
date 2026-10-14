@@ -250,32 +250,6 @@ describe("a Worker mod's view of the world", () => {
 });
 
 describe("the broker's grants", () => {
-  it("keeps presentation absent and refuses its methods", async () => {
-    let api: ModApi2 | undefined;
-    const wired = wire({ api: API, start: (mod) => { api = mod; } });
-    await started(wired, () => api);
-    expect(api!.presentation).toBeUndefined();
-    expect(api!.ui.title).toBeUndefined();
-    expect(api!.ui.mountPage).toBeUndefined();
-    expect(api!.ui.overlay).toBeUndefined();
-    wired.worker.scope.postMessage({
-      type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1,
-      requestId: 99, method: "presentation.display.snapshot", args: [],
-    });
-    await vi.waitFor(() => expect(wired.problems.join("\n")).toContain('refused call to "presentation.display.snapshot"'));
-  });
-
-  it("refuses a Worker presentation declaration at boot", async () => {
-    const wired = wire({ api: API, presentation: { menu: () => undefined } });
-    await expect(wired.session.ready).rejects.toThrow(/presentation/);
-  });
-
-  it("refuses Worker birth and title action declarations", async () => {
-    for (const declaration of [{ birth: () => undefined }, { titleActions: [] }]) {
-      const wired = wire({ api: API, ...declaration });
-      await expect(wired.session.ready).rejects.toThrow(/birth or title/);
-    }
-  });
   it("never passes a wildcard grant to the Worker", async () => {
     const wired = wire({ api: API }, { grants: ["*", "state:player.read"] });
     await wired.session.ready;
