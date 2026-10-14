@@ -10353,8 +10353,6 @@ const modSnapshotSource: InputSnapshotSource = {
               : "play",
   messagePending: () => morePending,
   messages: () => msglog.all(),
-  messageCursor: () => msglog.rawLength(),
-  messagesSince: (since) => msglog.rawSince(since),
   storeStatus: () => {
     const store = storeModalActive ? storeAtPlayer() : null;
     if (!store) return null;
@@ -15986,7 +15984,7 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
         engine: ENGINE_VERSION,
         newCharacter: sessionFacts.newCharacter ?? false,
         net: context.net !== undefined,
-        api: (options) => createApi2Host(context, { grants: capabilities, panels: workerPanelRenderer, ...options }),
+        api: (options) => createApi2Host(context, { grants: capabilities, panels: workerPanelRenderer, ...options, execution: "worker" }),
         readAsset: async (path) => {
           const url = await disk.assetUrl?.(loaded.id, path);
           if (!url) return null;

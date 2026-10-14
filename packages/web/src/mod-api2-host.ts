@@ -6,7 +6,7 @@
  * Nothing here reaches the game by a door API 1 does not already have; what
  * changes is what comes back. Reads go through the known-world builder, so a
  * mod sees what the player knows. Every value is cloned and frozen, so a mod
- * holds data and never a live object. Every call answers with an Api2Result,
+ * holds data outside the consented in-process engine domain. Every call answers with an Api2Result,
  * and a permission the player refused answers `not-granted` instead of
  * throwing.
  *
@@ -20,18 +20,12 @@ import {
   AgentCapabilityError,
   buildKnownWorld,
   createAgentView,
-  colorPrefId,
-  colorTableSnapshot,
-  colorToCss,
-  describeLookGrid,
   knownMonsterMidx,
-  knownLoadoutSimulation,
-  squareIsSeen,
   trueMonsterViews,
   tokenIsCurrent,
+  provenanceOf,
   type AgentCapabilities,
   type AgentViewDeps,
-  type AgentView,
   type GameEventMap,
   type GameEventType,
   type GameState,
@@ -46,6 +40,10 @@ import {
   api2Refused,
   api2Unavailable,
   MOD_API2_VERSION,
+  ENGINE_API2_VERSION,
+  type Api2Engine,
+  type Api2Activation,
+  type Api2BoundRecord,
   recordKey,
   type Api2Actor,
   type Api2Call,
@@ -71,6 +69,9 @@ import {
 import type { ModPluginContext } from "./mod-plugin";
 import { createModWorkerPanelRenderer, type ModWorkerPanelRenderer } from "./mod-worker/panels";
 import type { WorkerJson } from "./mod-worker/protocol";
+import { modInstallPrefs, type ModPrefs } from "./mod-prefs";
+import { modRegistries } from "./mod-context";
+import { OPTION_ENTRIES } from "@rpgm-tools/neo-angband-core";
 
 /** The loader must authorize namespaces before the host can expose them. */
 export interface Api2Allowlist {
@@ -82,6 +83,10 @@ export interface Api2Allowlist {
 
 /** What the loader tells the host about one mod. */
 export interface Api2HostOptions {
+  readonly intent?: ModPluginContext["intent"];
+  readonly execution?: "in-process" | "worker" | "data";
+  readonly install?: Api2PrefsMigration | Api2HostPrefsMigration;
+  readonly installStorage?: ModPrefs;
   /** Measured identity is independent of consent to hidden data. */
   readonly tier?: "first-party" | "public";
   /** The permissions the player granted this mod. */
@@ -108,6 +113,23 @@ export interface Api2HostPrefsMigration {
 }
 
 const NO_GAME = "no game is running yet";
+
+export function api2Engine(ctx: ModPluginContext, options: Api2HostOptions): Api2Engine | undefined {
+  if (options.execution === "worker" || !(options.tier === "first-party" || options.grants.has("engine:access"))) return undefined;
+  return frozen({
+    api: ENGINE_API2_VERSION,
+    core: ctx.core,
+    get state() { return ctx.state; },
+    get registries() { return ctx.registries ?? modRegistries(); },
+  });
+}
+
+const hostCleanup = new WeakMap<ModApi2, () => void>();
+
+export function stopApi2Host(api: ModApi2): void {
+  hostCleanup.get(api)?.();
+  hostCleanup.delete(api);
+}
 
 /** A clone the caller cannot use to reach or change anything else. */
 function data<T>(value: T): T {
@@ -145,7 +167,7 @@ async function guarded<T>(body: () => Api2Result<T> | Promise<Api2Result<T>>): A
  *
  * The player knows outcomes against themselves. A monster's outcome requires a perceived target in view, and movement reveals only observed endpoints. Core captures identities before deleted monsters lose their slots.
  */
-export function api2EventPayload<K extends Exclude<Api2EventName, "run-end">>(
+export function api2EventPayload<K extends Api2EventName>(
   name: K,
   raw: GameEventMap[K & GameEventType],
 ): Api2EventMap[K] | undefined {
@@ -196,30 +218,12 @@ export function api2EventPayload<K extends Exclude<Api2EventName, "run-end">>(
       }
       case "player-command": {
         const c = raw as GameEventMap["player-command"];
-        const args = Object.fromEntries(["handle", "floor", "spell", "index"].flatMap((key) => {
-          const value = c.args?.[key];
-          return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? [[key, value]] : [];
-        }));
         return {
           code: c.code,
           ...(c.dir !== undefined ? { dir: c.dir } : {}),
-          ...(Object.keys(args).length > 0 ? { args } : {}),
           phase: c.phase,
           token: { epoch: c.token.epoch, revision: c.token.revision },
         };
-      }
-      case "bolt": {
-        const bolt = raw as GameEventMap["bolt"];
-        if (!bolt.seen || !bolt.drawing) return undefined;
-        return { grid: { x: bolt.x, y: bolt.y }, element: bolt.element, beam: bolt.beam };
-      }
-      case "explosion": {
-        const explosion = raw as GameEventMap["explosion"];
-        if (!explosion.drawing) return undefined;
-        const grids = explosion.blastGrid.filter((_grid, index) => explosion.playerSeesGrid[index] === true)
-          .map((grid) => ({ x: grid.x, y: grid.y }));
-        if (grids.length === 0) return undefined;
-        return { grids, element: explosion.element, arc: explosion.arc };
       }
       case "driver-changed":
         return structuredClone(raw);
@@ -234,6 +238,7 @@ export function api2EventPayload<K extends Exclude<Api2EventName, "run-end">>(
 export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions): ModApi2 {
   const { grants } = options;
   const granted = (capability: string): boolean => {
+    if (capability === "engine:access") return options.execution !== "worker" && (options.tier === "first-party" || grants.has(capability));
     try {
       return grants.has(capability);
     } catch {
@@ -244,19 +249,10 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   const readable = (domain: string): boolean => granted(`state:${domain}.read`) || granted("state:*.read");
   const withState = <T>(body: (state: GameState) => Api2Result<T> | Promise<Api2Result<T>>): Api2Call<T> =>
     guarded(() => (ctx.state ? body(ctx.state) : api2Unavailable(NO_GAME)));
-  const keyed = (world: KnownWorldData): KnownWorldData => data({ ...world,
-    player: world.player ? { ...world.player, key: ctx.character?.key() ?? null } : null });
   /* One part of the known world, built with only that part readable. */
   const part = (state: GameState, domain: string): KnownWorldData =>
-    keyed(buildKnownWorld(state, options.viewDeps ?? state.knownWorldDeps ?? {}, {
-      has: (c) => (c === `state:${domain}.read` && readable(domain)) ||
-        (domain === "map" && c === "state:floor.read" && readable("floor")),
-    }));
-  const inspectRead = <T>(domains: readonly string[], read: (state: GameState, view: AgentView) => T): Api2Call<T> =>
-    withState((state) => {
-      for (const domain of domains) if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-      const view = createAgentView(state, undefined, { ...(options.viewDeps ?? state.knownWorldDeps ?? {}), knowledgeSafe: true }, { has: granted });
-      return api2Ok(data(read(state, view)));
+    buildKnownWorld(state, options.viewDeps ?? {}, {
+      has: (c) => c === `state:${domain}.read` && readable(domain),
     });
 
   let panels = options.panels;
@@ -266,43 +262,49 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   };
 
   const subscriptions = new Map<string, { type: GameEventType; handler: (type: GameEventType, raw: unknown) => void }>();
+  const keySubscriptions = new Map<string, () => void>();
+  const ownedKeys = new Set<string>();
+  let stopped = false;
   let nextSubscription = 1;
-  const runSubscriptions = new Map<string, () => void>();
 
-  const prefsEnvelope = "$api2prefs";
-  let prefsRevision = 0;
-  let pendingMigration: Promise<Api2Result<JsonValue | null>> | undefined;
-  const prefs: Api2Slot = {
-    get: () => guarded(async () => {
-      const raw = ctx.prefs.get() as JsonValue | null;
-      const migration = options.prefs;
-      if (!migration || raw === null || raw === undefined) return api2Ok(raw === undefined ? null : data(raw));
-      const enveloped = typeof raw === "object" && !Array.isArray(raw) && typeof raw[prefsEnvelope] === "number";
-      const from = enveloped ? (raw as Record<string, JsonValue>)[prefsEnvelope] as number : 0;
-      const value = enveloped ? (raw as Record<string, JsonValue>)["value"] ?? null : raw;
-      if (from >= migration.version || value === null) return api2Ok(data(value));
-      if (pendingMigration) return pendingMigration;
-      const revision = prefsRevision;
-      const migrating = (async (): Promise<Api2Result<JsonValue | null>> => {
-        const migrated = await migration.migrate(structuredClone(value), from);
-        if (revision !== prefsRevision) return prefs.get();
-        ctx.prefs.set({ [prefsEnvelope]: migration.version, value: migrated });
-        return api2Ok(data(migrated));
-      })();
-      pendingMigration = migrating;
-      try {
-        return await migrating;
-      } finally {
-        pendingMigration = undefined;
-      }
-    }),
-    set: (value) => guarded(() => {
-      const migration = options.prefs;
-      ctx.prefs.set(value === null || !migration ? value : { [prefsEnvelope]: migration.version, value: structuredClone(value) });
-      prefsRevision += 1;
-      return api2Ok(null);
-    }),
+  const slot = (storage: ModPrefs, migration: Api2HostOptions["prefs"]): Api2Slot => {
+    const prefsEnvelope = "$api2prefs";
+    let prefsRevision = 0;
+    let pendingMigration: Promise<Api2Result<JsonValue | null>> | undefined;
+    const prefs: Api2Slot = {
+      get: () => guarded(async () => {
+        const raw = storage.get() as JsonValue | null;
+        if (!migration || raw === null || raw === undefined) return api2Ok(raw === undefined ? null : data(raw));
+        const enveloped = typeof raw === "object" && !Array.isArray(raw) && typeof raw[prefsEnvelope] === "number";
+        const from = enveloped ? (raw as Record<string, JsonValue>)[prefsEnvelope] as number : 0;
+        const value = enveloped ? (raw as Record<string, JsonValue>)["value"] ?? null : raw;
+        if (from >= migration.version || value === null) return api2Ok(data(value));
+        if (pendingMigration) return pendingMigration;
+        const revision = prefsRevision;
+        const migrating = (async (): Promise<Api2Result<JsonValue | null>> => {
+          const migrated = await migration.migrate(structuredClone(value), from);
+          if (revision !== prefsRevision) return prefs.get();
+          storage.set({ [prefsEnvelope]: migration.version, value: migrated });
+          return api2Ok(data(migrated));
+        })();
+        pendingMigration = migrating;
+        try {
+          return await migrating;
+        } finally {
+          pendingMigration = undefined;
+        }
+      }),
+      set: (value) => guarded(() => {
+        const raw = value === null || !migration ? value : { [prefsEnvelope]: migration.version, value: structuredClone(value) };
+        storage.set(raw);
+        prefsRevision += 1;
+        return api2Ok(null);
+      }),
+    };
+    return prefs;
   };
+  const prefs = slot(ctx.prefs, options.prefs);
+  const install = slot(options.installStorage ?? modInstallPrefs(ctx.id), options.install);
 
   const character: Api2Slot = {
     get: () => guarded(() => {
@@ -317,6 +319,9 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   };
 
   const records = (file: string): Api2Result<readonly JsonRecord[]> => {
+    if (file === "option") return api2Ok(data(OPTION_ENTRIES.filter((e) => e.name !== "none").map((e) => ({
+      name: e.name, birth: e.type === "BIRTH", cheat: e.type === "CHEAT", score: e.type === "SCORE",
+    }))));
     const composed = ctx.composedRecords;
     if (!composed) return api2Unavailable("the game's content has not been composed yet");
     const list = composed[file];
@@ -325,6 +330,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   };
 
   const api: ModApi2 = {
+    ...(api2Engine(ctx, options) ? { engine: api2Engine(ctx, options)! } : {}),
     meta: frozen({
       id: ctx.id,
       api: MOD_API2_VERSION,
@@ -341,67 +347,16 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           ? api2Refused("unknown-setting", `this mod declares no numeric setting "${id}"`)
           : api2Ok(kept);
       }),
-      mods: () => guarded(() => (ctx.mods ? api2Ok(data(ctx.mods())) : api2Unavailable("this front end lists no mods"))),
+      mods: () => guarded(() => (ctx.mods ? api2Ok(data(ctx.mods().map((mod) => ({ ...mod, name: mod.name ?? mod.id })))) : api2Unavailable("this front end lists no mods"))),
     }),
 
     view: frozen({
-      messages: (since = 0) => guarded(() => {
-        if (!readable("messages")) return api2NotGranted("state:messages.read");
-        if (!Number.isSafeInteger(since) || since < 0) return api2Refused("invalid-cursor", "the message cursor must be a nonnegative integer");
-        const messages = ctx.snapshot?.()?.messages;
-        if (messages?.cursor === undefined || !messages.recent) return api2Unavailable("this front end has no message cursor");
-        const entries = messages.recent.map((message, index) => ({ ...message,
-          sequence: messages.cursor! - messages.recent!.length + index + 1 })).filter((message) => message.sequence > since);
-        return api2Ok(data({ cursor: messages.cursor, entries }));
-      }),
-      knowledge: (category, id) => guarded(() => {
-        if (!readable("knowledge")) return api2NotGranted("state:knowledge.read");
-        const knowledge = ctx.knowledge;
-        if (!knowledge) return api2Unavailable("this front end has no knowledge menu");
-        const categories = knowledge.categories();
-        const lists = Object.fromEntries(categories.flatMap(({ id: categoryId }) => {
-          const list = knowledge.list(categoryId);
-          return list ? [[categoryId, list]] : [];
-        }));
-        return api2Ok(data({ categories, lists,
-          recall: category !== undefined && id !== undefined ? knowledge.recall(category, id) : null }));
-      }),
-      character: () => guarded(() => {
+      options: () => withState((state) => {
         if (!readable("player")) return api2NotGranted("state:player.read");
-        const character = ctx.character;
-        if (!character) return api2Unavailable("there is no character record");
-        return api2Ok(data({ key: character.key(), sheet: character.sheet?.() ?? null,
-          history: character.history(), report: options.tier === "first-party" ? character.runReport?.() ?? null : null }));
+        const opts = state.options;
+        return opts ? api2Ok(data(opts.snapshot())) : api2Unavailable("this game has no options");
       }),
-      inspect: frozen({
-        simulateLoadout: (change) => api.view.simulateLoadout(change),
-        item: (ref) => inspectRead(["inventory", ...(typeof ref === "number" ? [] : "floor" in ref ? ["floor"] : ["stores"])], (state, view) => {
-          if (typeof ref !== "number" && "floor" in ref && (!state.chunk.inBounds(ref.floor) || !squareIsSeen(state.chunk, ref.floor))) return null;
-          if (typeof ref !== "number" && "store" in ref && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) return null;
-          return view.inspectItem!(ref);
-        }),
-        itemRules: () => inspectRead(["inventory"], (_state, view) => view.itemRules!()),
-        itemTester: (code) => inspectRead(["inventory", "floor"], (_state, view) => view.itemTester!(code)),
-        bookForItem: (handle) => inspectRead(["inventory", "spells"], (_state, view) => view.bookForItem!(handle)),
-        spell: (index) => inspectRead(["spells"], (_state, view) => view.spellInfo!(index)),
-        monsterRecall: (index) => inspectRead(["monsters"], (_state, view) => view.monsterRecall!(index)),
-        projectionPath: (to) => inspectRead(["map"], (_state, view) => view.projectionPath!(to)),
-        blastArea: (to, radius, arc) => inspectRead(["map"], (_state, view) => view.blastArea!(to, radius, arc)),
-        travelPath: (to) => inspectRead(["map"], (_state, view) => view.travelPath!(to)),
-        compareLoadoutSlots: (ref) => inspectRead(["player", "inventory", ...(ref.from === "floor" ? ["floor"] : ref.from === "store" ? ["stores"] : [])], (state, view) => {
-          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !squareIsSeen(state.chunk, ref))) return { token: part(state, "player").token, slots: [] };
-          if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) return { token: part(state, "player").token, slots: [] };
-          const result = view.compareLoadoutSlots!(ref);
-          return { ...result, slots: result.slots.map((slot) => ({ ...slot, comparison: knownLoadoutSimulation(state, slot.comparison) })) } as import("@rpgm-tools/neo-angband-mod-sdk").LoadoutSlotsResult;
-        }),
-        tileActions: (to) => inspectRead(["map"], (_state, view) => view.tileActions!(to)),
-      }),
-      catalogue: () => guarded(() => {
-        if (!readable("interaction")) return api2NotGranted("state:interaction.read");
-        const catalogue = ctx.intent?.catalogue?.();
-        return catalogue ? api2Ok(data(catalogue)) : api2Unavailable("this front end has no command catalogue");
-      }),
-      world: () => withState((state) => api2Ok(keyed(buildKnownWorld(state, options.viewDeps ?? state.knownWorldDeps ?? {}, { has: granted })))),
+      world: () => withState((state) => api2Ok(buildKnownWorld(state, options.viewDeps ?? {}, { has: granted }) as KnownWorldData)),
       player: () => withState((state) => {
         if (!readable("player")) return api2NotGranted("state:player.read");
         const player = part(state, "player").player;
@@ -426,51 +381,17 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           phase: snap.phase,
           messagePending: snap.messagePending,
           prompt: snap.prompt,
-          resting: snap.resting,
-          running: (ctx.state?.run?.running ?? 0) > 0,
-          repeating: (ctx.state?.cmdQueue?.[0]?.repeatRemaining ?? 0) > 0,
-          repeatsLeft: ctx.state?.cmdQueue?.[0]?.repeatRemaining ?? 0,
-          unignoring: (ctx.state?.unignoring ?? 0) > 0,
-          messages: readable("messages") ? snap.messages?.log.slice(-100) ?? null : null,
-          storeStatus: readable("stores") && readable("inventory") ? snap.storeStatus : null,
-          activeBlast: readable("map") ? snap.activeBlast : null,
         }));
-      }),
-      look: (grid) => withState((state) => {
-        for (const domain of ["map", "floor", "monsters"]) {
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-        }
-        if (!Number.isInteger(grid.x) || !Number.isInteger(grid.y) || !state.chunk.inBounds(grid)) {
-          return api2Refused("invalid-grid", "the grid is outside the level");
-        }
-        return api2Ok(describeLookGrid(state, grid, 0, true).text);
-      }),
-      simulateLoadout: (change) => withState((state) => {
-        for (const domain of ["player", "inventory"]) {
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-        }
-        const refs = [...(change.wield ?? []), ...(change.wieldAt ?? []).map((entry) => entry.item),
-          ...(change.carry ?? []).map((entry) => entry.item)];
-        for (const ref of refs) {
-          const domain = ref.from === "store" ? "stores" : ref.from === "floor" ? "floor" : "inventory";
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !squareIsSeen(state.chunk, ref))) {
-            return api2Refused("unobserved-item", "the floor item is not currently seen");
-          }
-          if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) {
-            return api2Refused("unobserved-item", "the store item is not currently seen");
-          }
-        }
-        const simulation = createAgentView(state, undefined, options.viewDeps ?? {}, { has: granted }).simulateLoadout?.(structuredClone(change));
-        return simulation ? api2Ok(data(knownLoadoutSimulation(state, simulation, ctx.character?.key() ?? null)) as import("@rpgm-tools/neo-angband-mod-sdk").LoadoutSimulation) : api2Unavailable("the game has no loadout calculation");
       }),
       isCurrent: (token) => withState((state) => api2Ok(tokenIsCurrent(state, token))),
     }),
 
     act: frozen({
       submit: (token, intent) => guarded(() => {
+        if (stopped) return api2Unavailable("this mod has stopped");
         if (!granted("input:intent")) return api2NotGranted("input:intent");
-        if (!ctx.intent) return api2Unavailable("this front end takes no commands from mods");
+        const gate = options.intent ?? ctx.intent;
+        if (!gate) return api2Unavailable("this front end takes no commands from mods");
         const copy = structuredClone(intent) as PlayerIntent;
         /* A monster target names the monster by its KnownMonster id. One the
          * player does not perceive now becomes 0, which the game refuses the
@@ -478,7 +399,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         const sent: PlayerIntent = copy.kind === "target" && "midx" in copy
           ? { ...copy, midx: (ctx.state ? knownMonsterMidx(ctx.state, copy.midx) : null) ?? 0 }
           : copy;
-        const result = ctx.intent.submit(structuredClone(token), sent);
+        const result = gate.submit(structuredClone(token), sent);
         return result.accepted
           ? api2Ok(null)
           : api2Refused(result.code ?? "rejected", result.reason ?? "the game refused it");
@@ -516,24 +437,17 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
 
     events: frozen({
       on: (name, listener) => guarded(() => {
+        if (stopped) return api2Unavailable("this mod has stopped");
         if (!(API2_EVENT_NAMES as readonly string[]).includes(name)) {
           return api2Refused("unknown-event", `API 2 has no event "${String(name)}"`);
         }
         const capability = `event:${name}`;
         if (!granted(capability)) return api2NotGranted(capability);
-        if (name === "run-end") {
-          if (!ctx.character?.onRunEnd) return api2Unavailable("this front end has no run-end reports");
-          const id = `${ctx.id}:${nextSubscription++}`;
-          const unsubscribe = ctx.character.onRunEnd((report) => listener(data({ key: report.key,
-            report: options.tier === "first-party" ? report : null }) as Api2EventMap[typeof name]));
-          runSubscriptions.set(id, unsubscribe);
-          return api2Ok(frozen({ id }));
-        }
         if (!ctx.events) return api2Unavailable(NO_GAME);
         const type = name as GameEventType;
         const handler = (_type: GameEventType, raw: unknown): void => {
           const payload = api2EventPayload(name, raw as never);
-          if (payload !== undefined) listener(payload as Parameters<typeof listener>[0]);
+          if (!stopped && payload !== undefined) listener(payload);
         };
         ctx.events.on(type, handler as never);
         const id = `${ctx.id}:${nextSubscription++}`;
@@ -541,8 +455,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         return api2Ok(frozen({ id }));
       }),
       off: (subscription) => guarded(() => {
-        runSubscriptions.get(subscription.id)?.();
-        runSubscriptions.delete(subscription.id);
         const entry = subscriptions.get(subscription.id);
         if (entry) {
           ctx.events?.off(entry.type, entry.handler as never);
@@ -558,7 +470,48 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     content: frozen({
-      colors: () => guarded(() => api2Ok(data(colorTableSnapshot().map((_color, index) => ({ index, id: colorPrefId(index), css: colorToCss(index) }))))),
+      boundRecords: (file: string) => guarded(() => {
+        const reg = ctx.registries ?? modRegistries();
+        const list = records(file);
+        if (!list.ok) return list;
+        if (file !== "monster" && file !== "object") return api2Ok(data(list.value.map((record, index) => {
+          const from = provenanceOf(record);
+          const name = record["name"];
+          const label = typeof name === "string" ? name : name && typeof name === "object" && !Array.isArray(name) && typeof name["name"] === "string" ? name["name"] : "";
+          return { ...record, key: (file === "option" ? label : recordKey(file, record)) ?? label, index, name: label,
+            owner: from?.owner ?? "core", ...(from ? { from } : {}),
+          } as Api2BoundRecord;
+        })));
+        if (!reg) return api2Unavailable("the game's content has not been bound yet");
+        const bound = file === "monster" ? reg.monsters.races : file === "object" ? reg.objects.kinds : null;
+        if (!bound) return api2Unavailable("the game's content has not been bound yet");
+        const result: Api2BoundRecord[] = bound.filter((record) => record !== null).map((record) => {
+          const index = "ridx" in record ? record.ridx : record.kidx;
+          const raw = list.value.find((value) => {
+            const name = value["name"];
+            return name === record.name || (name && typeof name === "object" && !Array.isArray(name) && name["name"] === record.name);
+          });
+          return { key: (raw ? recordKey(file, raw) : null) ?? record.name, index, name: record.name,
+            ...("ridx" in record ? { base: record.base?.name ?? "" } : { tval: record.tval }),
+            owner: record.from?.owner ?? "core",
+            ...(record.from ? { from: record.from as NonNullable<Api2BoundRecord["from"]> } : {}),
+            ...(record.ext ? { ext: record.ext as Readonly<Record<string, JsonValue>> } : {}),
+          };
+        });
+        return api2Ok(data(result));
+      }),
+      activations: () => guarded(() => {
+        const reg = ctx.registries ?? modRegistries();
+        return reg ? api2Ok(data(reg.objects.activations.filter((a) => a !== null).map((a) => ({ ...a, effect: a.effect as unknown as JsonValue })))) : api2Unavailable("the game's content has not been bound yet");
+      }),
+      activation: (ref) => guarded(() => {
+        const reg = ctx.registries ?? modRegistries();
+        if (!reg) return api2Unavailable("the game's content has not been bound yet");
+        const entry = "tval" in ref ? reg.objects.lookupKind(ref.tval, ref.sval) : "ego" in ref
+          ? reg.objects.egos.find((e) => e?.name === ref.ego) : reg.objects.artifacts.find((a) => a?.name === ref.artifact);
+        const activation = entry?.activation;
+        return api2Ok(activation ? data({ ...activation, effect: activation.effect as unknown as JsonValue } satisfies Api2Activation) : null);
+      }),
       own: () => guarded(() => api2Ok(data({ ...ctx.data } as Record<string, JsonValue>))),
       asset: (path: string) => guarded(async () => {
         const url = await ctx.assetUrl(path);
@@ -568,7 +521,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       lookup: (ref) => guarded(() => {
         const list = records(ref.file);
         if (!list.ok) return list;
-        const found = list.value.find((record) => recordKey(ref.file, record) === ref.key);
+        const found = list.value.find((record) => (ref.file === "option" ? record["name"] : recordKey(ref.file, record)) === ref.key);
         return found
           ? api2Ok(found)
           : api2Refused("unknown-record", `the game's "${ref.file}" content has no record "${ref.key}"`);
@@ -576,12 +529,39 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     ui: frozen({
-      mount: (panel: Api2Panel, onAction?: (action: string) => void) => guarded(() => {
+      onKey: (listener) => guarded(() => {
+        if (stopped) return api2Unavailable("this mod has stopped");
+        if (!granted("keymap:write")) return api2NotGranted("keymap:write");
+        if (!ctx.display) return api2Unavailable("this front end sends no key events");
+        const id = `${ctx.id}:key:${nextSubscription++}`;
+        const off = ctx.display.onKey((event) => {
+          if (!stopped) listener(data({ key: event.key, code: event.code, modifiers: [
+            ...(event.shiftKey ? ["shift" as const] : []), ...(event.ctrlKey ? ["ctrl" as const] : []),
+            ...(event.altKey ? ["alt" as const] : []), ...(event.metaKey ? ["meta" as const] : []),
+          ], isRepeat: event.repeat }));
+        });
+        keySubscriptions.set(id, off);
+        return api2Ok(frozen({ id }));
+      }),
+      offKey: (subscription) => guarded(() => {
+        keySubscriptions.get(subscription.id)?.();
+        keySubscriptions.delete(subscription.id);
+        return api2Ok(null);
+      }),
+      unmount: (panelId: string) => guarded(() => {
+        if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
+        const draw = renderer();
+        if (!draw) return api2Unavailable("this front end draws no panels");
+        draw.unmount(ctx.id, panelId);
+        return api2Ok(null);
+      }),
+      mount: (panel: Api2Panel, onAction?: (action: string) => void, onDismiss?: () => void) => guarded(() => {
+        if (stopped) return api2Unavailable("this mod has stopped");
         if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
         const draw = renderer();
         if (!draw) return api2Unavailable("this front end draws no panels");
         try {
-          draw.apply(ctx.id, "mount", structuredClone(panel) as unknown as WorkerJson, undefined, (_panelId, action) => onAction?.(action));
+          draw.apply(ctx.id, "mount", structuredClone(panel) as unknown as WorkerJson, undefined, (_panelId, action) => { if (!stopped) onAction?.(action); }, onDismiss);
         } catch (e) {
           return api2Refused("bad-panel", e instanceof Error ? e.message : String(e));
         }
@@ -600,9 +580,12 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       }),
       keys: frozen({
         bind: (trigger: string, action: string) => guarded(() => {
+          if (stopped) return api2Unavailable("this mod has stopped");
           if (!granted("keymap:write")) return api2NotGranted("keymap:write");
           if (!ctx.keymaps) return api2Unavailable(NO_GAME);
-          return ctx.keymaps.bind(trigger, action)
+          const bound = ctx.keymaps.bind(trigger, action);
+          if (bound) ownedKeys.add(trigger);
+          return bound
             ? api2Ok(null)
             : api2Refused("trigger-taken", `"${trigger}" is not a free key in this keyset`);
         }),
@@ -621,12 +604,22 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       }),
     }),
 
-    store: frozen({ prefs: Object.freeze(prefs), character: Object.freeze(character) }),
+    store: frozen({ prefs: Object.freeze(prefs), install: Object.freeze(install), character: Object.freeze(character) }),
 
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
     ...(options.firstParty?.manage ? { manage: manageDomain(ctx) } : {}),
     ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}) } : {}),
   };
+  hostCleanup.set(api, () => {
+    stopped = true;
+    panels?.teardown(ctx.id);
+    for (const { type, handler } of subscriptions.values()) ctx.events?.off(type, handler as never);
+    subscriptions.clear();
+    for (const off of keySubscriptions.values()) off();
+    keySubscriptions.clear();
+    for (const trigger of ownedKeys) ctx.keymaps?.remove(trigger);
+    ownedKeys.clear();
+  });
   return Object.freeze(api);
 }
 

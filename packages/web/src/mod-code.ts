@@ -471,7 +471,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
         grants,
         plugin: api2Plugin(entry as Api2ModDefinition, () => {
           const start = modStartGrants(id);
-          return { grants: capabilities, tier: start.tier.trust === "first-party" ? "first-party" : "public", ...(start.firstParty ? { firstParty: start.firstParty } : {}) };
+          return { grants: capabilities, execution: start.tier.execution, tier: start.tier.trust === "first-party" ? "first-party" : "public", ...(start.firstParty ? { firstParty: start.firstParty } : {}) };
         }),
         api: 2,
         url,

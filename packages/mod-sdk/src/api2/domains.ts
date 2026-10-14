@@ -4,9 +4,8 @@
  * The same types serve a mod that runs in the game's own process and one that
  * runs in a Worker. Every method returns a promise of an `Api2Result`, and
  * every value that crosses the boundary is plain data that survives structured
- * clone: no engine classes, no live game state, no mutable registries and no
- * way to call into the engine by name. The only functions a mod passes in are
- * its own listeners and hooks, which the host calls with plain data.
+ * clone. The consented `engine` domain is the in-process exception: its
+ * namespace, state, and registries stay live and never reach a Worker.
  *
  * `manage` and `truth` exist only for first-party mods the game's build names,
  * and are absent for every other mod. Absent is the whole check: a mod tests
@@ -29,9 +28,22 @@ import type {
   KnownWorldData,
 } from "./known.js";
 import type { Api2Call, Api2Capability } from "./result.js";
-import type { Api2Inspect, LoadoutChange, LoadoutSimulation } from "./inspection.js";
-import type { Api2Character } from "./character.js";
-import type { Api2Knowledge } from "./knowledge.js";
+import type { Api2Options } from "./hooks.js";
+
+/** In-process hosts supply the engine types without making the SDK depend on Core. */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- Core augments this interface with its live types.
+export interface Api2EngineBindings {}
+
+type EngineBinding<K extends string> = K extends keyof Api2EngineBindings ? Api2EngineBindings[K] : unknown;
+
+/** Live engine access requires consent outside verified first-party code. Import Core's types to bind the live members. */
+export interface Api2Engine {
+  /** This domain's own version, independent of meta.engine and meta.api. */
+  readonly api: string;
+  readonly core: EngineBinding<"core">;
+  readonly state: EngineBinding<"state"> | undefined;
+  readonly registries: EngineBinding<"registries"> | undefined;
+}
 
 /** Whether a mod is one of the game's own (first-party) or anyone else's. */
 export type Api2Tier = "first-party" | "public";
@@ -39,6 +51,7 @@ export type Api2Tier = "first-party" | "public";
 /** One enabled mod, as any mod may see it. */
 export interface Api2ModSummary {
   readonly id: string;
+  readonly name: string;
   readonly version: string;
   /** The flags that mod's manifest makes public. */
   readonly flags?: Readonly<Record<string, boolean>>;
@@ -139,46 +152,11 @@ export interface Api2InputState {
   readonly phase: Api2Phase;
   readonly messagePending: boolean;
   readonly prompt: Api2Prompt | null;
-  readonly resting: {
-    readonly active: boolean;
-    readonly mode: "turns" | "complete" | "all-points" | "some-points" | null;
-    readonly turnsRequested: number | null;
-    readonly turnsRemaining: number | null;
-    readonly turnsRested: number | null;
-  } | null;
-  readonly running: boolean;
-  readonly repeating: boolean;
-  readonly repeatsLeft: number;
-  readonly unignoring: boolean;
-  readonly messages: readonly { readonly text: string; readonly count: number; readonly color?: string }[] | null;
-  readonly storeStatus: {
-    readonly token: KnownToken;
-    readonly feat: number;
-    readonly ready: boolean;
-    readonly noSelling: boolean;
-    readonly inventory: readonly { readonly handle: number; readonly location?: "pack" | "quiver" | "equipment";
-      readonly eligible: boolean; readonly price: number | null }[];
-  } | null;
-  readonly activeBlast: {
-    readonly token: KnownToken;
-    readonly radius: number;
-    readonly arc?: number;
-    readonly element: string;
-    readonly wallsStop: boolean;
-  } | null;
 }
 
 /** The known world, read at the current input wait. */
 export interface Api2View {
-  character(): Api2Call<Api2Character>;
-  knowledge(category?: string, id?: string): Api2Call<Api2Knowledge>;
-  messages(since?: number): Api2Call<Api2MessageLog>;
-  readonly inspect: Api2Inspect;
-  catalogue(): Api2Call<{
-    readonly token: KnownToken;
-    readonly commands: readonly { readonly code: string; readonly verb: string | null; readonly args: string; readonly phase: "play" | "store" }[];
-    readonly intents: readonly { readonly kind: string; readonly args: string }[];
-  }>;
+  options(): Api2Call<Api2Options>;
   /** Everything the mod may read, in one value. Parts without permission are null. */
   world(): Api2Call<KnownWorldData>;
   /** The player. Needs `state:player.read`. */
@@ -187,8 +165,6 @@ export interface Api2View {
   monsters(): Api2Call<readonly KnownMonster[]>;
   /** The level as the player remembers it. Needs `state:map.read`. */
   level(): Api2Call<KnownLevel>;
-  look(grid: KnownGrid): Api2Call<string>;
-  simulateLoadout(change: LoadoutChange): Api2Call<LoadoutSimulation>;
   /** The input wait. Needs `state:interaction.read`. */
   input(): Api2Call<Api2InputState>;
   /** Whether `token` still names the current input wait. */
@@ -200,11 +176,6 @@ export interface Api2Command {
   readonly code: string;
   readonly dir?: number;
   readonly args?: Readonly<Record<string, JsonValue>>;
-}
-
-export interface Api2MessageLog {
-  readonly cursor: number;
-  readonly entries: readonly { readonly sequence: number; readonly text: string; readonly count: number; readonly color?: string }[];
 }
 
 /** Something the player could do at an input wait. */
@@ -296,7 +267,9 @@ export interface Api2ContentRef {
 
 /** The game's content and this mod's own files, as data. */
 export interface Api2Content {
-  colors(): Api2Call<readonly { readonly index: number; readonly id: string; readonly css: string }[]>;
+  boundRecords(file: string): Api2Call<readonly Api2BoundRecord[]>;
+  activations(): Api2Call<readonly Api2Activation[]>;
+  activation(ref: Api2ActivationRef): Api2Call<Api2Activation | null>;
   /** This mod's own record files, parsed, keyed without `.json`. */
   own(): Api2Call<Readonly<Record<string, JsonValue>>>;
   /** A URL for one of this mod's own files, by path inside its folder. */
@@ -305,6 +278,37 @@ export interface Api2Content {
   records(file: string): Api2Call<readonly JsonRecord[]>;
   /** One record by its stable reference. */
   lookup(ref: Api2ContentRef): Api2Call<JsonRecord>;
+}
+
+export interface Api2BoundRecord {
+  readonly key: string;
+  readonly index: number;
+  readonly name: string;
+  readonly owner: string;
+  readonly base?: string;
+  readonly tval?: number;
+  readonly from?: { readonly owner: string; readonly modifiedBy?: readonly string[]; readonly was?: Readonly<Record<string, JsonValue>> };
+  readonly ext?: Readonly<Record<string, JsonValue>>;
+}
+
+export interface Api2Activation {
+  readonly index: number;
+  readonly name: string;
+  readonly aim: boolean;
+  readonly level: number;
+  readonly power: number;
+  readonly message: string;
+  readonly desc: string;
+  readonly effect: JsonValue;
+}
+
+export type Api2ActivationRef = { readonly tval: number; readonly sval: number } | { readonly ego: string } | { readonly artifact: string };
+
+export interface Api2KeyEvent {
+  readonly key: string;
+  readonly code: string;
+  readonly modifiers: readonly ("shift" | "ctrl" | "alt" | "meta")[];
+  readonly isRepeat: boolean;
 }
 
 /** The host-drawn panel vocabulary: text, buttons, rows and columns. */
@@ -344,11 +348,14 @@ export interface Api2Keys {
 
 /** Host-owned interface: panels the host draws from data, and input bindings. */
 export interface Api2Ui {
+  unmount(panelId: string): Api2Call<null>;
+  onKey(listener: (event: Api2KeyEvent) => void): Api2Call<Api2Subscription>;
+  offKey(subscription: Api2Subscription): Api2Call<null>;
   /**
    * Show a panel. Needs `ui:panel.mount`. The host draws it; `onAction` hears
    * the `action` of each button the player uses.
    */
-  mount(panel: Api2Panel, onAction?: (action: string) => void): Api2Call<{ readonly panelId: string }>;
+  mount(panel: Api2Panel, onAction?: (action: string) => void, onDismiss?: () => void): Api2Call<{ readonly panelId: string }>;
   /** Change a mounted panel. Needs `ui:panel.mount`. */
   patch(panelId: string, patch: Api2PanelPatch): Api2Call<{ readonly panelId: string }>;
   readonly keys: Api2Keys;
@@ -367,6 +374,7 @@ export interface Api2Slot {
  * unavailable until a character exists.
  */
 export interface Api2Store {
+  readonly install: Api2Slot;
   readonly prefs: Api2Slot;
   readonly character: Api2Slot;
 }
@@ -473,7 +481,7 @@ export interface Api2TrueMonster {
  * A real object on the level. It carries the turns left until it recharges
  * (`timeout`) where a known item carries only what its name says.
  */
-export type Api2TrueItem = Omit<KnownItem, "charging" | "unknownRunes" | "artifactId" | "fuel"> & { readonly timeout: number };
+export type Api2TrueItem = Omit<KnownItem, "charging" | "unknownRunes" | "baseName" | "carried"> & { readonly timeout: number };
 
 export interface Api2TrueCell {
   readonly x: number;
@@ -507,6 +515,7 @@ export interface Api2Truth {
 
 /** Everything API 2 hands a running mod. */
 export interface ModApi2 {
+  readonly engine?: Api2Engine;
   readonly meta: Api2Meta;
   readonly view: Api2View;
   readonly act: Api2Act;
@@ -527,6 +536,11 @@ export interface ModApi2 {
 export interface Api2HookContext {
   readonly id: string;
   readonly flags: Readonly<Record<string, boolean>>;
+  readonly engine?: Api2Engine;
+}
+
+export interface Api2ControllerContext extends Api2HookContext {
+  readonly armed: boolean;
 }
 
 /** How a mod brings its stored preferences forward when their shape changes. */
@@ -541,6 +555,10 @@ export interface Api2PrefsMigration {
 export interface Api2ModDefinition {
   /** The mod API range this code was written for, such as ">=2.0.0 <3.0.0". */
   readonly api: string;
+  /** First-party input decisions submit actions under the current input token. */
+  controller?(mod: ModApi2, input: Api2InputState): void | Promise<void>;
+  /** Birth consent is independent of current keyboard ownership. Core still confirms takeover. */
+  armed?(context: Api2ControllerContext): boolean;
   /**
    * The hooks this mod contributes, given its flags. Asked once when content
    * composes. In a Worker only the notification hooks (optionsChanged,
@@ -563,6 +581,7 @@ export interface Api2ModDefinition {
   migrateBag?(data: JsonValue, fromSchema: number): JsonValue;
   /** Bring this mod's stored preferences forward. */
   readonly prefs?: Api2PrefsMigration;
+  readonly install?: Api2PrefsMigration;
 }
 
 /** Declare an API 2 mod. Returns its argument; the type checks the shape. */

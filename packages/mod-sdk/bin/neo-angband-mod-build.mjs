@@ -66,6 +66,8 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
+import { manifestFields } from "../dist/manifest.js";
+import { apiRangeVerdict } from "../dist/api2/version.js";
 
 /* esbuild is not a dependency of this package. The SDK is imported at RUNTIME by the
  * web build to validate manifests, and a native binary in that dependency tree is a
@@ -325,6 +327,20 @@ function pluginProblem(plugin) {
   if (plugin === null || plugin === undefined) return "plugin.js has no default export";
   if (typeof plugin !== "object" && typeof plugin !== "function") {
     return `plugin.js default-exports a ${typeof plugin}, not a plugin object`;
+  }
+  if (typeof plugin.api === "string") {
+    const verdict = apiRangeVerdict(plugin.api);
+    if (!verdict.ok) return verdict.why;
+    if (plugin.hooks === undefined && plugin.policies === undefined && plugin.start === undefined && plugin.controller === undefined) {
+      return "plugin.js declares no hooks, policies, start or controller, so it would do nothing";
+    }
+    for (const member of ["hooks", "policies", "start", "stop", "migrateBag", "controller", "armed"]) {
+      if (plugin[member] !== undefined && typeof plugin[member] !== "function") return `plugin.js: ${member} is not a function`;
+    }
+    for (const slot of ["prefs", "install"]) if (plugin[slot] !== undefined) {
+      if (!Number.isInteger(plugin[slot].version) || plugin[slot].version < 1 || typeof plugin[slot].migrate !== "function") return `plugin.js: ${slot} needs a version and migration`;
+    }
+    return null;
   }
   if (!Number.isInteger(plugin.api)) return 'plugin.js declares no integer "api" version';
   if (

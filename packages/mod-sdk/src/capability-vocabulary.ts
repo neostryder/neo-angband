@@ -29,6 +29,7 @@ import { API2_POLICY_KINDS } from "./api2/policies.js";
 
 /** A capability string parsed into its structured form. */
 export type ParsedCapability =
+  | { kind: "engine"; action: "access" }
   | { kind: "command"; action: "add" | "submit" }
   | { kind: "input"; action: "intent" }
   | { kind: "input-prompt"; action: "reply" }
@@ -200,6 +201,8 @@ const UI_REGIONS: readonly (readonly [string, string, string])[] = [
 ];
 
 const FIXED_ENTRIES: readonly FixedEntry[] = [
+  fixed("engine:access", { kind: "engine", action: "access" }, "Read and change the live engine, including facts your character has not learned",
+    "The mod cannot use the live engine.", { powerful: true }),
   fixed("command:add", { kind: "command", action: "add" }, "Add new player commands",
     "The commands this mod adds are not available.", { powerful: false }),
   fixed("command:submit", { kind: "command", action: "submit" }, "Ask the game to run commands by their names, the way your own keys do",

@@ -15,6 +15,9 @@ import { satisfies, SemverError } from "../semver.js";
 /** The API version this build of the SDK describes and the in-process host implements. */
 export const MOD_API2_VERSION = "2.0.0";
 
+/** The live engine domain changes independently of the mod API and game release. */
+export const ENGINE_API2_VERSION = "1.0.0";
+
 /** The range a new mod should declare. */
 export const MOD_API2_DEFAULT_RANGE = ">=2.0.0 <3.0.0";
 

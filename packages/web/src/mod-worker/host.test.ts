@@ -105,7 +105,7 @@ function hostApi(setup: HostSetup = {}): (options: WorkerApiOptions) => ModApi2 
       prefs: setup.prefs ?? memoryPrefs(),
       ...(setup.net ? { net: setup.net } : {}),
     });
-    return createApi2Host(ctx, { grants: capabilities, ...options });
+    return createApi2Host(ctx, { grants: capabilities, ...options, execution: "worker" });
   };
 }
 
@@ -250,6 +250,15 @@ describe("a Worker mod's view of the world", () => {
 });
 
 describe("the broker's grants", () => {
+  it("answers a Worker engine request with typed not-granted and keeps live objects absent", async () => {
+    let absent: boolean | undefined;
+    const wired = wire({ api: API, start: (mod) => { absent = mod.engine === undefined; } }, { grants: ["engine:access"] });
+    await started(wired, () => absent);
+    const init = wired.worker.sent.find((message) => message.type === "init")!;
+    wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: init.epoch, requestId: 900, method: "engine.core", args: [] });
+    await vi.waitFor(() => expect(wired.worker.sent.find((message) => message.type === "reply" && message.requestId === 900)).toMatchObject({ ok: true, result: { ok: false, reason: "not-granted", capability: "engine:access" } }));
+    expect(absent).toBe(true);
+  });
   it("never passes a wildcard grant to the Worker", async () => {
     const wired = wire({ api: API }, { grants: ["*", "state:player.read"] });
     await wired.session.ready;

@@ -11,7 +11,8 @@ interface MountedPanel {
 }
 
 export interface ModWorkerPanelRenderer {
-  apply(pluginId: string, operation: "mount" | "patch", payload: WorkerJson, patchId?: string, onAction?: (panelId: string, action: string) => void): WorkerJson;
+  apply(pluginId: string, operation: "mount" | "patch", payload: WorkerJson, patchId?: string, onAction?: (panelId: string, action: string) => void, onDismiss?: () => void): WorkerJson;
+  unmount(pluginId: string, panelId: string): void;
   teardown(pluginId: string): void;
 }
 
@@ -23,7 +24,15 @@ export function createModWorkerPanelRenderer(doc: Document = document): ModWorke
   const panels = new Map<string, MountedPanel>();
   const key = (pluginId: string, panelId: string): string => `${pluginId}:${panelId}`;
 
-  const mount = (pluginId: string, panel: ModWorkerPanel, emit: (panelId: string, action: string) => void): WorkerJson => {
+  const unmount = (pluginId: string, panelId: string): void => {
+    const panelKey = key(pluginId, panelId);
+    const mounted = panels.get(panelKey);
+    if (!mounted) return;
+    mounted.root.remove();
+    mounted.unsuspend();
+    panels.delete(panelKey);
+  };
+  const mount = (pluginId: string, panel: ModWorkerPanel, emit: (panelId: string, action: string) => void, onDismiss?: () => void): WorkerJson => {
     const panelKey = key(pluginId, panel.id);
     if (panels.has(panelKey)) throw new Error(`panel ${panel.id} is already mounted`);
     const root = doc.createElement("div");
@@ -35,6 +44,15 @@ export function createModWorkerPanelRenderer(doc: Document = document): ModWorke
     title.style.cssText = "font-weight:600;margin-bottom:8px";
     body.style.cssText = "display:flex;flex-direction:column;gap:8px";
     root.append(title, body);
+    const close = doc.createElement("button");
+    close.type = "button";
+    close.textContent = "Close";
+    close.addEventListener("click", () => {
+      if (modPanelsSuspended()) return;
+      unmount(pluginId, panel.id);
+      onDismiss?.();
+    });
+    root.append(close);
     (doc.body ?? doc.documentElement).append(root);
     const unsuspend = onModPanelSuspension((suspended) => {
       root.style.visibility = suspended ? "hidden" : "";
@@ -47,11 +65,12 @@ export function createModWorkerPanelRenderer(doc: Document = document): ModWorke
   };
 
   return {
-    apply(pluginId, operation, payload, patchId, onAction): WorkerJson {
+    unmount,
+    apply(pluginId, operation, payload, patchId, onAction, onDismiss): WorkerJson {
       if (operation === "mount") {
         const panel = panelDescription(payload);
         if (!panel) throw new Error("ui.mount needs a small declarative panel tree");
-        return mount(pluginId, panel, onAction ?? (() => undefined));
+        return mount(pluginId, panel, onAction ?? (() => undefined), onDismiss);
       }
       if (!patchId) throw new Error("ui.patch needs a panel id");
       const patch = panelPatch(payload);

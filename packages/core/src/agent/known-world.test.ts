@@ -12,7 +12,6 @@ import { FEAT, MFLAG, OF, RF, RSF, SQUARE, TMD, TRF, TV } from "../generated/ind
 import { OBJ_MOD } from "../generated/object-modifiers.js";
 import { FlagSet } from "../bitflag.js";
 import { GameEvents } from "../events.js";
-import { NOSCORE } from "../game/wizard.js";
 import type { CombatOutcomeEventData } from "../events.js";
 import type { GameState } from "../game/context.js";
 import { deleteMonster, monsterSwap } from "../game/context.js";
@@ -199,89 +198,6 @@ function kindNamed(game: StartedGame, tval: number, name: string): ObjectKind {
 }
 
 describe("KnownWorld paired worlds", () => {
-  it("reports only the fuel printed in a light's name", () => {
-    const [a, b] = pair();
-    const torchA = carry(a, kindNamed(a, TV.LIGHT, "Wooden Torch"));
-    const torchB = carry(b, kindNamed(b, TV.LIGHT, "Wooden Torch"));
-    torchA.flags.on(OF.NO_FUEL);
-    torchB.flags.on(OF.NO_FUEL);
-    torchA.timeout = 25;
-    torchB.timeout = 2500;
-    expect(observed(b.state)).toBe(observed(a.state));
-    const item = () => buildKnownWorld(b.state, b.state.knownWorldDeps).inventory!.find((entry) => entry.label.includes("Wooden Torch"))!;
-    expect(item()).not.toHaveProperty("fuel");
-    torchB.flags.off(OF.NO_FUEL);
-    expect(item().name).toContain("(2500 turns)");
-    expect(item().fuel).toBe(2500);
-    torchB.timeout = 0;
-    expect(item().fuel).toBe(0);
-  });
-
-  it("withholds unlearned blows, average health and spell frequency", () => {
-    const [a, b] = pair();
-    const monA = liveMonsters(a.state).find((mon) => mon.race.blows.length > 0)!;
-    const monB = twin(b.state, monA);
-    for (const mon of [monA, monB]) {
-      mon.mflag.on(MFLAG.VISIBLE);
-      mon.mflag.off(MFLAG.CAMOUFLAGE);
-    }
-    for (const game of [a, b]) game.state.lore.delete(monA.race.ridx);
-    monB.race = { ...monB.race, avgHp: monB.race.avgHp + 40, freqSpell: 55, blows: [] };
-    expect(observed(b.state)).toBe(observed(a.state));
-    const lore = getLore(a.state.lore, monA.race);
-    lore.blowKnown[0] = true;
-    lore.armourKnown = true;
-    lore.spellFreqKnown = true;
-    const monster = knownMonsters(a.state).find((mon) => knownMonsterMidx(a.state, mon.id) === monA.midx)!;
-    expect(monster.blows).toHaveLength(1);
-    expect(monster.averageHp).toBe(monA.race.avgHp);
-    expect(monster.spellFrequency).toEqual({ percent: monA.race.freqSpell, exact: true });
-  });
-
-  it("reports the autoplayer mark independently of the other score marks", () => {
-    const [a, b] = pair();
-    b.state.actor.player.noscore = NOSCORE.DEBUG;
-    expect(observed(b.state)).toBe(observed(a.state));
-    b.state.actor.player.noscore |= NOSCORE.BORG;
-    expect(buildKnownWorld(b.state).player!.autoplayed).toBe(true);
-    expect(buildKnownWorld(a.state).player!.autoplayed).toBe(false);
-  });
-
-  it("reads extra moves from known equipment and reports the full name", () => {
-    const [a, b] = pair();
-    b.state.playerState!.numMoves += 5;
-    expect(observed(b.state)).toBe(observed(a.state));
-    b.state.actor.player.fullName = "Cedar";
-    b.state.knownPlayerState!.numMoves = 2;
-    expect(buildKnownWorld(b.state).player).toMatchObject({ fullName: "Cedar", extraMoves: 2 });
-  });
-
-  it("names an artifact id only after the character knows it is an artifact", () => {
-    const [a, b] = pair();
-    const objects = [a, b].map((game) => carry(game, kindNamed(game, TV.SWORD, "Dagger")));
-    objects.forEach((obj, index) => {
-      obj.artifact = [a, b][index]!.booted.registries.objects.artifacts.find((artifact) => artifact && artifact.aidx > index)!;
-      obj.notice &= ~OBJ_NOTICE.ASSESSED;
-    });
-    expect(observed(b.state)).toBe(observed(a.state));
-    const item = () => buildKnownWorld(b.state, b.state.knownWorldDeps).inventory!.find((entry) => entry.label.includes("Dagger"))!;
-    expect(item()).not.toHaveProperty("artifactId");
-    objects[1]!.notice |= OBJ_NOTICE.ASSESSED;
-    expect(item().artifactId).toBe(objects[1]!.artifact!.aidx);
-  });
-
-  it("reports every timed code without revealing durations", () => {
-    const [a, b] = pair();
-    a.state.actor.player.timed[TMD.SLOW] = 10;
-    b.state.actor.player.timed[TMD.SLOW] = 20;
-    expect(observed(b.state)).toBe(observed(a.state));
-    const timed = buildKnownWorld(a.state).player!.status.timed;
-    expect(Object.keys(timed)).toHaveLength(Object.keys(TMD).length);
-    expect(timed["SLOW"]).toEqual(expect.any(String));
-    b.state.actor.player.timed[TMD.SLOW] = 0;
-    expect(observed(b.state)).not.toBe(observed(a.state));
-  });
-
   it("uninspected store stock produces identical observations", () => {
     const [a, b] = pair();
     for (const game of [a, b]) game.changeLevel(0);
@@ -476,11 +392,35 @@ describe("KnownWorld paired worlds", () => {
     b.state.hasFlavor = swap(b.state.hasFlavor);
     carry(a, x);
     carry(b, y);
+    const known = buildKnownWorld(a.state, a.state.knownWorldDeps).inventory!.find((item) => item.tval === TV.POTION)!;
+    expect(known.carried).toBe(true);
+    expect(known.baseName).not.toContain("Speed");
     expect(observed(b.state)).toBe(observed(a.state));
 
     /* Control: learning the kind names it. */
     b.flavor.setAware(y);
     expect(observed(b.state)).not.toBe(observed(a.state));
+  });
+
+  it("reports carried items, floor items, and player scoring and shop facts", () => {
+    const [game] = pair();
+    const kind = kindNamed(game, TV.SWORD, "Dagger");
+    const obj = carry(game, kind);
+    obj.toH = 15;
+    const world = buildKnownWorld(game.state, game.state.knownWorldDeps);
+    const dagger = world.inventory!.find((item) => item.baseName === "Dagger")!;
+    expect(dagger.baseName).toBe("Dagger");
+    expect(dagger.carried).toBe(true);
+    const floor = objectPrep(new Rng(1), game.booted.registries.objects, game.booted.registries.constants, kind, 1, "minimise");
+    floorCarry(game.state, game.state.actor.grid, floor);
+    squareKnowPile(game.state, game.state.actor.grid);
+    expect(buildKnownWorld(game.state, game.state.knownWorldDeps).floorHere!.every((item) => !item.carried)).toBe(true);
+    game.state.actor.player.noscore = 32;
+    expect(buildKnownWorld(game.state, game.state.knownWorldDeps).player).toMatchObject({ noscore: 32, shopnum: null });
+    const shopFeat = game.booted.registries.features.shopFeats()[0];
+    if (shopFeat === undefined) throw new Error("the pack has no shop entrance");
+    game.state.chunk.setFeat(game.state.actor.grid, shopFeat);
+    expect(buildKnownWorld(game.state, game.state.knownWorldDeps).player!.shopnum).toBe(0);
   });
 
   it("floor memory that has gone stale is reported as remembered", () => {

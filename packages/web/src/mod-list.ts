@@ -13,7 +13,7 @@ export function publicModList(
     const declared = manifest.publicFlags ?? [];
     const current = flags.get(id) ?? {};
     return [Object.freeze({
-      id, version: manifest.version,
+      id, name: manifest.name, version: manifest.version,
       ...(declared.length ? { flags: Object.freeze(Object.fromEntries(declared.map((flag) => [flag, current[flag] ?? false]))) } : {}),
     })];
   }));
