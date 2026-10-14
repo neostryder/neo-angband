@@ -94,6 +94,16 @@ export type {
 } from "./policies.js";
 export { defineApi2Mod } from "./domains.js";
 export type {
+  Api2Presentation, Api2Presenters, Api2BootPhase, Api2Display, Api2DisplayHit, Api2DisplaySnapshot,
+  Api2DisplayGridRequest, Api2MapView, Api2Subwindows, Api2SubwindowInfo,
+  Api2SubwindowControl, Api2Tiles, Api2DomUi, Api2DomPanel, Api2PanelSpec,
+  Api2PanelKindSpec, Api2PanelMount, Api2PanelState, Api2ChromeTheme,
+  Api2TerminalGround,
+  Api2BirthPresenter, Api2BirthSession, Api2BirthAbilityView, Api2BirthRaceView,
+  Api2BirthClassView, Api2BirthOptionView, Api2BirthCatalogue, Api2BirthPreview,
+  Api2BirthDraftView, Api2BirthResult, Api2Title, Api2TitleAction,
+} from "./presentation.js";
+export type {
   Api2Act,
   Api2Command,
   Api2Content,
@@ -112,6 +122,7 @@ export type {
   Api2KeyBinding,
   Api2Keys,
   Api2Manage,
+  Api2MenuAction,
   Api2Meta,
   Api2ModDefinition,
   Api2ModSummary,

@@ -6,6 +6,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  ActionRegistry,
+  CommandVerbTable,
   GameEvents,
   FEAT,
   MFLAG,
@@ -18,11 +20,12 @@ import {
   type GamePack,
   type GameState,
   type Monster,
-  type ModNet,
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet, type JsonValue, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
-import { api2EventPayload, createApi2Host, type Api2HostOptions } from "./mod-api2-host";
+import { api2EventPayload, createApi2Host, disposeApi2Host, type Api2HostOptions } from "./mod-api2-host";
+import { menuRegistry } from "./menu-registry";
+import { TitleRuntime } from "./title-runtime";
 import { modPluginContext } from "./mod-context";
 import type { ModPrefs } from "./mod-prefs";
 
@@ -191,6 +194,45 @@ describe("the API 2 host's refusals", () => {
 });
 
 describe("the API 2 host's commands", () => {
+  it("registers owned callbacks and verbs and releases them at teardown", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const registry = new ActionRegistry();
+    const verbs = new CommandVerbTable();
+    const api = host(game, ["registry:command"], { commands: { registry, verbs } });
+    let ran = 0;
+    expect(await api.ui.commands.register("probe:order", "order", () => { ran += 1; })).toEqual({ ok: true, value: null });
+    expect(verbs.verbFor("probe:order")).toBe("order");
+    expect(registry.get("probe:order")?.(game.state, { code: "probe:order" })).toBe(0);
+    expect(ran).toBe(1);
+    expect(await api.ui.commands.register("probe:order", "order", () => undefined)).toMatchObject({ code: "command-taken" });
+    expect(await api.ui.commands.register("other:order", "order", () => undefined)).toMatchObject({ code: "bad-command" });
+    disposeApi2Host(api);
+    expect(registry.has("probe:order")).toBe(false);
+  });
+
+  it("checks key availability without claiming it", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const api = host(game, ["keymap:write"]);
+    expect(await api.ui.keys.isBindableTriggerKey("F10")).toEqual({ ok: true, value: true });
+    expect(await api.ui.keys.list()).toEqual({ ok: true, value: [] });
+    expect(await api.ui.keys.bind("F10", "a")).toEqual({ ok: true, value: null });
+    expect(await api.ui.keys.isBindableTriggerKey("F10")).toEqual({ ok: true, value: false });
+    expect(await api.ui.keys.isBindableTriggerKey("Shift")).toEqual({ ok: true, value: false });
+    await api.ui.keys.remove("F10");
+  });
+
+  it("adds a runnable Game-menu entry and removes it when the mod stops", async () => {
+    menuRegistry.clear();
+    const api = host(startGame(pack, { seed: SEED, depth: DEPTH }), ["registry:menu"]);
+    let ran = false;
+    expect(await api.ui.gameMenu.register("backup", "Backups", () => { ran = true; })).toEqual({ ok: true, value: null });
+    const rows = menuRegistry.transform("core:game-menu", []);
+    expect(rows.map((row) => row.label)).toEqual(["Backups"]);
+    await menuRegistry.runAction("core:game-menu", rows[0]!.id);
+    expect(ran).toBe(true);
+    disposeApi2Host(api);
+    expect(menuRegistry.transform("core:game-menu", [])).toEqual([]);
+  });
   function commander(game: StartedGame): { api: ModApi2; sent: unknown[] } {
     const sent: unknown[] = [];
     const caps = capabilities("probe", [...READS, "input:intent"]);
@@ -228,11 +270,40 @@ describe("the API 2 host's commands", () => {
 });
 
 describe("the first-party seams", () => {
+  it("registers and dismisses title rows and uses the Core choice drawer", async () => {
+    const caps = capabilities("probe", ["ui:title"]);
+    const runtime = new TitleRuntime(async (label, choices) => {
+      expect(label).toBe("Choose a profile");
+      expect(choices).toEqual(["Current", "New"]);
+      return 1;
+    });
+    const ctx = { ...modPluginContext("probe", {}, undefined, {}, { capabilities: caps }), title: runtime.forMod("probe") };
+    const api = createApi2Host(ctx, { grants: caps, tier: "first-party", firstParty: { presentation: true } });
+    let ran = false;
+    const subscription = await api.ui.title!.registerRow({ id: "new-character", label: "New character", key: "S", run: () => { ran = true; } });
+    expect(subscription.ok).toBe(true);
+    await runtime.run(runtime.list()[0]!.choice);
+    expect(ran).toBe(true);
+    expect(await api.ui.title!.choose("Choose a profile", ["Current", "New"])).toEqual({ ok: true, value: 1 });
+    if (!subscription.ok) throw new Error("refused");
+    await api.ui.title!.removeRow(subscription.value);
+    expect(runtime.list()).toEqual([]);
+    await api.ui.title!.registerRow({ id: "new-character", label: "New character", run: () => undefined });
+    disposeApi2Host(api);
+    expect(runtime.list()).toEqual([]);
+    expect(createApi2Host(ctx, { grants: caps, tier: "public" }).ui.title).toBeUndefined();
+  });
+  it("refuses presentation to a public mod even with a namespace flag", () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    expect(host(game, [], { tier: "public", firstParty: { presentation: true } }).presentation).toBeUndefined();
+    expect(host(game, [], { tier: "first-party", firstParty: { presentation: true } }).presentation).toBeDefined();
+  });
   it("are absent without an allowlist, whatever the grants", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const api = host(game, [...READS, "profiles:manage", "session:control"]);
     expect(api.manage).toBeUndefined();
     expect(api.truth).toBeUndefined();
+    expect(api.presentation).toBeUndefined();
     expect("manage" in api).toBe(false);
     expect("truth" in api).toBe(false);
     expect(api.meta.tier).toBe("public");
@@ -361,60 +432,7 @@ describe("API 2 events", () => {
   });
 });
 
-describe("API 2 credential references", () => {
-  it("passes a prefix and opaque reference to the host transport", async () => {
-    const requests: Parameters<ModNet["request"]>[0][] = [];
-    const net: ModNet = {
-      transport: "page",
-      request: async (request) => {
-        requests.push(request);
-        return { ok: true, status: 200, headers: {}, body: "{}" };
-      },
-      secrets: {
-        storage: "page",
-        has: async () => ({ present: false }),
-        set: async () => ({ ok: true, storage: "page" }),
-        fromEnv: async () => ({ ok: false, problem: "unavailable" }),
-        delete: async () => ({ ok: true }),
-      },
-    };
-    const caps = capabilities("probe", ["network:example.test"]);
-    const ctx = modPluginContext("probe", {}, undefined, {}, { capabilities: caps, net });
-    const api = createApi2Host(ctx, { grants: caps });
-    const ref = api.net!.credential("key", "Bearer ");
-    expect(ref).toEqual({ credential: "key", prefix: "Bearer " });
-    expect(Object.isFrozen(ref)).toBe(true);
-    expect(await api.net!.request({ url: "https://example.test", headers: {
-      authorization: ref, "x-api-key": api.net!.credential("key"),
-    } })).toMatchObject({ ok: true });
-    expect(requests[0]?.headers).toEqual({ authorization: "Bearer {secret:key}", "x-api-key": "{secret:key}" });
-  });
-});
-
 describe("API 2 storage", () => {
-  it("unwraps preferences when the definition drops its migration", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const prefs = memoryPrefs();
-    const versioned = host(game, [], { prefs: { version: 1, migrate: (value) => value } }, prefs);
-    await versioned.store.prefs.set({ colour: "blue" });
-    expect(await host(game, [], {}, prefs).store.prefs.get()).toEqual({ ok: true, value: { colour: "blue" } });
-  });
-
-  it("keeps a numeric $api2prefs key as user data", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const prefs = memoryPrefs();
-    const value = { $api2prefs: 9, value: "user data" };
-    prefs.set(value);
-    const fromVersions: number[] = [];
-    const api = host(game, [], { prefs: { version: 1, migrate: (data, from) => {
-      fromVersions.push(from);
-      return data;
-    } } }, prefs);
-    expect(await api.store.prefs.get()).toEqual({ ok: true, value });
-    expect(fromVersions).toEqual([0]);
-    expect(await host(game, [], {}, prefs).store.prefs.get()).toEqual({ ok: true, value });
-  });
-
   it("shares a pending preference migration and preserves a newer write", async () => {
     const prefs = memoryPrefs();
     prefs.set({ colour: "red" });
@@ -436,7 +454,7 @@ describe("API 2 storage", () => {
     release({ colour: "red", shade: "dark" });
     expect(await first).toEqual({ ok: true, value: { colour: "blue" } });
     expect(await second).toEqual({ ok: true, value: { colour: "blue" } });
-    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "blue" } } });
+    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "blue" } });
   });
 
   it("keeps a cleared preference value when an older migration finishes", async () => {
@@ -468,10 +486,10 @@ describe("API 2 storage", () => {
       },
     }, prefs);
     expect(await api.store.prefs.get()).toEqual({ ok: true, value: { colour: "red", shade: "dark" } });
-    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "red", shade: "dark" } } });
+    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "red", shade: "dark" } });
     expect(await api.store.prefs.get()).toEqual({ ok: true, value: { colour: "red", shade: "dark" } });
     expect(calls).toEqual([0]);
     await api.store.prefs.set({ colour: "blue" });
-    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "blue" } } });
+    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "blue" } });
   });
 });

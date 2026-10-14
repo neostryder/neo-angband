@@ -8,7 +8,7 @@ import type { LoadedPack } from "../loader.js";
 import { composeContentPacks } from "../loader.js";
 import { hasFacet } from "../manifest.js";
 import type { ModFinding } from "../mod-findings.js";
-import { danglingReferences, normalizeRef, valuesAtPath } from "../references.js";
+import { danglingReferences } from "../references.js";
 import type { JsonRecord } from "../compose.js";
 import { composedObjects } from "../validate.js";
 import { finding, textOf, type CheckSubject } from "./subject.js";
@@ -151,20 +151,7 @@ export function checkComposition(subject: CheckSubject, options: CompositionOpti
   const before = composedObjects(alone.records);
   const after = composedObjects(withMod.records);
   const known = new Set(danglingReferences(before).map((d) => d.message));
-  // Upstream artifacts declare special base kinds that object.json does not contain.
-  const artifactBaseKey = (record: JsonRecord): string => JSON.stringify([
-    valuesAtPath(record, "base-object.tval")[0],
-    normalizeRef(valuesAtPath(record, "base-object.sval")[0] ?? "", "object-name"),
-  ]);
-  const artifactBases = new Set((before["artifact"] ?? []).map(artifactBaseKey));
-  const fresh = danglingReferences(after).filter((d) => {
-    if (known.has(d.message) || (d.file === "history" && d.path === "chart.next")) return false;
-    if (d.file === "artifact" && d.path === "base-object.sval") {
-      const record = after["artifact"]?.find((r) => r["name"] === d.from);
-      if (record !== undefined && artifactBases.has(artifactBaseKey(record))) return false;
-    }
-    return true;
-  });
+  const fresh = danglingReferences(after).filter((d) => !known.has(d.message) && !(d.file === "history" && d.path === "chart.next"));
   for (const d of fresh) {
     out.push(finding("dangling-reference", d.message, { evidence: [{ file: `${d.file}.json`, excerpt: `${d.path}: ${d.value}` }] }));
   }

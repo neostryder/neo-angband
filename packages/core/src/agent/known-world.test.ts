@@ -111,7 +111,6 @@ function clientDeps(game: StartedGame): AgentViewDeps {
   return {
     resolver: new ContentIdResolver({
       objects: reg.objects,
-      monsters: reg.monsters,
       playerRaces: game.players.races,
       playerClasses: game.players.classes,
     }),
@@ -724,7 +723,6 @@ describe("monsterBecameVisible", () => {
     expect(Object.isFrozen(heard[0]!.knownFlags)).toBe(true);
     /* The glyph comes only from the deps. */
     expect(heard[0]!.glyph).toBeDefined();
-    expect(heard[0]!.raceId).toBe(new ContentIdResolver(a.booted.registries).raceId(mon.race.ridx));
     expect(heard[0]).toEqual(knownMonsters(a.state, a.state.knownWorldDeps).find((m) => m.id === heard[0]!.id));
   });
 

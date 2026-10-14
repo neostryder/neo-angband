@@ -89,7 +89,7 @@ export function installModWorkerBootstrap(
     if (list.includes(capability)) return true;
     const state = /^state:([a-z0-9-]+)\.read$/u.exec(capability);
     if (state && state[1] !== "map-actual" && list.includes("state:*.read")) return true;
-    return capability.startsWith("network:") && list.includes("network:*");
+    return capability.startsWith("network:") && capability !== "network:local" && list.includes("network:*");
   };
 
   const buildApi = (m: WorkerMeta, active: readonly string[]): ModApi2 => {
@@ -157,7 +157,17 @@ export function installModWorkerBootstrap(
           return call("ui.mount", [panel, callbackId]);
         },
         patch: method("ui.patch"),
-        keys: { bind: method("ui.keys.bind"), list: method("ui.keys.list"), remove: method("ui.keys.remove") },
+        commands: { register: (id: string, verb: string, run: () => void) => {
+          const callbackId = ++nextCallback;
+          callbacks.set(callbackId, run);
+          return call("ui.commands.register", [id, verb, callbackId]);
+        } },
+        gameMenu: { register: (action: string, label: string, run: () => void) => {
+          const callbackId = ++nextCallback;
+          callbacks.set(callbackId, run);
+          return call("ui.gameMenu.register", [action, label, callbackId]);
+        } },
+        keys: { isBindableTriggerKey: method("ui.keys.isBindableTriggerKey"), bind: method("ui.keys.bind"), list: method("ui.keys.list"), remove: method("ui.keys.remove") },
       },
       store: {
         prefs: { get: method("store.prefs.get"), set: method("store.prefs.set") },
@@ -216,6 +226,8 @@ export function installModWorkerBootstrap(
         throw new Error("the Worker entry's default export is not an API 2 mod definition (an object with an \"api\" range)");
       }
       definition = candidate as Api2ModDefinition;
+      if (definition.presentation !== undefined) throw new Error("Worker mods cannot declare presentation");
+      if (definition.birth !== undefined || definition.titleActions !== undefined) throw new Error("Worker mods cannot declare birth or title actions");
       send({ type: "ready", summary: summarize(definition, meta) });
     } catch (err) {
       fault("boot", err);
@@ -305,10 +317,13 @@ export function installModWorkerBootstrap(
       case "start": {
         if (started || definition === null || meta === null) return;
         started = true;
-        if (!definition.start) return;
         const active = [...Object.keys(declared), ...message.policyHooks];
         try {
-          const result = definition.start(buildApi(meta, active));
+          const mod = buildApi(meta, active);
+          for (const action of definition.actions ?? []) {
+            void mod.ui.gameMenu.register(action.action, action.label, () => action.run(mod));
+          }
+          const result = definition.start?.(mod);
           if (result && typeof (result as Promise<void>).then === "function") {
             (result as Promise<void>).then(undefined, (err: unknown) => fault("start()", err));
           }
