@@ -66,6 +66,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
+import { manifestFields } from "../dist/manifest.js";
 
 /* esbuild is not a dependency of this package. The SDK is imported at RUNTIME by the
  * web build to validate manifests, and a native binary in that dependency tree is a
@@ -152,14 +153,17 @@ if (targets.length === 0) {
 
 note(`${check ? "checking" : "building"} ${targets.length}: ${targets.map((t) => t.id).join(", ")}`);
 
-/** The manifest's own id, or null when there is no readable manifest. */
+/** The manifest's own id, or null when there is no manifest. */
 function readManifestId(dir) {
   try {
     const manifest = manifestFields(JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")));
     const id = manifest?.id;
     return typeof id === "string" && id !== "" ? id : null;
-  } catch {
-    return null;
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    if (!(error instanceof SyntaxError) && !error.code) throw error;
+    fail(`cannot read ${join(dir, "manifest.json")}: ${error.message}`);
+    process.exit(1);
   }
 }
 

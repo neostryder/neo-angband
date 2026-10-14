@@ -20,7 +20,6 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -38,7 +37,7 @@ const BUILD_TIMEOUT = 30_000;
 
 const temps: string[] = [];
 function tempDir(): string {
-  const d = mkdtempSync(join(tmpdir(), "neo-mod-build-"));
+  const d = mkdtempSync(join(PKG, ".neo-mod-build-"));
   temps.push(d);
   return d;
 }
@@ -115,6 +114,28 @@ describe("a well-formed mod builds", { timeout: BUILD_TIMEOUT }, () => {
     expect(r.code, r.out).toBe(0);
     expect(r.out).toContain("ok");
     expect(existsSync(join(checkOut, "ok-mod", "plugin.js"))).toBe(false);
+  });
+});
+
+describe("the manifest identifies a checkout", { timeout: BUILD_TIMEOUT }, () => {
+  it("uses the manifest id when the folder name differs", () => {
+    const mod = tempDir();
+    for (const f of ["manifest.json", "plugin.ts", "helper.ts"]) {
+      writeFileSync(join(mod, f), readFileSync(join(FIXTURES, "ok-mod", f), "utf8"));
+    }
+    execFileSync(process.execPath, [BIN, "--root", mod], { windowsHide: true });
+    expect(readFileSync(join(mod, "plugin.js"), "utf8").split("\n")[0]).toContain("// ok-mod -");
+  });
+
+  it("reports an unreadable manifest instead of falling back to the folder name", () => {
+    const mod = tempDir();
+    writeFileSync(join(mod, "plugin.ts"), "export default { api: 1, hooks: () => ({}) };\n");
+    writeFileSync(join(mod, "manifest.json"), "{");
+    expect(() => execFileSync(process.execPath, [BIN, "--root", mod], {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    })).toThrow(/cannot read.*manifest.json/u);
+    expect(existsSync(join(mod, "plugin.js"))).toBe(false);
   });
 });
 
