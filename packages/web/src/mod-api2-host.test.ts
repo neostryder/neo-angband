@@ -18,6 +18,7 @@ import {
   type GamePack,
   type GameState,
   type Monster,
+  type ModNet,
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet, type JsonValue, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -125,16 +126,6 @@ async function observedThroughHost(api: ModApi2): Promise<string> {
 const READS = ["state:*.read"];
 
 describe("the API 2 host's view", () => {
-  it("keeps look text unchanged when hidden terrain changes and hides wizard flow", async () => {
-    const a = startGame(pack, { seed: SEED, depth: DEPTH });
-    const b = startGame(pack, { seed: SEED, depth: DEPTH });
-    const grid = emptyGrid(a.state, false);
-    b.state.chunk.setFeat(grid, FEAT.GRANITE);
-    b.state.wizard = true;
-    expect(await host(b, READS).view.look(grid)).toEqual(await host(a, READS).view.look(grid));
-    expect(await host(a, []).view.look(grid)).toMatchObject({ reason: "not-granted" });
-  });
-
   it("does not change when an unseen monster's health and speed change (paired worlds)", async () => {
     const a = startGame(pack, { seed: SEED, depth: DEPTH });
     const b = startGame(pack, { seed: SEED, depth: DEPTH });
@@ -367,6 +358,36 @@ describe("API 2 events", () => {
     expect(api2EventPayload("heal", { who: 9, perceivedWho: "unseen", amount: 3, grid, seen: true })).toBeUndefined();
     expect(api2EventPayload("heal", { who: 7, perceivedWho: { monster: 1 }, amount: 3, grid, seen: true })).toEqual({ who: { monster: 1 }, grid });
     expect(api2EventPayload("heal", { who: "player", perceivedWho: "player", amount: 3, grid, seen: false })).toEqual({ who: "player", grid, playerAmount: 3 });
+  });
+});
+
+describe("API 2 credential references", () => {
+  it("passes a prefix and opaque reference to the host transport", async () => {
+    const requests: Parameters<ModNet["request"]>[0][] = [];
+    const net: ModNet = {
+      transport: "page",
+      request: async (request) => {
+        requests.push(request);
+        return { ok: true, status: 200, headers: {}, body: "{}" };
+      },
+      secrets: {
+        storage: "page",
+        has: async () => ({ present: false }),
+        set: async () => ({ ok: true, storage: "page" }),
+        fromEnv: async () => ({ ok: false, problem: "unavailable" }),
+        delete: async () => ({ ok: true }),
+      },
+    };
+    const caps = capabilities("probe", ["network:example.test"]);
+    const ctx = modPluginContext("probe", {}, undefined, {}, { capabilities: caps, net });
+    const api = createApi2Host(ctx, { grants: caps });
+    const ref = api.net!.credential("key", "Bearer ");
+    expect(ref).toEqual({ credential: "key", prefix: "Bearer " });
+    expect(Object.isFrozen(ref)).toBe(true);
+    expect(await api.net!.request({ url: "https://example.test", headers: {
+      authorization: ref, "x-api-key": api.net!.credential("key"),
+    } })).toMatchObject({ ok: true });
+    expect(requests[0]?.headers).toEqual({ authorization: "Bearer {secret:key}", "x-api-key": "{secret:key}" });
   });
 });
 

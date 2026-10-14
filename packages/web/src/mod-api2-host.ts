@@ -20,7 +20,6 @@ import {
   AgentCapabilityError,
   buildKnownWorld,
   createAgentView,
-  describeLookGrid,
   knownMonsterMidx,
   trueMonsterViews,
   tokenIsCurrent,
@@ -338,15 +337,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           prompt: snap.prompt,
         }));
       }),
-      look: (grid) => withState((state) => {
-        for (const domain of ["map", "floor", "monsters"]) {
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-        }
-        if (!Number.isInteger(grid.x) || !Number.isInteger(grid.y) || !state.chunk.inBounds(grid)) {
-          return api2Refused("invalid-grid", "the grid is outside the level");
-        }
-        return api2Ok(describeLookGrid(state, grid, 0, true).text);
-      }),
       isCurrent: (token) => withState((state) => api2Ok(tokenIsCurrent(state, token))),
     }),
 
@@ -508,7 +498,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
     request: (request: Api2NetRequest) => guarded(async () => {
       const headers: Record<string, string> = {};
       for (const [name, value] of Object.entries(request.headers ?? {})) {
-        headers[name] = typeof value === "string" ? value : `{secret:${value.credential}}`;
+        headers[name] = typeof value === "string" ? value : `${value.prefix ?? ""}{secret:${value.credential}}`;
       }
       const response = await net.request({
         url: request.url,
@@ -529,7 +519,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
       }
       return api2Refused(response.code, response.problem);
     }),
-    credential: (name: string) => frozen({ credential: name }),
+    credential: (name: string, prefix?: string) => frozen({ credential: name, ...(prefix !== undefined ? { prefix } : {}) }),
     credentials: frozen({
       status: (name: string) => guarded(async () => api2Ok(data(await secrets.has(name)))),
       set: (name: string, value: string, hosts: readonly string[]) => guarded(async () => {

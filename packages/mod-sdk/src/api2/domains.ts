@@ -148,7 +148,6 @@ export interface Api2View {
   monsters(): Api2Call<readonly KnownMonster[]>;
   /** The level as the player remembers it. Needs `state:map.read`. */
   level(): Api2Call<KnownLevel>;
-  look(grid: KnownGrid): Api2Call<string>;
   /** The input wait. Needs `state:interaction.read`. */
   input(): Api2Call<Api2InputState>;
   /** Whether `token` still names the current input wait. */
@@ -328,6 +327,7 @@ export interface Api2Store {
 /** An opaque name for a credential the host keeps. The mod never holds the value. */
 export interface Api2CredentialRef {
   readonly credential: string;
+  readonly prefix?: string;
 }
 
 /** An HTTP request. A header may name a credential, which the host fills in. */
@@ -364,7 +364,7 @@ export interface Api2Credentials {
 export interface Api2Net {
   request(request: Api2NetRequest): Api2Call<Api2NetResponse>;
   /** A reference to a credential, for a request header. */
-  credential(name: string): Api2CredentialRef;
+  credential(name: string, prefix?: string): Api2CredentialRef;
   readonly credentials: Api2Credentials;
 }
 
