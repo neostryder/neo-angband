@@ -66,6 +66,8 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
+import { manifestFields } from "../dist/manifest.js";
+import { apiRangeVerdict } from "../dist/api2/version.js";
 
 /* esbuild is not a dependency of this package. The SDK is imported at RUNTIME by the
  * web build to validate manifests, and a native binary in that dependency tree is a
@@ -152,14 +154,17 @@ if (targets.length === 0) {
 
 note(`${check ? "checking" : "building"} ${targets.length}: ${targets.map((t) => t.id).join(", ")}`);
 
-/** The manifest's own id, or null when there is no readable manifest. */
+/** The manifest's own id, or null when there is no manifest. */
 function readManifestId(dir) {
   try {
     const manifest = manifestFields(JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8")));
     const id = manifest?.id;
     return typeof id === "string" && id !== "" ? id : null;
-  } catch {
-    return null;
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    if (!(error instanceof SyntaxError) && !error.code) throw error;
+    fail(`cannot read ${join(dir, "manifest.json")}: ${error.message}`);
+    process.exit(1);
   }
 }
 
@@ -326,7 +331,28 @@ function pluginProblem(plugin) {
   if (typeof plugin !== "object" && typeof plugin !== "function") {
     return `plugin.js default-exports a ${typeof plugin}, not a plugin object`;
   }
-  if (!Number.isInteger(plugin.api)) return 'plugin.js declares no integer "api" version';
+  if (typeof plugin.api === "string") {
+    const verdict = apiRangeVerdict(plugin.api);
+    if (!verdict.ok) return `plugin.js: api ${verdict.why}`;
+    const members = ["hooks", "policies", "start", "stop", "migrateBag"];
+    for (const name of members) {
+      if (plugin[name] !== undefined && typeof plugin[name] !== "function") {
+        return `plugin.js: ${name} is not a function`;
+      }
+    }
+    if (plugin.prefs !== undefined) {
+      const prefs = plugin.prefs;
+      if (prefs === null || typeof prefs !== "object" || !Number.isInteger(prefs.version) || prefs.version < 1) {
+        return "plugin.js: prefs.version is a whole number from 1";
+      }
+      if (typeof prefs.migrate !== "function") return "plugin.js: prefs.migrate is not a function";
+    }
+    if (plugin.hooks === undefined && plugin.policies === undefined && plugin.start === undefined) {
+      return "plugin.js: an API 2 mod declares hooks, policies, start, or a combination";
+    }
+    return null;
+  }
+  if (!Number.isInteger(plugin.api)) return 'plugin.js declares no integer "api" version or API 2 range string';
   if (
     plugin.hooks === undefined &&
     plugin.register === undefined &&

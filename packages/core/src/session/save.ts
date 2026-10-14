@@ -1983,7 +1983,6 @@ export function deserializeMessages(
 /** Serialized map knowledge (remembered terrain and floor objects). */
 export interface SavedKnown {
   feat: number[];
-  glow?: number[];
   /**
    * The remembered PILE per grid, in the order map_info walks it. SAVE_VERSION
    * 4; version 3 stored a single memory per grid, which migrate3to4 widens to
@@ -2439,7 +2438,6 @@ export function serializeGame(
       ? {
           known: {
             feat: knownFeat,
-            ...(state.known.glow ? { glow: Array.from(state.known.glow) } : {}),
             objects: Array.from(state.known.objects.entries()).map(([i, pile]) => [
               i,
               pile.map((e) => serializeKnownObject(e, liveFloorAt, ids)),
@@ -2767,10 +2765,6 @@ export function deserializeKnown(
 ): KnownMap {
   const known = newKnownMap(width, height);
   if (!data) return known;
-  if (data.glow) {
-    known.glow = new Uint8Array(width * height);
-    known.glow.set(data.glow.slice(0, known.glow.length).map((value) => value ? 1 : 0));
-  }
   if (trapKinds) {
     if (data.traps) {
       for (const [i, trapIds] of data.traps) {
@@ -3063,7 +3057,6 @@ export function serializeStoredLevel(
     traps,
     known: {
       feat: knownFeat,
-      ...(level.known.glow ? { glow: Array.from(level.known.glow) } : {}),
       objects: Array.from(level.known.objects.entries()).map(([i, pile]) => [
         i,
         pile.map((e) => serializeKnownObject(e, cachedFloorAt, ids)),
