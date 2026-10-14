@@ -58,8 +58,6 @@ export const WORKER_CALLS = [
   "view.player",
   "view.monsters",
   "view.level",
-  "view.look",
-  "view.simulateLoadout",
   "view.input",
   "view.isCurrent",
   "act.submit",

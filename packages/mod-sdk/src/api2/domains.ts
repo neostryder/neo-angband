@@ -18,6 +18,7 @@ import type { NetMethod, NetProblemCode } from "../net-request.js";
 import type { Api2EventMap, Api2EventName } from "./events.js";
 import type { Api2HookName, Api2Hooks } from "./hooks.js";
 import type { Api2Policies } from "./policies.js";
+import type { Api2Presentation, Api2Presenters } from "./presentation.js";
 import type {
   KnownGrid,
   KnownItem,
@@ -29,7 +30,6 @@ import type {
   KnownWorldData,
 } from "./known.js";
 import type { Api2Call, Api2Capability } from "./result.js";
-import type { LoadoutChange, LoadoutSimulation } from "./inspection.js";
 
 /** Whether a mod is one of the game's own (first-party) or anyone else's. */
 export type Api2Tier = "first-party" | "public";
@@ -68,7 +68,7 @@ export interface Api2Meta {
 }
 
 /** The phase of play at an input wait. */
-export type Api2Phase = "pregame" | "play" | "store" | "more" | "modal" | "dead";
+export type Api2Phase = "title" | "birth" | "play" | "store" | "more" | "modal" | "dead";
 
 /** The question the game is asking at an input wait. */
 export type Api2Prompt =
@@ -149,8 +149,6 @@ export interface Api2View {
   monsters(): Api2Call<readonly KnownMonster[]>;
   /** The level as the player remembers it. Needs `state:map.read`. */
   level(): Api2Call<KnownLevel>;
-  look(grid: KnownGrid): Api2Call<string>;
-  simulateLoadout(change: LoadoutChange): Api2Call<LoadoutSimulation>;
   /** The input wait. Needs `state:interaction.read`. */
   input(): Api2Call<Api2InputState>;
   /** Whether `token` still names the current input wait. */
@@ -477,6 +475,7 @@ export interface ModApi2 {
   readonly manage?: Api2Manage;
   /** The first-party autoplayer only. */
   readonly truth?: Api2Truth;
+  readonly presentation?: Api2Presentation;
 }
 
 /** What `hooks` is told when the host asks a mod for its hooks. */
@@ -497,6 +496,7 @@ export interface Api2PrefsMigration {
 export interface Api2ModDefinition {
   /** The mod API range this code was written for, such as ">=2.0.0 <3.0.0". */
   readonly api: string;
+  readonly presentation?: Api2Presenters;
   /**
    * The hooks this mod contributes, given its flags. Asked once when content
    * composes. In a Worker only the notification hooks (optionsChanged,

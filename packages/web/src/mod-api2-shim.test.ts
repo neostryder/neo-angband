@@ -71,6 +71,20 @@ describe("an API 1 plugin", () => {
 });
 
 describe("an API 2 definition through the shim", () => {
+  it("passes presenters only to the measured first-party tier", () => {
+    const menu = { ask: () => undefined };
+    const definition = defineApi2Mod({ api: "^2.0.0", presentation: { menu: (mod) => {
+      expect(mod.presentation).toBeDefined();
+      return menu;
+    } } });
+    expect(checkApi2Definition(definition)).toBeNull();
+    const caps = capabilities("modern", []);
+    const ctx = modPluginContext("modern", {}, undefined, {}, { capabilities: caps });
+    const p = api2Plugin(definition, () => ({ grants: caps, tier: "first-party", firstParty: { presentation: true } }));
+    expect(p.menu?.(ctx)).toBe(menu);
+    const publicPlugin = api2Plugin(definition, () => ({ grants: caps, tier: "public", firstParty: { presentation: true } }));
+    expect(publicPlugin.menu).toBeUndefined();
+  });
   it("passes the API 1 validator, hooks through core's fold and starts with the API 2 domains", async () => {
     let started: ModApi2 | undefined;
     const definition = defineApi2Mod({

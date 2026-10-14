@@ -14,7 +14,6 @@ export type {
   Api2Unavailable,
 } from "./result.js";
 export { KNOWN_WORLD_FORMAT } from "./known.js";
-export type { DerivedStatsView, ItemRef, LoadoutChange, LoadoutDelta, LoadoutItemRef, LoadoutSimulation, LoadoutView } from "./inspection.js";
 export type {
   KnownGrid,
   KnownItem,
@@ -94,6 +93,13 @@ export type {
   Api2TileRule,
 } from "./policies.js";
 export { defineApi2Mod } from "./domains.js";
+export type {
+  Api2Presentation, Api2Presenters, Api2BootPhase, Api2Display, Api2DisplayHit, Api2DisplaySnapshot,
+  Api2DisplayGridRequest, Api2MapView, Api2Subwindows, Api2SubwindowInfo,
+  Api2SubwindowControl, Api2Tiles, Api2DomUi, Api2DomPanel, Api2PanelSpec,
+  Api2PanelKindSpec, Api2PanelMount, Api2PanelState, Api2ChromeTheme,
+  Api2TerminalGround,
+} from "./presentation.js";
 export type {
   Api2Act,
   Api2Command,
