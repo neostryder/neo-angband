@@ -6,9 +6,11 @@ import { describe, expect, it } from "vitest";
 import {
   composeModHooks,
   guardModHooks,
+  OptionState,
   Rng,
   StoreBehaviourRegistry,
   type HistoryAddEntry,
+  type GameState,
   type ModHooks,
   type ModPluginContext,
   type ModRegistryHost,
@@ -26,6 +28,7 @@ import {
   API1_CONTEXT_MAP,
   api2Plugin,
   api2PluginRegistrations,
+  api2PolicyModHooks,
   api2ToModHooks,
   checkApi2Definition,
   installApi2PolicyRegistrations,
@@ -39,6 +42,34 @@ function capabilities(id: string, granted: string[]): CapabilitySet {
     id, name: id, version: "1.0.0", shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: granted,
   });
 }
+
+describe("starting-options policy", () => {
+  it("applies through OptionState setters on a new character and skips birth options", () => {
+    const options = new OptionState();
+    const hooks = api2PolicyModHooks({ startingOptions: {
+      kind: "starting-options",
+      values: { birth_no_selling: true, cheat_live: true, auto_more: true },
+      hitpointWarn: 7,
+      delayFactor: 9,
+      lazymoveDelay: 40,
+    } }, () => true);
+    hooks.newCharacter?.({ options } as GameState, {} as never);
+    expect(options.get("birth_no_selling")).toBe(false);
+    expect(options.get("cheat_live")).toBe(true);
+    expect(options.get("score_live")).toBe(true);
+    expect(options.get("auto_more")).toBe(true);
+    expect(options.hitpointWarn).toBe(7);
+    expect(options.delayFactor).toBe(9);
+    expect(options.lazymoveDelay).toBe(40);
+  });
+
+  it("does not apply after the mod stops", () => {
+    const options = new OptionState();
+    const hooks = api2PolicyModHooks({ startingOptions: { kind: "starting-options", values: { auto_more: true } } }, () => false);
+    hooks.newCharacter?.({ options } as GameState, {} as never);
+    expect(options.get("auto_more")).toBe(false);
+  });
+});
 
 /* What the loader does with one plugin: validate, ask for hooks, guard, fold, register. */
 function load(id: string, plugin: ModPlugin, granted: string[] = []): { hooks: ModHooks | undefined; ctx: ModPluginContext } {
@@ -242,6 +273,7 @@ describe("policy tables that install registrations", () => {
 
   const tables: Api2Policies = {
     prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
+    startingOptions: { kind: "starting-options", values: { auto_more: true } },
     walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
     messageText: [{ find: "a", replace: "b" }], screenText: [{ find: "a", replace: "b" }],
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],
@@ -263,7 +295,7 @@ describe("policy tables that install registrations", () => {
       () => ({ grants: capabilities("tables", [capability]) }));
     const hooks = load("tables", plugin).hooks;
     const registrations = api2PluginRegistrations(plugin, "tables", { loud: true });
-    expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : name === "walkBlockedByDiggable" ? [name] : []);
+    expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : name === "walkBlockedByDiggable" || name === "startingOptions" ? [name === "startingOptions" ? "newCharacter" : name] : []);
     expect(Object.keys(registrations ?? {})).toEqual("registration" in target ? [target.registration] : []);
     plugin.uninstall?.();
   });

@@ -25,6 +25,7 @@ import {
   type Api2ModDefinition,
   type Api2Policies,
   type Api2PolicyRegistrations,
+  type Api2StartingOptionsPolicy,
   type Api2TileFill,
   type JsonValue,
 } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -200,14 +201,26 @@ export interface Api2PolicyTargets {
 }
 
 export function api2PolicyModHooks(registrations: Api2PolicyRegistrations, active: () => boolean): ModHooks {
-  if (!registrations.walkBlockedByDiggable) return {};
-  return {
-    walkBlockedByDiggable: (state, grid, deps) => {
+  const hooks: ModHooks = {};
+  if (registrations.walkBlockedByDiggable) hooks.walkBlockedByDiggable = (state, grid, deps) => {
       if (!active() || !movementTunnelTest(state, grid)) return null;
       tunnelAux(state, grid, deps as CaveCmdDeps);
       return state.z.moveEnergy;
-    },
+    };
+  if (registrations.startingOptions) hooks.newCharacter = (state) => {
+    if (!active() || !state.options) return;
+    applyStartingOptions(state.options, registrations.startingOptions!);
   };
+  return hooks;
+}
+
+function applyStartingOptions(options: NonNullable<NonNullable<ModPluginContext["state"]>["options"]>, policy: Api2StartingOptionsPolicy): void {
+  for (const [name, value] of Object.entries(policy.values)) {
+    if (!options.isBirth(name)) options.set(name, value);
+  }
+  if (policy.hitpointWarn !== undefined) options.hitpointWarn = policy.hitpointWarn;
+  if (policy.delayFactor !== undefined) options.delayFactor = policy.delayFactor;
+  if (policy.lazymoveDelay !== undefined) options.lazymoveDelay = policy.lazymoveDelay;
 }
 
 const prefContributions = new Map<string, PrefErrorPolicy>();

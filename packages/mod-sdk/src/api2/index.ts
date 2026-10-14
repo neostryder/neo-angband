@@ -88,6 +88,7 @@ export type {
   Api2ObjectListKey,
   Api2Policies,
   Api2PrefErrorsPolicy,
+  Api2StartingOptionsPolicy,
   Api2PolicyEffects,
   Api2PolicyKind,
   Api2PolicyName,
