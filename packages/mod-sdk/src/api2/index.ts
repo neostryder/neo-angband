@@ -14,6 +14,9 @@ export type {
   Api2Unavailable,
 } from "./result.js";
 export { KNOWN_WORLD_FORMAT } from "./known.js";
+export type { DerivedStatsView, ItemRef, LoadoutChange, LoadoutDelta, LoadoutItemRef, LoadoutSimulation, LoadoutView } from "./inspection.js";
+export type { Api2Character, Api2RunEndEvent, CharacterHistoryEntry, CharacterSheetData, HistoryKind, RunBelonging, RunOutcome, RunReport, SheetColor } from "./character.js";
+export type { Api2Inspect, BlastAreaResult, BookItemResult, GridInspectResult, InspectResult, ItemRulesResult, ItemTesterResult, LoadoutSlotsResult, ObjectCombatInfo, ObjectDamage, ObjectDamageLine, SpellInspectResult, TileActionsResult, TravelPathResult } from "./inspection.js";
 export type {
   KnownGrid,
   KnownItem,
@@ -39,6 +42,8 @@ export type {
 export { API2_EVENT_NAMES, api2EventCapability } from "./events.js";
 export type {
   Api2Actor,
+  Api2BoltEvent,
+  Api2ExplosionEvent,
   Api2CombatEvent,
   Api2CommandEvent,
   Api2DriverEvent,

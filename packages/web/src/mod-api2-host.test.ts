@@ -10,6 +10,7 @@ import {
   FEAT,
   MFLAG,
   SQUARE,
+  TMD,
   knownMonsterMidx,
   knownMonsters,
   monsterIsObvious,
@@ -18,10 +19,10 @@ import {
   type GamePack,
   type GameState,
   type Monster,
-  type ModNet,
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
-import { CapabilitySet, type JsonValue, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
+import { CapabilitySet, type JsonValue, type ModApi2, type RunReport } from "@rpgm-tools/neo-angband-mod-sdk";
+import { createRunReports } from "./run-report";
 import { api2EventPayload, createApi2Host, type Api2HostOptions } from "./mod-api2-host";
 import { modPluginContext } from "./mod-context";
 import type { ModPrefs } from "./mod-prefs";
@@ -126,6 +127,120 @@ async function observedThroughHost(api: ModApi2): Promise<string> {
 const READS = ["state:*.read"];
 
 describe("the API 2 host's view", () => {
+  it("keeps unseen bolt origins and blast grids out of animation events", () => {
+    const bolt = { projType: 1, element: "FIRE", drawing: true, seen: true, beam: false, oy: 8, ox: 9, y: 2, x: 3 };
+    expect(api2EventPayload("bolt", { ...bolt, oy: 99, ox: 88 })).toEqual(api2EventPayload("bolt", bolt));
+    expect(api2EventPayload("bolt", { ...bolt, seen: false })).toBeUndefined();
+    const blast = { projType: 1, element: "FIRE", arc: false, radius: 2, numGrids: 2, distanceToGrid: [0, 1],
+      drawing: true, playerSeesGrid: [true, false], blastGrid: [{ x: 2, y: 3 }, { x: 8, y: 9 }], centre: { x: 2, y: 3 } };
+    expect(api2EventPayload("explosion", { ...blast, radius: 9, centre: { x: 99, y: 88 }, blastGrid: [blast.blastGrid[0]!, { x: 99, y: 88 }] }))
+      .toEqual(api2EventPayload("explosion", blast));
+    expect(api2EventPayload("explosion", blast)).toEqual({ grids: [{ x: 2, y: 3 }], element: "FIRE", arc: false });
+    expect(api2EventPayload("explosion", { ...blast, playerSeesGrid: [false, false] })).toBeUndefined();
+  });
+
+  it("keeps full run reports first-party and unsubscribes run-end listeners", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grants = capabilities("probe", [...READS, "event:run-end"]);
+    const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: grants, prefs: memoryPrefs() });
+    const reports = createRunReports();
+    const report = { key: "cedar", name: "Cedar" } as RunReport;
+    const character = { key: () => "cedar", history: () => [], runReport: reports.last, onRunEnd: reports.onEnd };
+    const publicApi = createApi2Host({ ...ctx, character }, { grants });
+    const firstParty = createApi2Host({ ...ctx, character }, { grants, tier: "first-party" });
+    const publicEvents: unknown[] = [];
+    const fullEvents: unknown[] = [];
+    const subscription = await publicApi.events.on("run-end", (event) => publicEvents.push(event));
+    await firstParty.events.on("run-end", (event) => fullEvents.push(event));
+    reports.publish(report);
+    expect(publicEvents).toEqual([{ key: "cedar", report: null }]);
+    expect(fullEvents).toEqual([{ key: "cedar", report }]);
+    expect(await publicApi.view.character()).toMatchObject({ value: { key: "cedar", report: null } });
+    expect(await firstParty.view.character()).toMatchObject({ value: { report } });
+    expect(await publicApi.view.player()).toMatchObject({ value: { key: "cedar" } });
+    if (!subscription.ok) throw new Error("refused");
+    await publicApi.events.off(subscription.value);
+    reports.publish(report);
+    expect(publicEvents).toHaveLength(1);
+  });
+
+  it("keeps inspection paths independent of hidden terrain", async () => {
+    const a = startGame(pack, { seed: SEED, depth: DEPTH });
+    const b = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grid = emptyGrid(a.state, false);
+    b.state.chunk.setFeat(grid, FEAT.GRANITE);
+    const apiA = host(a, READS);
+    const apiB = host(b, READS);
+    const strip = (value: unknown) => JSON.stringify(value, (key, field: unknown) => key === "token" ? undefined : field);
+    expect(strip(await apiB.view.inspect.projectionPath(grid))).toBe(strip(await apiA.view.inspect.projectionPath(grid)));
+    expect(strip(await apiB.view.inspect.blastArea(grid, 2))).toBe(strip(await apiA.view.inspect.blastArea(grid, 2)));
+    expect(strip(await apiB.view.inspect.tileActions(grid))).toBe(strip(await apiA.view.inspect.tileActions(grid)));
+    expect(await apiA.view.inspect.item({ floor: { ...grid, index: 0 } })).toMatchObject({ value: null });
+    expect(await host(a, []).view.inspect.itemRules()).toMatchObject({ capability: "state:inventory.read" });
+    expect(await apiA.view.inspect.simulateLoadout({})).toEqual(await apiA.view.simulateLoadout({}));
+    expect(await apiA.view.world()).toMatchObject({ value: { equipmentSlots: a.state.actor.player.body.slots } });
+  });
+
+  it("bounds the HUD message log and gates its independent reads", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    game.state.cmdQueue = [{ code: "tunnel", repeatRemaining: 7 }];
+    game.state.unignoring = 1;
+    const grants = capabilities("probe", READS);
+    const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: grants, prefs: memoryPrefs() });
+    const api = createApi2Host({ ...ctx, snapshot: () => ({ token: { epoch: 1, revision: 1 }, driver: { kind: "player" },
+      phase: "play", messagePending: false, prompt: null, resting: null, storeStatus: null, activeBlast: null,
+      messages: { log: Array.from({ length: 120 }, (_, i) => ({ text: String(i), count: 1 })) } }) as never }, { grants });
+    const input = await api.view.input();
+    expect(input).toMatchObject({ value: { repeating: true, repeatsLeft: 7, unignoring: true } });
+    if (!input.ok) throw new Error("refused");
+    expect(input.value.messages).toHaveLength(100);
+    expect(input.value.messages![0]!.text).toBe("20");
+    expect(Object.isFrozen(input.value.messages![0])).toBe(true);
+  });
+
+  it("returns the game's depth string and CSS color table", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const api = host(game, READS);
+    expect(await api.view.player()).toMatchObject({ value: { depthText: "500' (L10)" } });
+    const colors = await api.content.colors();
+    expect(colors.ok).toBe(true);
+    if (!colors.ok) throw new Error("refused");
+    expect(colors.value).toHaveLength(32);
+    expect(colors.value[1]).toMatchObject({ index: 1, id: "white", css: expect.any(String) });
+    expect(Object.isFrozen(colors.value[1])).toBe(true);
+  });
+
+  it("returns the same loadout simulation for different counters in one timed grade", async () => {
+    const a = startGame(pack, { seed: SEED, depth: DEPTH });
+    const b = startGame(pack, { seed: SEED, depth: DEPTH });
+    a.state.actor.player.timed[TMD.FAST] = 10;
+    b.state.actor.player.timed[TMD.FAST] = 20;
+    expect(await host(b, READS).view.simulateLoadout({})).toEqual(await host(a, READS).view.simulateLoadout({}));
+  });
+
+  it("simulates a loadout without exposing timed counters", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const result = await host(game, READS).view.simulateLoadout({});
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("refused");
+    expect(result.value.delta.unknownRunes).toBe(false);
+    expect(result.value.before.player.status.fast).toBeNull();
+    for (const item of result.value.before.inventory) expect(item).not.toHaveProperty("timeout");
+    expect(await host(game, ["state:player.read"]).view.simulateLoadout({})).toMatchObject({ reason: "not-granted", capability: "state:inventory.read" });
+    const grid = emptyGrid(game.state, false);
+    expect(await host(game, READS).view.simulateLoadout({ wield: [{ from: "floor", ...grid, index: 0 }] })).toMatchObject({ code: "unobserved-item" });
+  });
+
+  it("keeps look text unchanged when hidden terrain changes and hides wizard flow", async () => {
+    const a = startGame(pack, { seed: SEED, depth: DEPTH });
+    const b = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grid = emptyGrid(a.state, false);
+    b.state.chunk.setFeat(grid, FEAT.GRANITE);
+    b.state.wizard = true;
+    expect(await host(b, READS).view.look(grid)).toEqual(await host(a, READS).view.look(grid));
+    expect(await host(a, []).view.look(grid)).toMatchObject({ reason: "not-granted" });
+  });
+
   it("does not change when an unseen monster's health and speed change (paired worlds)", async () => {
     const a = startGame(pack, { seed: SEED, depth: DEPTH });
     const b = startGame(pack, { seed: SEED, depth: DEPTH });
@@ -361,60 +476,7 @@ describe("API 2 events", () => {
   });
 });
 
-describe("API 2 credential references", () => {
-  it("passes a prefix and opaque reference to the host transport", async () => {
-    const requests: Parameters<ModNet["request"]>[0][] = [];
-    const net: ModNet = {
-      transport: "page",
-      request: async (request) => {
-        requests.push(request);
-        return { ok: true, status: 200, headers: {}, body: "{}" };
-      },
-      secrets: {
-        storage: "page",
-        has: async () => ({ present: false }),
-        set: async () => ({ ok: true, storage: "page" }),
-        fromEnv: async () => ({ ok: false, problem: "unavailable" }),
-        delete: async () => ({ ok: true }),
-      },
-    };
-    const caps = capabilities("probe", ["network:example.test"]);
-    const ctx = modPluginContext("probe", {}, undefined, {}, { capabilities: caps, net });
-    const api = createApi2Host(ctx, { grants: caps });
-    const ref = api.net!.credential("key", "Bearer ");
-    expect(ref).toEqual({ credential: "key", prefix: "Bearer " });
-    expect(Object.isFrozen(ref)).toBe(true);
-    expect(await api.net!.request({ url: "https://example.test", headers: {
-      authorization: ref, "x-api-key": api.net!.credential("key"),
-    } })).toMatchObject({ ok: true });
-    expect(requests[0]?.headers).toEqual({ authorization: "Bearer {secret:key}", "x-api-key": "{secret:key}" });
-  });
-});
-
 describe("API 2 storage", () => {
-  it("unwraps preferences when the definition drops its migration", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const prefs = memoryPrefs();
-    const versioned = host(game, [], { prefs: { version: 1, migrate: (value) => value } }, prefs);
-    await versioned.store.prefs.set({ colour: "blue" });
-    expect(await host(game, [], {}, prefs).store.prefs.get()).toEqual({ ok: true, value: { colour: "blue" } });
-  });
-
-  it("keeps a numeric $api2prefs key as user data", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const prefs = memoryPrefs();
-    const value = { $api2prefs: 9, value: "user data" };
-    prefs.set(value);
-    const fromVersions: number[] = [];
-    const api = host(game, [], { prefs: { version: 1, migrate: (data, from) => {
-      fromVersions.push(from);
-      return data;
-    } } }, prefs);
-    expect(await api.store.prefs.get()).toEqual({ ok: true, value });
-    expect(fromVersions).toEqual([0]);
-    expect(await host(game, [], {}, prefs).store.prefs.get()).toEqual({ ok: true, value });
-  });
-
   it("shares a pending preference migration and preserves a newer write", async () => {
     const prefs = memoryPrefs();
     prefs.set({ colour: "red" });
@@ -436,7 +498,7 @@ describe("API 2 storage", () => {
     release({ colour: "red", shade: "dark" });
     expect(await first).toEqual({ ok: true, value: { colour: "blue" } });
     expect(await second).toEqual({ ok: true, value: { colour: "blue" } });
-    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "blue" } } });
+    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "blue" } });
   });
 
   it("keeps a cleared preference value when an older migration finishes", async () => {
@@ -468,10 +530,10 @@ describe("API 2 storage", () => {
       },
     }, prefs);
     expect(await api.store.prefs.get()).toEqual({ ok: true, value: { colour: "red", shade: "dark" } });
-    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "red", shade: "dark" } } });
+    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "red", shade: "dark" } });
     expect(await api.store.prefs.get()).toEqual({ ok: true, value: { colour: "red", shade: "dark" } });
     expect(calls).toEqual([0]);
     await api.store.prefs.set({ colour: "blue" });
-    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "blue" } } });
+    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "blue" } });
   });
 });

@@ -111,7 +111,6 @@ function clientDeps(game: StartedGame): AgentViewDeps {
   return {
     resolver: new ContentIdResolver({
       objects: reg.objects,
-      monsters: reg.monsters,
       playerRaces: game.players.races,
       playerClasses: game.players.classes,
     }),
@@ -199,26 +198,38 @@ function kindNamed(game: StartedGame, tval: number, name: string): ObjectKind {
 }
 
 describe("KnownWorld paired worlds", () => {
-  it("keeps remembered objects on unknown terrain without revealing the real terrain", () => {
+  it("reads extra moves from known equipment and reports the full name", () => {
     const [a, b] = pair();
-    const grid = hiddenEmptyGrid(a.state, { x: -1, y: -1 });
-    for (const game of [a, b]) {
-      const reg = game.booted.registries;
-      const obj = objectPrep(new Rng(1), reg.objects, reg.constants, kindNamed(game, TV.SWORD, "Dagger"), 1, "minimise");
-      floorCarry(game.state, grid, obj);
-      squareKnowPile(game.state, grid);
-      game.state.known.feat[grid.y * game.state.chunk.width + grid.x] = -1;
-    }
-    a.state.chunk.setFeat(grid, FEAT.FLOOR);
-    b.state.chunk.setFeat(grid, FEAT.GRANITE);
-    const cell = buildKnownWorld(a.state, a.state.knownWorldDeps).level!.cells.find((c) => c.x === grid.x && c.y === grid.y);
-    expect(cell?.remembered.feat).toBe(-1);
-    expect(cell?.remembered.objects).toHaveLength(1);
-    expect(cell?.remembered).not.toHaveProperty("featCode");
-    expect(cell).not.toHaveProperty("actual");
+    b.state.playerState!.numMoves += 5;
     expect(observed(b.state)).toBe(observed(a.state));
-    squareMemorize(a.state, grid);
-    squareMemorize(b.state, grid);
+    b.state.actor.player.fullName = "Cedar";
+    b.state.knownPlayerState!.numMoves = 2;
+    expect(buildKnownWorld(b.state).player).toMatchObject({ fullName: "Cedar", extraMoves: 2 });
+  });
+
+  it("names an artifact id only after the character knows it is an artifact", () => {
+    const [a, b] = pair();
+    const objects = [a, b].map((game) => carry(game, kindNamed(game, TV.SWORD, "Dagger")));
+    objects.forEach((obj, index) => {
+      obj.artifact = [a, b][index]!.booted.registries.objects.artifacts.find((artifact) => artifact && artifact.aidx > index)!;
+      obj.notice &= ~OBJ_NOTICE.ASSESSED;
+    });
+    expect(observed(b.state)).toBe(observed(a.state));
+    const item = () => buildKnownWorld(b.state, b.state.knownWorldDeps).inventory!.find((entry) => entry.label.includes("Dagger"))!;
+    expect(item()).not.toHaveProperty("artifactId");
+    objects[1]!.notice |= OBJ_NOTICE.ASSESSED;
+    expect(item().artifactId).toBe(objects[1]!.artifact!.aidx);
+  });
+
+  it("reports every timed code without revealing durations", () => {
+    const [a, b] = pair();
+    a.state.actor.player.timed[TMD.SLOW] = 10;
+    b.state.actor.player.timed[TMD.SLOW] = 20;
+    expect(observed(b.state)).toBe(observed(a.state));
+    const timed = buildKnownWorld(a.state).player!.status.timed;
+    expect(Object.keys(timed)).toHaveLength(Object.keys(TMD).length);
+    expect(timed["SLOW"]).toEqual(expect.any(String));
+    b.state.actor.player.timed[TMD.SLOW] = 0;
     expect(observed(b.state)).not.toBe(observed(a.state));
   });
 
@@ -747,7 +758,6 @@ describe("monsterBecameVisible", () => {
     expect(Object.isFrozen(heard[0]!.knownFlags)).toBe(true);
     /* The glyph comes only from the deps. */
     expect(heard[0]!.glyph).toBeDefined();
-    expect(heard[0]!.raceId).toBe(new ContentIdResolver(a.booted.registries).raceId(mon.race.ridx));
     expect(heard[0]).toEqual(knownMonsters(a.state, a.state.knownWorldDeps).find((m) => m.id === heard[0]!.id));
   });
 

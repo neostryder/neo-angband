@@ -46,9 +46,7 @@ export function apiRangeVerdict(range: string, host: string = MOD_API2_VERSION):
   }
   if (fits) return { ok: true };
   const hostMajor = major(host);
-  const mentioned = [...range.matchAll(/(<=|>=|<|>)?(\d+)(?:\.(\d+))?(?:\.(\d+))?/gu)].map((m) =>
-    Number(m[2]) - (m[1] === "<" && Number(m[3] ?? 0) === 0 && Number(m[4] ?? 0) === 0 ? 1 : 0),
-  );
+  const mentioned = [...range.matchAll(/(\d+)(?:\.\d+)?(?:\.\d+)?/gu)].map((m) => Number(m[1]));
   if (mentioned.length > 0 && mentioned.every((m) => m > hostMajor)) {
     return { ok: false, code: "too-new", why: `needs mod API ${range}; this game implements ${host}, so the mod needs a newer game` };
   }
