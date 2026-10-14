@@ -15,7 +15,7 @@
  */
 
 import type { ModHooks, ModPluginContext } from "@rpgm-tools/neo-angband-core";
-import { inputToken, movementTunnelTest, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, type CaveCmdDeps, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
+import { inputToken, movementTunnelTest, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, TV, type CaveCmdDeps, type GameObject, type GameState, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
 import {
   api2PolicyEffects,
   apiRangeVerdict,
@@ -25,6 +25,10 @@ import {
   type Api2ModDefinition,
   type Api2Policies,
   type Api2PolicyRegistrations,
+  type Api2IgnorePolicyEntry,
+  type Api2DisplayOptionsPolicy,
+  type Api2PurgeInputPolicy,
+  type Api2StartingOptionsPolicy,
   type Api2TileFill,
   type JsonValue,
 } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -193,6 +197,14 @@ export function mergePolicies(policies: unknown, hooks: Api2Hooks | undefined, g
  * skipped.
  */
 export interface Api2PolicyTargets {
+  readonly id?: string;
+  readonly state?: GameState | null;
+  readonly purgeInput?: {
+    readonly display: { onKey(listener: (event: KeyboardEvent) => void): () => void };
+    readonly isBindableTriggerKey: (trigger: string) => boolean;
+    readonly keyRepeat: () => { readonly isRepeat: boolean } | null;
+    readonly cancelInput: (escapeCount: number) => void;
+  };
   readonly stores: {
     registerDiscountRoll(handler: (roll: { readonly rng: { oneIn(n: number): boolean }; readonly cost: number }) => number): void;
   } | null;
@@ -200,14 +212,26 @@ export interface Api2PolicyTargets {
 }
 
 export function api2PolicyModHooks(registrations: Api2PolicyRegistrations, active: () => boolean): ModHooks {
-  if (!registrations.walkBlockedByDiggable) return {};
-  return {
-    walkBlockedByDiggable: (state, grid, deps) => {
+  const hooks: ModHooks = {};
+  if (registrations.walkBlockedByDiggable) hooks.walkBlockedByDiggable = (state, grid, deps) => {
       if (!active() || !movementTunnelTest(state, grid)) return null;
       tunnelAux(state, grid, deps as CaveCmdDeps);
       return state.z.moveEnergy;
-    },
+    };
+  if (registrations.startingOptions) hooks.newCharacter = (state) => {
+    if (!active() || !state.options) return;
+    applyStartingOptions(state.options, registrations.startingOptions!);
   };
+  return hooks;
+}
+
+function applyStartingOptions(options: NonNullable<NonNullable<ModPluginContext["state"]>["options"]>, policy: Api2StartingOptionsPolicy): void {
+  for (const [name, value] of Object.entries(policy.values)) {
+    if (!options.isBirth(name)) options.set(name, value);
+  }
+  if (policy.hitpointWarn !== undefined) options.hitpointWarn = policy.hitpointWarn;
+  if (policy.delayFactor !== undefined) options.delayFactor = policy.delayFactor;
+  if (policy.lazymoveDelay !== undefined) options.lazymoveDelay = policy.lazymoveDelay;
 }
 
 const prefContributions = new Map<string, PrefErrorPolicy>();
@@ -258,6 +282,16 @@ export function installApi2PolicyRegistrations(
   targets: Api2PolicyTargets,
   active: () => boolean,
 ): void {
+  const displayOptions = registrations.displayOptions;
+  if (displayOptions && targets.id) displayOptionContributions.set(targets.id, { value: displayOptions, active });
+  const purgeInput = registrations.purgeInput;
+  if (purgeInput && targets.id && targets.purgeInput) installPurgeInputPolicy(targets.id, purgeInput, targets.purgeInput, active);
+  const ignoreRules = registrations.ignore;
+  const state = targets.state;
+  if (ignoreRules && state) {
+    const prior = state.isIgnored;
+    state.isIgnored = (object: GameObject) => active() && shouldIgnoreByPolicy(ignoreRules, object) ? true : prior?.(object) ?? false;
+  }
   const roll = registrations.discountRoll;
   if (roll && targets.stores) {
     targets.stores.registerDiscountRoll((ctx) => (active() ? roll({ cost: ctx.cost, oneIn: (n) => ctx.rng.oneIn(n) }) : 0));
@@ -268,6 +302,51 @@ export function installApi2PolicyRegistrations(
       if (active()) filler(fill);
     });
   }
+}
+
+const displayOptionContributions = new Map<string, { readonly value: Api2DisplayOptionsPolicy; readonly active: () => boolean }>();
+
+export function api2DisplayOption(field: keyof Omit<Api2DisplayOptionsPolicy, "kind">, fallback: boolean): boolean {
+  let value = fallback;
+  for (const contribution of displayOptionContributions.values()) if (contribution.active()) value = contribution.value[field];
+  return value;
+}
+
+export function removeApi2PolicyRegistrations(id: string): void {
+  displayOptionContributions.delete(id);
+  purgeInputContributions.delete(id);
+  if (purgeInputContributions.size === 0) {
+    purgeInputOff?.();
+    purgeInputOff = null;
+  }
+}
+
+const purgeInputContributions = new Map<string, { readonly value: Api2PurgeInputPolicy; readonly target: NonNullable<Api2PolicyTargets["purgeInput"]>; readonly active: () => boolean }>();
+let purgeInputOff: (() => void) | null = null;
+
+function installPurgeInputPolicy(
+  id: string,
+  value: Api2PurgeInputPolicy,
+  target: NonNullable<Api2PolicyTargets["purgeInput"]>,
+  active: () => boolean,
+): void {
+  if (!purgeInputOff) {
+    if (!target.isBindableTriggerKey(value.trigger)) return;
+    purgeInputOff = target.display.onKey((event) => {
+      if (event.key !== value.trigger || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+      const current = [...purgeInputContributions.values()].filter((item) => item.active() && item.value.trigger === event.key).at(-1);
+      if (!current) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!current.target.keyRepeat()?.isRepeat) current.target.cancelInput(current.value.escapeCount);
+    });
+  }
+  purgeInputContributions.set(id, { value, target, active });
+}
+
+function shouldIgnoreByPolicy(rules: readonly Api2IgnorePolicyEntry[], object: GameObject): boolean {
+  if (object.artifact || object.note?.includes("!k") || object.note?.includes("!*")) return false;
+  return rules.some((rule) => object.tval === TV[rule.tval.toUpperCase() as keyof typeof TV] && object.kind.name.includes(rule.kindNameContains));
 }
 
 const pluginPolicies = new WeakMap<ModPlugin, { id: string; flags: Readonly<Record<string, boolean>>; registrations: Api2PolicyRegistrations }>();
@@ -479,6 +558,8 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
     stopped = true;
     generation += 1;
     releasePrefErrors();
+    const cached = pluginPolicies.get(plugin as ModPlugin);
+    if (cached) removeApi2PolicyRegistrations(cached.id);
     try { definition.stop?.(); } finally {
       for (const mod of hosts) disposeApi2Host(mod);
       hosts.clear();

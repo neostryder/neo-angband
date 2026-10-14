@@ -5,7 +5,6 @@ import type { ModManagerDeps } from "./classic-types";
 import { classicManager } from "./classic-service";
 import { drawPendingManagementConfirmation } from "./classic-confirmation";
 import { sameModList } from "./mod-lists";
-import { UI_BAD } from "../ui-colors";
 
 export async function restoreModListScreen(term: GridSurface & GridPointerInput, deps: ModManagerDeps, list: SaveModList): Promise<boolean> {
   const { service, core } = classicManager(deps);
@@ -32,11 +31,7 @@ export async function restoreModListScreen(term: GridSurface & GridPointerInput,
   return true;
 }
 
-export async function prepareSaveModList(term: GridSurface & GridPointerInput, deps: ModManagerDeps, saved: SaveModList | undefined, transactionNotice?: string | null): Promise<{ readonly load: boolean; readonly allowOverwrite: boolean }> {
-  if (transactionNotice) await showTextScreen(term, {
-    id: "core:mod-transaction-notice", title: "Mods", footer: "[ Press ESC to return ]",
-    blocks: [{ kind: "text", paragraphs: [[{ text: transactionNotice }]], color: UI_BAD }],
-  });
+export async function prepareSaveModList(term: GridSurface & GridPointerInput, deps: ModManagerDeps, saved: SaveModList | undefined): Promise<{ readonly load: boolean; readonly allowOverwrite: boolean }> {
   if (!saved) return { load: true, allowOverwrite: false };
   const { service } = classicManager(deps);
   const current = await service.captureModList();
@@ -46,7 +41,6 @@ export async function prepareSaveModList(term: GridSurface & GridPointerInput, d
   ], "[ a/b/c or tap; ESC cancels ]");
   if (choice === null || choice === 2) return { load: false, allowOverwrite: false };
   if (choice === 0 && !(await restoreModListScreen(term, deps, saved))) return { load: false, allowOverwrite: false };
-  if (service.state.staged) return { load: true, allowOverwrite: false };
   const after = await service.captureModList();
   if (sameModList(saved, after)) return { load: true, allowOverwrite: false };
   const overwrite = await selectFromMenu(term, "core:mod-set-overwrite", "Save with different mods?", [

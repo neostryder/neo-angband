@@ -66,11 +66,6 @@ export interface InstallPlan {
   readonly conflicts: readonly DeclaredConflict[];
   readonly enableIds?: readonly string[];
   readonly installedSet?: readonly InstalledModMeta[];
-  readonly modList?: SaveModList;
-  readonly configurationRevision?: string;
-  readonly removeIds?: readonly string[];
-  readonly effectiveEnabled?: readonly string[];
-  readonly keptManifests?: readonly PackManifest[];
 }
 
 export interface ModListRestorePlan extends InstallPlan {
@@ -136,14 +131,14 @@ export interface ModManagerEnvironment {
   readonly install?: (mod: DiscoveredMod, origin: ModOrigin, onProgress: (progress: InstallProgress) => void) => Promise<InstallResult>;
   readonly stagePlan?: (plan: InstallPlan, permissions: Readonly<Record<string, ConsentRecord>>, progress?: (progress: InstallProgress) => void) => Promise<StageResult>;
   readonly stageRollback?: (id: string) => Promise<StageResult>;
-  readonly releasePreviousVersions?: (id: string, saveReferences: (id: string, tag: string) => boolean | Promise<boolean>) => Promise<boolean>;
+  readonly releasePreviousVersions?: (id: string, saveReferences: (id: string, tag: string) => boolean) => Promise<boolean>;
   readonly restart?: () => void;
   readonly uninstall?: (id: string) => Promise<boolean>;
   readonly refreshUpdates?: () => Promise<readonly ModRefresh[]>;
   readonly consent?: { readonly read: () => boolean; readonly write: (allow: boolean) => boolean };
   readonly safeMode?: () => boolean;
   readonly profile?: () => ProfileMeta | null;
-  readonly saveReferences?: (id: string, tag?: string) => boolean | Promise<boolean>;
+  readonly saveReferences?: (id: string, tag?: string) => boolean;
   readonly isModNoscore?: () => boolean;
   readonly advanceSaveRatchets?: (mod: CatalogMod) => void;
   readonly applyRuleLive?: (flag: string, on: boolean) => void;

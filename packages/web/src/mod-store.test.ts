@@ -82,23 +82,6 @@ describe("ModStore configuration retention", () => {
     expect(store.restoreConfiguration(previous)).toBe(false);
     expect(new ModStore(null).restoreConfiguration(previous)).toBe(false);
   });
-
-  it("restores settings from saved lists and advances both revision counters", () => {
-    const store = new ModStore(fakeStorage());
-    const list = { name: "Saved set", mods: [{ id: "a", name: "A", version: "1.0.0", repository: null, tag: null, commit: null, payloadDigest: null, api: "*", settings: { amount: 7 }, sections: {} }], resolvedOrder: ["a"], orderPins: [], conflictOverrides: { hud: "a" }, ruleChoices: {} };
-    expect(store.applyModList(list, store.configurationRevision())).toBe(true);
-    const previous = store.captureConfiguration(["a"]);
-    store.setSettingValue("a", "amount", 99);
-    store.setSettingValue("b", "amount", 12);
-    store.setConflictOverride("hud", "b");
-    const current = store.captureConfiguration(["a"]);
-    expect(store.restoreConfiguration(previous)).toBe(true);
-    const restored = store.captureConfiguration(["a"]);
-    expect(restored.state.revision).toBeGreaterThan(current.state.revision!);
-    expect(restored.state.setRevision).toBeGreaterThan(current.state.setRevision!);
-    expect(store.getSettingValues()).toEqual({ a: { amount: 7 }, b: { amount: 12 } });
-    expect(store.getConflictOverrides()).toEqual({ hud: "a" });
-  });
 });
 
 describe("ModStore - enabled set", () => {

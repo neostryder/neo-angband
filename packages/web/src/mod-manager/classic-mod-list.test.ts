@@ -33,29 +33,6 @@ async function fixture() {
 }
 
 describe("saved mod list screens", () => {
-  it("draws one transaction notice before the saved-list restore prompt", async () => {
-    const f = await fixture();
-    const order: string[] = [];
-    vi.mocked(showTextScreen).mockImplementationOnce(async () => { order.push("notice"); });
-    vi.mocked(selectFromMenu).mockImplementationOnce(async () => { order.push("restore"); return 2; });
-    const text = "The mod update for Frost failed. The previous versions were restored.";
-    expect(await prepareSaveModList(f.term, f.deps, f.list, text)).toEqual({ load: false, allowOverwrite: false });
-    expect(order).toEqual(["notice", "restore"]);
-    expect(showTextScreen).toHaveBeenCalledOnce();
-    expect(showTextScreen).toHaveBeenCalledWith(f.term, expect.objectContaining({ id: "core:mod-transaction-notice", blocks: [expect.objectContaining({ kind: "text", paragraphs: [[{ text }]] })] }));
-  });
-
-  it("returns to the boot reload after staging a restore without asking to overwrite", async () => {
-    const f = await fixture();
-    const manager = createModManagerService({ store: f.deps.store, listCatalog: f.deps.listCatalog, stagePlan: async () => ({ ok: true, results: [] }) });
-    vi.mocked(classicManager).mockReturnValue(manager);
-    vi.mocked(selectFromMenu).mockResolvedValueOnce(0);
-    expect(await prepareSaveModList(f.term, f.deps, f.list)).toEqual({ load: true, allowOverwrite: false });
-    expect(manager.service.state.staged).toBe(true);
-    expect(f.deps.store.getEnabled()).toEqual([]);
-    expect(selectFromMenu).toHaveBeenCalledOnce();
-  });
-
   it("loads old saves without asking about mods", async () => {
     const f = await fixture();
     expect(await prepareSaveModList(f.term, f.deps, undefined)).toEqual({ load: true, allowOverwrite: false });
