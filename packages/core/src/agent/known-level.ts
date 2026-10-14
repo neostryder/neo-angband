@@ -8,7 +8,8 @@ import { squareKnownTraps, squareTrap } from "../game/trap.js";
 import { tvalIsMoney, type GameObject } from "../obj/object.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { objectIsKnownArtifact, objectKnownShadow, objectRunesKnownUpstream } from "../obj/known-object.js";
-import { knownDescOf } from "../game/describe.js";
+import { describeObject, knownDescOf } from "../game/describe.js";
+import { ODESC } from "../obj/desc.js";
 import { inputToken } from "./boundary.js";
 import type { InputToken } from "./boundary.js";
 import { itemView } from "./entity-views.js";
@@ -32,6 +33,7 @@ export type RememberedObject =
       readonly sensed: false;
       readonly aware: true;
       readonly kindIndex: number;
+      readonly name: string;
       readonly kindId?: string;
       readonly aura?: ObjectAura;
     }
@@ -85,6 +87,7 @@ export interface KnownLevelCell {
   readonly y: number;
   readonly remembered: RememberedCell;
   readonly visible: boolean;
+  readonly seen: boolean;
   readonly actual?: ActualCell;
 }
 
@@ -118,14 +121,16 @@ export function captureKnownLevel(
   for (let y = 0; y < chunk.height; y++) {
     for (let x = 0; x < chunk.width; x++) {
       const grid = { x, y };
-      if (!squareIsKnown(state, grid)) continue;
-      const feat = knownFeat(state, grid);
+      const pile = knownPile(state, grid);
+      const terrainKnown = squareIsKnown(state, grid);
+      if (!terrainKnown && pile.length === 0) continue;
+      const feat = terrainKnown ? knownFeat(state, grid) : 0;
       const remembered: RememberedCell = {
         feat,
         /* The player's trap memory, not the live grid: a trap removed or
          * re-armed out of view is remembered as it was last seen. */
         traps: squareKnownTraps(state.known, grid).map((kind) => ({ index: kind.tidx, name: kind.name })),
-        objects: knownPile(state, grid).map((entry): RememberedObject => {
+        objects: pile.map((entry): RememberedObject => {
           if (entry.sensed) {
             return { sensed: true, money: tvalIsMoney(entry.obj.tval) };
           }
@@ -145,11 +150,13 @@ export function captureKnownLevel(
             };
           }
           const kindIndex = kind.kidx;
+          const obj = squareIsSeen(chunk, grid) ? entry.obj : entry.remembered ?? entry.obj;
           const kindId = deps.resolver?.kindIdOrNull(kindIndex);
           return {
             sensed: false,
             aware: true,
             kindIndex,
+            name: describeObject(state, obj, ODESC.PREFIX | ODESC.FULL),
             ...(kindId ? { kindId } : {}),
             ...(aura ? { aura } : {}),
           };
@@ -164,6 +171,7 @@ export function captureKnownLevel(
         y,
         remembered,
         visible: chunk.sqinfoHas(grid, SQUARE.VIEW),
+        seen: squareIsSeen(chunk, grid),
       };
       if (includeActual) {
         const index = y * chunk.width + x;

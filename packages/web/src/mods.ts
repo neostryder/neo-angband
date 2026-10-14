@@ -82,7 +82,6 @@ import {
 import {
   confirmCommunityUpdate,
   listedRepos,
-  registryUpdateWaitingText,
   showModUpgrades,
   showRecommendedMods,
   type ListedRepos,
@@ -4627,10 +4626,6 @@ async function runLoadDelve(
     const installedTag = installed.get(entry.id) ?? null;
     if (row.state === "different-version" && installedTag !== null && modBrowse.consent.read()) {
       listed ??= await listedRepos(modBrowse);
-      if (!listed.readable) {
-        resultLines.push({ text: `${entry.name}: ${registryUpdateWaitingText()}`, color: C_DANGER });
-        continue;
-      }
       const mod = row.resolution.mod;
       if (
         listed.community.has(mod.repo.toLowerCase()) &&

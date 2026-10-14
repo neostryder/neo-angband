@@ -14,6 +14,7 @@ export type {
   Api2Unavailable,
 } from "./result.js";
 export { KNOWN_WORLD_FORMAT } from "./known.js";
+export type { DerivedStatsView, ItemRef, LoadoutChange, LoadoutDelta, LoadoutItemRef, LoadoutSimulation, LoadoutView } from "./inspection.js";
 export type {
   KnownGrid,
   KnownItem,
