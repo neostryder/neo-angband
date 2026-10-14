@@ -18,7 +18,6 @@ import {
   type GamePack,
   type GameState,
   type Monster,
-  type ModNet,
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet, type JsonValue, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -228,11 +227,17 @@ describe("the API 2 host's commands", () => {
 });
 
 describe("the first-party seams", () => {
+  it("refuses presentation to a public mod even with a namespace flag", () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    expect(host(game, [], { tier: "public", firstParty: { presentation: true } }).presentation).toBeUndefined();
+    expect(host(game, [], { tier: "first-party", firstParty: { presentation: true } }).presentation).toBeDefined();
+  });
   it("are absent without an allowlist, whatever the grants", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const api = host(game, [...READS, "profiles:manage", "session:control"]);
     expect(api.manage).toBeUndefined();
     expect(api.truth).toBeUndefined();
+    expect(api.presentation).toBeUndefined();
     expect("manage" in api).toBe(false);
     expect("truth" in api).toBe(false);
     expect(api.meta.tier).toBe("public");
@@ -358,36 +363,6 @@ describe("API 2 events", () => {
     expect(api2EventPayload("heal", { who: 9, perceivedWho: "unseen", amount: 3, grid, seen: true })).toBeUndefined();
     expect(api2EventPayload("heal", { who: 7, perceivedWho: { monster: 1 }, amount: 3, grid, seen: true })).toEqual({ who: { monster: 1 }, grid });
     expect(api2EventPayload("heal", { who: "player", perceivedWho: "player", amount: 3, grid, seen: false })).toEqual({ who: "player", grid, playerAmount: 3 });
-  });
-});
-
-describe("API 2 credential references", () => {
-  it("passes a prefix and opaque reference to the host transport", async () => {
-    const requests: Parameters<ModNet["request"]>[0][] = [];
-    const net: ModNet = {
-      transport: "page",
-      request: async (request) => {
-        requests.push(request);
-        return { ok: true, status: 200, headers: {}, body: "{}" };
-      },
-      secrets: {
-        storage: "page",
-        has: async () => ({ present: false }),
-        set: async () => ({ ok: true, storage: "page" }),
-        fromEnv: async () => ({ ok: false, problem: "unavailable" }),
-        delete: async () => ({ ok: true }),
-      },
-    };
-    const caps = capabilities("probe", ["network:example.test"]);
-    const ctx = modPluginContext("probe", {}, undefined, {}, { capabilities: caps, net });
-    const api = createApi2Host(ctx, { grants: caps });
-    const ref = api.net!.credential("key", "Bearer ");
-    expect(ref).toEqual({ credential: "key", prefix: "Bearer " });
-    expect(Object.isFrozen(ref)).toBe(true);
-    expect(await api.net!.request({ url: "https://example.test", headers: {
-      authorization: ref, "x-api-key": api.net!.credential("key"),
-    } })).toMatchObject({ ok: true });
-    expect(requests[0]?.headers).toEqual({ authorization: "Bearer {secret:key}", "x-api-key": "{secret:key}" });
   });
 });
 

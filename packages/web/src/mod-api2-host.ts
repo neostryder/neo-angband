@@ -71,6 +71,7 @@ export interface Api2Allowlist {
   readonly manage?: boolean;
   /** Hidden game state needs consent even when identity is first-party. */
   readonly truth?: boolean;
+  readonly presentation?: boolean;
 }
 
 /** What the loader tells the host about one mod. */
@@ -488,6 +489,17 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
     ...(options.firstParty?.manage ? { manage: manageDomain(ctx) } : {}),
     ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}) } : {}),
+    ...(options.tier === "first-party" && options.firstParty?.presentation ? {
+      presentation: frozen({
+        ...(ctx.display ? { display: ctx.display } : {}),
+        ...(ctx.subwindows ? { subwindows: ctx.subwindows } : {}),
+        ...(ctx.tiles ? { tiles: ctx.tiles } : {}),
+        ...(ctx.ui ? { panels: ctx.ui } : {}),
+        ...(typeof document !== "undefined" && document.getElementById("game-view") ? {
+          sidebarHost: document.getElementById("game-view")!,
+        } : {}),
+      }),
+    } : {}),
   };
   return Object.freeze(api);
 }
@@ -498,7 +510,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
     request: (request: Api2NetRequest) => guarded(async () => {
       const headers: Record<string, string> = {};
       for (const [name, value] of Object.entries(request.headers ?? {})) {
-        headers[name] = typeof value === "string" ? value : `${value.prefix ?? ""}{secret:${value.credential}}`;
+        headers[name] = typeof value === "string" ? value : `{secret:${value.credential}}`;
       }
       const response = await net.request({
         url: request.url,
@@ -519,7 +531,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
       }
       return api2Refused(response.code, response.problem);
     }),
-    credential: (name: string, prefix?: string) => frozen({ credential: name, ...(prefix !== undefined ? { prefix } : {}) }),
+    credential: (name: string) => frozen({ credential: name }),
     credentials: frozen({
       status: (name: string) => guarded(async () => api2Ok(data(await secrets.has(name)))),
       set: (name: string, value: string, hosts: readonly string[]) => guarded(async () => {
