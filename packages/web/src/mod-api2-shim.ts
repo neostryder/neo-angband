@@ -27,7 +27,7 @@ import {
   type Api2TileFill,
   type JsonValue,
 } from "@rpgm-tools/neo-angband-mod-sdk";
-import { createApi2Host, disposeApi2Host, type Api2HostOptions } from "./mod-api2-host";
+import { createApi2Host, type Api2HostOptions } from "./mod-api2-host";
 import type { ModPlugin } from "./mod-plugin";
 
 /** The API 1 plugin version an API 2 mod presents to the loader. */
@@ -43,7 +43,7 @@ export function checkApi2Definition(candidate: unknown): string | null {
   if (typeof d.api !== "string") return `an API 2 mod declares its "api" range as a string, such as ">=2.0.0 <3.0.0"`;
   const verdict = apiRangeVerdict(d.api);
   if (!verdict.ok) return `"api": "${d.api}" ${verdict.why}`;
-  for (const member of ["hooks", "policies", "start", "stop", "migrateBag", "birth"] as const) {
+  for (const member of ["hooks", "policies", "start", "stop", "migrateBag"] as const) {
     if (d[member] !== undefined && typeof d[member] !== "function") return `${member} is not a function`;
   }
   if (d.prefs !== undefined) {
@@ -53,22 +53,7 @@ export function checkApi2Definition(candidate: unknown): string | null {
     }
     if (typeof p.migrate !== "function") return "prefs.migrate is not a function";
   }
-  if (d.presentation !== undefined) {
-    if (d.presentation === null || typeof d.presentation !== "object") return "presentation is not an object";
-    for (const member of ["menu", "screen", "hud", "birth"] as const) {
-      if (d.presentation[member] !== undefined && typeof d.presentation[member] !== "function") return `presentation.${member} is not a function`;
-    }
-  }
-  if (d.actions !== undefined && (!Array.isArray(d.actions) || d.actions.some((action) =>
-    !action || action.menu !== "core:game-menu" || typeof action.action !== "string" || typeof action.label !== "string" || typeof action.run !== "function"))) {
-    return "actions must declare a Game-menu id, action, label and handler";
-  }
-  if (d.titleActions !== undefined && (!Array.isArray(d.titleActions) || d.titleActions.some((row) =>
-    !row || typeof row.id !== "string" || typeof row.label !== "string" || typeof row.run !== "function"))) {
-    return "titleActions must declare an id, label and handler";
-  }
-  if (d.hooks === undefined && d.policies === undefined && d.start === undefined &&
-    !d.presentation?.menu && !d.presentation?.screen && !d.presentation?.hud && !d.presentation?.birth && !d.birth && !d.actions?.length && !d.titleActions?.length) {
+  if (d.hooks === undefined && d.policies === undefined && d.start === undefined) {
     return "an API 2 mod declares hooks, policies, start, or a combination";
   }
   return null;
@@ -254,30 +239,7 @@ export type Api2PluginOptions = Omit<Api2HostOptions, "activeHooks" | "prefs">;
  */
 export function api2Plugin(definition: Api2ModDefinition, options: () => Api2PluginOptions): ModPlugin {
   let active: Api2HookName[] = [];
-  const hosts = new Set<import("@rpgm-tools/neo-angband-mod-sdk").ModApi2>();
   const plugin: { -readonly [K in keyof ModPlugin]: ModPlugin[K] } = { api: SHIM_PLUGIN_API };
-  const hostFor = (ctx: ModPluginContext): import("@rpgm-tools/neo-angband-mod-sdk").ModApi2 => {
-    const mod = createApi2Host(ctx, options());
-    hosts.add(mod);
-    return mod;
-  };
-  for (const member of ["menu", "screen", "hud"] as const) {
-    const presenter = definition.presentation?.[member];
-    if (!presenter) continue;
-    Object.defineProperty(plugin, member, {
-      enumerable: true,
-      get: () => options().tier === "first-party" && options().firstParty?.presentation
-        ? (ctx: ModPluginContext) => definition.presentation![member]!(hostFor(ctx))
-        : undefined,
-    });
-  }
-  const birth = definition.birth ?? definition.presentation?.birth;
-  if (birth) Object.defineProperty(plugin, "birth", {
-    enumerable: true,
-    get: () => options().tier === "first-party" && options().firstParty?.presentation
-      ? (ctx: ModPluginContext) => birth.call(definition.birth ? definition : definition.presentation, hostFor(ctx))
-      : undefined,
-  });
   if (definition.hooks || definition.policies) {
     const hooksOf = definition.hooks?.bind(definition);
     const policiesOf = definition.policies?.bind(definition);
@@ -305,30 +267,15 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
       return merged ? api2ToModHooks(merged) : undefined;
     };
   }
-  if (definition.start || definition.actions?.length || definition.titleActions?.length) {
-    const start = definition.start?.bind(definition);
+  if (definition.start) {
+    const start = definition.start.bind(definition);
     plugin.register = (_host, ctx) => {
       const mod = createApi2Host(ctx, {
         ...options(),
         activeHooks: active,
         ...(definition.prefs ? { prefs: definition.prefs } : {}),
       });
-      hosts.add(mod);
-      for (const row of definition.titleActions ?? []) {
-        if (!mod.ui.title || !mod.meta.granted("profiles:manage") || !mod.meta.granted("saves:manage")) {
-          ctx.log(`title action "${row.id}" needs title, profile and save grants`);
-          continue;
-        }
-        void mod.ui.title.registerRow(row).then((result) => {
-          if (!result.ok) ctx.log(`title action "${row.id}" was refused`);
-        });
-      }
-      for (const action of definition.actions ?? []) {
-        void mod.ui.gameMenu.register(action.action, action.label, () => action.run(mod)).then((result) => {
-          if (!result.ok) ctx.log(`menu action "${action.action}" was refused`);
-        });
-      }
-      const started = start?.(mod);
+      const started = start(mod);
       if (started && typeof (started as Promise<void>).then === "function") {
         (started as Promise<void>).catch((e: unknown) => {
           ctx.log(`start failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -340,13 +287,10 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
     const migrate = definition.migrateBag.bind(definition);
     plugin.migrateBag = (data, fromSchema) => migrate(structuredClone(data) as JsonValue, fromSchema);
   }
-  plugin.uninstall = () => {
-    try { definition.stop?.(); }
-    finally {
-      for (const mod of hosts) disposeApi2Host(mod);
-      hosts.clear();
-    }
-  };
+  if (definition.stop) {
+    const stop = definition.stop.bind(definition);
+    plugin.uninstall = () => stop();
+  }
   return plugin;
 }
 
@@ -367,36 +311,36 @@ export const API1_CONTEXT_MAP: Readonly<Record<keyof ModPluginContext, string>> 
   assetUrl: "content.asset",
   data: "content.own",
   prefs: "store.prefs (with an explicit prefs migration)",
-  display: "presentation.display (first-party only)",
-  subwindows: "presentation.subwindows (first-party only)",
+  display: "retired: host geometry and repaint; ui panels and regions are host-drawn",
+  subwindows: "retired: host chrome; ui panels",
   snapshot: "view.input",
   driver: "view.input().driver",
   controller: "act.controller",
   mods: "meta.mods",
   events: "events.on, events.off (known-data payloads)",
   knownLevel: "view.level",
-  inspect: "view.world, view.monsters (known data only)",
-  intent: "act.submit",
+  inspect: "view.inspect (inspectItem is item; spellInfo is spell)",
+  intent: "act.submit, view.catalogue",
   prompt: "act.answer",
-  tiles: "presentation.tiles (first-party only)",
-  keyRepeat: "presentation.keyRepeat (first-party only)",
+  tiles: "retired: live tile painting; ui panels",
+  keyRepeat: "retired: host input timing",
   options: "hooks.optionsChanged (read); setting options has no API 2 form yet",
   keybindings: "ui.keys",
-  knowledge: "not yet in API 2: the knowledge menu's contents",
+  knowledge: "view.knowledge (category and id select a recall page)",
   saves: "not yet in API 2: save management, a later manage member (first-party only)",
   session: "manage.session (first-party only)",
   shared: "not yet in API 2: values shared between mods",
-  title: "ui.title, presentation.title (first-party only)",
+  title: "retired: title-screen chrome belongs to the first-party presentation mod",
   profiles: "manage.profiles (first-party only)",
   controllerArmed: "act.controller.owns",
-  character: "view.player",
+  character: "view.character, view.player().key, events.on(\"run-end\")",
   keymaps: "ui.keys",
   characterStore: "store.character",
   newCharacter: "meta.newCharacter",
   log: "meta.log",
   net: "net.request, net.credentials (credentials by opaque reference)",
-  backupFolder: "backupFolder (under backup:folder)",
-  ui: "ui.mount, ui.patch; presentation.panels (first-party DOM panels)",
+  backupFolder: "not yet in API 2: the cloud-backup folder",
+  ui: "ui.mount, ui.patch (host-drawn panel grammar, not raw HTML)",
   installMod: "not yet in API 2: mod management, a later manage member (first-party only)",
   reloadGame: "not yet in API 2: mod management, a later manage member (first-party only)",
   loadModForSession: "not yet in API 2: mod management, a later manage member (first-party only)",

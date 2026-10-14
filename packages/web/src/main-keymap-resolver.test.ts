@@ -26,10 +26,6 @@ import {
   keymapFind,
   keymapModeFor,
 } from "./keymap-store";
-import { createApi2Host, disposeApi2Host, runApi2KeymapCommand } from "./mod-api2-host";
-import { modPluginContext } from "./mod-context";
-import { ActionRegistry } from "@rpgm-tools/neo-angband-core";
-import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 
 const mainSource = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.ES2023, true);
@@ -84,7 +80,6 @@ function buildResolver(opts: { dead?: boolean; roguelike?: boolean } = {}): {
     "keymapFind",
     "keymapModeFor",
     "decodeActionTokens",
-    "runApi2KeymapCommand",
     "state",
     "dead",
     "scoresOpen",
@@ -101,7 +96,6 @@ function buildResolver(opts: { dead?: boolean; roguelike?: boolean } = {}): {
     keymapFind,
     keymapModeFor,
     decodeActionTokens,
-    runApi2KeymapCommand,
     state,
     opts.dead ?? false,
     false,
@@ -119,23 +113,6 @@ function key(k: string): UiInput {
 
 describe("main.ts's keymap resolver accepts a named trigger key (#62, #63)", () => {
   afterEach(() => clearKeymaps());
-  it("runs an API 2 command bound by id without expanding its name into game keys", async () => {
-    const caps = CapabilitySet.fromManifest({ id: "probe", name: "Probe", version: "1.0.0", shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: ["registry:command"] });
-    const ctx = modPluginContext("probe", {}, undefined, {}, { capabilities: caps });
-    const api = createApi2Host(ctx, { grants: caps, commands: { registry: new ActionRegistry() } });
-    let ran = 0;
-    try {
-      expect(await api.ui.commands.register("probe:order", "order", () => { ran += 1; })).toEqual({ ok: true, value: null });
-      keymapAdd("orig", "F10", "probe:order");
-      const { resolver } = buildResolver();
-      expect(resolver(key("F10"))).toEqual([]);
-      expect(ran).toBe(1);
-      disposeApi2Host(api);
-      expect(runApi2KeymapCommand("probe:order")).toBe(false);
-    } finally {
-      disposeApi2Host(api);
-    }
-  });
 
   it("expands a keymap bound to a plain F-key (#62)", () => {
     keymapAdd(keymapModeFor(false), "F5", "q");

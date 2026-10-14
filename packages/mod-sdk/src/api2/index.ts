@@ -14,12 +14,17 @@ export type {
   Api2Unavailable,
 } from "./result.js";
 export { KNOWN_WORLD_FORMAT } from "./known.js";
+export type { DerivedStatsView, ItemRef, LoadoutChange, LoadoutDelta, LoadoutItemRef, LoadoutSimulation, LoadoutView } from "./inspection.js";
+export type { Api2Character, Api2RunEndEvent, CharacterHistoryEntry, CharacterSheetData, HistoryKind, RunBelonging, RunOutcome, RunReport, SheetColor } from "./character.js";
+export type { Api2Knowledge, KnowledgeCategoryId, KnowledgeCategoryView, KnowledgeEntryView, KnowledgeGroupView, KnowledgeListView } from "./knowledge.js";
+export type { Api2Inspect, BlastAreaResult, BookItemResult, GridInspectResult, InspectResult, ItemRulesResult, ItemTesterResult, LoadoutSlotsResult, ObjectCombatInfo, ObjectDamage, ObjectDamageLine, SpellInspectResult, TileActionsResult, TravelPathResult } from "./inspection.js";
 export type {
   KnownGrid,
   KnownItem,
   KnownLevel,
   KnownLevelCell,
   KnownMonster,
+  KnownMonsterBlow,
   KnownMonsterHealth,
   KnownMonsterStatus,
   KnownObjectAura,
@@ -39,6 +44,8 @@ export type {
 export { API2_EVENT_NAMES, api2EventCapability } from "./events.js";
 export type {
   Api2Actor,
+  Api2BoltEvent,
+  Api2ExplosionEvent,
   Api2CombatEvent,
   Api2CommandEvent,
   Api2DriverEvent,
@@ -94,19 +101,7 @@ export type {
 } from "./policies.js";
 export { defineApi2Mod } from "./domains.js";
 export type {
-  Api2Presentation, Api2Presenters, Api2BootPhase, Api2Display, Api2DisplayHit, Api2DisplaySnapshot,
-  Api2DisplayGridRequest, Api2MapView, Api2Subwindows, Api2SubwindowInfo,
-  Api2SubwindowControl, Api2Tiles, Api2DomUi, Api2DomPanel, Api2PanelSpec,
-  Api2PanelKindSpec, Api2PanelMount, Api2PanelState, Api2ChromeTheme,
-  Api2TerminalGround,
-  Api2KeyRepeat,
-  Api2BirthPresenter, Api2BirthSession, Api2BirthAbilityView, Api2BirthRaceView,
-  Api2BirthClassView, Api2BirthOptionView, Api2BirthCatalogue, Api2BirthPreview,
-  Api2BirthDraftView, Api2BirthResult, Api2Title, Api2TitleAction,
-} from "./presentation.js";
-export type {
   Api2Act,
-  Api2BackupFolder, Api2BackupFolderEntry,
   Api2Command,
   Api2Content,
   Api2ContentRef,
@@ -124,8 +119,8 @@ export type {
   Api2KeyBinding,
   Api2Keys,
   Api2Manage,
-  Api2MenuAction,
   Api2Meta,
+  Api2MessageLog,
   Api2ModDefinition,
   Api2ModSummary,
   Api2Net,

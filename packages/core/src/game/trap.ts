@@ -280,7 +280,12 @@ export function squareMemorizeTraps(state: GameState, grid: Loc): void {
   const key = gridIdx(state, grid);
   const memory = (known.traps ??= new Map());
   memory.delete(key);
-  if (squareIsVisibleTrap(state, grid)) memory.set(key, squareTrap(state, grid).filter((t) => t.flags.has(TRF.VISIBLE)).map((t) => t.kind));
+  known.trapDisabled?.delete(key);
+  if (squareIsVisibleTrap(state, grid)) {
+    const visible = squareTrap(state, grid).filter((trap) => trap.flags.has(TRF.VISIBLE));
+    memory.set(key, visible.map((trap) => trap.kind));
+    (known.trapDisabled ??= new Map()).set(key, visible.map((trap) => trap.timeout > 0));
+  }
 }
 
 /** The trap kinds the player remembers on a grid (player->cave's traps), newest first. */

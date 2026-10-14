@@ -1983,6 +1983,7 @@ export function deserializeMessages(
 /** Serialized map knowledge (remembered terrain and floor objects). */
 export interface SavedKnown {
   feat: number[];
+  glow?: number[];
   /**
    * The remembered PILE per grid, in the order map_info walks it. SAVE_VERSION
    * 4; version 3 stored a single memory per grid, which migrate3to4 widens to
@@ -1995,6 +1996,7 @@ export interface SavedKnown {
    * memory from the visible traps on the level.
    */
   traps?: Array<[number, string[]]>;
+  trapDisabled?: Array<[number, boolean[]]>;
 }
 
 /* KnownMap.traps in its saved form. */
@@ -2438,11 +2440,13 @@ export function serializeGame(
       ? {
           known: {
             feat: knownFeat,
+            ...(state.known.glow ? { glow: Array.from(state.known.glow) } : {}),
             objects: Array.from(state.known.objects.entries()).map(([i, pile]) => [
               i,
               pile.map((e) => serializeKnownObject(e, liveFloorAt, ids)),
             ]),
             traps: serializeKnownTraps(state.known, ids),
+            ...(state.known.trapDisabled ? { trapDisabled: Array.from(state.known.trapDisabled) } : {}),
           },
         }
       : {}),
@@ -2765,15 +2769,29 @@ export function deserializeKnown(
 ): KnownMap {
   const known = newKnownMap(width, height);
   if (!data) return known;
+  if (data.glow) {
+    known.glow = new Uint8Array(width * height);
+    known.glow.set(data.glow.slice(0, known.glow.length).map((value) => value ? 1 : 0));
+  }
   if (trapKinds) {
     if (data.traps) {
+      const disabled = new Map(data.trapDisabled ?? []);
       for (const [i, trapIds] of data.traps) {
         const kinds = trapIds.flatMap((id) => {
           const tidx = ids.trapIndex(id);
           const kind = tidx === undefined ? undefined : trapKinds[tidx];
           return kind ? [kind] : [];
         });
-        if (kinds.length > 0) (known.traps ??= new Map()).set(i, kinds);
+        if (kinds.length > 0) {
+          (known.traps ??= new Map()).set(i, kinds);
+          if (disabled.has(i)) {
+            const flags = trapIds.flatMap((id, index) => {
+              const tidx = ids.trapIndex(id);
+              return tidx !== undefined && trapKinds[tidx] ? [disabled.get(i)?.[index] === true] : [];
+            });
+            (known.trapDisabled ??= new Map()).set(i, flags);
+          }
+        }
       }
     } else {
       /* An older save: the port showed the visible traps on a grid as the
@@ -3057,11 +3075,13 @@ export function serializeStoredLevel(
     traps,
     known: {
       feat: knownFeat,
+      ...(level.known.glow ? { glow: Array.from(level.known.glow) } : {}),
       objects: Array.from(level.known.objects.entries()).map(([i, pile]) => [
         i,
         pile.map((e) => serializeKnownObject(e, cachedFloorAt, ids)),
       ]),
       traps: serializeKnownTraps(level.known, ids),
+      ...(level.known.trapDisabled ? { trapDisabled: Array.from(level.known.trapDisabled) } : {}),
     },
     decoy: level.decoy ? { x: level.decoy.x, y: level.decoy.y } : null,
     join: level.join.map((j) => ({

@@ -59,6 +59,7 @@ export type {
 export {
   KNOWN_WORLD_VERSION,
   buildKnownWorld,
+  knownLoadoutSimulation,
   knownMonster,
   knownMonsterMidx,
   knownMonsters,
@@ -67,6 +68,7 @@ export {
 export type {
   KnownItem,
   KnownMonster,
+  KnownMonsterBlow,
   KnownMonsterHealth,
   KnownMonstersHidden,
   KnownMonsterStatus,
