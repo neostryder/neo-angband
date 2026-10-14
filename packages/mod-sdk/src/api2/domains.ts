@@ -18,6 +18,7 @@ import type { NetMethod, NetProblemCode } from "../net-request.js";
 import type { Api2EventMap, Api2EventName } from "./events.js";
 import type { Api2HookName, Api2Hooks } from "./hooks.js";
 import type { Api2Policies } from "./policies.js";
+import type { Api2BirthPresenter, Api2DomPanel, Api2PanelSpec, Api2Presentation, Api2Presenters, Api2Title, Api2TitleAction } from "./presentation.js";
 import type {
   KnownGrid,
   KnownItem,
@@ -67,7 +68,7 @@ export interface Api2Meta {
 }
 
 /** The phase of play at an input wait. */
-export type Api2Phase = "pregame" | "play" | "store" | "more" | "modal" | "dead";
+export type Api2Phase = "title" | "birth" | "play" | "store" | "more" | "modal" | "dead";
 
 /** The question the game is asking at an input wait. */
 export type Api2Prompt =
@@ -263,7 +264,10 @@ export interface Api2Content {
 /** The host-drawn panel vocabulary: text, buttons, rows and columns. */
 export type Api2PanelNode =
   | { readonly type: "text"; readonly text: string }
-  | { readonly type: "button"; readonly label: string; readonly action: string }
+  | { readonly type: "button"; readonly label: string; readonly action: string; readonly disabled?: boolean }
+  | { readonly type: "input"; readonly label: string; readonly action: string; readonly value?: string; readonly placeholder?: string; readonly disabled?: boolean }
+  | { readonly type: "checkbox"; readonly label: string; readonly action: string; readonly checked: boolean; readonly disabled?: boolean }
+  | { readonly type: "download"; readonly label: string; readonly name: string; readonly text: string; readonly disabled?: boolean }
   | { readonly type: "row"; readonly children: readonly Api2PanelNode[] }
   | { readonly type: "column"; readonly children: readonly Api2PanelNode[] };
 
@@ -271,6 +275,7 @@ export type Api2PanelNode =
 export interface Api2Panel {
   readonly id: string;
   readonly title?: string;
+  readonly modal?: boolean;
   readonly root: Api2PanelNode;
 }
 
@@ -289,6 +294,7 @@ export interface Api2KeyBinding {
 
 /** Key bindings this mod owns in the player's keyset. Needs `keymap:write`. */
 export interface Api2Keys {
+  isBindableTriggerKey(trigger: string): Api2Call<boolean>;
   /** Bind an unused trigger. Refused when the trigger is already bound. */
   bind(trigger: string, action: string): Api2Call<null>;
   list(): Api2Call<readonly Api2KeyBinding[]>;
@@ -297,11 +303,21 @@ export interface Api2Keys {
 
 /** Host-owned interface: panels the host draws from data, and input bindings. */
 export interface Api2Ui {
+  readonly mountPage?: (kind: string, mount: (root: ShadowRoot) => void, options?: Omit<Api2PanelSpec, "id">) => Api2Call<Api2DomPanel>;
+  readonly overlay?: (spec?: Api2PanelSpec) => Api2Call<Api2DomPanel>;
+  readonly title?: Api2Title;
+  readonly commands: {
+    register(id: string, verb: string, run: () => void | Promise<void>): Api2Call<null>;
+  };
+  readonly gameMenu: {
+    register(action: string, label: string, run: () => void | Promise<void>): Api2Call<null>;
+  };
   /**
    * Show a panel. Needs `ui:panel.mount`. The host draws it; `onAction` hears
    * the `action` of each button the player uses.
    */
-  mount(panel: Api2Panel, onAction?: (action: string) => void): Api2Call<{ readonly panelId: string }>;
+  mount(panel: Api2Panel, onAction?: (action: string, value?: string | boolean) => void, onDismiss?: () => void): Api2Call<{ readonly panelId: string }>;
+  unmount(panelId: string): Api2Call<null>;
   /** Change a mounted panel. Needs `ui:panel.mount`. */
   patch(panelId: string, patch: Api2PanelPatch): Api2Call<{ readonly panelId: string }>;
   readonly keys: Api2Keys;
@@ -474,6 +490,8 @@ export interface ModApi2 {
   readonly manage?: Api2Manage;
   /** The first-party autoplayer only. */
   readonly truth?: Api2Truth;
+  readonly presentation?: Api2Presentation;
+  readonly backupFolder?: Api2BackupFolder;
 }
 
 /** What `hooks` is told when the host asks a mod for its hooks. */
@@ -494,6 +512,10 @@ export interface Api2PrefsMigration {
 export interface Api2ModDefinition {
   /** The mod API range this code was written for, such as ">=2.0.0 <3.0.0". */
   readonly api: string;
+  readonly presentation?: Api2Presenters;
+  readonly actions?: readonly Api2MenuAction[];
+  readonly titleActions?: readonly Api2TitleAction[];
+  birth?(mod: ModApi2): Api2BirthPresenter | undefined;
   /**
    * The hooks this mod contributes, given its flags. Asked once when content
    * composes. In a Worker only the notification hooks (optionsChanged,
@@ -516,6 +538,30 @@ export interface Api2ModDefinition {
   migrateBag?(data: JsonValue, fromSchema: number): JsonValue;
   /** Bring this mod's stored preferences forward. */
   readonly prefs?: Api2PrefsMigration;
+}
+
+export interface Api2MenuAction {
+  readonly menu: "core:game-menu";
+  readonly action: string;
+  readonly label: string;
+  run(mod: ModApi2): void | Promise<void>;
+}
+
+export interface Api2BackupFolderEntry {
+  readonly name: string;
+  readonly lineage?: string;
+  readonly characterName: string;
+  readonly level: number;
+}
+
+export interface Api2BackupFolder {
+  name(): Api2Call<string | null>;
+  choose(): Api2Call<string | null>;
+  forget(): Api2Call<null>;
+  write(name: string, text: string): Api2Call<boolean>;
+  list(): Api2Call<readonly Api2BackupFolderEntry[]>;
+  onSave(listener: (file: { readonly name: string; readonly text: string }) => void): Api2Call<Api2Subscription>;
+  off(subscription: Api2Subscription): Api2Call<null>;
 }
 
 /** Declare an API 2 mod. Returns its argument; the type checks the shape. */

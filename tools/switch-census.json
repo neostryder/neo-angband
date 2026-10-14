@@ -164,7 +164,7 @@
       "verdict": "PARSER - the tagged encoding a mod database crosses executeJavaScript in when an old loopback origin is moved (TAGGED_CODEC). Host wiring for one fixed format; a mod never sees it."
     },
     {
-      "file": "packages/web/src/mod-manager/classic-manager.ts",
+      "file": "packages/web/src/mods.ts",
       "cases": 13,
       "hasDefault": false,
       "kind": "IF_CHAIN",
@@ -269,7 +269,14 @@
       "verdict": "UI - menu action routing, entries[pick].action (MOD_REACH gap 18/24)."
     },
     {
-      "file": "packages/web/src/mod-manager/classic-actions.ts",
+      "file": "packages/web/src/mod-worker/bootstrap.ts",
+      "cases": 9,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the Worker protocol routes host messages to mod callbacks. A mod uses API domains and cannot add protocol messages."
+    },
+    {
+      "file": "packages/web/src/mods.ts",
       "cases": 9,
       "hasDefault": false,
       "kind": "IF_CHAIN",

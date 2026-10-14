@@ -1,5 +1,3 @@
-import { declaredConflicts } from "./mod-manager/state-rules";
-export { declaredConflicts };
 /**
  * The conflict report the player reads, over EVERY composition layer.
  *
@@ -297,6 +295,25 @@ function hookDescription(hook: keyof ModHooks): string {
   return words[hook];
 }
 
+/** Every `conflicts` claim whose named pack is actually enabled. */
+export function declaredConflicts(
+  manifests: readonly PackManifest[],
+): DeclaredConflict[] {
+  const enabled = new Set(manifests.map((m) => m.id));
+  const out: DeclaredConflict[] = [];
+  for (const m of manifests) {
+    for (const c of m.compat ?? []) {
+      if (c.claim !== "conflicts" || !enabled.has(c.with)) continue;
+      out.push({
+        packId: m.id,
+        with: c.with,
+        because: c.because,
+        ...(c.scope ? { scope: [...c.scope] } : {}),
+      });
+    }
+  }
+  return out;
+}
 
 /**
  * One row of the report: the sentence a player reads, beside the record it was

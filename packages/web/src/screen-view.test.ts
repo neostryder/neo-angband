@@ -659,11 +659,7 @@ describe("the unmodelled path is honest about being unmodelled", () => {
      * that would let "the screens are replaceable" quietly mean two of them. */
     const dir = fileURLToPath(new URL("./", import.meta.url));
     const built = new Set<string>();
-    const sources = [
-      ...readdirSync(dir),
-      ...readdirSync(`${dir}mod-manager/`).map((name) => `mod-manager/${name}`),
-    ];
-    for (const name of sources) {
+    for (const name of readdirSync(dir)) {
       if (!name.endsWith(".ts") || name.endsWith(".test.ts")) continue;
       const src = readFileSync(`${dir}${name}`, "utf8");
       /* Whitespace-tolerant on purpose: pinned to a newline after `freezeView({`,

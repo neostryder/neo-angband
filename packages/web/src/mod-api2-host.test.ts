@@ -4,8 +4,10 @@
  * `truth` only for an allowlisted mod.
  */
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  ActionRegistry,
+  CommandVerbTable,
   GameEvents,
   FEAT,
   MFLAG,
@@ -21,7 +23,11 @@ import {
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet, type JsonValue, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
-import { api2EventPayload, createApi2Host, type Api2HostOptions } from "./mod-api2-host";
+import { api2EventPayload, createApi2Host, disposeApi2Host, type Api2HostOptions } from "./mod-api2-host";
+import { menuRegistry } from "./menu-registry";
+import { TitleRuntime } from "./title-runtime";
+import { clearBackupSinks, createBackupFolder, notifyBackupSinks } from "./mod-backup";
+import { clearInputDoor, enqueueUiInputs, inputEvents } from "./input-door";
 import { modPluginContext } from "./mod-context";
 import type { ModPrefs } from "./mod-prefs";
 
@@ -190,6 +196,45 @@ describe("the API 2 host's refusals", () => {
 });
 
 describe("the API 2 host's commands", () => {
+  it("registers owned callbacks and verbs and releases them at teardown", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const registry = new ActionRegistry();
+    const verbs = new CommandVerbTable();
+    const api = host(game, ["registry:command"], { commands: { registry, verbs } });
+    let ran = 0;
+    expect(await api.ui.commands.register("probe:order", "order", () => { ran += 1; })).toEqual({ ok: true, value: null });
+    expect(verbs.verbFor("probe:order")).toBe("order");
+    expect(registry.get("probe:order")?.(game.state, { code: "probe:order" })).toBe(0);
+    expect(ran).toBe(1);
+    expect(await api.ui.commands.register("probe:order", "order", () => undefined)).toMatchObject({ code: "command-taken" });
+    expect(await api.ui.commands.register("other:order", "order", () => undefined)).toMatchObject({ code: "bad-command" });
+    disposeApi2Host(api);
+    expect(registry.has("probe:order")).toBe(false);
+  });
+
+  it("checks key availability without claiming it", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const api = host(game, ["keymap:write"]);
+    expect(await api.ui.keys.isBindableTriggerKey("F10")).toEqual({ ok: true, value: true });
+    expect(await api.ui.keys.list()).toEqual({ ok: true, value: [] });
+    expect(await api.ui.keys.bind("F10", "a")).toEqual({ ok: true, value: null });
+    expect(await api.ui.keys.isBindableTriggerKey("F10")).toEqual({ ok: true, value: false });
+    expect(await api.ui.keys.isBindableTriggerKey("Shift")).toEqual({ ok: true, value: false });
+    await api.ui.keys.remove("F10");
+  });
+
+  it("adds a runnable Game-menu entry and removes it when the mod stops", async () => {
+    menuRegistry.clear();
+    const api = host(startGame(pack, { seed: SEED, depth: DEPTH }), ["registry:menu"]);
+    let ran = false;
+    expect(await api.ui.gameMenu.register("backup", "Backups", () => { ran = true; })).toEqual({ ok: true, value: null });
+    const rows = menuRegistry.transform("core:game-menu", []);
+    expect(rows.map((row) => row.label)).toEqual(["Backups"]);
+    await menuRegistry.runAction("core:game-menu", rows[0]!.id);
+    expect(ran).toBe(true);
+    disposeApi2Host(api);
+    expect(menuRegistry.transform("core:game-menu", [])).toEqual([]);
+  });
   function commander(game: StartedGame): { api: ModApi2; sent: unknown[] } {
     const sent: unknown[] = [];
     const caps = capabilities("probe", [...READS, "input:intent"]);
@@ -227,11 +272,57 @@ describe("the API 2 host's commands", () => {
 });
 
 describe("the first-party seams", () => {
+  it("purges queued input and sends ordinary cancellations through the shared input door", async () => {
+    vi.useFakeTimers();
+    clearInputDoor();
+    try {
+      const heard: string[] = [];
+      inputEvents.addEventListener("keydown", (event) => heard.push(event.key), true);
+      enqueueUiInputs([{ key: { key: "x", modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false } }]);
+      const api = host(startGame(pack, { seed: SEED, depth: DEPTH }), [], { tier: "first-party", firstParty: { presentation: true } });
+      expect(await api.presentation!.cancelInput()).toEqual({ ok: true, value: null });
+      await vi.runAllTimersAsync();
+      expect(heard).toEqual(["Escape", "Escape", "Escape"]);
+      expect(await api.presentation!.cancelInput(0)).toMatchObject({ code: "bad-count" });
+    } finally {
+      clearInputDoor();
+      vi.useRealTimers();
+    }
+  });
+  it("registers and dismisses title rows and uses the Core choice drawer", async () => {
+    const caps = capabilities("probe", ["ui:title"]);
+    const runtime = new TitleRuntime(async (label, choices) => {
+      expect(label).toBe("Choose a profile");
+      expect(choices).toEqual(["Current", "New"]);
+      return 1;
+    });
+    const ctx = { ...modPluginContext("probe", {}, undefined, {}, { capabilities: caps }), title: runtime.forMod("probe") };
+    const api = createApi2Host(ctx, { grants: caps, tier: "first-party", firstParty: { presentation: true } });
+    let ran = false;
+    const subscription = await api.ui.title!.registerRow({ id: "new-character", label: "New character", key: "S", run: () => { ran = true; } });
+    expect(subscription.ok).toBe(true);
+    await runtime.run(runtime.list()[0]!.choice);
+    expect(ran).toBe(true);
+    expect(await api.ui.title!.choose("Choose a profile", ["Current", "New"])).toEqual({ ok: true, value: 1 });
+    if (!subscription.ok) throw new Error("refused");
+    await api.ui.title!.removeRow(subscription.value);
+    expect(runtime.list()).toEqual([]);
+    await api.ui.title!.registerRow({ id: "new-character", label: "New character", run: () => undefined });
+    disposeApi2Host(api);
+    expect(runtime.list()).toEqual([]);
+    expect(createApi2Host(ctx, { grants: caps, tier: "public" }).ui.title).toBeUndefined();
+  });
+  it("refuses presentation to a public mod even with a namespace flag", () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    expect(host(game, [], { tier: "public", firstParty: { presentation: true } }).presentation).toBeUndefined();
+    expect(host(game, [], { tier: "first-party", firstParty: { presentation: true } }).presentation).toBeDefined();
+  });
   it("are absent without an allowlist, whatever the grants", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const api = host(game, [...READS, "profiles:manage", "session:control"]);
     expect(api.manage).toBeUndefined();
     expect(api.truth).toBeUndefined();
+    expect(api.presentation).toBeUndefined();
     expect("manage" in api).toBe(false);
     expect("truth" in api).toBe(false);
     expect(api.meta.tier).toBe("public");
@@ -267,6 +358,37 @@ describe("the first-party seams", () => {
     const api = host(game, READS, { firstParty: { manage: true } });
     expect(await api.manage!.profiles.list()).toMatchObject({ reason: "not-granted", capability: "profiles:manage" });
     expect(await api.manage!.session.save()).toMatchObject({ reason: "not-granted", capability: "session:control" });
+  });
+});
+
+describe("API 2 backup folders", () => {
+  it("keeps display names and metadata and unsubscribes without retaining a save sink", async () => {
+    clearBackupSinks();
+    const caps = capabilities("probe", ["backup:folder"]);
+    const folder = createBackupFolder("probe", { neoDesktop: { backup: async (operation: string) => {
+      if (operation === "choose" || operation === "name") return "Cloud Backups";
+      if (operation === "write") return { ok: true };
+      if (operation === "list") return [];
+      return undefined;
+    } } })!;
+    const ctx = { ...modPluginContext("probe", {}, undefined, {}, { capabilities: caps }), backupFolder: folder };
+    const api = createApi2Host(ctx, { grants: caps });
+    expect(await api.backupFolder!.choose()).toEqual({ ok: true, value: "Cloud Backups" });
+    expect(await api.backupFolder!.name()).toEqual({ ok: true, value: "Cloud Backups" });
+    expect(await api.backupFolder!.write("hero.neochar", "{}")).toEqual({ ok: true, value: true });
+    expect(await api.backupFolder!.list()).toEqual({ ok: true, value: [] });
+    const heard: unknown[] = [];
+    const subscription = await api.backupFolder!.onSave((file) => heard.push(file));
+    if (!subscription.ok) throw new Error("refused");
+    notifyBackupSinks(() => ({ name: "hero.neochar", text: "{}" }));
+    expect(heard).toEqual([{ name: "hero.neochar", text: "{}" }]);
+    await api.backupFolder!.off(subscription.value);
+    let built = false;
+    notifyBackupSinks(() => { built = true; return { name: "hero.neochar", text: "{}" }; });
+    expect(built).toBe(false);
+    expect(createApi2Host(ctx, { grants: capabilities("probe", []) }).backupFolder).toBeUndefined();
+    disposeApi2Host(api);
+    clearBackupSinks();
   });
 });
 

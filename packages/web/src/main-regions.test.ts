@@ -255,15 +255,11 @@ const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
    * and the install progress screen repaints several times a second at a moment
    * the player cannot interrupt - the worst possible time to wipe a front end
    * with no way for it to learn that it happened. */
-  "mod-manager/classic-browse-install.ts": [
+  "mod-browse.ts": [
     "installOne > result",
-  ],
-  "mod-manager/classic-browse-source.ts": [
     "openRegistry",
+    "paintWhile",
     "showSource",
-  ],
-  "mod-manager/classic-update-views.ts": ["paintWhile"],
-  "mod-manager/classic-browse-summary.ts": [
     /* The repository door's "asking the repository what it holds..." wait
      * screen (#23) - the same pushRegion/regionSurface/clear pattern
      * openRegistry already uses immediately above, for the same reason: a
@@ -433,10 +429,7 @@ function termClearSites(file: string): string[] {
 }
 
 describe("term.clear() is a ratchet: the list of full-screen erases may only shrink", () => {
-  const shellSources = [
-    ...readdirSync(new URL(".", import.meta.url)),
-    ...readdirSync(new URL("./mod-manager/", import.meta.url)).map((file) => `mod-manager/${file}`),
-  ]
+  const shellSources = readdirSync(new URL(".", import.meta.url))
     .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".d.ts"))
     .sort();
 

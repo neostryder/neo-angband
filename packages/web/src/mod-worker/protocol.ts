@@ -27,15 +27,12 @@ export type WorkerJson = null | boolean | number | string | WorkerJson[] | { [ke
 export type WorkerNotGranted = { readonly ok: false; readonly reason: "not-granted"; readonly capability: string };
 
 /** Host-rendered panel controls. Text is always assigned with textContent. */
-export type ModWorkerPanelNode =
-  | { readonly type: "text"; readonly text: string }
-  | { readonly type: "button"; readonly label: string; readonly action: string }
-  | { readonly type: "row"; readonly children: readonly ModWorkerPanelNode[] }
-  | { readonly type: "column"; readonly children: readonly ModWorkerPanelNode[] };
+export type ModWorkerPanelNode = import("@rpgm-tools/neo-angband-mod-sdk").Api2PanelNode;
 
 export interface ModWorkerPanel {
   readonly id: string;
   readonly title?: string;
+  readonly modal?: boolean;
   readonly root: ModWorkerPanelNode;
 }
 
@@ -74,6 +71,10 @@ export const WORKER_CALLS = [
   "content.lookup",
   "ui.mount",
   "ui.patch",
+  "ui.unmount",
+  "ui.commands.register",
+  "ui.gameMenu.register",
+  "ui.keys.isBindableTriggerKey",
   "ui.keys.bind",
   "ui.keys.list",
   "ui.keys.remove",
@@ -81,6 +82,13 @@ export const WORKER_CALLS = [
   "store.prefs.set",
   "store.character.get",
   "store.character.set",
+  "backupFolder.name",
+  "backupFolder.choose",
+  "backupFolder.forget",
+  "backupFolder.write",
+  "backupFolder.list",
+  "backupFolder.onSave",
+  "backupFolder.off",
   "net.request",
   "net.credentials.status",
   "net.credentials.set",
@@ -139,7 +147,9 @@ export type HostToModWorker =
   | (Addressed & { readonly type: "reply"; readonly requestId: number; readonly ok: true; readonly result: WorkerJson })
   | (Addressed & { readonly type: "reply"; readonly requestId: number; readonly ok: false; readonly error: string })
   | (Addressed & { readonly type: "event"; readonly listenerId: number; readonly payload: WorkerJson })
-  | (Addressed & { readonly type: "ui.action"; readonly callbackId: number; readonly action: string })
+  | (Addressed & { readonly type: "ui.action"; readonly callbackId: number; readonly action: string; readonly value?: string | boolean })
+  | (Addressed & { readonly type: "ui.dismissed"; readonly callbackId: number })
+  | (Addressed & { readonly type: "backup.save"; readonly callbackId: number; readonly file: { readonly name: string; readonly text: string } })
   | (Addressed & { readonly type: "ask"; readonly askId: number; readonly question: WorkerQuestion })
   | (Addressed & { readonly type: "notify"; readonly hook: string; readonly args: readonly WorkerJson[] })
   /** `policyHooks`: the hooks the host applies from the mod's policy tables, for `hooks.active`. */

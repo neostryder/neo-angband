@@ -25,6 +25,8 @@ import {
   tokenIsCurrent,
   type AgentCapabilities,
   type AgentViewDeps,
+  type ActionRegistry,
+  type CommandVerbTable,
   type GameEventMap,
   type GameEventType,
   type GameState,
@@ -56,6 +58,7 @@ import {
   type Api2TrueLevel,
   type Api2TrueMonster,
   type Api2Truth,
+  type Api2Title,
   type JsonRecord,
   type JsonValue,
   type KnownWorldData,
@@ -64,6 +67,11 @@ import {
 import type { ModPluginContext } from "./mod-plugin";
 import { createModWorkerPanelRenderer, type ModWorkerPanelRenderer } from "./mod-worker/panels";
 import type { WorkerJson } from "./mod-worker/protocol";
+import { bootPhase, onBootPhaseChanged } from "./presentation-phase";
+import { menuRegistry } from "./menu-registry";
+import { clearQueuedUiInputs, enqueueUiInputs, inputEvents } from "./input-door";
+import { closeTopModPanel, modPanelsSuspended, topModPanelId } from "./panel-runtime";
+import { removeBackupSink } from "./mod-backup";
 
 /** The loader must authorize namespaces before the host can expose them. */
 export interface Api2Allowlist {
@@ -71,10 +79,15 @@ export interface Api2Allowlist {
   readonly manage?: boolean;
   /** Hidden game state needs consent even when identity is first-party. */
   readonly truth?: boolean;
+  readonly presentation?: boolean;
 }
 
 /** What the loader tells the host about one mod. */
 export interface Api2HostOptions {
+  readonly commands?: {
+    readonly registry: Pick<ActionRegistry, "has" | "register" | "unregister">;
+    readonly verbs?: CommandVerbTable;
+  };
   /** Measured identity is independent of consent to hidden data. */
   readonly tier?: "first-party" | "public";
   /** The permissions the player granted this mod. */
@@ -101,6 +114,25 @@ export interface Api2HostPrefsMigration {
 }
 
 const NO_GAME = "no game is running yet";
+let commandHost: Api2HostOptions["commands"];
+const keymapCommands = new Map<string, () => void>();
+
+export function runApi2KeymapCommand(action: string): boolean {
+  const run = keymapCommands.get(action);
+  if (!run) return false;
+  run();
+  return true;
+}
+
+export function setApi2CommandHost(host: Api2HostOptions["commands"]): void {
+  commandHost = host;
+}
+const disposers = new WeakMap<ModApi2, () => void>();
+
+export function disposeApi2Host(api: ModApi2): void {
+  disposers.get(api)?.();
+  disposers.delete(api);
+}
 
 /** A clone the caller cannot use to reach or change anything else. */
 function data<T>(value: T): T {
@@ -207,6 +239,7 @@ export function api2EventPayload<K extends Api2EventName>(
 
 /** Build the API 2 domains for one in-process mod over its API 1 context. */
 export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions): ModApi2 {
+  const cleanups = new Set<() => void>();
   const { grants } = options;
   const granted = (capability: string): boolean => {
     try {
@@ -233,6 +266,95 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
 
   const subscriptions = new Map<string, { type: GameEventType; handler: (type: GameEventType, raw: unknown) => void }>();
   let nextSubscription = 1;
+  const titleRows = new Map<string, () => void>();
+  const title: Api2Title | undefined = options.tier === "first-party" && options.firstParty?.presentation ? frozen<Api2Title>({
+    registerRow: (row) => guarded(() => {
+      if (!granted("ui:title")) return api2NotGranted("ui:title");
+      if (!ctx.title) return api2Unavailable("this front end has no title actions");
+      if (!/^[a-z][a-z0-9-]{0,63}$/.test(row.id) || titleRows.has(row.id)) return api2Refused("bad-title-row", "a title action needs a free id");
+      try {
+        const remove = ctx.title.registerRow(row);
+        titleRows.set(row.id, remove);
+        cleanups.add(remove);
+        return api2Ok(frozen({ id: row.id }));
+      } catch (error) {
+        return api2Refused("bad-title-row", error instanceof Error ? error.message : String(error));
+      }
+    }),
+    removeRow: (subscription) => guarded(() => {
+      if (!granted("ui:title")) return api2NotGranted("ui:title");
+      const remove = titleRows.get(subscription.id);
+      remove?.();
+      if (remove) cleanups.delete(remove);
+      titleRows.delete(subscription.id);
+      return api2Ok(null);
+    }),
+    choose: (label, choices) => guarded(async () => {
+      if (!granted("ui:title")) return api2NotGranted("ui:title");
+      return ctx.title ? api2Ok(await ctx.title.choose(label, [...choices])) : api2Unavailable("this front end has no title choices");
+    }),
+  }) : undefined;
+  const openPage = (spec: import("@rpgm-tools/neo-angband-mod-sdk").Api2PanelSpec) => guarded(() => {
+    if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
+    if (!ctx.ui) return api2Unavailable("this front end mounts no pages");
+    try {
+      const panel = ctx.ui.openPanel(spec);
+      const close = () => panel.close();
+      const onKey = (event: KeyboardEvent) => {
+        if (!panel.open || modPanelsSuspended() || topModPanelId() !== panel.id) return;
+        if (!spec.modal && !panel.root.activeElement) return;
+        if (event.ctrlKey || event.altKey || event.metaKey) return;
+        if (event.key === "Escape") {
+          event.preventDefault(); event.stopImmediatePropagation();
+          if (!event.repeat && !event.isComposing) closeTopModPanel();
+        } else if (["Tab", "ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "2", "4", "6", "8"].includes(event.key)) {
+          const controls = [...panel.root.querySelectorAll<HTMLElement>("button:not(:disabled),input:not(:disabled),a[href]")];
+          if (!controls.length) return;
+          event.preventDefault(); event.stopImmediatePropagation();
+          const index = controls.indexOf(panel.root.activeElement as HTMLElement);
+          const step = ["ArrowUp", "ArrowLeft", "4", "8"].includes(event.key) || event.shiftKey ? -1 : 1;
+          controls[(index + step + controls.length) % controls.length]!.focus();
+        } else if (event.key === "Enter" && panel.root.activeElement?.matches("button,a[href],input[type=checkbox]")) {
+          event.preventDefault(); event.stopImmediatePropagation();
+          (panel.root.activeElement as HTMLElement).click();
+        }
+      };
+      inputEvents.addEventListener("keydown", onKey, true);
+      const off = () => inputEvents.removeEventListener("keydown", onKey, true);
+      cleanups.add(close);
+      cleanups.add(off);
+      void panel.closed.then(() => { off(); cleanups.delete(off); cleanups.delete(close); });
+      return api2Ok(panel);
+    } catch (error) {
+      return api2Refused("bad-panel", error instanceof Error ? error.message : String(error));
+    }
+  });
+  const backupListeners = new Map<string, (file: { readonly name: string; readonly text: string }) => void>();
+  const folder = ctx.backupFolder;
+  const backupFolder: import("@rpgm-tools/neo-angband-mod-sdk").Api2BackupFolder | undefined = folder && granted("backup:folder") ? frozen({
+    name: () => guarded(async () => api2Ok(await folder.name())),
+    choose: () => guarded(async () => api2Ok(await folder.choose())),
+    forget: () => guarded(async () => { await folder.forget(); return api2Ok(null); }),
+    write: (name: string, text: string) => guarded(async () => api2Ok(await folder.write(name, text))),
+    list: () => guarded(async () => api2Ok(data((await folder.list()).map((entry) => ({
+      name: entry.name, characterName: entry.characterName, level: entry.level,
+      ...(entry.lineage === undefined ? {} : { lineage: entry.lineage }),
+    }))))),
+    onSave: (listener: (file: { readonly name: string; readonly text: string }) => void) => guarded(() => {
+      const id = `${ctx.id}:backup:${nextSubscription++}`;
+      backupListeners.set(id, listener);
+      folder.onSave((file) => {
+        for (const callback of backupListeners.values()) callback(data({ name: file.name, text: file.text }));
+      });
+      return api2Ok(frozen({ id }));
+    }),
+    off: (subscription: { readonly id: string }) => guarded(() => {
+      backupListeners.delete(subscription.id);
+      if (!backupListeners.size) removeBackupSink(ctx.id);
+      return api2Ok(null);
+    }),
+  }) : undefined;
+  if (backupFolder) cleanups.add(() => { backupListeners.clear(); removeBackupSink(ctx.id); });
 
   const prefsEnvelope = "$api2prefs";
   let prefsRevision = 0;
@@ -332,7 +454,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         return api2Ok(data({
           token: snap.token,
           driver: snap.driver,
-          phase: snap.phase,
+          phase: snap.phase === "pregame" ? bootPhase() : snap.phase,
           messagePending: snap.messagePending,
           prompt: snap.prompt,
         }));
@@ -438,16 +560,77 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     ui: frozen({
-      mount: (panel: Api2Panel, onAction?: (action: string) => void) => guarded(() => {
+      ...(title ? { title } : {}),
+      ...(options.tier === "first-party" && options.firstParty?.presentation ? {
+        overlay: (spec: import("@rpgm-tools/neo-angband-mod-sdk").Api2PanelSpec = { id: "overlay", modal: true }) => openPage(spec),
+        mountPage: async (kind: string, mount: (root: ShadowRoot) => void, pageOptions?: Omit<import("@rpgm-tools/neo-angband-mod-sdk").Api2PanelSpec, "id">) => {
+          const opened = await openPage({ id: kind, ...pageOptions });
+          if (!opened.ok) return opened;
+          try { mount(opened.value.root); }
+          catch (error) {
+            opened.value.close();
+            return api2Refused("bad-page", error instanceof Error ? error.message : String(error));
+          }
+          return opened;
+        },
+      } : {}),
+      commands: frozen({
+        register: (id, verb, run) => guarded(() => {
+          if (!granted("registry:command") && !granted("command:add")) return api2NotGranted("command:add");
+          if (!id.startsWith(`${ctx.id}:`) || !/^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/.test(id) || !verb.trim() || typeof run !== "function") {
+            return api2Refused("bad-command", "a command needs an owned id, a verb and a handler");
+          }
+          const commands = options.commands ?? commandHost;
+          if (!commands) return api2Unavailable("this front end installs no mod commands");
+          if (commands.registry.has(id)) return api2Refused("command-taken", `command "${id}" is already registered`);
+          const invoke = () => {
+            try {
+              const result = run();
+              if (result) void result.catch((error: unknown) => ctx.log(`command failed: ${String(error)}`));
+            } catch (error) {
+              ctx.log(`command failed: ${String(error)}`);
+            }
+          };
+          keymapCommands.set(id, invoke);
+          commands.registry.register(id, () => { invoke(); return 0; });
+          commands.verbs?.set(id, verb);
+          cleanups.add(() => {
+            commands.registry.unregister(id);
+            if (keymapCommands.get(id) === invoke) keymapCommands.delete(id);
+          });
+          return api2Ok(null);
+        }),
+      }),
+      gameMenu: frozen({
+        register: (action, label, run) => guarded(() => {
+          if (!granted("registry:menu")) return api2NotGranted("registry:menu");
+          if (!/^[a-z][a-z0-9-]{0,63}$/.test(action) || !label.trim() || /[\r\n]/.test(label) || typeof run !== "function") {
+            return api2Refused("bad-action", "a menu action needs an id, a label and a handler");
+          }
+          menuRegistry.addAction("core:game-menu", action, label, run, ctx.id);
+          cleanups.add(() => menuRegistry.removeAction("core:game-menu", action, ctx.id));
+          return api2Ok(null);
+        }),
+      }),
+      mount: (panel: Api2Panel, onAction?: (action: string, value?: string | boolean) => void, onDismiss?: () => void) => guarded(() => {
         if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
         const draw = renderer();
         if (!draw) return api2Unavailable("this front end draws no panels");
         try {
-          draw.apply(ctx.id, "mount", structuredClone(panel) as unknown as WorkerJson, undefined, (_panelId, action) => onAction?.(action));
+          draw.apply(ctx.id, "mount", structuredClone(panel) as unknown as WorkerJson, undefined, (_panelId, action, value) => onAction?.(action, value), onDismiss);
+          cleanups.add(() => draw.teardown(ctx.id));
         } catch (e) {
           return api2Refused("bad-panel", e instanceof Error ? e.message : String(e));
         }
         return api2Ok(frozen({ panelId: panel.id }));
+      }),
+      unmount: (panelId) => guarded(() => {
+        if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
+        const draw = renderer();
+        if (!draw) return api2Unavailable("this front end draws no panels");
+        try { draw.apply(ctx.id, "unmount", null, panelId); }
+        catch (error) { return api2Refused("bad-panel", error instanceof Error ? error.message : String(error)); }
+        return api2Ok(null);
       }),
       patch: (panelId: string, patch: Api2PanelPatch) => guarded(() => {
         if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
@@ -461,6 +644,10 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         return api2Ok(frozen({ panelId }));
       }),
       keys: frozen({
+        isBindableTriggerKey: (trigger) => guarded(() => {
+          if (!granted("keymap:write")) return api2NotGranted("keymap:write");
+          return ctx.keymaps ? api2Ok(ctx.keymaps.isBindableTriggerKey(trigger)) : api2Unavailable(NO_GAME);
+        }),
         bind: (trigger: string, action: string) => guarded(() => {
           if (!granted("keymap:write")) return api2NotGranted("keymap:write");
           if (!ctx.keymaps) return api2Unavailable(NO_GAME);
@@ -486,9 +673,58 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     store: frozen({ prefs: Object.freeze(prefs), character: Object.freeze(character) }),
 
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
+    ...(backupFolder ? { backupFolder } : {}),
     ...(options.firstParty?.manage ? { manage: manageDomain(ctx) } : {}),
     ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}) } : {}),
+    ...(options.tier === "first-party" && options.firstParty?.presentation ? {
+      presentation: frozen({
+        cancelInput: (escapeCount: number = 3) => guarded(() => {
+          if (!Number.isSafeInteger(escapeCount) || escapeCount < 1) return api2Refused("bad-count", "cancellation needs a positive escape count");
+          clearQueuedUiInputs();
+          enqueueUiInputs(Array.from({ length: escapeCount }, () => ({
+            key: { key: "Escape", modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false },
+          })));
+          return api2Ok(null);
+        }),
+        ...(ctx.keyRepeat ? { keyRepeat: ctx.keyRepeat } : {}),
+        ...(title ? { title } : {}),
+        phase: bootPhase,
+        onPhaseChanged: (listener: (phase: import("@rpgm-tools/neo-angband-mod-sdk").Api2BootPhase) => void) => {
+          const off = onBootPhaseChanged((phase) => {
+            try { listener(phase); }
+            catch (error) { ctx.log(`phase listener failed: ${String(error)}`); }
+          });
+          cleanups.add(off);
+          return () => { off(); cleanups.delete(off); };
+        },
+        ...(ctx.display ? { display: frozen({
+          ...ctx.display,
+          onKey: (listener: (event: KeyboardEvent) => void) => {
+            const off = ctx.display!.onKey(listener);
+            cleanups.add(off);
+            return () => { off(); cleanups.delete(off); };
+          },
+          ...(ctx.display.onFrame ? { onFrame: (listener: () => void) => {
+            const off = ctx.display!.onFrame!(listener);
+            cleanups.add(off);
+            return () => { off(); cleanups.delete(off); };
+          } } : {}),
+        }) } : {}),
+        ...(ctx.subwindows ? { subwindows: ctx.subwindows } : {}),
+        ...(ctx.tiles ? { tiles: ctx.tiles } : {}),
+        ...(ctx.ui ? { panels: ctx.ui } : {}),
+        ...(typeof document !== "undefined" && document.getElementById("game-view") ? {
+          sidebarHost: document.getElementById("game-view")!,
+        } : {}),
+      }),
+    } : {}),
   };
+  disposers.set(api, () => {
+    for (const { type, handler } of subscriptions.values()) ctx.events?.off(type, handler as never);
+    subscriptions.clear();
+    for (const cleanup of cleanups) cleanup();
+    cleanups.clear();
+  });
   return Object.freeze(api);
 }
 
