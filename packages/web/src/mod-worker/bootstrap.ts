@@ -89,7 +89,7 @@ export function installModWorkerBootstrap(
     if (list.includes(capability)) return true;
     const state = /^state:([a-z0-9-]+)\.read$/u.exec(capability);
     if (state && state[1] !== "map-actual" && list.includes("state:*.read")) return true;
-    return capability.startsWith("network:") && capability !== "network:local" && list.includes("network:*");
+    return capability.startsWith("network:") && list.includes("network:*");
   };
 
   const buildApi = (m: WorkerMeta, active: readonly string[]): ModApi2 => {
@@ -112,8 +112,6 @@ export function installModWorkerBootstrap(
         player: method("view.player"),
         monsters: method("view.monsters"),
         level: method("view.level"),
-        look: method("view.look"),
-        simulateLoadout: method("view.simulateLoadout"),
         input: method("view.input"),
         isCurrent: method("view.isCurrent"),
       },
@@ -144,7 +142,6 @@ export function installModWorkerBootstrap(
       hooks: { available: m.hooks, active },
       content: {
         own: method("content.own"),
-        colors: method("content.colors"),
         asset: method("content.asset"),
         records: method("content.records"),
         lookup: method("content.lookup"),

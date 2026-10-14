@@ -20,12 +20,7 @@ import {
   AgentCapabilityError,
   buildKnownWorld,
   createAgentView,
-  colorPrefId,
-  colorTableSnapshot,
-  colorToCss,
-  describeLookGrid,
   knownMonsterMidx,
-  knownLoadoutSimulation,
   trueMonsterViews,
   tokenIsCurrent,
   type AgentCapabilities,
@@ -239,24 +234,33 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   const subscriptions = new Map<string, { type: GameEventType; handler: (type: GameEventType, raw: unknown) => void }>();
   let nextSubscription = 1;
 
-  const prefsEnvelope = "$api2prefs";
+  const prefsEnvelope = "neo-angband/mod/prefs";
+  const wrapPrefs = (value: JsonValue, version: number): JsonValue => ({
+    format: prefsEnvelope, schemaVersion: 1, data: { version, value },
+  });
   let prefsRevision = 0;
   let pendingMigration: Promise<Api2Result<JsonValue | null>> | undefined;
   const prefs: Api2Slot = {
     get: () => guarded(async () => {
       const raw = ctx.prefs.get() as JsonValue | null;
       const migration = options.prefs;
-      if (!migration || raw === null || raw === undefined) return api2Ok(raw === undefined ? null : data(raw));
-      const enveloped = typeof raw === "object" && !Array.isArray(raw) && typeof raw[prefsEnvelope] === "number";
-      const from = enveloped ? (raw as Record<string, JsonValue>)[prefsEnvelope] as number : 0;
-      const value = enveloped ? (raw as Record<string, JsonValue>)["value"] ?? null : raw;
-      if (from >= migration.version || value === null) return api2Ok(data(value));
+      if (raw === null || raw === undefined) return api2Ok(null);
+      const stored = typeof raw === "object" && !Array.isArray(raw) ? raw : undefined;
+      const contents = stored?.["data"];
+      const envelopeData = contents !== null && typeof contents === "object" && !Array.isArray(contents) ? contents : undefined;
+      const enveloped = stored?.["format"] === prefsEnvelope && stored["schemaVersion"] === 1 &&
+        Object.keys(stored).length === 3 && envelopeData !== undefined && Object.keys(envelopeData).length === 2 &&
+        typeof envelopeData["version"] === "number" && Number.isInteger(envelopeData["version"]) &&
+        envelopeData["version"] >= 1 && Object.hasOwn(envelopeData, "value");
+      const from = enveloped ? envelopeData!["version"] as number : 0;
+      const value = enveloped ? envelopeData!["value"] ?? null : raw;
+      if (!migration || from >= migration.version || value === null) return api2Ok(data(value));
       if (pendingMigration) return pendingMigration;
       const revision = prefsRevision;
       const migrating = (async (): Promise<Api2Result<JsonValue | null>> => {
         const migrated = await migration.migrate(structuredClone(value), from);
         if (revision !== prefsRevision) return prefs.get();
-        ctx.prefs.set({ [prefsEnvelope]: migration.version, value: migrated });
+        ctx.prefs.set(wrapPrefs(migrated, migration.version));
         return api2Ok(data(migrated));
       })();
       pendingMigration = migrating;
@@ -268,7 +272,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
     set: (value) => guarded(() => {
       const migration = options.prefs;
-      ctx.prefs.set(value === null || !migration ? value : { [prefsEnvelope]: migration.version, value: structuredClone(value) });
+      ctx.prefs.set(value === null || !migration ? value : wrapPrefs(structuredClone(value), migration.version));
       prefsRevision += 1;
       return api2Ok(null);
     }),
@@ -340,43 +344,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           phase: snap.phase,
           messagePending: snap.messagePending,
           prompt: snap.prompt,
-          resting: snap.resting,
-          running: (ctx.state?.run?.running ?? 0) > 0,
-          repeating: (ctx.state?.cmdQueue?.[0]?.repeatRemaining ?? 0) > 0,
-          repeatsLeft: ctx.state?.cmdQueue?.[0]?.repeatRemaining ?? 0,
-          unignoring: (ctx.state?.unignoring ?? 0) > 0,
-          messages: readable("messages") ? snap.messages?.log.slice(-100) ?? null : null,
-          storeStatus: readable("stores") && readable("inventory") ? snap.storeStatus : null,
-          activeBlast: readable("map") ? snap.activeBlast : null,
         }));
-      }),
-      look: (grid) => withState((state) => {
-        for (const domain of ["map", "floor", "monsters"]) {
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-        }
-        if (!Number.isInteger(grid.x) || !Number.isInteger(grid.y) || !state.chunk.inBounds(grid)) {
-          return api2Refused("invalid-grid", "the grid is outside the level");
-        }
-        return api2Ok(describeLookGrid(state, grid, 0, true).text);
-      }),
-      simulateLoadout: (change) => withState((state) => {
-        for (const domain of ["player", "inventory"]) {
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-        }
-        const refs = [...(change.wield ?? []), ...(change.wieldAt ?? []).map((entry) => entry.item),
-          ...(change.carry ?? []).map((entry) => entry.item)];
-        for (const ref of refs) {
-          const domain = ref.from === "store" ? "stores" : ref.from === "floor" ? "floor" : "inventory";
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.x && cell.y === ref.y && cell.seen))) {
-            return api2Refused("unobserved-item", "the floor item is not currently seen");
-          }
-          if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) {
-            return api2Refused("unobserved-item", "the store item is not currently seen");
-          }
-        }
-        const simulation = createAgentView(state, undefined, options.viewDeps ?? {}, { has: granted }).simulateLoadout?.(structuredClone(change));
-        return simulation ? api2Ok(data(knownLoadoutSimulation(state, simulation)) as import("@rpgm-tools/neo-angband-mod-sdk").LoadoutSimulation) : api2Unavailable("the game has no loadout calculation");
       }),
       isCurrent: (token) => withState((state) => api2Ok(tokenIsCurrent(state, token))),
     }),
@@ -462,7 +430,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     content: frozen({
-      colors: () => guarded(() => api2Ok(data(colorTableSnapshot().map((_color, index) => ({ index, id: colorPrefId(index), css: colorToCss(index) }))))),
       own: () => guarded(() => api2Ok(data({ ...ctx.data } as Record<string, JsonValue>))),
       asset: (path: string) => guarded(async () => {
         const url = await ctx.assetUrl(path);
@@ -540,7 +507,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
     request: (request: Api2NetRequest) => guarded(async () => {
       const headers: Record<string, string> = {};
       for (const [name, value] of Object.entries(request.headers ?? {})) {
-        headers[name] = typeof value === "string" ? value : `{secret:${value.credential}}`;
+        headers[name] = typeof value === "string" ? value : `${value.prefix ?? ""}{secret:${value.credential}}`;
       }
       const response = await net.request({
         url: request.url,
@@ -561,7 +528,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
       }
       return api2Refused(response.code, response.problem);
     }),
-    credential: (name: string) => frozen({ credential: name }),
+    credential: (name: string, prefix?: string) => frozen({ credential: name, ...(prefix !== undefined ? { prefix } : {}) }),
     credentials: frozen({
       status: (name: string) => guarded(async () => api2Ok(data(await secrets.has(name)))),
       set: (name: string, value: string, hosts: readonly string[]) => guarded(async () => {
