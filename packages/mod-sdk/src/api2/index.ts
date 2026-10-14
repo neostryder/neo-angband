@@ -120,6 +120,7 @@ export type {
   Api2Keys,
   Api2Manage,
   Api2Meta,
+  Api2MessageLog,
   Api2ModDefinition,
   Api2ModSummary,
   Api2Net,

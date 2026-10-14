@@ -111,6 +111,7 @@ export function installModWorkerBootstrap(
         world: method("view.world"),
         character: method("view.character"),
         knowledge: method("view.knowledge"),
+        messages: method("view.messages"),
         player: method("view.player"),
         monsters: method("view.monsters"),
         level: method("view.level"),

@@ -128,6 +128,20 @@ async function observedThroughHost(api: ModApi2): Promise<string> {
 const READS = ["state:*.read"];
 
 describe("the API 2 host's view", () => {
+  it("reads messages since an absolute cursor without consuming them", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grants = capabilities("probe", ["state:messages.read"]);
+    const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: grants, prefs: memoryPrefs() });
+    const api = createApi2Host({ ...ctx, snapshot: () => ({ messages: { cursor: 102,
+      recent: [{ text: "One", count: 1 }, { text: "One", count: 1 }] } }) as never }, { grants });
+    const result = await api.view.messages(101);
+    expect(result).toEqual({ ok: true, value: { cursor: 102, entries: [{ sequence: 102, text: "One", count: 1 }] } });
+    expect(await api.view.messages(101)).toEqual(result);
+    expect(await api.view.messages(102)).toMatchObject({ value: { entries: [] } });
+    expect(await api.view.messages(-1)).toMatchObject({ code: "invalid-cursor" });
+    expect(await host(game, []).view.messages()).toMatchObject({ capability: "state:messages.read" });
+  });
+
   it("copies only the player's chosen item and spell arguments", () => {
     const command = { code: "cast", args: { handle: 4, spell: 2, floor: 0, index: 3, hidden: { name: "secret monster" } },
       phase: "play" as const, token: { epoch: 1, revision: 1 } };

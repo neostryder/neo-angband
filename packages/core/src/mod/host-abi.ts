@@ -1675,6 +1675,8 @@ export interface InputSnapshot {
   readonly messages: Readonly<{
     token: InputToken;
     entries: readonly string[];
+    cursor?: number;
+    recent?: readonly Readonly<{ text: string; count: number; color?: string }>[];
     log: readonly Readonly<{
       text: string;
       count: number;

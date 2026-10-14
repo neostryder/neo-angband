@@ -57,6 +57,7 @@ export const WORKER_CALLS = [
   "view.world",
   "view.character",
   "view.knowledge",
+  "view.messages",
   "view.player",
   "view.monsters",
   "view.level",

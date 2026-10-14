@@ -345,6 +345,15 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     view: frozen({
+      messages: (since = 0) => guarded(() => {
+        if (!readable("messages")) return api2NotGranted("state:messages.read");
+        if (!Number.isSafeInteger(since) || since < 0) return api2Refused("invalid-cursor", "the message cursor must be a nonnegative integer");
+        const messages = ctx.snapshot?.()?.messages;
+        if (messages?.cursor === undefined || !messages.recent) return api2Unavailable("this front end has no message cursor");
+        const entries = messages.recent.map((message, index) => ({ ...message,
+          sequence: messages.cursor! - messages.recent!.length + index + 1 })).filter((message) => message.sequence > since);
+        return api2Ok(data({ cursor: messages.cursor, entries }));
+      }),
       knowledge: (category, id) => guarded(() => {
         if (!readable("knowledge")) return api2NotGranted("state:knowledge.read");
         const knowledge = ctx.knowledge;

@@ -10353,6 +10353,8 @@ const modSnapshotSource: InputSnapshotSource = {
               : "play",
   messagePending: () => morePending,
   messages: () => msglog.all(),
+  messageCursor: () => msglog.rawLength(),
+  messagesSince: (since) => msglog.rawSince(since),
   storeStatus: () => {
     const store = storeModalActive ? storeAtPlayer() : null;
     if (!store) return null;

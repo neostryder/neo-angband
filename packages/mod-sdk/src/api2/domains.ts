@@ -172,6 +172,7 @@ export interface Api2InputState {
 export interface Api2View {
   character(): Api2Call<Api2Character>;
   knowledge(category?: string, id?: string): Api2Call<Api2Knowledge>;
+  messages(since?: number): Api2Call<Api2MessageLog>;
   readonly inspect: Api2Inspect;
   catalogue(): Api2Call<{
     readonly token: KnownToken;
@@ -199,6 +200,11 @@ export interface Api2Command {
   readonly code: string;
   readonly dir?: number;
   readonly args?: Readonly<Record<string, JsonValue>>;
+}
+
+export interface Api2MessageLog {
+  readonly cursor: number;
+  readonly entries: readonly { readonly sequence: number; readonly text: string; readonly count: number; readonly color?: string }[];
 }
 
 /** Something the player could do at an input wait. */
