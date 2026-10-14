@@ -26,6 +26,17 @@ export const CORE_DRAWN_IDS: ReadonlySet<string> = new Set([
   "core:mod-unreviewed-confirm",
   "core:mod-session-load",
   "core:mod-session-consent",
+  "core:mods-third-party-consent",
+  "core:mods-third-party-disable",
+  "core:mod-browse-actions",
+  "core:mod-preinstall-actions",
+  "core:mod-preinstall-summary",
+  "core:mod-community-update",
+  "core:mod-update",
+  "core:recommended-mod-actions",
+  "core:mod-import",
+  "core:mod-enable-anyway",
+  "core:load-delve-preview",
 ]);
 
 /** Whether a menu or screen id is one only Core may draw. */

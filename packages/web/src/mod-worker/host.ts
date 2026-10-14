@@ -26,11 +26,8 @@
 
 import {
   API2_HOOK_NAMES,
-  CAPABILITY_VOCABULARY,
-  CapabilitySet,
   api2PolicyEffects,
   api2Refused,
-  api2NotGranted,
   api2Unavailable,
   apiRangeVerdict,
   checkApi2Policies,
@@ -45,7 +42,6 @@ import {
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modHealth } from "../mod-health";
 import { cloneWorkerJson, payloadBytes, toWorkerJson } from "./clone";
-import { stopApi2Host } from "../mod-api2-host";
 import {
   MOD_WORKER_PROTOCOL_VERSION,
   WORKER_CALLS,
@@ -79,7 +75,6 @@ export interface ModWorkerLike {
 
 /** What the broker adds when it asks the caller for the mod's API. */
 export interface WorkerApiOptions {
-  readonly install?: { readonly version: number; migrate(value: JsonValue, fromVersion: number): Promise<JsonValue> };
   /** The hooks the mod declared (notifications) and the ones its policies fill. */
   readonly activeHooks: readonly Api2HookName[];
   /** The mod's preference migration, answered by the Worker. Absent when it declares none. */
@@ -171,13 +166,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   const heartbeatMs = deps.timing?.heartbeatMs ?? HEARTBEAT_MS;
   const stallMs = deps.timing?.stallMs ?? STALL_MS;
   const maxCalls = deps.timing?.maxCallsPerSecond ?? MAX_CALLS_PER_SECOND;
-  const grants = deps.grants.filter((g) => g !== "*" && g !== "engine:access");
-  const capabilities = CapabilitySet.fromManifest({
-    id: deps.id, name: deps.id, version: "0.0.0", shape: "plugin", capabilities: grants,
-  });
-  const implied = CAPABILITY_VOCABULARY.filter((entry) => entry.args.length === 0 && capabilities.has(entry.capability))
-    .map((entry) => entry.capability);
-  const workerGrants = [...new Set([...grants, ...implied])];
+  const grants = deps.grants.filter((g) => g !== "*");
   const now = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
   let state: Lifecycle = "starting";
@@ -191,7 +180,6 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   let pinging = false;
   const asks = new Map<number, PendingAsk>();
   const subscriptions = new Map<number, { readonly id: string }>();
-  const keySubscriptions = new Map<number, { readonly id: string }>();
   const callTimes: number[] = [];
 
   let resolveReady: (value: WorkerReady) => void = () => undefined;
@@ -344,7 +332,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       const why = checkApi2Policies(s.policies);
       if (why) problem(`its policies are not valid, so none is installed: ${why}`);
       else ({ hooks, registrations } = api2PolicyEffects(s.policies as unknown as Api2Policies,
-        (capability) => capabilities.has(capability)));
+        (capability) => grants.includes(capability) || grants.includes("registry:*")));
     }
     policyHooks = (Object.keys(hooks) as Api2HookName[]).filter((h) => API2_HOOK_NAMES.includes(h));
     const notify = s.notify.filter((h) => NOTIFY_HOOKS.includes(h));
@@ -352,10 +340,6 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     const prefsVersion = s.prefsVersion;
     try {
       api = deps.api({
-        ...(typeof s.installVersion === "number" && Number.isInteger(s.installVersion) && s.installVersion >= 1 ? {
-          install: { version: s.installVersion, migrate: async (value: JsonValue, fromVersion: number): Promise<JsonValue> =>
-            (await ask({ kind: "install.migrate", value: toWorkerJson(value), fromVersion }, "its install migration")) as JsonValue },
-        } : {}),
         activeHooks: [...notify, ...policyHooks] as Api2HookName[],
         ...(prefsVersion !== null && Number.isInteger(prefsVersion) && prefsVersion >= 1
           ? {
@@ -429,22 +413,6 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
 
   /** Serve one call. Every path answers with an Api2Result or an error. */
   const serve = async (host: ModApi2, method: string, args: readonly WorkerJson[]): Promise<Api2Result<unknown>> => {
-    if (method === "ui.onKey") {
-      const listenerId = args[0] as number;
-      if (!Number.isSafeInteger(listenerId) || listenerId <= 0 || keySubscriptions.has(listenerId)) return api2Refused("bad-call", "ui.onKey takes a fresh listener id");
-      const result = await host.ui.onKey((payload) => {
-        if (state === "running") post({ type: "event", ...envelope(), listenerId, payload: toWorkerJson(payload) });
-      });
-      if (!result.ok) return result;
-      keySubscriptions.set(listenerId, result.value);
-      return { ok: true, value: { id: String(listenerId) } };
-    }
-    if (method === "ui.offKey") {
-      const id = Number((args[0] as { id?: unknown } | null)?.id);
-      const subscription = keySubscriptions.get(id);
-      keySubscriptions.delete(id);
-      return subscription ? host.ui.offKey(subscription) : { ok: true, value: null };
-    }
     if (method === "events.on") {
       const [name, listenerId] = args;
       if (typeof name !== "string" || !Number.isSafeInteger(listenerId) || (listenerId as number) <= 0 || subscriptions.has(listenerId as number)) {
@@ -473,13 +441,11 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       return host.events.off(subscription);
     }
     if (method === "ui.mount") {
-      const [panel, callbackId, dismissId] = args;
+      const [panel, callbackId] = args;
       const onAction = Number.isSafeInteger(callbackId) && (callbackId as number) > 0
         ? (action: string): void => post({ type: "ui.action", ...envelope(), callbackId: callbackId as number, action: String(action) })
         : undefined;
-      const onDismiss = Number.isSafeInteger(dismissId) && (dismissId as number) > 0
-        ? (): void => post({ type: "ui.action", ...envelope(), callbackId: dismissId as number, action: "" }) : undefined;
-      return host.ui.mount(panel as never, onAction, onDismiss);
+      return host.ui.mount(panel as never, onAction);
     }
     if (method === "content.asset" && deps.readAsset) {
       const path = args[0];
@@ -519,10 +485,6 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     }
     if (state !== "running" || api === null) {
       respond(new Error("the mod's API is not open yet; call it from start()"));
-      return;
-    }
-    if (message.method.startsWith("engine.")) {
-      respond(api2NotGranted("engine:access"));
       return;
     }
     if (!(WORKER_CALLS as readonly string[]).includes(message.method)) {
@@ -600,9 +562,6 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     const host = api;
     for (const subscription of subscriptions.values()) void host?.events.off(subscription);
     subscriptions.clear();
-    for (const subscription of keySubscriptions.values()) void host?.ui.offKey(subscription);
-    keySubscriptions.clear();
-    if (host) stopApi2Host(host);
     rejectReady(new Error("the mod's Worker stopped before it was ready"));
     deps.onTeardown?.();
   };
@@ -630,7 +589,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       tier: "public",
       flags: { ...deps.flags },
       newCharacter: deps.newCharacter,
-      granted: workerGrants,
+      granted: grants,
       net: deps.net,
       hooks: [...API2_HOOK_NAMES],
     },

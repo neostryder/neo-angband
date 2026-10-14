@@ -107,7 +107,7 @@ const agreement: Record<string, true> = {
   actorBack: true satisfies Fits<Sdk.Api2Actor, PerceivedActor>,
 
   /* The truth namespace's monster is the trusted MonsterView. */
-  trueMonster: true satisfies Both<MonsterView & { readonly perceived: boolean }, Sdk.Api2TrueMonster>,
+  trueMonster: true satisfies Both<MonsterView, Sdk.Api2TrueMonster>,
   trueItem: true satisfies Both<ItemView, Sdk.Api2TrueItem>,
 };
 

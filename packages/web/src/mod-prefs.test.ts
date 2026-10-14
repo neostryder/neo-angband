@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { modInstallPrefs, modPrefs, modPrefsKey, setPrefsStorage, type PrefsStorage } from "./mod-prefs";
+import { modPrefs, modPrefsKey, type PrefsStorage } from "./mod-prefs";
 
 /** An in-memory PrefsStorage, so a test never touches the real localStorage. */
 function fakeStorage(seed: Record<string, string> = {}): PrefsStorage & {
@@ -24,22 +24,6 @@ function fakeStorage(seed: Record<string, string> = {}): PrefsStorage & {
 }
 
 describe("modPrefs", () => {
-  it("keeps install storage separate from profiles and other mods", () => {
-    const install = fakeStorage();
-    const first = fakeStorage();
-    const second = fakeStorage();
-    try {
-      setPrefsStorage(first);
-      modPrefs("borg").set("first");
-      modInstallPrefs("borg", install).set(["profile-one"]);
-      setPrefsStorage(second);
-      modPrefs("borg").set("second");
-      expect(modInstallPrefs("borg", install).get()).toEqual(["profile-one"]);
-      expect(modInstallPrefs("squire", install).get()).toBeNull();
-      expect(modPrefs("borg").get()).toBe("second");
-      expect(modPrefs("borg", first).get()).toBe("first");
-    } finally { setPrefsStorage(null); }
-  });
   it("round-trips a value", () => {
     const p = modPrefs("qol", fakeStorage());
     expect(p.get()).toBeNull();

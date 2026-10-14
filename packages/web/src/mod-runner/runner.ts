@@ -27,8 +27,6 @@ import type { RunnableDevEnvironment } from "vite";
 import {
   AgentCapabilityError,
   createModRegistryHost,
-  createAgentActions,
-  createAgentView,
   decodeSavedGame,
   effectInfoRegistry,
   encodeSavedGame,
@@ -51,7 +49,7 @@ import {
   TV,
   VocabularyRegistry,
 } from "@rpgm-tools/neo-angband-core";
-import type { AgentController, GamePack, PlayerCommand, StartedGame } from "@rpgm-tools/neo-angband-core";
+import type { GamePack, PlayerCommand, StartedGame } from "@rpgm-tools/neo-angband-core";
 import {
   CapabilityError,
   CapabilitySet,
@@ -76,11 +74,11 @@ import { reportEventFault } from "../first-level";
 import { MenuRegistry } from "../menu-registry";
 import { loadModCode, resetModCode, setModCode } from "../mod-code";
 import type { LoadedModWorker, ModCodeReport } from "../mod-code";
-import { modOwnFiles, modPluginContext, setModCharacterStoreControl, setModComposedRecords, setModDriverControl, setModRegistries } from "../mod-context";
+import { modOwnFiles, modPluginContext, setModCharacterStoreControl, setModComposedRecords, setModRegistries } from "../mod-context";
 import { modHealth, turnBudgetMs } from "../mod-health";
 import type { ModFault, ModOverBudget } from "../mod-health";
 import { activeModHooks, resolveModRuleFlagsByMod } from "../mod-hooks";
-import { setInstallPrefsStorage, setPrefsStorage } from "../mod-prefs";
+import { setPrefsStorage } from "../mod-prefs";
 import { faultMessage, reportModFault, resetModFaults } from "../mod-problems";
 import { resetSharedValues, retireSharedValues } from "../mod-shared-values";
 import { defaultModStore, resolveModRules, setModStorage } from "../mod-store";
@@ -206,13 +204,9 @@ interface Collected {
 
 /** Back to a fresh page: every latch, store and registry the boot path reads. */
 function resetHost(): void {
-  setModDriverControl(undefined);
-  setModRegistries(undefined);
-  setModComposedRecords(undefined);
   setModCharacterStoreControl(undefined);
   setModStorage(memoryStorage());
   setPrefsStorage(memoryStorage());
-  setInstallPrefsStorage(memoryStorage());
   resetDiskPacks();
   resetModCode();
   resetComposition();
@@ -267,7 +261,6 @@ function playSession(
   };
 
   const plugins = code?.plugins ?? [];
-  let controller: { id: string; decide: AgentController; capabilities: CapabilitySet } | null = null;
 
   /** The page's register() loop over a started or loaded game, then the event probe. */
   const attach = (game: StartedGame, newCharacter: boolean): void => {
@@ -278,11 +271,6 @@ function playSession(
     setModRegistries(game.booted.registries);
     setModComposedRecords(composedObjects(composedRecords()));
     setCurrent(game);
-    setModDriverControl({
-      current: () => controller ? { kind: "controller", owner: controller.id } : { kind: "player" },
-      setStatus: () => undefined,
-      release: (id) => { if (controller?.id === id) controller = null; },
-    });
     setModCharacterStoreControl({
       getBag: (id) => game.mods[id],
       setBag: (id, bag) => {
@@ -304,7 +292,7 @@ function playSession(
     const flags = resolveModRuleFlagsByMod();
     for (const loaded of plugins) {
       const register = loaded.plugin.register;
-      if (!register && !loaded.plugin.controller) continue;
+      if (!register) continue;
       const capabilities = CapabilitySet.fromManifest(loaded.manifest);
       try {
         const host = createModRegistryHost(
@@ -330,26 +318,16 @@ function playSession(
           },
           capabilities,
         );
-        const context = modPluginContext(loaded.id, flags.get(loaded.id) ?? {}, state, modOwnFiles(loaded.data), {
-          newCharacter, capabilities,
-          snapshotSource: {
-            state: () => state, viewDeps: () => ({}), phase: () => "play", messagePending: () => false,
-            prompt: () => null, frame: () => null, knownLevel: () => null,
-            driver: () => controller ? { kind: "controller", owner: controller.id } : { kind: "player" },
-          },
-        });
-        if (register) modHealth().run(loaded.id, "register()", () =>
+        modHealth().run(loaded.id, "register()", () =>
           register.call(
             loaded.plugin,
             host,
-            context,
+            modPluginContext(loaded.id, flags.get(loaded.id) ?? {}, state, modOwnFiles(loaded.data), {
+              newCharacter,
+              capabilities,
+            }),
           ),
         );
-        const offered = loaded.plugin.controller?.(context);
-        if (offered) {
-          if (controller) throw new Error("only one controller can hold the keyboard");
-          controller = { id: loaded.id, decide: typeof offered === "function" ? offered : offered.controller, capabilities };
-        }
       } catch (error) {
         /* The fault is already counted; the page drops the mod's shared values too. */
         reportModFault(loaded.id, `register() failed: ${faultMessage(error)}`);
@@ -373,21 +351,13 @@ function playSession(
   };
 
   const play = (game: StartedGame, commands: readonly PlayerCommand[]): void => {
-    const next = queue(commands);
-    const view = createAgentView(game.state);
-    const act = createAgentActions(game.state);
-    game.state.nextCommand = () => {
-      const scripted = next();
-      if (!scripted) return null;
-      return controller ? modHealth().run(controller.id, "controller", () => controller!.decide(view, act)) ?? scripted : scripted;
-    };
+    game.state.nextCommand = queue(commands);
     runGameLoop(game.state, game.registry);
     if (game.state.isDead) throw new Error("the character died during the scripted session");
   };
 
   const teardown = (): string[] => {
     const result = teardownModPlugins({ plugins, controller: null, retireSharedValues });
-    controller = null;
     return [...result.failed];
   };
 
@@ -455,7 +425,6 @@ function playSession(
       if (failed.length > 0) throw new Error(`uninstall() failed for: ${failed.join(", ")}`);
     });
     setModCharacterStoreControl(undefined);
-    setModDriverControl(undefined);
     setCurrent(null);
   }
   return { booted, phases, digest, failures, events };

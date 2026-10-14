@@ -17,8 +17,8 @@ describe("public mod list", () => {
     expect(publicModList([], manifests, new Set(), flags)).toEqual([]);
     const first = publicModList(["interface", "qol", "disabled"], manifests, new Set(["interface", "qol"]), flags);
     expect(first).toEqual([
-      { id: "interface", name: "interface", version: "1.0.0" },
-      { id: "qol", name: "qol", version: "1.0.0", flags: { "qol.autoDig": true } },
+      { id: "interface", version: "1.0.0" },
+      { id: "qol", version: "1.0.0", flags: { "qol.autoDig": true } },
     ]);
     expect(JSON.stringify(first)).not.toContain("private");
     expect(Object.isFrozen(first)).toBe(true);
@@ -26,7 +26,7 @@ describe("public mod list", () => {
     const changed = publicModList(["qol"], manifests, new Set(["qol"]), new Map([["qol", { "qol.autoDig": false }]]));
     expect(changed[0]?.flags).toEqual({ "qol.autoDig": false });
     const afterReload = publicModList(["interface"], manifests, new Set(["interface"]), flags);
-    expect(afterReload).toEqual([{ id: "interface", name: "interface", version: "1.0.0" }]);
+    expect(afterReload).toEqual([{ id: "interface", version: "1.0.0" }]);
     expect(first).toHaveLength(2);
   });
 });

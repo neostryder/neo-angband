@@ -160,7 +160,7 @@ describe("the switch census", () => {
     expect(manifest.switches.every((r) => r.verdict.length > 40)).toBe(true);
   });
 
-  it("classifies every dispatch into a CLOSED vocabulary", () => {
+  it("classifies all 50 into a CLOSED vocabulary", () => {
     /* The class distribution is the actual finding, so it is measured rather
      * than written in prose: of 50 dispatch points, ZERO are content dispatch a
      * mod would want. That is the finish line MOD_REACH gap list set - every
@@ -202,7 +202,7 @@ describe("the switch census", () => {
        * serves calls through the API 2 host: its request switch and its
        * message-validation chain left, and an allowlist of method names
        * replaced both. */
-      INTERNAL: 6,
+      INTERNAL: 5,
       /* 3 until the i18n sweep (neostryder/neo-angband#95) added shop.ts's
        * commentWelcome, the greeting-tier-to-translated-line switch that keeps
        * COMMENT_WELCOME's English array intact for its RNG-parity-relevant
@@ -381,7 +381,7 @@ describe("the switch census", () => {
      * Save a Delve / Load a Delve rows moved it to 11, #158's sync-folder
      * row moved it to 12, and the Mod performance row to 13 - still the same
      * row throughout, and the arm count is what moved. */
-    expect(keys.has("IF_CHAIN|packages/web/src/mods.ts|13")).toBe(true);
+    expect(keys.has("IF_CHAIN|packages/web/src/mod-manager/classic-manager.ts|13")).toBe(true);
   });
 
   it("has no CANDIDATE left, which is what the alpha gate asked for", () => {

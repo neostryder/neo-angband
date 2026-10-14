@@ -50,8 +50,6 @@ export interface InputSnapshotSource {
   phase(): InteractionPhase;
   messagePending(): boolean;
   messages?(): readonly Readonly<{ text: string; count: number; color?: string }>[];
-  messageCursor?(): number;
-  messagesSince?(since: number): readonly Readonly<{ text: string; count: number; color?: string }>[];
   storeStatus?(): Omit<NonNullable<InputSnapshot["storeStatus"]>, "token"> | null;
   characterKey?(): string | null;
   characterSheet?(): import("./charsheet").CharacterSheetData | null;
@@ -98,12 +96,6 @@ export function buildInputSnapshot(
           token: core.token,
           entries: Object.freeze(log.map((m) => m.text)),
           log: Object.freeze(log),
-          ...(source.messageCursor && source.messagesSince ? (() => {
-            const cursor = source.messageCursor!();
-            const recent = source.messagesSince!(Math.max(0, cursor - 100))
-              .map((message) => Object.freeze({ ...message }));
-            return { cursor, recent: Object.freeze(recent) };
-          })() : {}),
         });
       })() : null,
     storeStatus: grants(caps, "state:stores.read") && grants(caps, "state:inventory.read")

@@ -265,21 +265,6 @@ describe("leaving the mod manager untouched never offers to reload", () => {
 });
 
 describe("title visits apply changes before returning", () => {
-  it("enables a mod without a conflict prompt when the other version is outside the range", async () => {
-    const store = new ModStore(fakeStorage());
-    store.setEnabled(["runes"]);
-    const frost = { ...manifest("frost"), compat: [{ with: "runes", claim: "conflicts" as const, range: "<1.0.0", because: "Old releases conflict." }] };
-    const { win, done, requestReload } = open([frost, manifest("runes")], {}, store, { fromTitle: true });
-    await flush();
-    press(win, "ArrowDown");
-    press(win, " ");
-    await flush();
-    expect(store.isEnabled("frost")).toBe(true);
-    press(win, "Escape");
-    expect((await raceTimeout(done)).timedOut).toBe(false);
-    expect(requestReload).toHaveBeenCalledTimes(1);
-  });
-
   const title = { fromTitle: true };
 
   it("returns without reloading when nothing changed", async () => {
