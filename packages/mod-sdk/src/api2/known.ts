@@ -83,6 +83,7 @@ export interface KnownPlayer {
   readonly depth: number;
   readonly depthText: string;
   readonly fullName: string;
+  readonly autoplayed: boolean;
   readonly key: string | null;
   readonly extraMoves: number;
   readonly maxDepth: number;

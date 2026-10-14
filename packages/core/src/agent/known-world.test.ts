@@ -12,6 +12,7 @@ import { FEAT, MFLAG, OF, RF, RSF, SQUARE, TMD, TRF, TV } from "../generated/ind
 import { OBJ_MOD } from "../generated/object-modifiers.js";
 import { FlagSet } from "../bitflag.js";
 import { GameEvents } from "../events.js";
+import { NOSCORE } from "../game/wizard.js";
 import type { CombatOutcomeEventData } from "../events.js";
 import type { GameState } from "../game/context.js";
 import { deleteMonster, monsterSwap } from "../game/context.js";
@@ -198,6 +199,15 @@ function kindNamed(game: StartedGame, tval: number, name: string): ObjectKind {
 }
 
 describe("KnownWorld paired worlds", () => {
+  it("reports the autoplayer mark independently of the other score marks", () => {
+    const [a, b] = pair();
+    b.state.actor.player.noscore = NOSCORE.DEBUG;
+    expect(observed(b.state)).toBe(observed(a.state));
+    b.state.actor.player.noscore |= NOSCORE.BORG;
+    expect(buildKnownWorld(b.state).player!.autoplayed).toBe(true);
+    expect(buildKnownWorld(a.state).player!.autoplayed).toBe(false);
+  });
+
   it("reads extra moves from known equipment and reports the full name", () => {
     const [a, b] = pair();
     b.state.playerState!.numMoves += 5;

@@ -49,6 +49,7 @@ import type { GameState } from "../game/context.js";
 import { lookMonDesc, targetAble } from "../game/target.js";
 import { gearGet } from "../game/gear.js";
 import { fmtDepth } from "../game/display.js";
+import { NOSCORE } from "../game/wizard.js";
 import { numberCharging } from "../game/obj-cmd.js";
 import { knownDescOf } from "../game/describe.js";
 import { MON_RACE_FLAG_ENTRIES, MON_SPELL_ENTRIES, MON_TMD, OF, PLAYER_TIMED_ENTRIES, RF, TMD } from "../generated/index.js";
@@ -178,6 +179,7 @@ export interface KnownPlayerStatus {
 export type KnownPlayer = Omit<PlayerView, "status" | "recall" | "descent"> & {
   readonly depthText: string;
   readonly fullName: string;
+  readonly autoplayed: boolean;
   readonly key: string | null;
   readonly extraMoves: number;
   readonly status: KnownPlayerStatus;
@@ -520,6 +522,7 @@ function knownPlayer(state: GameState, player: PlayerView): KnownPlayer {
     ...rest,
     depthText: fmtDepth(player.depth),
     fullName: state.actor.player.fullName,
+    autoplayed: (state.actor.player.noscore & NOSCORE.BORG) !== 0,
     key: null,
     extraMoves: state.knownPlayerState?.numMoves ?? 0,
     status: {
