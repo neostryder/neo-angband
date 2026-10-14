@@ -98,6 +98,7 @@ export type {
   Api2TileFill,
   Api2TileFiller,
   Api2TileRule,
+  Api2WalkBlockedByDiggablePolicy,
 } from "./policies.js";
 export { defineApi2Mod } from "./domains.js";
 export type {

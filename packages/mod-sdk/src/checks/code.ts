@@ -23,6 +23,7 @@
 import type { CapabilitySet } from "../capabilities.js";
 import { isLocalNetworkHost, networkGrantCovers, networkRequestCapability } from "../capabilities.js";
 import { apiRangeVerdict, MOD_API2_VERSION } from "../api2/version.js";
+import { API2_POLICY_KINDS, checkApi2Policies } from "../api2/policies.js";
 import { IN_PROCESS_ENTRY, MOD_API_1_VERSION, WORKER_PREVIEW_API } from "../manifest-v2.js";
 import type { Property } from "acorn";
 import type { ModFinding, ModFindingEvidence } from "../mod-findings.js";
@@ -33,6 +34,7 @@ import {
   FACET_METHODS,
   NET_REQUEST,
   SECRET_BIND,
+  anyOf,
   gatedMember,
   memberKey,
   omittedWhenUngranted,
@@ -1339,6 +1341,22 @@ function staticKey(key: AnyNode): string {
   return "*";
 }
 
+function policyLiteral(node: AnyNode): unknown {
+  if (node.type === "Literal" && !(node.value instanceof RegExp) && typeof node.value !== "bigint") return node.value;
+  if (node.type === "ArrayExpression") return node.elements.map((element) => element ? policyLiteral(element) : undefined);
+  if (node.type === "ObjectExpression") {
+    const value: Record<string, unknown> = {};
+    for (const property of node.properties) {
+      if (property.type !== "Property" || property.computed || property.kind !== "init" || property.method) return undefined;
+      const child = policyLiteral(property.value);
+      if (child === undefined) return undefined;
+      Object.defineProperty(value, staticKey(property.key), { value: child, enumerable: true, configurable: true });
+    }
+    return value;
+  }
+  return undefined;
+}
+
 function moduleExportName(node: AnyNode): string {
   return node.type === "Identifier" ? node.name : node.type === "Literal" ? String(node.value) : "*";
 }
@@ -1606,6 +1624,29 @@ export function checkCode(subject: CheckSubject, options: CodeCheckOptions): Mod
       const fields = analysis.fieldsOf(v);
       const isApi2 = fields.has("start") || typeof literal === "string";
       shape.mode = isApi2 ? "api2" : "api1";
+      if (isApi2) for (const factory of fields.get("policies") ?? EMPTY) {
+        if (factory.k !== "fn") continue;
+        const checkReturn = (returned: AnyNode): void => {
+          if (returned.type !== "ObjectExpression") return;
+          const data = policyLiteral(returned);
+          const problem = data === undefined ? null : checkApi2Policies(data);
+          if (problem) out.push(finding("plugin-shape", `${entry} declares policies the host refuses: ${problem}.`, { evidence: [where(mod, returned)] }));
+          for (const property of returned.properties) {
+            if (property.type !== "Property" || property.computed) continue;
+            const kind = API2_POLICY_KINDS.find((candidate) => candidate.name === staticKey(property.key));
+            if (!kind || caps === null) continue;
+            const need = anyOf(kind.capability);
+            if (!need.covered(caps)) analysis.reaches.push({ key: `policy:${kind.name}`, need, what: `the ${kind.name} policy`, evidence: where(mod, property) });
+          }
+        };
+        const visit = (part: AnyNode): void => {
+          if (part.type === "ReturnStatement" && part.argument) checkReturn(part.argument);
+          if (part.type === "FunctionExpression" || part.type === "ArrowFunctionExpression" || part.type === "FunctionDeclaration") return;
+          for (const child of childNodes(part)) visit(child);
+        };
+        if (factory.node.body.type === "BlockStatement") visit(factory.node.body);
+        else checkReturn(factory.node.body);
+      }
       if (apiProp === undefined) {
         if (runtime === "in-process" && !isApi2) {
           out.push(finding("api-mismatch", `${entry} does not declare an integer api in its default export, so the game will not load it.`, {

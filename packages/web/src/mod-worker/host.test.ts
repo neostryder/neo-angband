@@ -8,8 +8,17 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MFLAG,
+  composeModHooks,
+  loc,
+  movementTunnelTest,
   monsterIsObvious,
+  SKILL,
+  squareForget,
+  squareMemorize,
   startGame,
+  tunnelAux,
+  walkAction,
+  type CaveCmdDeps,
   type GamePack,
   type GameState,
   type Monster,
@@ -18,6 +27,7 @@ import {
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
 import { API2_POLICY_KINDS, CapabilitySet, type Api2ModDefinition, type Api2Policies, type Api2PolicyRegistrations, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
+import { api2Plugin } from "../mod-api2-shim";
 import { createApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
 import { ModHealthMonitor, type ModSwitchOff } from "../mod-health";
@@ -174,8 +184,9 @@ function wire(definition: Api2ModDefinition, deps: Partial<ModWorkerHostDeps> = 
     api: hostApi(),
     health,
     onProblem: (message) => problems.push(message),
-    onHooks: (policies, notify) =>
-      settleWorkerHooks("probe", { policies, notify, send: (hook, args) => session.notify(hook, args) }),
+    onHooks: (policies, notify, registrations) =>
+      settleWorkerHooks("probe", { policies, notify, registrations, send: (hook, args) => session.notify(hook, args) }),
+    onTeardown: () => settleWorkerHooks("probe", null),
     ...deps,
   });
   sessions.push(session);
@@ -451,6 +462,7 @@ describe("asking a Worker mod", () => {
 
 describe("a Worker mod's hooks", () => {
   const tables: Api2Policies = {
+    walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
     messageText: [{ find: "a", replace: "b" }], screenText: [{ find: "a", replace: "b" }],
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],
     effectIntro: [{ find: "a", replace: "b" }], historyAdd: [{ find: "a", replace: "b" }],
@@ -535,6 +547,97 @@ describe("a Worker mod's hooks", () => {
     await wired.session.ready;
     workerModHooks("probe")?.optionsChanged?.({ changed: ["a"] } as never);
     await vi.waitFor(() => expect(seen).toEqual([{ changed: ["a"] }]));
+  });
+});
+
+describe("a host-owned walk declaration", () => {
+  const policies: Api2Policies = {
+    walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
+  };
+
+  function wallState(skill: number, terrain: string, known = true): GameState {
+    const { state } = startGame(pack, { seed: SEED, depth: DEPTH });
+    state.actor.grid = loc(15, 10);
+    state.chunk.setFeat(state.actor.grid, state.chunk.features.byCodeName("FLOOR").fidx);
+    state.chunk.setFeat(loc(16, 10), state.chunk.features.byCodeName(terrain).fidx);
+    if (known) squareMemorize(state, loc(16, 10));
+    else squareForget(state, loc(16, 10));
+    state.bestDiggerDigging = () => skill;
+    (state.actor.combat.skills as number[])[SKILL.DIGGING] = skill;
+    return state;
+  }
+
+  it.each([0, 200])("matches the live hook for a failed or successful attempt at digging skill %s", async (skill) => {
+    const workerState = wallState(skill, "GRANITE");
+    const pluginState = wallState(skill, "GRANITE");
+    const liveState = wallState(skill, "GRANITE");
+    const diggingSkill = skill === 0 ? 41 : 2000;
+    for (const state of [workerState, pluginState, liveState]) state.bestDiggerDigging = () => diggingSkill;
+    if (skill === 0) for (const state of [workerState, pluginState, liveState]) vi.spyOn(state.rng, "randint0").mockReturnValue(1599);
+    const pending = workerModHooks("probe");
+    const wired = wire({ api: API, policies: (context) => {
+      expect(context.engine).toBeUndefined();
+      return policies;
+    } }, { grants: ["registry:command"] });
+    await wired.session.ready;
+    workerState.modHooks = pending!;
+    const grants = CapabilitySet.fromManifest({ id: "dig", name: "Dig", version: "1.0.0", shape: "plugin", capabilities: ["registry:command"] });
+    const plugin = api2Plugin({ api: API, policies: () => policies }, () => ({ grants }));
+    pluginState.modHooks = plugin.hooks!(modPluginContext("dig", {}, undefined, {}, { capabilities: grants }))!;
+    liveState.modHooks = { walkBlockedByDiggable: (state, grid, deps) => {
+      if (!movementTunnelTest(state, grid)) return null;
+      tunnelAux(state, grid, deps as CaveCmdDeps);
+      return state.z.moveEnergy;
+    } };
+    for (const state of [workerState, pluginState, liveState]) {
+      expect(walkAction(state, { code: "walk", dir: 6 })).toBe(state.z.moveEnergy);
+      expect(state.actor.grid).toEqual(loc(15, 10));
+      expect(state.chunk.isPassable(loc(16, 10))).toBe(skill !== 0);
+    }
+    expect(workerState.rng.getState()).toEqual(liveState.rng.getState());
+    expect(pluginState.rng.getState()).toEqual(liveState.rng.getState());
+    if (skill === 0) expect(workerState.rng.randint0).toHaveBeenCalledExactlyOnceWith(1600);
+  });
+
+  it.each([["RUBBLE", 200, false], ["PERM", 200, true], ["GRANITE", 20, true]] as const)("declines %s at skill %s with known=%s without a draw", async (terrain, skill, known) => {
+    const state = wallState(skill, terrain, known);
+    const wired = wire({ api: API, policies: () => policies }, { grants: ["registry:command"] });
+    await wired.session.ready;
+    state.modHooks = workerModHooks("probe")!;
+    const before = state.rng.getState();
+    expect(walkAction(state, { code: "walk", dir: 6 })).toBe(0);
+    expect(state.rng.getState()).toEqual(before);
+    expect(state.actor.grid).toEqual(loc(15, 10));
+  });
+
+  it("uses load order and releases both pending and settled contributions on stop", async () => {
+    const state = wallState(2000, "GRANITE");
+    const pending = workerModHooks("probe");
+    const wired = wire({ api: API, policies: () => policies }, { grants: ["registry:command"] });
+    await wired.session.ready;
+    const settled = workerModHooks("probe");
+    const earlier = { walkBlockedByDiggable: () => 37 };
+    const before = state.rng.getState();
+    state.modHooks = composeModHooks([settled!, earlier])!;
+    expect(walkAction(state, { code: "walk", dir: 6 })).toBe(37);
+    expect(state.rng.getState()).toEqual(before);
+    wired.session.teardown();
+    for (const hooks of [pending, settled]) {
+      state.modHooks = composeModHooks([earlier, hooks!])!;
+      expect(walkAction(state, { code: "walk", dir: 6 })).toBe(37);
+      expect(state.rng.getState()).toEqual(before);
+    }
+    const grants = CapabilitySet.fromManifest({ id: "dig", name: "Dig", version: "1.0.0", shape: "plugin", capabilities: ["registry:command"] });
+    const plugin = api2Plugin({ api: API, policies: () => policies }, () => ({ grants }));
+    const hooks = plugin.hooks!(modPluginContext("dig", {}, undefined, {}, { capabilities: grants }));
+    state.modHooks = composeModHooks([earlier, hooks!])!;
+    expect(walkAction(state, { code: "walk", dir: 6 })).toBe(state.z.moveEnergy);
+    state.chunk.setFeat(loc(16, 10), state.chunk.features.byCodeName("GRANITE").fidx);
+    squareMemorize(state, loc(16, 10));
+    plugin.uninstall!();
+    const after = state.rng.getState();
+    expect(walkAction(state, { code: "walk", dir: 6 })).toBe(37);
+    expect(state.rng.getState()).toEqual(after);
   });
 });
 

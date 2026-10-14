@@ -16017,7 +16017,7 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
         onLog: (level, message) => log[level](`mod:${loaded.id}`, message),
         onProblem: (message) => reportModFault(loaded.id, message),
         onHooks: (policies, notify, registrations) => {
-          settleWorkerHooks(loaded.id, { policies, notify, send: (hook, args) => started.notify(hook, args) });
+          settleWorkerHooks(loaded.id, { policies, notify, registrations, send: (hook, args) => started.notify(hook, args) });
           workerRegistrations.set(loaded.id, registrations);
         },
         onTeardown: () => {

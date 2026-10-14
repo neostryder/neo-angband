@@ -16,13 +16,14 @@
  */
 
 import type { ModHooks } from "@rpgm-tools/neo-angband-core";
-import type { Api2Hooks } from "@rpgm-tools/neo-angband-mod-sdk";
-import { api2ToModHooks } from "../mod-api2-shim";
+import type { Api2Hooks, Api2PolicyRegistrations } from "@rpgm-tools/neo-angband-mod-sdk";
+import { api2PolicyModHooks, api2ToModHooks } from "../mod-api2-shim";
 
 /** What a settled Worker mod contributes. */
 export interface SettledWorkerHooks {
   /** Its policy tables as hooks. */
   readonly policies: Api2Hooks;
+  readonly registrations?: Api2PolicyRegistrations;
   /** The notification hooks it declared. */
   readonly notify: readonly string[];
   /** Forward one notification to its Worker. */
@@ -41,7 +42,7 @@ const settled = new Map<string, Entry | null>();
 /** Record what a Worker mod contributes, or null for nothing. */
 export function settleWorkerHooks(id: string, value: SettledWorkerHooks | null): void {
   settled.set(id, value === null ? null : {
-    hooks: api2ToModHooks(value.policies),
+    hooks: { ...api2ToModHooks(value.policies), ...api2PolicyModHooks(value.registrations ?? {}, () => settled.get(id)?.send === value.send) },
     notify: new Set(value.notify),
     send: value.send,
   });
@@ -77,6 +78,7 @@ function pendingHooks(id: string): ModHooks {
     objectListTiebreak: (a, b) => hooks()?.objectListTiebreak?.(a, b) ?? 0,
     saveNoiseScent: () => hooks()?.saveNoiseScent?.() ?? false,
     shapeLearnObviousFlagsDirectly: () => hooks()?.shapeLearnObviousFlagsDirectly?.() ?? false,
+    walkBlockedByDiggable: (state, grid, deps) => hooks()?.walkBlockedByDiggable?.(state, grid, deps) ?? null,
     optionsChanged: forward(entry, "optionsChanged"),
     abilityGained: forward(entry, "abilityGained"),
     monsterBecameVisible: forward(entry, "monsterBecameVisible"),

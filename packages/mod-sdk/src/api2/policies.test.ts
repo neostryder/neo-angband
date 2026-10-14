@@ -18,6 +18,7 @@ import {
 describe("checkApi2Policies", () => {
   it("accepts every table in its own grammar", () => {
     const policies: Api2Policies = {
+      walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
       messageText: [{ find: "You feel", replace: "You sense", match: "prefix" }],
       screenText: [{ find: "a", replace: "b", where: { screen: "char", column: 2 } }],
       historyAdd: [{ find: "Found", drop: true, match: "prefix", where: { duplicate: true } }],
@@ -44,6 +45,24 @@ describe("checkApi2Policies", () => {
     expect(checkApi2Policies({ historyAdd: [{ find: "a", replace: "b", drop: true }] })).toMatch(/not both/u);
     expect(checkApi2Policies({ saveNoiseScent: "yes" })).toMatch(/true or false/u);
     expect(checkApi2Policies([])).toMatch(/object of tables/u);
+  });
+
+  it("refuses unknown walk kinds, fields and unsupported choices", () => {
+    const walk = { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false };
+    for (const [field, value] of [["kind", "dig"], ["attempt", "open"], ["energy", 0], ["step", true], ["step", undefined]]) {
+      expect(checkApi2Policies({ walkBlockedByDiggable: { ...walk, [field as string]: value } })).toContain(`walkBlockedByDiggable.${String(field)}`);
+    }
+    expect(checkApi2Policies({ walkBlockedByDiggable: { ...walk, chance: 100 } })).toContain('unknown field "chance"');
+    expect(checkApi2Policies({ walkBlockedByDiggable: null })).toContain("is an object");
+  });
+
+  it("copies a walk declaration and installs it only under its registry grant", () => {
+    const policies: Api2Policies = { walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false } };
+    expect(api2PolicyEffects(policies, () => false).registrations).toEqual({});
+    const effects = api2PolicyEffects(policies, (capability) => capability === "registry:command");
+    expect(effects.hooks).toEqual({});
+    expect(effects.registrations.walkBlockedByDiggable).toEqual(policies.walkBlockedByDiggable);
+    expect(effects.registrations.walkBlockedByDiggable).not.toBe(policies.walkBlockedByDiggable);
   });
 });
 
@@ -132,6 +151,7 @@ describe("api2PoliciesToHooks", () => {
 describe("API2_POLICY_KINDS", () => {
   it("maps every table to its matching registry permission", () => {
     expect(Object.fromEntries(API2_POLICY_KINDS.map((kind) => [kind.name, kind.capability]))).toEqual({
+      walkBlockedByDiggable: "registry:command",
       messageText: "registry:message", screenText: "registry:ui-entry", characterBackground: "registry:message",
       objectInfoText: "registry:effect-info", effectIntro: "registry:effect-info", historyAdd: "registry:message",
       historyDisplay: "registry:message", objectListOrder: "registry:tval", saveNoiseScent: "registry:monster",
@@ -145,7 +165,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["discountRoll", "tileFiller"]).toContain(kind.target.registration);
+      else expect(["discountRoll", "tileFiller", "walkBlockedByDiggable"]).toContain(kind.target.registration);
     }
   });
 
