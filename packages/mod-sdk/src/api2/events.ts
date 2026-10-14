@@ -13,7 +13,6 @@
  */
 
 import type { KnownGrid, KnownToken } from "./known.js";
-import type { Api2RunEndEvent } from "./character.js";
 
 /** A message the game printed. */
 export interface Api2MessageEvent {
@@ -86,7 +85,6 @@ export type Api2DriverEvent =
  * notice that something changed; read the view for the new value.
  */
 export interface Api2EventMap {
-  "run-end": Api2RunEndEvent;
   message: Api2MessageEvent;
   dungeonlevel: Api2LevelEvent;
   "combat-outcome": Api2CombatEvent;
@@ -115,7 +113,6 @@ export type Api2EventName = keyof Api2EventMap;
 
 /** Every API 2 event name. */
 export const API2_EVENT_NAMES: readonly Api2EventName[] = Object.freeze([
-  "run-end",
   "message",
   "dungeonlevel",
   "combat-outcome",

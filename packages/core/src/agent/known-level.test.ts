@@ -117,36 +117,40 @@ function caps(...granted: string[]) {
 }
 
 describe("known level", () => {
-  it("distinguishes a seen square from an unlit square in view", () => {
-    const game = newGame();
-    const { state } = game;
-    const grid = gridAwayFromPlayer(game);
-    squareMemorize(state, grid);
-    state.chunk.sqinfoOn(grid, SQUARE.VIEW);
-    state.chunk.sqinfoOff(grid, SQUARE.SEEN);
-    const cell = () => createAgentView(state).knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)!;
-    expect(cell()).toMatchObject({ visible: true, seen: false });
-    const before = cell();
-    state.chunk.setFeat(grid, FEAT.GRANITE);
-    expect(cell()).toEqual(before);
-    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
-    expect(cell().seen).toBe(true);
+  it("reports secret doors as granite in paired known levels and allowed actions", () => {
+    const a = newGame();
+    const b = newGame();
+    const grid = { x: a.state.actor.grid.x + 1, y: a.state.actor.grid.y };
+    for (const game of [a, b]) {
+      game.state.chunk.setFeat(grid, game === a ? FEAT.GRANITE : FEAT.SECRET);
+      squareMemorize(game.state, grid);
+    }
+    const cell = (game: StartedGame) => createAgentView(game.state, undefined, {}, caps("state:map.read")).knownLevel!()!.cells.find((cell) => cell.x === grid.x && cell.y === grid.y)!;
+    expect(cell(a)).toEqual(cell(b));
+    expect(cell(b).remembered).toMatchObject({ feat: FEAT.GRANITE, passable: false });
+    expect(createAgentView(a.state).tileActions!(grid).codes).toEqual(createAgentView(b.state).tileActions!(grid).codes);
+    b.state.chunk.setFeat(grid, FEAT.CLOSED);
+    squareMemorize(b.state, grid);
+    expect(cell(b).remembered.feat).toBe(FEAT.CLOSED);
   });
 
-  it("lists a remembered object without learning the terrain under it", () => {
+  it("withholds light outside view and reports perceived lighting instead of glow", () => {
     const game = newGame();
-    const { state } = game;
     const grid = gridAwayFromPlayer(game);
-    const index = grid.y * state.chunk.width + grid.x;
-    state.floor.set(index, [floorObject(game)]);
-    squareKnowPile(state, grid);
-    state.known.feat[index] = -1;
-    const view = createAgentView(state, undefined, {}, caps("state:map.read"));
-    const before = view.knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)!;
-    expect(before.remembered.feat).toBe(0);
-    expect(before.remembered.objects).toHaveLength(1);
-    state.chunk.setFeat(grid, FEAT.GRANITE);
-    expect(view.knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)).toEqual(before);
+    const { state } = game;
+    squareMemorize(state, grid);
+    state.chunk.sqinfoOff(grid, SQUARE.VIEW);
+    state.chunk.sqinfoOff(grid, SQUARE.SEEN);
+    const cell = () => createAgentView(state, undefined, {}, caps("state:map.read")).knownLevel!()!.cells.find((cell) => cell.x === grid.x && cell.y === grid.y)!;
+    const before = cell();
+    state.chunk.sqinfoOn(grid, SQUARE.GLOW);
+    expect(cell()).toEqual(before);
+    expect(cell().lit).toBeNull();
+    state.chunk.sqinfoOn(grid, SQUARE.VIEW);
+    expect(cell().lit).toBe(false);
+    state.chunk.sqinfoOff(grid, SQUARE.GLOW);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    expect(cell().lit).toBe(true);
   });
 
   it("reads five times without moving the save, RNG, turn or command queue, even while hallucinating", () => {
@@ -216,10 +220,6 @@ describe("known level", () => {
     const cell = view.knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)!;
     expect(cell.visible).toBe(false);
     expect(cell.remembered.objects).toHaveLength(1);
-    const object = cell.remembered.objects[0]!;
-    expect(object).toMatchObject({ sensed: false, aware: true, name: expect.any(String) });
-    floorObject(game).number += 1;
-    expect(view.knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)?.remembered.objects).toEqual(cell.remembered.objects);
     expect(cell.actual?.objects).toEqual([]);
   });
 

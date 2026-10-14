@@ -76,7 +76,7 @@ import {
   squareIsBelievedWall,
   squareIsKnown,
 } from "./known.js";
-import { squareIsVisibleTrap, squareKnownTraps, squareTrap } from "./trap.js";
+import { squareIsVisibleTrap, squareTrap } from "./trap.js";
 import { squareIsSeen } from "../world/view.js";
 import type { GameState } from "./context.js";
 import { squareMonster } from "./context.js";
@@ -113,8 +113,8 @@ export function monsterLookName(mon: Monster): string {
 
 /** The floor-object clause of a look description, or null if the grid has
  * nothing on it (aux_object, reduced per the module doc). */
-function describeFloorAtGrid(state: GameState, grid: Loc, knownOnly = false): string | null {
-  if (!knownOnly && squareIsSeen(state.chunk, grid)) {
+function describeFloorAtGrid(state: GameState, grid: Loc): string | null {
+  if (squareIsSeen(state.chunk, grid)) {
     const pile = floorPile(state, grid);
     if (pile.length > 1) return `a pile of ${pile.length} objects`;
     if (pile.length === 1) {
@@ -129,13 +129,11 @@ function describeFloorAtGrid(state: GameState, grid: Loc, knownOnly = false): st
    * sense something is here" carries no further description than that) and
    * an ignored item, same as this filter. */
   const pile = knownPile(state, grid).filter(
-    (entry) => !entry.sensed && !state.isIgnored?.(knownOnly ? entry.remembered ?? entry.obj : entry.obj),
+    (entry) => !entry.sensed && !state.isIgnored?.(entry.obj),
   );
   if (pile.length > 1) return `a pile of ${pile.length} objects`;
   if (pile.length === 1) {
-    const entry = pile[0]!;
-    const obj = knownOnly ? entry.remembered ?? entry.obj : entry.obj;
-    return describeObject(state, obj, ODESC.PREFIX | ODESC.FULL);
+    return describeObject(state, pile[0]!.obj, ODESC.PREFIX | ODESC.FULL);
   }
   return null;
 }
@@ -177,9 +175,7 @@ export function describeLookGrid(
   state: GameState,
   grid: Loc,
   _mode: number,
-  knownOnly = false,
 ): LookGridResult {
-  if (knownOnly && state.wizard) state = { ...state, wizard: false };
   const coords = coordsDesc(state, grid);
 
   /* aux_reinit (L431-468): phrase1/phrase2. */
@@ -220,19 +216,19 @@ export function describeLookGrid(
   }
 
   /* aux_trap (L696-758). */
-  if (knownOnly || squareIsVisibleTrap(state, grid)) {
-    const kind = knownOnly ? squareKnownTraps(state.known, grid)[0] : squareTrap(state, grid)[0]?.kind;
-    if (kind) {
-      const art = isAVowel(kind.desc.charAt(0)) ? "an " : "a ";
+  if (squareIsVisibleTrap(state, grid)) {
+    const trap = squareTrap(state, grid)[0];
+    if (trap) {
+      const art = isAVowel(trap.kind.desc.charAt(0)) ? "an " : "a ";
       return {
-        text: `${phrase1}${phrase2}${art}${kind.desc}, ${coords}${lookTail(state, grid)}`,
+        text: `${phrase1}${phrase2}${art}${trap.kind.desc}, ${coords}${lookTail(state, grid)}`,
         mon: null,
       };
     }
   }
 
   /* aux_object (L763-888, reduced per the module doc). */
-  const objDesc = describeFloorAtGrid(state, grid, knownOnly);
+  const objDesc = describeFloorAtGrid(state, grid);
   if (objDesc) {
     return {
       text: `${phrase1}${phrase2}${objDesc}, ${coords}${lookTail(state, grid)}`,
