@@ -39,24 +39,6 @@ export function modPrefsKey(id: string): string {
   return `neo:modPrefs:${id}`;
 }
 
-let installBacking: PrefsStorage | null | undefined;
-
-export function setInstallPrefsStorage(storage: PrefsStorage | null | undefined): void {
-  installBacking = storage;
-}
-
-export function modInstallPrefs(id: string, storage?: PrefsStorage | null): ModPrefs {
-  if (storage === undefined) storage = installBacking;
-  if (storage === undefined) {
-    try {
-      storage = typeof localStorage === "undefined" ? null : localStorage;
-    } catch {
-      storage = null;
-    }
-  }
-  return modPrefs(`install:${id}`, storage);
-}
-
 /** The storage a ModPrefs reads and writes. `localStorage`, in both front ends. */
 export type PrefsStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 

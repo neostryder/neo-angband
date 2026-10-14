@@ -48,10 +48,13 @@ import type { MonsterRace } from "../mon/types.js";
 import type { GameState } from "../game/context.js";
 import { lookMonDesc, targetAble } from "../game/target.js";
 import { gearGet } from "../game/gear.js";
+import { knownPile } from "../game/known.js";
+import { fmtDepth } from "../game/display.js";
+import { NOSCORE } from "../game/wizard.js";
 import { numberCharging } from "../game/obj-cmd.js";
-import { knownDescOf } from "../game/describe.js";
-import { objectDesc, ODESC } from "../obj/desc.js";
-import { MON_RACE_FLAG_ENTRIES, MON_SPELL_ENTRIES, MON_TMD, OF, RF, TMD } from "../generated/index.js";
+import { describeObject, knownDescOf } from "../game/describe.js";
+import { ODESC } from "../obj/desc.js";
+import { MON_RACE_FLAG_ENTRIES, MON_SPELL_ENTRIES, MON_TMD, OF, PLAYER_TIMED_ENTRIES, RF, TMD } from "../generated/index.js";
 import { squareIsSeen, squareIsView } from "../world/view.js";
 import type { Store } from "../store/store.js";
 import type { FlagSet } from "../bitflag.js";
@@ -59,17 +62,19 @@ import { distance } from "../loc.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { objectKnownShadow, objectRunesKnownUpstream } from "../obj/known-object.js";
 import type { GameObject } from "../obj/object.js";
-import { tvalCanHaveCharges, tvalCanHaveFlavor, tvalIsRod } from "../obj/object.js";
+import { tvalCanHaveCharges, tvalCanHaveFlavor, tvalIsLight, tvalIsRod } from "../obj/object.js";
 import { playerTimedGrade } from "../player/timed.js";
 import { captureCoreSnapshot } from "./boundary.js";
 import type { InputToken } from "./boundary.js";
 import type { KnownLevelView } from "./known-level.js";
 import { createAgentView } from "./perceive.js";
+import { itemView } from "./entity-views.js";
 import { AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
 import type {
   AgentCapabilities,
   AgentViewDeps,
   ItemView,
+  LoadoutSimulation,
   PlayerView,
   SpellbookView,
   StoreItemView,
@@ -95,6 +100,10 @@ export type KnownMonsterStatus =
 
 /** One monster the player perceives, described as the player can know it. */
 export interface KnownMonster {
+  readonly blows: readonly KnownMonsterBlow[];
+  readonly spellFrequency: { readonly percent: number; readonly exact: boolean } | null;
+  readonly innateFrequency: { readonly percent: number; readonly exact: boolean } | null;
+  readonly averageHp: number | null;
   /**
    * A handle for this monster on this level: 1 for the first monster the
    * player perceived here, 2 for the next, and so on. It stays with the
@@ -125,7 +134,6 @@ export interface KnownMonster {
   readonly knownFlags: readonly string[];
   /** Spells the player's lore has learned, by code. */
   readonly knownSpells: readonly string[];
-  readonly knownBlows: readonly KnownMonsterBlow[];
   readonly unique: boolean;
   readonly questGuardian: boolean;
   readonly finalGuardian: boolean;
@@ -135,10 +143,7 @@ export interface KnownMonster {
 export interface KnownMonsterBlow {
   readonly method: string;
   readonly effect: string;
-  readonly base: number;
-  readonly dice: number;
-  readonly sides: number;
-  readonly mBonus: number;
+  readonly damage: { readonly base: number; readonly dice: number; readonly sides: number; readonly mBonus: number } | null;
 }
 
 /** Why the monster list is withheld: the player is hallucinating. */
@@ -150,6 +155,7 @@ export type KnownMonstersHidden = "hallucinating";
  * when the effect is clear or its grade has no name on the status line.
  */
 export interface KnownPlayerStatus {
+  readonly timed: Readonly<Record<string, string | null>>;
   readonly blind: string | null;
   readonly confused: string | null;
   readonly afraid: string | null;
@@ -184,8 +190,11 @@ export interface KnownPlayerStatus {
 
 /** The player as the character sheet and status line show them. */
 export type KnownPlayer = Omit<PlayerView, "status" | "recall" | "descent"> & {
-  readonly noscore: number;
-  readonly shopnum: number | null;
+  readonly depthText: string;
+  readonly fullName: string;
+  readonly autoplayed: boolean;
+  readonly key: string | null;
+  readonly extraMoves: number;
   readonly status: KnownPlayerStatus;
   /** An active Word of Recall: the status line says "Recall", not when it fires. */
   readonly recall: boolean;
@@ -195,8 +204,6 @@ export type KnownPlayer = Omit<PlayerView, "status" | "recall" | "descent"> & {
 
 /** An item as its name and the inspect screen describe it. */
 export type KnownItem = Omit<ItemView, "timeout"> & {
-  readonly baseName: string;
-  readonly carried: boolean;
   /**
    * How many of the stack the name says are recharging: the count of
    * "(2 charging)" on a stack of rods, 1 for "(charging)", 0 when the name
@@ -205,6 +212,8 @@ export type KnownItem = Omit<ItemView, "timeout"> & {
   readonly charging: number;
   /** The name carries "{??}": the item has runes the player has not learned. */
   readonly unknownRunes: boolean;
+  readonly artifactId?: number;
+  readonly fuel?: number;
 };
 
 /** One ware in a shop, or one item in the home. */
@@ -231,6 +240,7 @@ export interface KnownWorld {
   readonly player: KnownPlayer | null;
   readonly inventory: readonly KnownItem[] | null;
   readonly equipment: readonly (KnownItem | null)[] | null;
+  readonly equipmentSlots: readonly { readonly type: string; readonly name: string }[] | null;
   readonly quiver: readonly KnownItem[] | null;
   /** The objects under the player that the player remembers exactly. */
   readonly floorHere: readonly KnownItem[] | null;
@@ -434,9 +444,17 @@ export function knownMonster(state: GameState, mon: Monster, deps: AgentViewDeps
   const finalRace = quests.length > 0 ? quests[quests.length - 1]!.race : -1;
   const flags = codes(knownRaceFlags(state, mon.race), MON_RACE_FLAG_ENTRIES);
   const lore = state.lore.get(mon.race.ridx);
+  const frequency = (percent: number, exact: boolean, observed: number) =>
+    exact ? { percent, exact: true } : observed > 0 && percent > 0
+      ? { percent: Math.max(Math.trunc((percent + 9) / 10) * 10, 1), exact: false } : null;
   const view: {
     -readonly [K in keyof KnownMonster]: KnownMonster[K];
   } = {
+    blows: mon.race.blows.flatMap((blow, index) => lore && (lore.allKnown || lore.blowKnown[index] || lore.blowTimesSeen[index])
+      ? [{ method: blow.method.name, effect: blow.effect.name, damage: blow.dice ? { ...blow.dice.randomValue() } : null }] : []),
+    spellFrequency: frequency(mon.race.freqSpell, !!lore && (lore.allKnown || lore.spellFreqKnown || lore.castSpell > 50), lore?.castSpell ?? 0),
+    innateFrequency: frequency(mon.race.freqInnate, !!lore && (lore.allKnown || lore.innateFreqKnown || lore.castInnate > 50), lore?.castInnate ?? 0),
+    averageHp: lore && (lore.allKnown || lore.armourKnown || lore.tkills > 0) ? mon.race.avgHp : null,
     id: knownMonsterId(state, mon),
     race: mon.race.name,
     raceIndex: mon.race.ridx,
@@ -450,11 +468,6 @@ export function knownMonster(state: GameState, mon: Monster, deps: AgentViewDeps
     raceSpeed: mon.race.speed,
     knownFlags: flags,
     knownSpells: codes(knownRaceSpells(state, mon.race), MON_SPELL_ENTRIES),
-    knownBlows: mon.race.blows.filter((_, i) => lore?.allKnown || lore?.blowKnown[i] || lore?.blowTimesSeen[i]).map((blow) => ({
-      method: blow.method.name,
-      effect: blow.effect.name,
-      ...(blow.dice?.randomValue() ?? { base: 0, dice: 0, sides: 0, mBonus: 0 }),
-    })),
     unique: flags.includes("UNIQUE"),
     questGuardian: quests.some((q) => q.race === mon.race.ridx),
     finalGuardian: mon.race.ridx === finalRace,
@@ -487,7 +500,7 @@ export function knownMonsters(state: GameState, deps: AgentViewDeps = {}): Known
  * The player, items and the target.
  * ------------------------------------------------------------------ */
 
-const STATUS_EFFECTS: ReadonlyArray<readonly [Exclude<keyof KnownPlayerStatus, "food" | "foodGrade" | "fearful">, number]> = [
+const STATUS_EFFECTS: ReadonlyArray<readonly [Exclude<keyof KnownPlayerStatus, "food" | "foodGrade" | "fearful" | "timed">, number]> = [
   ["blind", TMD.BLIND],
   ["confused", TMD.CONFUSED],
   ["afraid", TMD.AFRAID],
@@ -528,13 +541,17 @@ function knownPlayer(state: GameState, player: PlayerView): KnownPlayer {
   const { status, recall, descent, ...rest } = player;
   const named = {} as Record<(typeof STATUS_EFFECTS)[number][0], string | null>;
   for (const [key, tmd] of STATUS_EFFECTS) named[key] = gradeName(state, tmd);
-  const shopnum = state.chunk.feature(state.actor.grid).shopnum;
   return {
     ...rest,
-    noscore: state.actor.player.noscore,
-    shopnum: shopnum > 0 ? shopnum - 1 : null,
+    depthText: fmtDepth(player.depth),
+    fullName: state.actor.player.fullName,
+    autoplayed: (state.actor.player.noscore & NOSCORE.BORG) !== 0,
+    key: null,
+    extraMoves: state.knownPlayerState?.numMoves ?? 0,
     status: {
       ...named,
+      timed: Object.fromEntries(PLAYER_TIMED_ENTRIES.map((effect, index) => [effect.name,
+        (state.actor.player.timed[index] ?? 0) > 0 ? gradeName(state, index) ?? "active" : null])),
       food: Math.trunc((state.actor.player.timed[TMD.FOOD] ?? 0) / 100),
       foodGrade: gradeName(state, TMD.FOOD),
       fearful: status.fearful ?? false,
@@ -571,21 +588,57 @@ function unknownRunes(state: GameState, deps: AgentViewDeps, obj: GameObject, sh
   return (shadow.notice & OBJ_NOTICE.ASSESSED) !== 0;
 }
 
-function knownItem(state: GameState, deps: AgentViewDeps, item: ItemView, obj: GameObject | null, shopWare = false): KnownItem {
+export function knownItem(state: GameState, deps: AgentViewDeps, item: ItemView, obj: GameObject | null, shopWare = false): KnownItem {
   const { timeout: _timeout, ...rest } = item;
+  const fuel = obj && tvalIsLight(obj.tval)
+    ? /\((-?\d+) turns\)/u.exec(item.name ?? describeObject(state, obj, ODESC.PREFIX | ODESC.FULL)) : null;
   return {
     ...rest,
-    baseName: obj ? objectDesc({ ...obj, artifact: null, ego: null, number: 1 },
-      ODESC.BASE | ODESC.SINGULAR | ODESC.NOEGO | (shopWare ? ODESC.STORE : 0), state.actor.player, state.runeEnv,
-      { ...knownDescOf(state, true), isAware: () => item.aware }) : item.label,
-    carried: false,
+    ...(item.artifact && obj?.artifact ? { artifactId: obj.artifact.aidx } : {}),
+    ...(fuel ? { fuel: Number(fuel[1]) } : {}),
     charging: obj ? chargingShown(state, deps, obj, shopWare) : 0,
     unknownRunes: obj ? unknownRunes(state, deps, obj, shopWare) : false,
   };
 }
 
 function carried(state: GameState, deps: AgentViewDeps, item: ItemView): KnownItem {
-  return { ...knownItem(state, deps, item, gearGet(state.gear, item.handle)), carried: true };
+  return knownItem(state, deps, item, gearGet(state.gear, item.handle));
+}
+
+export function knownFloorItems(state: GameState, grid: { x: number; y: number }, deps: AgentViewDeps): KnownItem[] {
+  const pile = state.floor.get(grid.y * state.chunk.width + grid.x) ?? [];
+  return knownPile(state, grid).flatMap((entry, index) => {
+    if (entry.sensed) return [];
+    const seen = squareIsSeen(state.chunk, grid) && pile.includes(entry.obj);
+    const obj = seen ? entry.obj : entry.remembered ?? entry.obj;
+    const item = itemView(0, obj, state, deps);
+    return [knownItem(state, deps, { ...item, name: describeObject(state, obj, ODESC.PREFIX | ODESC.FULL),
+      itemKey: `memory:${grid.x},${grid.y}:${index}`, ...(seen ? { floorIndex: pile.indexOf(entry.obj) } : {}) }, obj)];
+  });
+}
+
+export function knownLoadoutSimulation(state: GameState, simulation: LoadoutSimulation, key: string | null = null) {
+  const item = (value: ItemView): KnownItem => {
+    const { timeout: _timeout, ...rest } = value;
+    const charging = /\((?:(\d+) )?charging\)/u.exec(value.name ?? "");
+    const fuel = tvalIsLight(value.tval) ? /\((-?\d+) turns\)/u.exec(value.name ?? "") : null;
+    return { ...rest, charging: charging ? Number(charging[1] ?? 1) : 0,
+      ...(fuel ? { fuel: Number(fuel[1]) } : {}),
+      unknownRunes: (value.name ?? "").includes("{??}") };
+  };
+  const loadout = (value: LoadoutSimulation["before"]) => ({
+    ...value,
+    player: { ...knownPlayer(state, value.player), key, extraMoves: value.stats.moves },
+    equipment: value.equipment.map((entry) => entry ? item(entry) : null),
+    inventory: value.inventory.map(item),
+  });
+  return deepFreeze({
+    ...simulation,
+    before: loadout(simulation.before),
+    after: loadout(simulation.after),
+    placements: simulation.placements.map((placement) => ({ ...placement,
+      worn: item(placement.worn), displaced: placement.displaced ? item(placement.displaced) : null })),
+  });
 }
 
 function knownTarget(state: GameState): KnownTarget | null {
@@ -616,29 +669,6 @@ export function frozenKnownMonster(state: GameState, mon: Monster, deps: AgentVi
 }
 
 const storeObservations = new WeakMap<GameState, Map<Store, KnownStore>>();
-const storeObservationTurns = new WeakMap<GameState, Map<Store, number>>();
-
-export interface StoreKnowledge {
-  readonly storeIndex: number;
-  readonly feat: number;
-  readonly depth: number;
-  readonly lastVisitTurn: number | null;
-  readonly snapshotTurn: number;
-  readonly stalenessRule: "current";
-  readonly remoteStockUsable: true;
-}
-
-export function storeKnowledge(state: GameState): readonly StoreKnowledge[] {
-  return deepFreeze((state.stores ?? []).map((store, storeIndex) => ({
-    storeIndex,
-    feat: store.feat,
-    depth: state.chunk.depth,
-    lastVisitTurn: storeObservationTurns.get(state)?.get(store) ?? null,
-    snapshotTurn: state.turn,
-    stalenessRule: "current" as const,
-    remoteStockUsable: true as const,
-  })));
-}
 
 function storeBook(state: GameState): Map<Store, KnownStore> {
   let observations = storeObservations.get(state);
@@ -650,12 +680,6 @@ function storeBook(state: GameState): Map<Store, KnownStore> {
 }
 
 function rememberStore(state: GameState, deps: AgentViewDeps, live: Store, store: StoreView): void {
-  let turns = storeObservationTurns.get(state);
-  if (!turns) {
-    turns = new Map();
-    storeObservationTurns.set(state, turns);
-  }
-  turns.set(live, state.turn);
   storeBook(state).set(live, deepFreeze(structuredClone({
     ...store,
     stock: store.stock.map((ware) => ({
@@ -698,7 +722,6 @@ export function buildKnownWorld(
     if (!(e instanceof AgentCapabilityError)) throw e;
   }
   const monstersReadable = readable(AGENT_STATE_DOMAINS.monsters);
-  const pile = state.floor.get(state.actor.grid.y * state.chunk.width + state.actor.grid.x) ?? [];
   const stores = state.stores ?? [];
   const observations = storeBook(state);
   const world: KnownWorld = {
@@ -708,8 +731,9 @@ export function buildKnownWorld(
     player: snap.player ? knownPlayer(state, snap.player) : null,
     inventory: snap.inventory?.map((item) => carried(state, deps, item)) ?? null,
     equipment: snap.equipment?.map((item) => (item ? carried(state, deps, item) : null)) ?? null,
+    equipmentSlots: snap.equipmentSlots,
     quiver: snap.quiver?.map((item) => carried(state, deps, item)) ?? null,
-    floorHere: snap.floorHere?.map((item) => knownItem(state, deps, item, pile[item.floorIndex ?? -1] ?? null)) ?? null,
+    floorHere: snap.floorHere === null ? null : knownFloorItems(state, state.actor.grid, deps),
     monsters: monstersReadable ? knownMonsters(state, deps) : null,
     monstersHidden: monstersReadable && playerHallucinates(state) ? "hallucinating" : null,
     target: snap.targetReadable ? knownTarget(state) : null,

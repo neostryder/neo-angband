@@ -2,22 +2,24 @@
 
 import { SQUARE } from "../generated/index.js";
 import { squareIsSeen } from "../world/view.js";
-import { featIsPassable } from "../world/chunk.js";
 import type { GameState } from "../game/context.js";
 import { knownFeat, knownPile, squareIsKnown } from "../game/known.js";
 import { squareKnownTraps, squareTrap } from "../game/trap.js";
 import { tvalIsMoney, type GameObject } from "../obj/object.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { objectIsKnownArtifact, objectKnownShadow, objectRunesKnownUpstream } from "../obj/known-object.js";
-import { knownDescOf } from "../game/describe.js";
+import { describeObject, knownDescOf } from "../game/describe.js";
+import { ODESC } from "../obj/desc.js";
 import { inputToken } from "./boundary.js";
 import type { InputToken } from "./boundary.js";
 import { itemView } from "./entity-views.js";
+import { knownFloorItems, type KnownItem } from "./known-world.js";
 import type { AgentViewDeps, ItemView } from "./types.js";
 
 export interface TrapView {
   readonly index: number;
   readonly name: string;
+  readonly disabled: boolean;
 }
 
 /** A shadow-pile entry. Sensed objects reveal only money versus other items. */
@@ -33,6 +35,7 @@ export type RememberedObject =
       readonly sensed: false;
       readonly aware: true;
       readonly kindIndex: number;
+      readonly name: string;
       readonly kindId?: string;
       readonly aura?: ObjectAura;
     }
@@ -68,10 +71,10 @@ function objectAura(state: GameState, obj: GameObject): ObjectAura | undefined {
 
 export interface RememberedCell {
   readonly feat: number;
-  readonly passable: boolean;
   readonly featCode?: string;
   readonly traps: readonly TrapView[];
   readonly objects: readonly RememberedObject[];
+  readonly items: readonly KnownItem[] | null;
 }
 
 export interface ActualCell {
@@ -87,7 +90,8 @@ export interface KnownLevelCell {
   readonly y: number;
   readonly remembered: RememberedCell;
   readonly visible: boolean;
-  readonly lit: boolean | null;
+  readonly seen: boolean;
+  readonly glow: boolean;
   readonly actual?: ActualCell;
 }
 
@@ -115,6 +119,7 @@ export function captureKnownLevel(
   state: GameState,
   deps: AgentViewDeps = {},
   includeActual = false,
+  includeItems = true,
 ): KnownLevelView {
   const { chunk } = state;
   const cells: KnownLevelCell[] = [];
@@ -122,16 +127,15 @@ export function captureKnownLevel(
     for (let x = 0; x < chunk.width; x++) {
       const grid = { x, y };
       const pile = knownPile(state, grid);
-      if (!squareIsKnown(state, grid) && pile.length === 0) continue;
-      const rememberedFeat = knownFeat(state, grid);
-      /* A square known only through a remembered object has no remembered terrain (-1). */
-      const feat = rememberedFeat < 0 ? rememberedFeat : chunk.features.get(rememberedFeat).mimic ?? rememberedFeat;
+      const terrainKnown = squareIsKnown(state, grid);
+      if (!terrainKnown && pile.length === 0) continue;
+      const feat = terrainKnown ? knownFeat(state, grid) : 0;
       const remembered: RememberedCell = {
         feat,
-        passable: feat >= 0 && featIsPassable(chunk.features, feat),
         /* The player's trap memory, not the live grid: a trap removed or
          * re-armed out of view is remembered as it was last seen. */
-        traps: squareKnownTraps(state.known, grid).map((kind) => ({ index: kind.tidx, name: kind.name })),
+        traps: squareKnownTraps(state.known, grid).map((kind, index) => ({ index: kind.tidx, name: kind.name,
+          disabled: state.known.trapDisabled?.get(y * chunk.width + x)?.[index] ?? false })),
         objects: pile.map((entry): RememberedObject => {
           if (entry.sensed) {
             return { sensed: true, money: tvalIsMoney(entry.obj.tval) };
@@ -152,17 +156,20 @@ export function captureKnownLevel(
             };
           }
           const kindIndex = kind.kidx;
+          const obj = squareIsSeen(chunk, grid) ? entry.obj : entry.remembered ?? entry.obj;
           const kindId = deps.resolver?.kindIdOrNull(kindIndex);
           return {
             sensed: false,
             aware: true,
             kindIndex,
+            name: describeObject(state, obj, ODESC.PREFIX | ODESC.FULL),
             ...(kindId ? { kindId } : {}),
             ...(aura ? { aura } : {}),
           };
         }),
+        items: includeItems ? knownFloorItems(state, grid, deps) : null,
       };
-      const rememberedCode = deps.resolver?.featIdOrNull(feat);
+      const rememberedCode = chunk.features.get(feat).code;
       if (rememberedCode !== null && rememberedCode !== undefined) {
         (remembered as { featCode?: string }).featCode = rememberedCode;
       }
@@ -171,7 +178,8 @@ export function captureKnownLevel(
         y,
         remembered,
         visible: chunk.sqinfoHas(grid, SQUARE.VIEW),
-        lit: chunk.sqinfoHas(grid, SQUARE.VIEW) ? squareIsSeen(chunk, grid) : null,
+        seen: squareIsSeen(chunk, grid),
+        glow: (state.known.glow?.[y * chunk.width + x] ?? 0) !== 0,
       };
       if (includeActual) {
         const index = y * chunk.width + x;
@@ -183,6 +191,7 @@ export function captureKnownLevel(
           traps: squareTrap(state, grid).map((trap) => ({
             index: trap.tidx,
             name: trap.kind.name,
+            disabled: trap.timeout > 0,
           })),
           objects: (state.floor.get(index) ?? []).map((obj) =>
             itemView(0, obj, state, deps),

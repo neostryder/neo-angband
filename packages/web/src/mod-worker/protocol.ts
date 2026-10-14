@@ -55,10 +55,27 @@ export const WORKER_CALLS = [
   "meta.setSetting",
   "meta.mods",
   "view.world",
-  "view.options",
+  "view.character",
+  "view.knowledge",
+  "view.messages",
   "view.player",
   "view.monsters",
   "view.level",
+  "view.look",
+  "view.simulateLoadout",
+  "view.catalogue",
+  "view.inspect.simulateLoadout",
+  "view.inspect.item",
+  "view.inspect.itemRules",
+  "view.inspect.itemTester",
+  "view.inspect.bookForItem",
+  "view.inspect.spell",
+  "view.inspect.monsterRecall",
+  "view.inspect.projectionPath",
+  "view.inspect.blastArea",
+  "view.inspect.travelPath",
+  "view.inspect.compareLoadoutSlots",
+  "view.inspect.tileActions",
   "view.input",
   "view.isCurrent",
   "act.submit",
@@ -70,24 +87,17 @@ export const WORKER_CALLS = [
   "events.on",
   "events.off",
   "content.own",
+  "content.colors",
   "content.asset",
   "content.records",
-  "content.boundRecords",
-  "content.activations",
-  "content.activation",
   "content.lookup",
   "ui.mount",
   "ui.patch",
-  "ui.unmount",
-  "ui.onKey",
-  "ui.offKey",
   "ui.keys.bind",
   "ui.keys.list",
   "ui.keys.remove",
   "store.prefs.get",
   "store.prefs.set",
-  "store.install.get",
-  "store.install.set",
   "store.character.get",
   "store.character.set",
   "net.request",
@@ -128,7 +138,6 @@ export interface WorkerDefinitionSummary {
   readonly migrateBag: boolean;
   /** `prefs.version`, or null when the mod declares no preference migration. */
   readonly prefsVersion: number | null;
-  readonly installVersion?: number | null;
   readonly start: boolean;
   readonly stop: boolean;
 }
@@ -137,7 +146,6 @@ export interface WorkerDefinitionSummary {
 export type WorkerQuestion =
   | { readonly kind: "migrateBag"; readonly data: WorkerJson; readonly fromSchema: number }
   | { readonly kind: "prefs.migrate"; readonly value: WorkerJson; readonly fromVersion: number }
-  | { readonly kind: "install.migrate"; readonly value: WorkerJson; readonly fromVersion: number }
   | { readonly kind: "ping" };
 
 interface Addressed {

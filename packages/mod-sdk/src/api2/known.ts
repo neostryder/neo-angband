@@ -33,6 +33,7 @@ export interface KnownGrid {
  * many turns an effect has left is not shown, so it is not here.
  */
 export interface KnownPlayerStatus {
+  readonly timed: Readonly<Record<string, string | null>>;
   readonly blind: string | null;
   readonly confused: string | null;
   readonly afraid: string | null;
@@ -71,8 +72,6 @@ export interface KnownPlayerStatus {
  * moves none of them.
  */
 export interface KnownPlayer {
-  readonly noscore: number;
-  readonly shopnum: number | null;
   readonly race: string;
   readonly cls: string;
   readonly level: number;
@@ -82,6 +81,11 @@ export interface KnownPlayer {
   readonly gold: number;
   readonly learnableSpells: number;
   readonly depth: number;
+  readonly depthText: string;
+  readonly fullName: string;
+  readonly autoplayed: boolean;
+  readonly key: string | null;
+  readonly extraMoves: number;
   readonly maxDepth: number;
   readonly hp: number;
   readonly maxHp: number;
@@ -122,8 +126,6 @@ export interface KnownPlayer {
  * player has learned.
  */
 export interface KnownItem {
-  readonly baseName: string;
-  readonly carried: boolean;
   readonly handle: number;
   readonly kindKey: string;
   readonly itemKey?: string;
@@ -143,6 +145,8 @@ export interface KnownItem {
   readonly ds: number;
   readonly ego: boolean;
   readonly artifact: boolean;
+  readonly artifactId?: number;
+  readonly fuel?: number;
   readonly flags: readonly string[];
   readonly modifiers: readonly { readonly code: string; readonly value: number }[];
   readonly brands: readonly string[];
@@ -237,6 +241,10 @@ export type KnownMonsterStatus =
  * spell the player's lore has not learned.
  */
 export interface KnownMonster {
+  readonly blows: readonly KnownMonsterBlow[];
+  readonly spellFrequency: { readonly percent: number; readonly exact: boolean } | null;
+  readonly innateFrequency: { readonly percent: number; readonly exact: boolean } | null;
+  readonly averageHp: number | null;
   /**
    * A handle for this monster on this level, given out in the order the player
    * first perceives monsters here and reset on a new level. It is not the
@@ -258,26 +266,23 @@ export interface KnownMonster {
   readonly raceSpeed: number;
   readonly knownFlags: readonly string[];
   readonly knownSpells: readonly string[];
-  readonly knownBlows: readonly KnownMonsterBlow[];
   readonly unique: boolean;
   readonly questGuardian: boolean;
   readonly finalGuardian: boolean;
   readonly glyph?: string;
 }
 
-export interface KnownMonsterBlow {
-  readonly method: string;
-  readonly effect: string;
-  readonly base: number;
-  readonly dice: number;
-  readonly sides: number;
-  readonly mBonus: number;
-}
-
 /** A trap the player remembers on a grid. */
 export interface KnownTrap {
   readonly index: number;
   readonly name: string;
+  readonly disabled: boolean;
+}
+
+export interface KnownMonsterBlow {
+  readonly method: string;
+  readonly effect: string;
+  readonly damage: { readonly base: number; readonly dice: number; readonly sides: number; readonly mBonus: number } | null;
 }
 
 /** What the player can read on a remembered object's name. */
@@ -293,6 +298,7 @@ export type KnownRememberedObject =
       readonly sensed: false;
       readonly aware: true;
       readonly kindIndex: number;
+      readonly name: string;
       readonly kindId?: string;
       readonly aura?: KnownObjectAura;
     }
@@ -308,10 +314,10 @@ export type KnownRememberedObject =
 /** One grid as the player remembers it. */
 export interface KnownRememberedCell {
   readonly feat: number;
-  readonly passable: boolean;
   readonly featCode?: string;
   readonly traps: readonly KnownTrap[];
   readonly objects: readonly KnownRememberedObject[];
+  readonly items: readonly KnownItem[] | null;
 }
 
 /** One grid of the remembered level. There is no field for the real grid. */
@@ -321,8 +327,8 @@ export interface KnownLevelCell {
   readonly remembered: KnownRememberedCell;
   /** In view right now. */
   readonly visible: boolean;
-  /** The square is seen by the player; null outside view. */
-  readonly lit: boolean | null;
+  readonly seen: boolean;
+  readonly glow: boolean;
 }
 
 /** The level as the player remembers it, never the real map. */
@@ -349,6 +355,7 @@ export interface KnownWorldData {
   readonly player: KnownPlayer | null;
   readonly inventory: readonly KnownItem[] | null;
   readonly equipment: readonly (KnownItem | null)[] | null;
+  readonly equipmentSlots: readonly { readonly type: string; readonly name: string }[] | null;
   readonly quiver: readonly KnownItem[] | null;
   readonly floorHere: readonly KnownItem[] | null;
   /** Nearest first, then by row and column. Empty while `monstersHidden` is set. */

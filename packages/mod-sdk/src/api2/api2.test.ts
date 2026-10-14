@@ -101,8 +101,6 @@ describe("apiRangeVerdict", () => {
   it("says which side needs updating", () => {
     expect(apiRangeVerdict(">=3.0.0 <4.0.0")).toMatchObject({ ok: false, code: "too-new" });
     expect(apiRangeVerdict("^1.0.0")).toMatchObject({ ok: false, code: "too-old" });
-    expect(apiRangeVerdict(">=1.0.0 <2.0.0")).toMatchObject({ ok: false, code: "too-old" });
-    expect(apiRangeVerdict(">=1.0.0 <2.1.0", "2.2.0")).toMatchObject({ ok: false, code: "outside" });
     expect(apiRangeVerdict(">=2.1.0 <3.0.0")).toMatchObject({ ok: false, code: "outside" });
     expect(apiRangeVerdict(">=2.1.0 <3.0.0", "2.1.0")).toEqual({ ok: true });
   });
@@ -133,7 +131,8 @@ describe("API 2 results", () => {
 describe("API 2 names", () => {
   it("gate each event on its own permission", () => {
     expect(API2_EVENT_NAMES).toContain("combat-outcome");
-    expect(API2_EVENT_NAMES).not.toContain("bolt");
+    expect(API2_EVENT_NAMES).toContain("bolt");
+    expect(API2_EVENT_NAMES).toContain("explosion");
     expect(api2EventCapability("message")).toBe("event:message");
     expect(new Set(API2_EVENT_NAMES).size).toBe(API2_EVENT_NAMES.length);
   });

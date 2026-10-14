@@ -59,11 +59,11 @@ export type {
 export {
   KNOWN_WORLD_VERSION,
   buildKnownWorld,
+  knownLoadoutSimulation,
   knownMonster,
   knownMonsterMidx,
   knownMonsters,
   observeKnownStore,
-  storeKnowledge,
 } from "./known-world.js";
 export type {
   KnownItem,
@@ -78,13 +78,12 @@ export type {
   KnownStoreItem,
   KnownTarget,
   KnownWorld,
-  StoreKnowledge,
 } from "./known-world.js";
 export { itemView, playerViewFor } from "./entity-views.js";
 export type { PlayerViewDerived } from "./entity-views.js";
-export { deriveLoadout, simulateLoadout } from "./loadout.js";
+export { simulateLoadout } from "./loadout.js";
 export type { BlastAreaResult, BookItemResult, GridInspectResult, InspectResult, ItemRulesResult, ItemTesterResult, LoadoutSlotsResult, SpellInspectResult, TerrainCatalogueResult, TerrainFeatureView, TileActionsResult, TravelPathResult } from "./inspect.js";
-export type { DeriveLoadoutChange, DeriveLoadoutOptions, LoadoutDerive, LoadoutSimOptions } from "./loadout.js";
+export type { LoadoutDerive, LoadoutSimOptions } from "./loadout.js";
 export { createAgentActions } from "./act.js";
 export { AgentCapabilityError, installController } from "./controller.js";
 export { subscribeEvents } from "./events.js";

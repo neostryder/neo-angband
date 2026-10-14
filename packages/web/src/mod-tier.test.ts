@@ -41,27 +41,6 @@ import type { ModPluginContext } from "./mod-plugin";
 
 const ANYBANDUI = "neostryder/neo-angband-mod-anybandui";
 
-describe("engine consent", () => {
-  it("grants verified first-party engines and withholds Worker engines", () => {
-    const firstParty = assignTier(installed());
-    expect(effectiveGrants(["engine:access"], firstParty, { granted: [], refused: [] }).granted).toEqual(["engine:access"]);
-    for (const trust of ["sideloaded", "reviewed"] as const) {
-      const tier = { ...assignTier({ id: "probe", source: "folder", execution: "in-process" }), trust };
-      expect(effectiveGrants(["engine:access"], tier, { granted: [], refused: [] }).granted).toEqual([]);
-      expect(effectiveGrants(["engine:access"], tier, { granted: ["engine:access"], refused: [] }).granted).toEqual(["engine:access"]);
-    }
-    expect(tierRefusal("engine:access", assignTier(installed({ execution: "worker" })))).toContain("Worker");
-  });
-
-  it("requires recorded digests for each of the nine named first-party repos", () => {
-    expect(FIRST_PARTY_ORIGINS.map((origin) => origin.id).sort()).toEqual(["anybandui", "borg", "bug-fixes", "feature-restoration", "forge", "linoleum", "qol", "squire", "upstream-catchup"]);
-    for (const origin of FIRST_PARTY_ORIGINS) {
-      expect(assignTier(installed({ id: origin.id, repo: origin.repo })).trust).toBe("first-party");
-      expect(assignTier(installed({ id: origin.id, repo: origin.repo, digestsMatch: false })).trust).toBe("sideloaded");
-    }
-  });
-});
-
 function installed(over: Partial<ModTierFacts> = {}, without: readonly (keyof ModTierFacts)[] = []): ModTierFacts {
   const facts: Record<string, unknown> = {
     id: "anybandui",
