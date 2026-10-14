@@ -112,8 +112,6 @@ export function installModWorkerBootstrap(
         player: method("view.player"),
         monsters: method("view.monsters"),
         level: method("view.level"),
-        look: method("view.look"),
-        simulateLoadout: method("view.simulateLoadout"),
         input: method("view.input"),
         isCurrent: method("view.isCurrent"),
       },

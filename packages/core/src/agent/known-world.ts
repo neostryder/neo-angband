@@ -69,7 +69,6 @@ import type {
   AgentCapabilities,
   AgentViewDeps,
   ItemView,
-  LoadoutSimulation,
   PlayerView,
   SpellbookView,
   StoreItemView,
@@ -559,28 +558,6 @@ function knownItem(state: GameState, deps: AgentViewDeps, item: ItemView, obj: G
 
 function carried(state: GameState, deps: AgentViewDeps, item: ItemView): KnownItem {
   return knownItem(state, deps, item, gearGet(state.gear, item.handle));
-}
-
-export function knownLoadoutSimulation(state: GameState, simulation: LoadoutSimulation) {
-  const item = (value: ItemView): KnownItem => {
-    const { timeout: _timeout, ...rest } = value;
-    const charging = /\((?:(\d+) )?charging\)/u.exec(value.name ?? "");
-    return { ...rest, charging: charging ? Number(charging[1] ?? 1) : 0,
-      unknownRunes: (value.name ?? "").includes("{??}") };
-  };
-  const loadout = (value: LoadoutSimulation["before"]) => ({
-    ...value,
-    player: knownPlayer(state, value.player),
-    equipment: value.equipment.map((entry) => entry ? item(entry) : null),
-    inventory: value.inventory.map(item),
-  });
-  return deepFreeze({
-    ...simulation,
-    before: loadout(simulation.before),
-    after: loadout(simulation.after),
-    placements: simulation.placements.map((placement) => ({ ...placement,
-      worn: item(placement.worn), displaced: placement.displaced ? item(placement.displaced) : null })),
-  });
 }
 
 function knownTarget(state: GameState): KnownTarget | null {
