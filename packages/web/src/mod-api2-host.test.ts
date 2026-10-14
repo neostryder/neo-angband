@@ -6,12 +6,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
-  ActionRegistry,
-  CommandVerbTable,
   GameEvents,
   FEAT,
   MFLAG,
   SQUARE,
+  TMD,
   knownMonsterMidx,
   knownMonsters,
   monsterIsObvious,
@@ -23,9 +22,7 @@ import {
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet, type JsonValue, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
-import { api2EventPayload, createApi2Host, disposeApi2Host, type Api2HostOptions } from "./mod-api2-host";
-import { menuRegistry } from "./menu-registry";
-import { TitleRuntime } from "./title-runtime";
+import { api2EventPayload, createApi2Host, type Api2HostOptions } from "./mod-api2-host";
 import { modPluginContext } from "./mod-context";
 import type { ModPrefs } from "./mod-prefs";
 
@@ -129,6 +126,83 @@ async function observedThroughHost(api: ModApi2): Promise<string> {
 const READS = ["state:*.read"];
 
 describe("the API 2 host's view", () => {
+  it("keeps inspection paths independent of hidden terrain", async () => {
+    const a = startGame(pack, { seed: SEED, depth: DEPTH });
+    const b = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grid = emptyGrid(a.state, false);
+    b.state.chunk.setFeat(grid, FEAT.GRANITE);
+    const apiA = host(a, READS);
+    const apiB = host(b, READS);
+    const strip = (value: unknown) => JSON.stringify(value, (key, field: unknown) => key === "token" ? undefined : field);
+    expect(strip(await apiB.view.inspect.projectionPath(grid))).toBe(strip(await apiA.view.inspect.projectionPath(grid)));
+    expect(strip(await apiB.view.inspect.blastArea(grid, 2))).toBe(strip(await apiA.view.inspect.blastArea(grid, 2)));
+    expect(strip(await apiB.view.inspect.tileActions(grid))).toBe(strip(await apiA.view.inspect.tileActions(grid)));
+    expect(await apiA.view.inspect.item({ floor: { ...grid, index: 0 } })).toMatchObject({ value: null });
+    expect(await host(a, []).view.inspect.itemRules()).toMatchObject({ capability: "state:inventory.read" });
+    expect(await apiA.view.inspect.simulateLoadout({})).toEqual(await apiA.view.simulateLoadout({}));
+    expect(await apiA.view.world()).toMatchObject({ value: { equipmentSlots: a.state.actor.player.body.slots } });
+  });
+
+  it("bounds the HUD message log and gates its independent reads", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    game.state.cmdQueue = [{ code: "tunnel", repeatRemaining: 7 }];
+    game.state.unignoring = 1;
+    const grants = capabilities("probe", READS);
+    const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: grants, prefs: memoryPrefs() });
+    const api = createApi2Host({ ...ctx, snapshot: () => ({ token: { epoch: 1, revision: 1 }, driver: { kind: "player" },
+      phase: "play", messagePending: false, prompt: null, resting: null, storeStatus: null, activeBlast: null,
+      messages: { log: Array.from({ length: 120 }, (_, i) => ({ text: String(i), count: 1 })) } }) as never }, { grants });
+    const input = await api.view.input();
+    expect(input).toMatchObject({ value: { repeating: true, repeatsLeft: 7, unignoring: true } });
+    if (!input.ok) throw new Error("refused");
+    expect(input.value.messages).toHaveLength(100);
+    expect(input.value.messages![0]!.text).toBe("20");
+    expect(Object.isFrozen(input.value.messages![0])).toBe(true);
+  });
+
+  it("returns the game's depth string and CSS color table", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const api = host(game, READS);
+    expect(await api.view.player()).toMatchObject({ value: { depthText: "500' (L10)" } });
+    const colors = await api.content.colors();
+    expect(colors.ok).toBe(true);
+    if (!colors.ok) throw new Error("refused");
+    expect(colors.value).toHaveLength(32);
+    expect(colors.value[1]).toMatchObject({ index: 1, id: "white", css: expect.any(String) });
+    expect(Object.isFrozen(colors.value[1])).toBe(true);
+  });
+
+  it("returns the same loadout simulation for different counters in one timed grade", async () => {
+    const a = startGame(pack, { seed: SEED, depth: DEPTH });
+    const b = startGame(pack, { seed: SEED, depth: DEPTH });
+    a.state.actor.player.timed[TMD.FAST] = 10;
+    b.state.actor.player.timed[TMD.FAST] = 20;
+    expect(await host(b, READS).view.simulateLoadout({})).toEqual(await host(a, READS).view.simulateLoadout({}));
+  });
+
+  it("simulates a loadout without exposing timed counters", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const result = await host(game, READS).view.simulateLoadout({});
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("refused");
+    expect(result.value.delta.unknownRunes).toBe(false);
+    expect(result.value.before.player.status.fast).toBeNull();
+    for (const item of result.value.before.inventory) expect(item).not.toHaveProperty("timeout");
+    expect(await host(game, ["state:player.read"]).view.simulateLoadout({})).toMatchObject({ reason: "not-granted", capability: "state:inventory.read" });
+    const grid = emptyGrid(game.state, false);
+    expect(await host(game, READS).view.simulateLoadout({ wield: [{ from: "floor", ...grid, index: 0 }] })).toMatchObject({ code: "unobserved-item" });
+  });
+
+  it("keeps look text unchanged when hidden terrain changes and hides wizard flow", async () => {
+    const a = startGame(pack, { seed: SEED, depth: DEPTH });
+    const b = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grid = emptyGrid(a.state, false);
+    b.state.chunk.setFeat(grid, FEAT.GRANITE);
+    b.state.wizard = true;
+    expect(await host(b, READS).view.look(grid)).toEqual(await host(a, READS).view.look(grid));
+    expect(await host(a, []).view.look(grid)).toMatchObject({ reason: "not-granted" });
+  });
+
   it("does not change when an unseen monster's health and speed change (paired worlds)", async () => {
     const a = startGame(pack, { seed: SEED, depth: DEPTH });
     const b = startGame(pack, { seed: SEED, depth: DEPTH });
@@ -194,45 +268,6 @@ describe("the API 2 host's refusals", () => {
 });
 
 describe("the API 2 host's commands", () => {
-  it("registers owned callbacks and verbs and releases them at teardown", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const registry = new ActionRegistry();
-    const verbs = new CommandVerbTable();
-    const api = host(game, ["registry:command"], { commands: { registry, verbs } });
-    let ran = 0;
-    expect(await api.ui.commands.register("probe:order", "order", () => { ran += 1; })).toEqual({ ok: true, value: null });
-    expect(verbs.verbFor("probe:order")).toBe("order");
-    expect(registry.get("probe:order")?.(game.state, { code: "probe:order" })).toBe(0);
-    expect(ran).toBe(1);
-    expect(await api.ui.commands.register("probe:order", "order", () => undefined)).toMatchObject({ code: "command-taken" });
-    expect(await api.ui.commands.register("other:order", "order", () => undefined)).toMatchObject({ code: "bad-command" });
-    disposeApi2Host(api);
-    expect(registry.has("probe:order")).toBe(false);
-  });
-
-  it("checks key availability without claiming it", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const api = host(game, ["keymap:write"]);
-    expect(await api.ui.keys.isBindableTriggerKey("F10")).toEqual({ ok: true, value: true });
-    expect(await api.ui.keys.list()).toEqual({ ok: true, value: [] });
-    expect(await api.ui.keys.bind("F10", "a")).toEqual({ ok: true, value: null });
-    expect(await api.ui.keys.isBindableTriggerKey("F10")).toEqual({ ok: true, value: false });
-    expect(await api.ui.keys.isBindableTriggerKey("Shift")).toEqual({ ok: true, value: false });
-    await api.ui.keys.remove("F10");
-  });
-
-  it("adds a runnable Game-menu entry and removes it when the mod stops", async () => {
-    menuRegistry.clear();
-    const api = host(startGame(pack, { seed: SEED, depth: DEPTH }), ["registry:menu"]);
-    let ran = false;
-    expect(await api.ui.gameMenu.register("backup", "Backups", () => { ran = true; })).toEqual({ ok: true, value: null });
-    const rows = menuRegistry.transform("core:game-menu", []);
-    expect(rows.map((row) => row.label)).toEqual(["Backups"]);
-    await menuRegistry.runAction("core:game-menu", rows[0]!.id);
-    expect(ran).toBe(true);
-    disposeApi2Host(api);
-    expect(menuRegistry.transform("core:game-menu", [])).toEqual([]);
-  });
   function commander(game: StartedGame): { api: ModApi2; sent: unknown[] } {
     const sent: unknown[] = [];
     const caps = capabilities("probe", [...READS, "input:intent"]);
@@ -270,40 +305,11 @@ describe("the API 2 host's commands", () => {
 });
 
 describe("the first-party seams", () => {
-  it("registers and dismisses title rows and uses the Core choice drawer", async () => {
-    const caps = capabilities("probe", ["ui:title"]);
-    const runtime = new TitleRuntime(async (label, choices) => {
-      expect(label).toBe("Choose a profile");
-      expect(choices).toEqual(["Current", "New"]);
-      return 1;
-    });
-    const ctx = { ...modPluginContext("probe", {}, undefined, {}, { capabilities: caps }), title: runtime.forMod("probe") };
-    const api = createApi2Host(ctx, { grants: caps, tier: "first-party", firstParty: { presentation: true } });
-    let ran = false;
-    const subscription = await api.ui.title!.registerRow({ id: "new-character", label: "New character", key: "S", run: () => { ran = true; } });
-    expect(subscription.ok).toBe(true);
-    await runtime.run(runtime.list()[0]!.choice);
-    expect(ran).toBe(true);
-    expect(await api.ui.title!.choose("Choose a profile", ["Current", "New"])).toEqual({ ok: true, value: 1 });
-    if (!subscription.ok) throw new Error("refused");
-    await api.ui.title!.removeRow(subscription.value);
-    expect(runtime.list()).toEqual([]);
-    await api.ui.title!.registerRow({ id: "new-character", label: "New character", run: () => undefined });
-    disposeApi2Host(api);
-    expect(runtime.list()).toEqual([]);
-    expect(createApi2Host(ctx, { grants: caps, tier: "public" }).ui.title).toBeUndefined();
-  });
-  it("refuses presentation to a public mod even with a namespace flag", () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    expect(host(game, [], { tier: "public", firstParty: { presentation: true } }).presentation).toBeUndefined();
-    expect(host(game, [], { tier: "first-party", firstParty: { presentation: true } }).presentation).toBeDefined();
-  });
   it("are absent without an allowlist, whatever the grants", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const api = host(game, [...READS, "profiles:manage", "session:control"]);
     expect(api.manage).toBeUndefined();
     expect(api.truth).toBeUndefined();
-    expect(api.presentation).toBeUndefined();
     expect("manage" in api).toBe(false);
     expect("truth" in api).toBe(false);
     expect(api.meta.tier).toBe("public");

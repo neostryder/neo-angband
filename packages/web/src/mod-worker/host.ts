@@ -24,7 +24,6 @@
  *   and the host's `net` domain puts the value into the request.
  */
 
-import { disposeApi2Host } from "../mod-api2-host";
 import {
   API2_HOOK_NAMES,
   api2PolicyEffects,
@@ -448,16 +447,6 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
         : undefined;
       return host.ui.mount(panel as never, onAction);
     }
-    if (method === "ui.commands.register" || method === "ui.gameMenu.register") {
-      const [id, label, callbackId] = args;
-      if (typeof id !== "string" || typeof label !== "string" || !Number.isSafeInteger(callbackId) || (callbackId as number) <= 0) {
-        return api2Refused("bad-call", "a UI action needs an id, label and callback id");
-      }
-      const run = (): void => post({ type: "ui.action", ...envelope(), callbackId: callbackId as number, action: id });
-      return method === "ui.commands.register"
-        ? host.ui.commands.register(id, label, run)
-        : host.ui.gameMenu.register(id, label, run);
-    }
     if (method === "content.asset" && deps.readAsset) {
       const path = args[0];
       if (typeof path !== "string" || !validPath(path)) return api2Refused("bad-path", "content.asset takes a relative path inside this mod");
@@ -573,7 +562,6 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     const host = api;
     for (const subscription of subscriptions.values()) void host?.events.off(subscription);
     subscriptions.clear();
-    if (host) disposeApi2Host(host);
     rejectReady(new Error("the mod's Worker stopped before it was ready"));
     deps.onTeardown?.();
   };

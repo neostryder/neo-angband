@@ -20,13 +20,17 @@ import {
   AgentCapabilityError,
   buildKnownWorld,
   createAgentView,
+  colorPrefId,
+  colorTableSnapshot,
+  colorToCss,
+  describeLookGrid,
   knownMonsterMidx,
+  knownLoadoutSimulation,
   trueMonsterViews,
   tokenIsCurrent,
   type AgentCapabilities,
   type AgentViewDeps,
-  type ActionRegistry,
-  type CommandVerbTable,
+  type AgentView,
   type GameEventMap,
   type GameEventType,
   type GameState,
@@ -58,7 +62,6 @@ import {
   type Api2TrueLevel,
   type Api2TrueMonster,
   type Api2Truth,
-  type Api2Title,
   type JsonRecord,
   type JsonValue,
   type KnownWorldData,
@@ -67,8 +70,6 @@ import {
 import type { ModPluginContext } from "./mod-plugin";
 import { createModWorkerPanelRenderer, type ModWorkerPanelRenderer } from "./mod-worker/panels";
 import type { WorkerJson } from "./mod-worker/protocol";
-import { bootPhase, onBootPhaseChanged } from "./presentation-phase";
-import { menuRegistry } from "./menu-registry";
 
 /** The loader must authorize namespaces before the host can expose them. */
 export interface Api2Allowlist {
@@ -76,15 +77,10 @@ export interface Api2Allowlist {
   readonly manage?: boolean;
   /** Hidden game state needs consent even when identity is first-party. */
   readonly truth?: boolean;
-  readonly presentation?: boolean;
 }
 
 /** What the loader tells the host about one mod. */
 export interface Api2HostOptions {
-  readonly commands?: {
-    readonly registry: Pick<ActionRegistry, "has" | "register" | "unregister">;
-    readonly verbs?: CommandVerbTable;
-  };
   /** Measured identity is independent of consent to hidden data. */
   readonly tier?: "first-party" | "public";
   /** The permissions the player granted this mod. */
@@ -111,17 +107,6 @@ export interface Api2HostPrefsMigration {
 }
 
 const NO_GAME = "no game is running yet";
-let commandHost: Api2HostOptions["commands"];
-
-export function setApi2CommandHost(host: Api2HostOptions["commands"]): void {
-  commandHost = host;
-}
-const disposers = new WeakMap<ModApi2, () => void>();
-
-export function disposeApi2Host(api: ModApi2): void {
-  disposers.get(api)?.();
-  disposers.delete(api);
-}
 
 /** A clone the caller cannot use to reach or change anything else. */
 function data<T>(value: T): T {
@@ -228,7 +213,6 @@ export function api2EventPayload<K extends Api2EventName>(
 
 /** Build the API 2 domains for one in-process mod over its API 1 context. */
 export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions): ModApi2 {
-  const cleanups = new Set<() => void>();
   const { grants } = options;
   const granted = (capability: string): boolean => {
     try {
@@ -246,6 +230,12 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     buildKnownWorld(state, options.viewDeps ?? {}, {
       has: (c) => c === `state:${domain}.read` && readable(domain),
     });
+  const inspectRead = <T>(domains: readonly string[], read: (state: GameState, view: AgentView) => T): Api2Call<T> =>
+    withState((state) => {
+      for (const domain of domains) if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
+      const view = createAgentView(state, undefined, { ...(options.viewDeps ?? state.knownWorldDeps ?? {}), knowledgeSafe: true }, { has: granted });
+      return api2Ok(data(read(state, view)));
+    });
 
   let panels = options.panels;
   const renderer = (): ModWorkerPanelRenderer | undefined => {
@@ -255,34 +245,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
 
   const subscriptions = new Map<string, { type: GameEventType; handler: (type: GameEventType, raw: unknown) => void }>();
   let nextSubscription = 1;
-  const titleRows = new Map<string, () => void>();
-  const title: Api2Title | undefined = options.tier === "first-party" && options.firstParty?.presentation ? frozen({
-    registerRow: (row) => guarded(() => {
-      if (!granted("ui:title")) return api2NotGranted("ui:title");
-      if (!ctx.title) return api2Unavailable("this front end has no title actions");
-      if (!/^[a-z][a-z0-9-]{0,63}$/.test(row.id) || titleRows.has(row.id)) return api2Refused("bad-title-row", "a title action needs a free id");
-      try {
-        const remove = ctx.title.registerRow(row);
-        titleRows.set(row.id, remove);
-        cleanups.add(remove);
-        return api2Ok(frozen({ id: row.id }));
-      } catch (error) {
-        return api2Refused("bad-title-row", error instanceof Error ? error.message : String(error));
-      }
-    }),
-    removeRow: (subscription) => guarded(() => {
-      if (!granted("ui:title")) return api2NotGranted("ui:title");
-      const remove = titleRows.get(subscription.id);
-      remove?.();
-      if (remove) cleanups.delete(remove);
-      titleRows.delete(subscription.id);
-      return api2Ok(null);
-    }),
-    choose: (label, choices) => guarded(async () => {
-      if (!granted("ui:title")) return api2NotGranted("ui:title");
-      return ctx.title ? api2Ok(await ctx.title.choose(label, [...choices])) : api2Unavailable("this front end has no title choices");
-    }),
-  }) : undefined;
 
   const prefsEnvelope = "$api2prefs";
   let prefsRevision = 0;
@@ -360,6 +322,34 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     view: frozen({
+      inspect: frozen({
+        simulateLoadout: (change) => api.view.simulateLoadout(change),
+        item: (ref) => inspectRead(["inventory", ...(typeof ref === "number" ? [] : "floor" in ref ? ["floor"] : ["stores"])], (state, view) => {
+          if (typeof ref !== "number" && "floor" in ref && (!state.chunk.inBounds(ref.floor) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.floor.x && cell.y === ref.floor.y && cell.seen))) return null;
+          if (typeof ref !== "number" && "store" in ref && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) return null;
+          return view.inspectItem!(ref);
+        }),
+        itemRules: () => inspectRead(["inventory"], (_state, view) => view.itemRules!()),
+        itemTester: (code) => inspectRead(["inventory", "floor"], (_state, view) => view.itemTester!(code)),
+        bookForItem: (handle) => inspectRead(["inventory", "spells"], (_state, view) => view.bookForItem!(handle)),
+        spell: (index) => inspectRead(["spells"], (_state, view) => view.spellInfo!(index)),
+        monsterRecall: (index) => inspectRead(["monsters"], (_state, view) => view.monsterRecall!(index)),
+        projectionPath: (to) => inspectRead(["map"], (_state, view) => view.projectionPath!(to)),
+        blastArea: (to, radius, arc) => inspectRead(["map"], (_state, view) => view.blastArea!(to, radius, arc)),
+        travelPath: (to) => inspectRead(["map"], (_state, view) => view.travelPath!(to)),
+        compareLoadoutSlots: (ref) => inspectRead(["player", "inventory", ...(ref.from === "floor" ? ["floor"] : ref.from === "store" ? ["stores"] : [])], (state, view) => {
+          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.x && cell.y === ref.y && cell.seen))) return { token: part(state, "player").token, slots: [] };
+          if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) return { token: part(state, "player").token, slots: [] };
+          const result = view.compareLoadoutSlots!(ref);
+          return { ...result, slots: result.slots.map((slot) => ({ ...slot, comparison: knownLoadoutSimulation(state, slot.comparison) })) } as import("@rpgm-tools/neo-angband-mod-sdk").LoadoutSlotsResult;
+        }),
+        tileActions: (to) => inspectRead(["map"], (_state, view) => view.tileActions!(to)),
+      }),
+      catalogue: () => guarded(() => {
+        if (!readable("interaction")) return api2NotGranted("state:interaction.read");
+        const catalogue = ctx.intent?.catalogue?.();
+        return catalogue ? api2Ok(data(catalogue)) : api2Unavailable("this front end has no command catalogue");
+      }),
       world: () => withState((state) => api2Ok(buildKnownWorld(state, options.viewDeps ?? {}, { has: granted }) as KnownWorldData)),
       player: () => withState((state) => {
         if (!readable("player")) return api2NotGranted("state:player.read");
@@ -382,10 +372,46 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         return api2Ok(data({
           token: snap.token,
           driver: snap.driver,
-          phase: snap.phase === "pregame" ? bootPhase() : snap.phase,
+          phase: snap.phase,
           messagePending: snap.messagePending,
           prompt: snap.prompt,
+          resting: snap.resting,
+          running: (ctx.state?.run?.running ?? 0) > 0,
+          repeating: (ctx.state?.cmdQueue?.[0]?.repeatRemaining ?? 0) > 0,
+          repeatsLeft: ctx.state?.cmdQueue?.[0]?.repeatRemaining ?? 0,
+          unignoring: (ctx.state?.unignoring ?? 0) > 0,
+          messages: readable("messages") ? snap.messages?.log.slice(-100) ?? null : null,
+          storeStatus: readable("stores") && readable("inventory") ? snap.storeStatus : null,
+          activeBlast: readable("map") ? snap.activeBlast : null,
         }));
+      }),
+      look: (grid) => withState((state) => {
+        for (const domain of ["map", "floor", "monsters"]) {
+          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
+        }
+        if (!Number.isInteger(grid.x) || !Number.isInteger(grid.y) || !state.chunk.inBounds(grid)) {
+          return api2Refused("invalid-grid", "the grid is outside the level");
+        }
+        return api2Ok(describeLookGrid(state, grid, 0, true).text);
+      }),
+      simulateLoadout: (change) => withState((state) => {
+        for (const domain of ["player", "inventory"]) {
+          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
+        }
+        const refs = [...(change.wield ?? []), ...(change.wieldAt ?? []).map((entry) => entry.item),
+          ...(change.carry ?? []).map((entry) => entry.item)];
+        for (const ref of refs) {
+          const domain = ref.from === "store" ? "stores" : ref.from === "floor" ? "floor" : "inventory";
+          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
+          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.x && cell.y === ref.y && cell.seen))) {
+            return api2Refused("unobserved-item", "the floor item is not currently seen");
+          }
+          if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) {
+            return api2Refused("unobserved-item", "the store item is not currently seen");
+          }
+        }
+        const simulation = createAgentView(state, undefined, options.viewDeps ?? {}, { has: granted }).simulateLoadout?.(structuredClone(change));
+        return simulation ? api2Ok(data(knownLoadoutSimulation(state, simulation)) as import("@rpgm-tools/neo-angband-mod-sdk").LoadoutSimulation) : api2Unavailable("the game has no loadout calculation");
       }),
       isCurrent: (token) => withState((state) => api2Ok(tokenIsCurrent(state, token))),
     }),
@@ -471,6 +497,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     content: frozen({
+      colors: () => guarded(() => api2Ok(data(colorTableSnapshot().map((_color, index) => ({ index, id: colorPrefId(index), css: colorToCss(index) }))))),
       own: () => guarded(() => api2Ok(data({ ...ctx.data } as Record<string, JsonValue>))),
       asset: (path: string) => guarded(async () => {
         const url = await ctx.assetUrl(path);
@@ -488,41 +515,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     ui: frozen({
-      ...(title ? { title } : {}),
-      commands: frozen({
-        register: (id, verb, run) => guarded(() => {
-          if (!granted("registry:command") && !granted("command:add")) return api2NotGranted("command:add");
-          if (!id.startsWith(`${ctx.id}:`) || !/^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/.test(id) || !verb.trim() || typeof run !== "function") {
-            return api2Refused("bad-command", "a command needs an owned id, a verb and a handler");
-          }
-          const commands = options.commands ?? commandHost;
-          if (!commands) return api2Unavailable("this front end installs no mod commands");
-          if (commands.registry.has(id)) return api2Refused("command-taken", `command "${id}" is already registered`);
-          commands.registry.register(id, () => {
-            try {
-              const result = run();
-              if (result) void result.catch((error: unknown) => ctx.log(`command failed: ${String(error)}`));
-            } catch (error) {
-              ctx.log(`command failed: ${String(error)}`);
-            }
-            return 0;
-          });
-          commands.verbs?.set(id, verb);
-          cleanups.add(() => commands.registry.unregister(id));
-          return api2Ok(null);
-        }),
-      }),
-      gameMenu: frozen({
-        register: (action, label, run) => guarded(() => {
-          if (!granted("registry:menu")) return api2NotGranted("registry:menu");
-          if (!/^[a-z][a-z0-9-]{0,63}$/.test(action) || !label.trim() || /[\r\n]/.test(label) || typeof run !== "function") {
-            return api2Refused("bad-action", "a menu action needs an id, a label and a handler");
-          }
-          menuRegistry.addAction("core:game-menu", action, label, run, ctx.id);
-          cleanups.add(() => menuRegistry.removeAction("core:game-menu", action, ctx.id));
-          return api2Ok(null);
-        }),
-      }),
       mount: (panel: Api2Panel, onAction?: (action: string) => void) => guarded(() => {
         if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
         const draw = renderer();
@@ -546,10 +538,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         return api2Ok(frozen({ panelId }));
       }),
       keys: frozen({
-        isBindableTriggerKey: (trigger) => guarded(() => {
-          if (!granted("keymap:write")) return api2NotGranted("keymap:write");
-          return ctx.keymaps ? api2Ok(ctx.keymaps.isBindableTriggerKey(trigger)) : api2Unavailable(NO_GAME);
-        }),
         bind: (trigger: string, action: string) => guarded(() => {
           if (!granted("keymap:write")) return api2NotGranted("keymap:write");
           if (!ctx.keymaps) return api2Unavailable(NO_GAME);
@@ -577,25 +565,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
     ...(options.firstParty?.manage ? { manage: manageDomain(ctx) } : {}),
     ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}) } : {}),
-    ...(options.tier === "first-party" && options.firstParty?.presentation ? {
-      presentation: frozen({
-        ...(title ? { title } : {}),
-        phase: bootPhase,
-        onPhaseChanged: onBootPhaseChanged,
-        ...(ctx.display ? { display: ctx.display } : {}),
-        ...(ctx.subwindows ? { subwindows: ctx.subwindows } : {}),
-        ...(ctx.tiles ? { tiles: ctx.tiles } : {}),
-        ...(ctx.ui ? { panels: ctx.ui } : {}),
-        ...(typeof document !== "undefined" && document.getElementById("game-view") ? {
-          sidebarHost: document.getElementById("game-view")!,
-        } : {}),
-      }),
-    } : {}),
   };
-  disposers.set(api, () => {
-    for (const cleanup of cleanups) cleanup();
-    cleanups.clear();
-  });
   return Object.freeze(api);
 }
 

@@ -112,6 +112,23 @@ export function installModWorkerBootstrap(
         player: method("view.player"),
         monsters: method("view.monsters"),
         level: method("view.level"),
+        look: method("view.look"),
+        simulateLoadout: method("view.simulateLoadout"),
+        catalogue: method("view.catalogue"),
+        inspect: {
+          simulateLoadout: method("view.inspect.simulateLoadout"),
+          item: method("view.inspect.item"),
+          itemRules: method("view.inspect.itemRules"),
+          itemTester: method("view.inspect.itemTester"),
+          bookForItem: method("view.inspect.bookForItem"),
+          spell: method("view.inspect.spell"),
+          monsterRecall: method("view.inspect.monsterRecall"),
+          projectionPath: method("view.inspect.projectionPath"),
+          blastArea: method("view.inspect.blastArea"),
+          travelPath: method("view.inspect.travelPath"),
+          compareLoadoutSlots: method("view.inspect.compareLoadoutSlots"),
+          tileActions: method("view.inspect.tileActions"),
+        },
         input: method("view.input"),
         isCurrent: method("view.isCurrent"),
       },
@@ -142,6 +159,7 @@ export function installModWorkerBootstrap(
       hooks: { available: m.hooks, active },
       content: {
         own: method("content.own"),
+        colors: method("content.colors"),
         asset: method("content.asset"),
         records: method("content.records"),
         lookup: method("content.lookup"),
@@ -157,17 +175,7 @@ export function installModWorkerBootstrap(
           return call("ui.mount", [panel, callbackId]);
         },
         patch: method("ui.patch"),
-        commands: { register: (id: string, verb: string, run: () => void) => {
-          const callbackId = ++nextCallback;
-          callbacks.set(callbackId, run);
-          return call("ui.commands.register", [id, verb, callbackId]);
-        } },
-        gameMenu: { register: (action: string, label: string, run: () => void) => {
-          const callbackId = ++nextCallback;
-          callbacks.set(callbackId, run);
-          return call("ui.gameMenu.register", [action, label, callbackId]);
-        } },
-        keys: { isBindableTriggerKey: method("ui.keys.isBindableTriggerKey"), bind: method("ui.keys.bind"), list: method("ui.keys.list"), remove: method("ui.keys.remove") },
+        keys: { bind: method("ui.keys.bind"), list: method("ui.keys.list"), remove: method("ui.keys.remove") },
       },
       store: {
         prefs: { get: method("store.prefs.get"), set: method("store.prefs.set") },
@@ -226,8 +234,6 @@ export function installModWorkerBootstrap(
         throw new Error("the Worker entry's default export is not an API 2 mod definition (an object with an \"api\" range)");
       }
       definition = candidate as Api2ModDefinition;
-      if (definition.presentation !== undefined) throw new Error("Worker mods cannot declare presentation");
-      if (definition.birth !== undefined || definition.titleActions !== undefined) throw new Error("Worker mods cannot declare birth or title actions");
       send({ type: "ready", summary: summarize(definition, meta) });
     } catch (err) {
       fault("boot", err);
@@ -317,13 +323,10 @@ export function installModWorkerBootstrap(
       case "start": {
         if (started || definition === null || meta === null) return;
         started = true;
+        if (!definition.start) return;
         const active = [...Object.keys(declared), ...message.policyHooks];
         try {
-          const mod = buildApi(meta, active);
-          for (const action of definition.actions ?? []) {
-            void mod.ui.gameMenu.register(action.action, action.label, () => action.run(mod));
-          }
-          const result = definition.start?.(mod);
+          const result = definition.start(buildApi(meta, active));
           if (result && typeof (result as Promise<void>).then === "function") {
             (result as Promise<void>).then(undefined, (err: unknown) => fault("start()", err));
           }
