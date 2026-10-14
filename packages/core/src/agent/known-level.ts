@@ -85,7 +85,6 @@ export interface KnownLevelCell {
   readonly y: number;
   readonly remembered: RememberedCell;
   readonly visible: boolean;
-  readonly seen: boolean;
   readonly actual?: ActualCell;
 }
 
@@ -119,16 +118,14 @@ export function captureKnownLevel(
   for (let y = 0; y < chunk.height; y++) {
     for (let x = 0; x < chunk.width; x++) {
       const grid = { x, y };
-      const pile = knownPile(state, grid);
-      const terrainKnown = squareIsKnown(state, grid);
-      if (!terrainKnown && pile.length === 0) continue;
-      const feat = terrainKnown ? knownFeat(state, grid) : 0;
+      if (!squareIsKnown(state, grid)) continue;
+      const feat = knownFeat(state, grid);
       const remembered: RememberedCell = {
         feat,
         /* The player's trap memory, not the live grid: a trap removed or
          * re-armed out of view is remembered as it was last seen. */
         traps: squareKnownTraps(state.known, grid).map((kind) => ({ index: kind.tidx, name: kind.name })),
-        objects: pile.map((entry): RememberedObject => {
+        objects: knownPile(state, grid).map((entry): RememberedObject => {
           if (entry.sensed) {
             return { sensed: true, money: tvalIsMoney(entry.obj.tval) };
           }
@@ -167,7 +164,6 @@ export function captureKnownLevel(
         y,
         remembered,
         visible: chunk.sqinfoHas(grid, SQUARE.VIEW),
-        seen: squareIsSeen(chunk, grid),
       };
       if (includeActual) {
         const index = y * chunk.width + x;

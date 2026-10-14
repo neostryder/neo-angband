@@ -306,7 +306,6 @@ export interface KnownLevelCell {
   readonly remembered: KnownRememberedCell;
   /** In view right now. */
   readonly visible: boolean;
-  readonly seen: boolean;
 }
 
 /** The level as the player remembers it, never the real map. */
