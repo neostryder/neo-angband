@@ -10,7 +10,6 @@ import {
   FEAT,
   MFLAG,
   SQUARE,
-  observeKnownStore,
   knownMonsterMidx,
   knownMonsters,
   monsterIsObvious,
@@ -19,6 +18,7 @@ import {
   type GamePack,
   type GameState,
   type Monster,
+  type ModNet,
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet, type JsonValue, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -87,7 +87,7 @@ function host(
   prefs: ModPrefs = memoryPrefs(),
 ): ModApi2 {
   const caps = capabilities("probe", granted);
-  const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: caps, prefs, registries: game.booted.registries });
+  const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: caps, prefs });
   return createApi2Host(ctx, { grants: caps, ...extra });
 }
 
@@ -228,64 +228,6 @@ describe("the API 2 host's commands", () => {
 });
 
 describe("the first-party seams", () => {
-  it("reports perception independently of eye visibility, including detected monsters and mimics", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const mon = liveMonsters(game.state).find((mon) => !monsterIsObvious(mon))!;
-    const api = host(game, READS, { firstParty: { truth: true } });
-    const read = async () => {
-      const result = await api.truth!.monsters();
-      if (!result.ok) throw new Error("refused");
-      expect(Object.isFrozen(result.value)).toBe(true);
-      return result.value.find((monster) => monster.id === mon.midx)!;
-    };
-    expect((await read()).perceived).toBe(false);
-    mon.mflag.on(MFLAG.VISIBLE);
-    mon.mflag.off(MFLAG.VIEW);
-    mon.mflag.off(MFLAG.CAMOUFLAGE);
-    expect(await read()).toMatchObject({ visible: true, perceived: true });
-    mon.mflag.on(MFLAG.CAMOUFLAGE);
-    expect((await read()).perceived).toBe(false);
-  });
-
-  it("returns full race facts as frozen data without creating lore", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const api = host(game, READS, { firstParty: { truth: true } });
-    const race = game.booted.registries.monsters.races.find((race) => race.blows.length > 0 && !race.spellFlags.isEmpty())!;
-    const before = game.state.lore.size;
-    const result = await api.truth!.race(race.ridx);
-    if (!result.ok || !result.value) throw new Error("refused");
-    expect(result.value).toMatchObject({ ridx: race.ridx, level: race.level, sleep: race.sleep, spellPower: race.spellPower, freqInnate: race.freqInnate, freqSpell: race.freqSpell });
-    expect(result.value.spells).toEqual([...race.spellFlags].sort((a, b) => a - b));
-    expect(result.value.blows[0]).toMatchObject({ effect: race.blows[0]!.effect.name });
-    expect(Object.isFrozen(result.value.blows)).toBe(true);
-    expect(structuredClone(result.value)).toEqual(result.value);
-    expect(game.state.lore.size).toBe(before);
-    expect(await api.truth!.race(-1)).toEqual({ ok: true, value: null });
-  });
-
-  it("keeps store stock at the last observation and declares the current truth policy", async () => {
-    const games = [startGame({ ...pack, store: records("store") }, { seed: SEED, depth: DEPTH }), startGame({ ...pack, store: records("store") }, { seed: SEED, depth: DEPTH })];
-    for (const game of games) {
-      game.changeLevel(0);
-      game.state.turn = 12;
-      observeKnownStore(game.state, game.state.stores![0]!);
-      game.changeLevel(1);
-      game.state.turn = 20;
-    }
-    games[1]!.state.stores![0]!.stock = [];
-    const a = host(games[0]!, READS, { firstParty: { truth: true } });
-    const b = host(games[1]!, READS, { firstParty: { truth: true } });
-    const worldA = await a.view.world();
-    const worldB = await b.view.world();
-    if (!worldA.ok || !worldB.ok) throw new Error("refused");
-    expect(worldA.value.stores).toEqual(worldB.value.stores);
-    const result = await a.truth!.storeKnowledge();
-    if (!result.ok) throw new Error("refused");
-    expect(result.value[0]).toMatchObject({ storeIndex: 0, feat: games[0]!.state.stores![0]!.feat, depth: 1, lastVisitTurn: 12, snapshotTurn: 20, stalenessRule: "current", remoteStockUsable: true });
-    expect(result.value[1]!.lastVisitTurn).toBeNull();
-    expect(Object.isFrozen(result.value[0])).toBe(true);
-  });
-
   it("are absent without an allowlist, whatever the grants", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const api = host(game, [...READS, "profiles:manage", "session:control"]);
@@ -419,7 +361,60 @@ describe("API 2 events", () => {
   });
 });
 
+describe("API 2 credential references", () => {
+  it("passes a prefix and opaque reference to the host transport", async () => {
+    const requests: Parameters<ModNet["request"]>[0][] = [];
+    const net: ModNet = {
+      transport: "page",
+      request: async (request) => {
+        requests.push(request);
+        return { ok: true, status: 200, headers: {}, body: "{}" };
+      },
+      secrets: {
+        storage: "page",
+        has: async () => ({ present: false }),
+        set: async () => ({ ok: true, storage: "page" }),
+        fromEnv: async () => ({ ok: false, problem: "unavailable" }),
+        delete: async () => ({ ok: true }),
+      },
+    };
+    const caps = capabilities("probe", ["network:example.test"]);
+    const ctx = modPluginContext("probe", {}, undefined, {}, { capabilities: caps, net });
+    const api = createApi2Host(ctx, { grants: caps });
+    const ref = api.net!.credential("key", "Bearer ");
+    expect(ref).toEqual({ credential: "key", prefix: "Bearer " });
+    expect(Object.isFrozen(ref)).toBe(true);
+    expect(await api.net!.request({ url: "https://example.test", headers: {
+      authorization: ref, "x-api-key": api.net!.credential("key"),
+    } })).toMatchObject({ ok: true });
+    expect(requests[0]?.headers).toEqual({ authorization: "Bearer {secret:key}", "x-api-key": "{secret:key}" });
+  });
+});
+
 describe("API 2 storage", () => {
+  it("unwraps preferences when the definition drops its migration", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const prefs = memoryPrefs();
+    const versioned = host(game, [], { prefs: { version: 1, migrate: (value) => value } }, prefs);
+    await versioned.store.prefs.set({ colour: "blue" });
+    expect(await host(game, [], {}, prefs).store.prefs.get()).toEqual({ ok: true, value: { colour: "blue" } });
+  });
+
+  it("keeps a numeric $api2prefs key as user data", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const prefs = memoryPrefs();
+    const value = { $api2prefs: 9, value: "user data" };
+    prefs.set(value);
+    const fromVersions: number[] = [];
+    const api = host(game, [], { prefs: { version: 1, migrate: (data, from) => {
+      fromVersions.push(from);
+      return data;
+    } } }, prefs);
+    expect(await api.store.prefs.get()).toEqual({ ok: true, value });
+    expect(fromVersions).toEqual([0]);
+    expect(await host(game, [], {}, prefs).store.prefs.get()).toEqual({ ok: true, value });
+  });
+
   it("shares a pending preference migration and preserves a newer write", async () => {
     const prefs = memoryPrefs();
     prefs.set({ colour: "red" });
@@ -441,7 +436,7 @@ describe("API 2 storage", () => {
     release({ colour: "red", shade: "dark" });
     expect(await first).toEqual({ ok: true, value: { colour: "blue" } });
     expect(await second).toEqual({ ok: true, value: { colour: "blue" } });
-    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "blue" } });
+    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "blue" } } });
   });
 
   it("keeps a cleared preference value when an older migration finishes", async () => {
@@ -473,10 +468,10 @@ describe("API 2 storage", () => {
       },
     }, prefs);
     expect(await api.store.prefs.get()).toEqual({ ok: true, value: { colour: "red", shade: "dark" } });
-    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "red", shade: "dark" } });
+    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "red", shade: "dark" } } });
     expect(await api.store.prefs.get()).toEqual({ ok: true, value: { colour: "red", shade: "dark" } });
     expect(calls).toEqual([0]);
     await api.store.prefs.set({ colour: "blue" });
-    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "blue" } });
+    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "blue" } } });
   });
 });

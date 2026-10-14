@@ -21,10 +21,6 @@ import {
   buildKnownWorld,
   createAgentView,
   knownMonsterMidx,
-  monsterIsObvious,
-  MON_RACE_FLAG_ENTRIES,
-  MON_SPELL_ENTRIES,
-  storeKnowledge,
   trueMonsterViews,
   tokenIsCurrent,
   type AgentCapabilities,
@@ -238,24 +234,33 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   const subscriptions = new Map<string, { type: GameEventType; handler: (type: GameEventType, raw: unknown) => void }>();
   let nextSubscription = 1;
 
-  const prefsEnvelope = "$api2prefs";
+  const prefsEnvelope = "neo-angband/mod/prefs";
+  const wrapPrefs = (value: JsonValue, version: number): JsonValue => ({
+    format: prefsEnvelope, schemaVersion: 1, data: { version, value },
+  });
   let prefsRevision = 0;
   let pendingMigration: Promise<Api2Result<JsonValue | null>> | undefined;
   const prefs: Api2Slot = {
     get: () => guarded(async () => {
       const raw = ctx.prefs.get() as JsonValue | null;
       const migration = options.prefs;
-      if (!migration || raw === null || raw === undefined) return api2Ok(raw === undefined ? null : data(raw));
-      const enveloped = typeof raw === "object" && !Array.isArray(raw) && typeof raw[prefsEnvelope] === "number";
-      const from = enveloped ? (raw as Record<string, JsonValue>)[prefsEnvelope] as number : 0;
-      const value = enveloped ? (raw as Record<string, JsonValue>)["value"] ?? null : raw;
-      if (from >= migration.version || value === null) return api2Ok(data(value));
+      if (raw === null || raw === undefined) return api2Ok(null);
+      const stored = typeof raw === "object" && !Array.isArray(raw) ? raw : undefined;
+      const contents = stored?.["data"];
+      const envelopeData = contents !== null && typeof contents === "object" && !Array.isArray(contents) ? contents : undefined;
+      const enveloped = stored?.["format"] === prefsEnvelope && stored["schemaVersion"] === 1 &&
+        Object.keys(stored).length === 3 && envelopeData !== undefined && Object.keys(envelopeData).length === 2 &&
+        typeof envelopeData["version"] === "number" && Number.isInteger(envelopeData["version"]) &&
+        envelopeData["version"] >= 1 && Object.hasOwn(envelopeData, "value");
+      const from = enveloped ? envelopeData!["version"] as number : 0;
+      const value = enveloped ? envelopeData!["value"] ?? null : raw;
+      if (!migration || from >= migration.version || value === null) return api2Ok(data(value));
       if (pendingMigration) return pendingMigration;
       const revision = prefsRevision;
       const migrating = (async (): Promise<Api2Result<JsonValue | null>> => {
         const migrated = await migration.migrate(structuredClone(value), from);
         if (revision !== prefsRevision) return prefs.get();
-        ctx.prefs.set({ [prefsEnvelope]: migration.version, value: migrated });
+        ctx.prefs.set(wrapPrefs(migrated, migration.version));
         return api2Ok(data(migrated));
       })();
       pendingMigration = migrating;
@@ -267,7 +272,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
     set: (value) => guarded(() => {
       const migration = options.prefs;
-      ctx.prefs.set(value === null || !migration ? value : { [prefsEnvelope]: migration.version, value: structuredClone(value) });
+      ctx.prefs.set(value === null || !migration ? value : wrapPrefs(structuredClone(value), migration.version));
       prefsRevision += 1;
       return api2Ok(null);
     }),
@@ -502,7 +507,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
     request: (request: Api2NetRequest) => guarded(async () => {
       const headers: Record<string, string> = {};
       for (const [name, value] of Object.entries(request.headers ?? {})) {
-        headers[name] = typeof value === "string" ? value : `{secret:${value.credential}}`;
+        headers[name] = typeof value === "string" ? value : `${value.prefix ?? ""}{secret:${value.credential}}`;
       }
       const response = await net.request({
         url: request.url,
@@ -523,7 +528,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
       }
       return api2Refused(response.code, response.problem);
     }),
-    credential: (name: string) => frozen({ credential: name }),
+    credential: (name: string, prefix?: string) => frozen({ credential: name, ...(prefix !== undefined ? { prefix } : {}) }),
     credentials: frozen({
       status: (name: string) => guarded(async () => api2Ok(data(await secrets.has(name)))),
       set: (name: string, value: string, hosts: readonly string[]) => guarded(async () => {
@@ -599,35 +604,7 @@ function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps): Api2Truth {
   return frozen({
     monsters: () => guarded(() => {
       if (!ctx.state) return api2Unavailable(NO_GAME);
-      return api2Ok(data(trueMonsterViews(ctx.state, deps).map((mon) => ({
-        ...mon,
-        perceived: monsterIsObvious(ctx.state!.monsters[mon.id]!),
-      }))) as readonly Api2TrueMonster[]);
-    }),
-    race: (index: number) => guarded(() => {
-      if (!ctx.state) return api2Unavailable(NO_GAME);
-      if (!ctx.registries) return api2Unavailable("there are no monster races yet");
-      const race = ctx.registries.monsters.races.find((race) => race.ridx === index);
-      if (!race) return api2Ok(null);
-      return api2Ok(data({
-        ridx: race.ridx,
-        flags: [...race.flags].flatMap((flag) => MON_RACE_FLAG_ENTRIES[flag] ? [MON_RACE_FLAG_ENTRIES[flag]!.name] : []),
-        spells: [...race.spellFlags].filter((flag) => !!MON_SPELL_ENTRIES[flag]).sort((a, b) => a - b),
-        blows: race.blows.map((blow) => {
-          const dice = blow.dice?.randomValue();
-          return { dice: dice?.dice ?? 0, sides: dice?.sides ?? 0, effect: blow.effect.name };
-        }),
-        level: race.level,
-        sleep: race.sleep,
-        spellPower: race.spellPower,
-        freqInnate: race.freqInnate,
-        freqSpell: race.freqSpell,
-        hasFriends: race.friends.length > 0 || race.friendsBase.length > 0,
-      }));
-    }),
-    storeKnowledge: () => guarded(() => {
-      if (!ctx.state) return api2Unavailable(NO_GAME);
-      return api2Ok(data(storeKnowledge(ctx.state)));
+      return api2Ok(data(trueMonsterViews(ctx.state, deps)) as readonly Api2TrueMonster[]);
     }),
     level: () => guarded(() => {
       if (!ctx.state) return api2Unavailable(NO_GAME);

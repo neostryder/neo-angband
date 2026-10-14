@@ -327,6 +327,7 @@ export interface Api2Store {
 /** An opaque name for a credential the host keeps. The mod never holds the value. */
 export interface Api2CredentialRef {
   readonly credential: string;
+  readonly prefix?: string;
 }
 
 /** An HTTP request. A header may name a credential, which the host fills in. */
@@ -363,7 +364,7 @@ export interface Api2Credentials {
 export interface Api2Net {
   request(request: Api2NetRequest): Api2Call<Api2NetResponse>;
   /** A reference to a credential, for a request header. */
-  credential(name: string): Api2CredentialRef;
+  credential(name: string, prefix?: string): Api2CredentialRef;
   readonly credentials: Api2Credentials;
 }
 
@@ -403,7 +404,6 @@ export interface Api2TrueMonster {
   readonly raceId?: string;
   readonly grid: KnownGrid;
   readonly visible: boolean;
-  readonly perceived: boolean;
   readonly hp: number;
   readonly maxHp: number;
   readonly speed: number;
@@ -420,29 +420,6 @@ export interface Api2TrueMonster {
   readonly questGuardian: boolean;
   readonly finalGuardian: boolean;
   readonly glyph?: string;
-}
-
-export interface Api2TrueRace {
-  readonly ridx: number;
-  readonly flags: readonly string[];
-  readonly spells: readonly number[];
-  readonly blows: readonly { readonly dice: number; readonly sides: number; readonly effect: string }[];
-  readonly level: number;
-  readonly sleep: number;
-  readonly spellPower: number;
-  readonly freqInnate: number;
-  readonly freqSpell: number;
-  readonly hasFriends: boolean;
-}
-
-export interface Api2StoreKnowledge {
-  readonly storeIndex: number;
-  readonly feat: number;
-  readonly depth: number;
-  readonly lastVisitTurn: number | null;
-  readonly snapshotTurn: number;
-  readonly stalenessRule: "current";
-  readonly remoteStockUsable: true;
 }
 
 /** One grid as it really is. */
@@ -479,8 +456,6 @@ export interface Api2TrueLevel {
  */
 export interface Api2Truth {
   monsters(): Api2Call<readonly Api2TrueMonster[]>;
-  race(index: number): Api2Call<Api2TrueRace | null>;
-  storeKnowledge(): Api2Call<readonly Api2StoreKnowledge[]>;
   level(): Api2Call<Api2TrueLevel>;
 }
 

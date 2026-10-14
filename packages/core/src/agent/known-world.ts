@@ -124,20 +124,10 @@ export interface KnownMonster {
   readonly knownFlags: readonly string[];
   /** Spells the player's lore has learned, by code. */
   readonly knownSpells: readonly string[];
-  readonly knownBlows: readonly KnownMonsterBlow[];
   readonly unique: boolean;
   readonly questGuardian: boolean;
   readonly finalGuardian: boolean;
   readonly glyph?: string;
-}
-
-export interface KnownMonsterBlow {
-  readonly method: string;
-  readonly effect: string;
-  readonly base: number;
-  readonly dice: number;
-  readonly sides: number;
-  readonly mBonus: number;
 }
 
 /** Why the monster list is withheld: the player is hallucinating. */
@@ -428,7 +418,6 @@ export function knownMonster(state: GameState, mon: Monster, deps: AgentViewDeps
   const quests = state.actor.player.quests;
   const finalRace = quests.length > 0 ? quests[quests.length - 1]!.race : -1;
   const flags = codes(knownRaceFlags(state, mon.race), MON_RACE_FLAG_ENTRIES);
-  const lore = state.lore.get(mon.race.ridx);
   const view: {
     -readonly [K in keyof KnownMonster]: KnownMonster[K];
   } = {
@@ -445,11 +434,6 @@ export function knownMonster(state: GameState, mon: Monster, deps: AgentViewDeps
     raceSpeed: mon.race.speed,
     knownFlags: flags,
     knownSpells: codes(knownRaceSpells(state, mon.race), MON_SPELL_ENTRIES),
-    knownBlows: mon.race.blows.filter((_, i) => lore?.allKnown || lore?.blowKnown[i] || lore?.blowTimesSeen[i]).map((blow) => ({
-      method: blow.method.name,
-      effect: blow.effect.name,
-      ...(blow.dice?.randomValue() ?? { base: 0, dice: 0, sides: 0, mBonus: 0 }),
-    })),
     unique: flags.includes("UNIQUE"),
     questGuardian: quests.some((q) => q.race === mon.race.ridx),
     finalGuardian: mon.race.ridx === finalRace,
@@ -604,29 +588,6 @@ export function frozenKnownMonster(state: GameState, mon: Monster, deps: AgentVi
 }
 
 const storeObservations = new WeakMap<GameState, Map<Store, KnownStore>>();
-const storeObservationTurns = new WeakMap<GameState, Map<Store, number>>();
-
-export interface StoreKnowledge {
-  readonly storeIndex: number;
-  readonly feat: number;
-  readonly depth: number;
-  readonly lastVisitTurn: number | null;
-  readonly snapshotTurn: number;
-  readonly stalenessRule: "current";
-  readonly remoteStockUsable: true;
-}
-
-export function storeKnowledge(state: GameState): readonly StoreKnowledge[] {
-  return deepFreeze((state.stores ?? []).map((store, storeIndex) => ({
-    storeIndex,
-    feat: store.feat,
-    depth: state.chunk.depth,
-    lastVisitTurn: storeObservationTurns.get(state)?.get(store) ?? null,
-    snapshotTurn: state.turn,
-    stalenessRule: "current" as const,
-    remoteStockUsable: true as const,
-  })));
-}
 
 function storeBook(state: GameState): Map<Store, KnownStore> {
   let observations = storeObservations.get(state);
@@ -638,12 +599,6 @@ function storeBook(state: GameState): Map<Store, KnownStore> {
 }
 
 function rememberStore(state: GameState, deps: AgentViewDeps, live: Store, store: StoreView): void {
-  let turns = storeObservationTurns.get(state);
-  if (!turns) {
-    turns = new Map();
-    storeObservationTurns.set(state, turns);
-  }
-  turns.set(live, state.turn);
   storeBook(state).set(live, deepFreeze(structuredClone({
     ...store,
     stock: store.stock.map((ware) => ({

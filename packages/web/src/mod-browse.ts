@@ -2833,6 +2833,7 @@ export async function gameUpdateModInstaller(
 ): Promise<(upgrade: ModUpgrade) => Promise<string | null>> {
   const listed = await listedRepos(deps);
   return async (upgrade) => {
+    if (!listed.readable) return registryUpdateWaitingText();
     const key = upgrade.repo.toLowerCase();
     const origin: ModOrigin = listed.vouched.has(key) ? "curated" : "third-party";
     const community = listed.community.has(key);
@@ -2948,6 +2949,10 @@ export async function showModUpgrades(term: GridSurface & GridPointerInput, deps
      * whatever moved up into the index just used. */
     const todo = pick === 0 ? pending : [pending[pick - 1]];
     const listed = await listedRepos(deps);
+    if (!listed.readable) {
+      await showTextScreen(term, installFailureScreen("", registryUpdateWaitingText()));
+      return changed;
+    }
     for (const u of todo) {
       if (!u) continue;
       /* Pinned to the tag the check found, not to "newest": between the check and
@@ -3114,6 +3119,7 @@ export function modUpdateReportScreen(refreshed: readonly ModRefresh[]): ScreenV
 
 /** The curated list's two kinds of repository, lower-cased. */
 export interface ListedRepos {
+  readonly readable: boolean;
   /** Its "mods": vouched for, so installs and updates skip the consent gate. */
   readonly vouched: ReadonlySet<string>;
   /** Its "community" mods: third-party, and every new release is asked about. */
@@ -3137,19 +3143,20 @@ export interface ListedRepos {
  * one the player confirms first (confirmCommunityUpdate). A repository on both
  * lists is treated as vouched.
  *
- * A list that cannot be read yields two empty sets, so nothing is silently promoted
- * to exempt on the strength of a failed fetch. A community mod's update then goes
- * through as an ordinary third-party one, behind the consent gate and unasked,
- * because without the list there is no telling it apart from a mod added by address.
+ * Updates wait when the list cannot be read, because community status is unknown.
  */
 export async function listedRepos(deps: Pick<ModBrowseDeps, "curated">): Promise<ListedRepos> {
-  const { registry } = await deps.curated();
+  const { registry } = await deps.curated().catch(() => ({ registry: null }));
   const lower = (refs: readonly RepoRef[] | undefined): Set<string> =>
     new Set((refs ?? []).map((r) => r.repo.toLowerCase()));
   const vouched = lower(registry?.mods);
   const community = lower(registry?.community);
   for (const repo of vouched) community.delete(repo);
-  return { vouched, community };
+  return { readable: registry !== null, vouched, community };
+}
+
+export function registryUpdateWaitingText(): string {
+  return t("modBrowse.upgrades.registryUnavailable", "The recommended mod list could not be read. Updates are waiting until it is available.");
 }
 
 /** What the community-update question names. */
