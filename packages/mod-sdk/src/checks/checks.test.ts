@@ -658,6 +658,27 @@ describe("checker regressions", () => {
 });
 
 describe("the report", () => {
+  it("accepts mod-declared tables and inherited artifact base kinds", async () => {
+    const { report: r } = await runModChecks({ files: entriesOf(content({
+      "tval.json": JSON.stringify({ records: [{ name: "junk" }] }),
+      "message_type.json": JSON.stringify({ records: [{ name: "BR_CONF" }] }),
+      "artifact.json": JSON.stringify({ records: [
+        { name: "New relic", "base-object": { tval: "amulet", sval: "Special Base" } },
+        { name: "Wrong type", "base-object": { tval: "junk", sval: "Special Base" } },
+        { name: "Typo", "base-object": { tval: "amulet", sval: "Special Baze" } },
+      ] }),
+    })) }, { base: [basePackFromFiles({
+      "manifest.json": { id: "core" },
+      "object_base.json": { records: [{ name: { tval: "amulet" } }] },
+      "artifact.json": { records: [{ name: "Old relic", "base-object": { tval: "amulet", sval: "Special Base" } }] },
+    })] });
+    expect(r.findings.filter((f) => f.message.includes("not a record file"))).toEqual([]);
+    const dangling = r.findings.filter((f) => f.rule === "checks/dangling-reference");
+    expect(dangling).toHaveLength(2);
+    expect(dangling.map((f) => f.message).join("\n")).toContain("Wrong type");
+    expect(dangling.map((f) => f.message).join("\n")).toContain("Typo");
+  });
+
   it("names the tool, the version and the mod", async () => {
     const { report: r, coverage } = await runModChecks({ files: entriesOf(plugin([], OK)), commit: "abc123" });
     expect(r.source.tool).toBe("neo-angband-mod-checks");

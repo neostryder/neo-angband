@@ -71,7 +71,6 @@ export interface Api2Allowlist {
   readonly manage?: boolean;
   /** Hidden game state needs consent even when identity is first-party. */
   readonly truth?: boolean;
-  readonly presentation?: boolean;
 }
 
 /** What the loader tells the host about one mod. */
@@ -235,24 +234,33 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   const subscriptions = new Map<string, { type: GameEventType; handler: (type: GameEventType, raw: unknown) => void }>();
   let nextSubscription = 1;
 
-  const prefsEnvelope = "$api2prefs";
+  const prefsEnvelope = "neo-angband/mod/prefs";
+  const wrapPrefs = (value: JsonValue, version: number): JsonValue => ({
+    format: prefsEnvelope, schemaVersion: 1, data: { version, value },
+  });
   let prefsRevision = 0;
   let pendingMigration: Promise<Api2Result<JsonValue | null>> | undefined;
   const prefs: Api2Slot = {
     get: () => guarded(async () => {
       const raw = ctx.prefs.get() as JsonValue | null;
       const migration = options.prefs;
-      if (!migration || raw === null || raw === undefined) return api2Ok(raw === undefined ? null : data(raw));
-      const enveloped = typeof raw === "object" && !Array.isArray(raw) && typeof raw[prefsEnvelope] === "number";
-      const from = enveloped ? (raw as Record<string, JsonValue>)[prefsEnvelope] as number : 0;
-      const value = enveloped ? (raw as Record<string, JsonValue>)["value"] ?? null : raw;
-      if (from >= migration.version || value === null) return api2Ok(data(value));
+      if (raw === null || raw === undefined) return api2Ok(null);
+      const stored = typeof raw === "object" && !Array.isArray(raw) ? raw : undefined;
+      const contents = stored?.["data"];
+      const envelopeData = contents !== null && typeof contents === "object" && !Array.isArray(contents) ? contents : undefined;
+      const enveloped = stored?.["format"] === prefsEnvelope && stored["schemaVersion"] === 1 &&
+        Object.keys(stored).length === 3 && envelopeData !== undefined && Object.keys(envelopeData).length === 2 &&
+        typeof envelopeData["version"] === "number" && Number.isInteger(envelopeData["version"]) &&
+        envelopeData["version"] >= 1 && Object.hasOwn(envelopeData, "value");
+      const from = enveloped ? envelopeData!["version"] as number : 0;
+      const value = enveloped ? envelopeData!["value"] ?? null : raw;
+      if (!migration || from >= migration.version || value === null) return api2Ok(data(value));
       if (pendingMigration) return pendingMigration;
       const revision = prefsRevision;
       const migrating = (async (): Promise<Api2Result<JsonValue | null>> => {
         const migrated = await migration.migrate(structuredClone(value), from);
         if (revision !== prefsRevision) return prefs.get();
-        ctx.prefs.set({ [prefsEnvelope]: migration.version, value: migrated });
+        ctx.prefs.set(wrapPrefs(migrated, migration.version));
         return api2Ok(data(migrated));
       })();
       pendingMigration = migrating;
@@ -264,7 +272,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
     set: (value) => guarded(() => {
       const migration = options.prefs;
-      ctx.prefs.set(value === null || !migration ? value : { [prefsEnvelope]: migration.version, value: structuredClone(value) });
+      ctx.prefs.set(value === null || !migration ? value : wrapPrefs(structuredClone(value), migration.version));
       prefsRevision += 1;
       return api2Ok(null);
     }),
@@ -489,17 +497,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
     ...(options.firstParty?.manage ? { manage: manageDomain(ctx) } : {}),
     ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}) } : {}),
-    ...(options.tier === "first-party" && options.firstParty?.presentation ? {
-      presentation: frozen({
-        ...(ctx.display ? { display: ctx.display } : {}),
-        ...(ctx.subwindows ? { subwindows: ctx.subwindows } : {}),
-        ...(ctx.tiles ? { tiles: ctx.tiles } : {}),
-        ...(ctx.ui ? { panels: ctx.ui } : {}),
-        ...(typeof document !== "undefined" && document.getElementById("game-view") ? {
-          sidebarHost: document.getElementById("game-view")!,
-        } : {}),
-      }),
-    } : {}),
   };
   return Object.freeze(api);
 }
@@ -510,7 +507,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
     request: (request: Api2NetRequest) => guarded(async () => {
       const headers: Record<string, string> = {};
       for (const [name, value] of Object.entries(request.headers ?? {})) {
-        headers[name] = typeof value === "string" ? value : `{secret:${value.credential}}`;
+        headers[name] = typeof value === "string" ? value : `${value.prefix ?? ""}{secret:${value.credential}}`;
       }
       const response = await net.request({
         url: request.url,
@@ -531,7 +528,7 @@ function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModAp
       }
       return api2Refused(response.code, response.problem);
     }),
-    credential: (name: string) => frozen({ credential: name }),
+    credential: (name: string, prefix?: string) => frozen({ credential: name, ...(prefix !== undefined ? { prefix } : {}) }),
     credentials: frozen({
       status: (name: string) => guarded(async () => api2Ok(data(await secrets.has(name)))),
       set: (name: string, value: string, hosts: readonly string[]) => guarded(async () => {

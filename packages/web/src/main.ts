@@ -449,6 +449,7 @@ import {
   configureModHealth,
   FAULT_LIMIT,
   FAULT_WINDOW_TURNS,
+  manifestBudgetFor,
   modHealth,
   switchOffNotice,
   type ModSwitchOff,
@@ -587,8 +588,6 @@ import { userPath, userWrite, exportUserFile, FileType } from "./user-io";
 import { loadLoreFile, saveLoreFile } from "./lore-file";
 import { LORE_FILE } from "@rpgm-tools/neo-angband-core";
 import { buildGraphicsOverview, buildOverview, panLocate, locateSectorBanner } from "./mapview";
-import { displayCellAt, displayFrame } from "./display-frame";
-import { displayMapLayer } from "./overlay";
 import type { BuildOverviewParams, LevelOverview, Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
@@ -10035,9 +10034,6 @@ function clampDisplayOrigin(
 }
 
 const displayControl: ModDisplay = {
-  cellAt: (x, y) => displayCellAt(term.cellAt(x, y), displayControl.snapshot(), x, y, displayMapLayer()),
-  frame: () => displayFrame(canvas, displayMapLayer()),
-  onFrame: (listener) => term.onRepaint(listener),
   snapshot() {
     const { cols, rows } = term.size();
     const metrics = term.metrics();
@@ -10327,6 +10323,7 @@ const modSnapshotSource: InputSnapshotSource = {
   viewDeps: () => ({
     resolver: new ContentIdResolver({
       objects: booted.registries.objects,
+      monsters: booted.registries.monsters,
       playerRaces: players.races,
       playerClasses: players.classes,
     }),
@@ -15930,6 +15927,12 @@ function modSwitchedOff(off: ModSwitchOff): void {
 configureModHealth({
   turn: () => state.turn,
   enforce: true,
+  budgetFor: (id) => manifestBudgetFor(id, [
+    ...activeModCode().plugins.map((loaded) => loaded.manifest),
+    ...activeModCode().workers.map((loaded) => loaded.manifest),
+    ...[...sandboxMods.values()].map((loaded) => loaded.manifest),
+    ...[...trustedMods.values()].map((loaded) => loaded.manifest),
+  ]),
   onSwitchOff: modSwitchedOff,
   onOverBudget: (report) => {
     log.warn(

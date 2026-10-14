@@ -18,6 +18,7 @@ import {
   type GamePack,
   type GameState,
   type Monster,
+  type ModNet,
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet, type JsonValue, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -227,17 +228,11 @@ describe("the API 2 host's commands", () => {
 });
 
 describe("the first-party seams", () => {
-  it("refuses presentation to a public mod even with a namespace flag", () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    expect(host(game, [], { tier: "public", firstParty: { presentation: true } }).presentation).toBeUndefined();
-    expect(host(game, [], { tier: "first-party", firstParty: { presentation: true } }).presentation).toBeDefined();
-  });
   it("are absent without an allowlist, whatever the grants", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const api = host(game, [...READS, "profiles:manage", "session:control"]);
     expect(api.manage).toBeUndefined();
     expect(api.truth).toBeUndefined();
-    expect(api.presentation).toBeUndefined();
     expect("manage" in api).toBe(false);
     expect("truth" in api).toBe(false);
     expect(api.meta.tier).toBe("public");
@@ -366,7 +361,60 @@ describe("API 2 events", () => {
   });
 });
 
+describe("API 2 credential references", () => {
+  it("passes a prefix and opaque reference to the host transport", async () => {
+    const requests: Parameters<ModNet["request"]>[0][] = [];
+    const net: ModNet = {
+      transport: "page",
+      request: async (request) => {
+        requests.push(request);
+        return { ok: true, status: 200, headers: {}, body: "{}" };
+      },
+      secrets: {
+        storage: "page",
+        has: async () => ({ present: false }),
+        set: async () => ({ ok: true, storage: "page" }),
+        fromEnv: async () => ({ ok: false, problem: "unavailable" }),
+        delete: async () => ({ ok: true }),
+      },
+    };
+    const caps = capabilities("probe", ["network:example.test"]);
+    const ctx = modPluginContext("probe", {}, undefined, {}, { capabilities: caps, net });
+    const api = createApi2Host(ctx, { grants: caps });
+    const ref = api.net!.credential("key", "Bearer ");
+    expect(ref).toEqual({ credential: "key", prefix: "Bearer " });
+    expect(Object.isFrozen(ref)).toBe(true);
+    expect(await api.net!.request({ url: "https://example.test", headers: {
+      authorization: ref, "x-api-key": api.net!.credential("key"),
+    } })).toMatchObject({ ok: true });
+    expect(requests[0]?.headers).toEqual({ authorization: "Bearer {secret:key}", "x-api-key": "{secret:key}" });
+  });
+});
+
 describe("API 2 storage", () => {
+  it("unwraps preferences when the definition drops its migration", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const prefs = memoryPrefs();
+    const versioned = host(game, [], { prefs: { version: 1, migrate: (value) => value } }, prefs);
+    await versioned.store.prefs.set({ colour: "blue" });
+    expect(await host(game, [], {}, prefs).store.prefs.get()).toEqual({ ok: true, value: { colour: "blue" } });
+  });
+
+  it("keeps a numeric $api2prefs key as user data", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const prefs = memoryPrefs();
+    const value = { $api2prefs: 9, value: "user data" };
+    prefs.set(value);
+    const fromVersions: number[] = [];
+    const api = host(game, [], { prefs: { version: 1, migrate: (data, from) => {
+      fromVersions.push(from);
+      return data;
+    } } }, prefs);
+    expect(await api.store.prefs.get()).toEqual({ ok: true, value });
+    expect(fromVersions).toEqual([0]);
+    expect(await host(game, [], {}, prefs).store.prefs.get()).toEqual({ ok: true, value });
+  });
+
   it("shares a pending preference migration and preserves a newer write", async () => {
     const prefs = memoryPrefs();
     prefs.set({ colour: "red" });
@@ -388,7 +436,7 @@ describe("API 2 storage", () => {
     release({ colour: "red", shade: "dark" });
     expect(await first).toEqual({ ok: true, value: { colour: "blue" } });
     expect(await second).toEqual({ ok: true, value: { colour: "blue" } });
-    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "blue" } });
+    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "blue" } } });
   });
 
   it("keeps a cleared preference value when an older migration finishes", async () => {
@@ -420,10 +468,10 @@ describe("API 2 storage", () => {
       },
     }, prefs);
     expect(await api.store.prefs.get()).toEqual({ ok: true, value: { colour: "red", shade: "dark" } });
-    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "red", shade: "dark" } });
+    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "red", shade: "dark" } } });
     expect(await api.store.prefs.get()).toEqual({ ok: true, value: { colour: "red", shade: "dark" } });
     expect(calls).toEqual([0]);
     await api.store.prefs.set({ colour: "blue" });
-    expect(prefs.raw()).toEqual({ $api2prefs: 2, value: { colour: "blue" } });
+    expect(prefs.raw()).toEqual({ format: "neo-angband/mod/prefs", schemaVersion: 1, data: { version: 2, value: { colour: "blue" } } });
   });
 });

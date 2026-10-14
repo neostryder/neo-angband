@@ -18,7 +18,6 @@ import type { NetMethod, NetProblemCode } from "../net-request.js";
 import type { Api2EventMap, Api2EventName } from "./events.js";
 import type { Api2HookName, Api2Hooks } from "./hooks.js";
 import type { Api2Policies } from "./policies.js";
-import type { Api2Presentation, Api2Presenters } from "./presentation.js";
 import type {
   KnownGrid,
   KnownItem,
@@ -328,6 +327,7 @@ export interface Api2Store {
 /** An opaque name for a credential the host keeps. The mod never holds the value. */
 export interface Api2CredentialRef {
   readonly credential: string;
+  readonly prefix?: string;
 }
 
 /** An HTTP request. A header may name a credential, which the host fills in. */
@@ -364,7 +364,7 @@ export interface Api2Credentials {
 export interface Api2Net {
   request(request: Api2NetRequest): Api2Call<Api2NetResponse>;
   /** A reference to a credential, for a request header. */
-  credential(name: string): Api2CredentialRef;
+  credential(name: string, prefix?: string): Api2CredentialRef;
   readonly credentials: Api2Credentials;
 }
 
@@ -475,7 +475,6 @@ export interface ModApi2 {
   readonly manage?: Api2Manage;
   /** The first-party autoplayer only. */
   readonly truth?: Api2Truth;
-  readonly presentation?: Api2Presentation;
 }
 
 /** What `hooks` is told when the host asks a mod for its hooks. */
@@ -496,7 +495,6 @@ export interface Api2PrefsMigration {
 export interface Api2ModDefinition {
   /** The mod API range this code was written for, such as ">=2.0.0 <3.0.0". */
   readonly api: string;
-  readonly presentation?: Api2Presenters;
   /**
    * The hooks this mod contributes, given its flags. Asked once when content
    * composes. In a Worker only the notification hooks (optionsChanged,

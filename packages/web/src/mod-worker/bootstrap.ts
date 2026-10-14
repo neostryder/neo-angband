@@ -216,7 +216,6 @@ export function installModWorkerBootstrap(
         throw new Error("the Worker entry's default export is not an API 2 mod definition (an object with an \"api\" range)");
       }
       definition = candidate as Api2ModDefinition;
-      if (definition.presentation !== undefined) throw new Error("Worker mods cannot declare presentation");
       send({ type: "ready", summary: summarize(definition, meta) });
     } catch (err) {
       fault("boot", err);
