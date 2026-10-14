@@ -293,7 +293,6 @@ export function needsOwnConfirmation(capability: string): boolean {
  * which is what its runtime provides.
  */
 export function tierRefusal(capability: string, tier: ModTier): string | null {
-  if (capability === "engine:access" && tier.execution === "worker") return "Worker mods cannot have live engine access";
   const entry = entryOf(capability);
   if (!entry) return "the game does not know this permission";
   if (entry.namespace !== "public") return seamRefusal(entry, capability, tier);
@@ -357,10 +356,6 @@ export function effectiveGrants(
   const yes = new Set(decisions.granted);
   const no = new Set(decisions.refused);
   for (const capability of new Set(declared)) {
-    if (capability === "engine:access" && tier.trust === "first-party" && tier.execution === "in-process") {
-      granted.push(capability);
-      continue;
-    }
     const why = tierRefusal(capability, tier);
     if (why !== null) {
       refusedByTier.push({ capability, why });
@@ -460,6 +455,7 @@ export function modTiers(): ReadonlyMap<string, ModTier> {
 export interface FirstPartyAllowlist {
   readonly manage?: boolean;
   readonly truth?: boolean;
+  readonly presentation?: boolean;
 }
 
 /** What a runtime needs to start one mod: its tier, what it holds, and its first-party seams. */
@@ -482,8 +478,9 @@ export function modStartGrants(id: string): ModStartGrants {
    * capability is the whole test; `manage` is first-party only by that policy. */
   const truth = granted.includes(TRUTH_MAP);
   const manage = tier.trust === "first-party" && granted.some((cap) => entryOf(cap)?.namespace === "manage");
-  if (!truth && !manage) return Object.freeze({ tier, granted });
-  return Object.freeze({ tier, granted, firstParty: Object.freeze({ ...(manage ? { manage } : {}), ...(truth ? { truth } : {}) }) });
+  const presentation = tier.trust === "first-party" && tier.execution === "in-process";
+  if (!truth && !manage && !presentation) return Object.freeze({ tier, granted });
+  return Object.freeze({ tier, granted, firstParty: Object.freeze({ ...(manage ? { manage } : {}), ...(truth ? { truth } : {}), ...(presentation ? { presentation } : {}) }) });
 }
 
 /** Whether any loaded mod holds a capability that marks the save. */

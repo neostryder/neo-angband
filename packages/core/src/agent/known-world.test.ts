@@ -392,35 +392,11 @@ describe("KnownWorld paired worlds", () => {
     b.state.hasFlavor = swap(b.state.hasFlavor);
     carry(a, x);
     carry(b, y);
-    const known = buildKnownWorld(a.state, a.state.knownWorldDeps).inventory!.find((item) => item.tval === TV.POTION)!;
-    expect(known.carried).toBe(true);
-    expect(known.baseName).not.toContain("Speed");
     expect(observed(b.state)).toBe(observed(a.state));
 
     /* Control: learning the kind names it. */
     b.flavor.setAware(y);
     expect(observed(b.state)).not.toBe(observed(a.state));
-  });
-
-  it("reports carried items, floor items, and player scoring and shop facts", () => {
-    const [game] = pair();
-    const kind = kindNamed(game, TV.SWORD, "Dagger");
-    const obj = carry(game, kind);
-    obj.toH = 15;
-    const world = buildKnownWorld(game.state, game.state.knownWorldDeps);
-    const dagger = world.inventory!.find((item) => item.baseName === "Dagger")!;
-    expect(dagger.baseName).toBe("Dagger");
-    expect(dagger.carried).toBe(true);
-    const floor = objectPrep(new Rng(1), game.booted.registries.objects, game.booted.registries.constants, kind, 1, "minimise");
-    floorCarry(game.state, game.state.actor.grid, floor);
-    squareKnowPile(game.state, game.state.actor.grid);
-    expect(buildKnownWorld(game.state, game.state.knownWorldDeps).floorHere!.every((item) => !item.carried)).toBe(true);
-    game.state.actor.player.noscore = 32;
-    expect(buildKnownWorld(game.state, game.state.knownWorldDeps).player).toMatchObject({ noscore: 32, shopnum: null });
-    const shopFeat = game.booted.registries.features.shopFeats()[0];
-    if (shopFeat === undefined) throw new Error("the pack has no shop entrance");
-    game.state.chunk.setFeat(game.state.actor.grid, shopFeat);
-    expect(buildKnownWorld(game.state, game.state.knownWorldDeps).player!.shopnum).toBe(0);
   });
 
   it("floor memory that has gone stale is reported as remembered", () => {

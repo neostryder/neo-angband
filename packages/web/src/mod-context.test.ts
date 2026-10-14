@@ -83,8 +83,8 @@ describe("modPluginContext session facts", () => {
   });
 
   it("lists only enabled loaded mods and public flags as frozen copies", () => {
-    let loaded = [{ id: "interface", name: "Interface", version: "1.0.0" }, {
-      id: "qol", name: "Quality of Life", version: "2.0.0", flags: { "qol.autoDig": true },
+    let loaded = [{ id: "interface", version: "1.0.0" }, {
+      id: "qol", version: "2.0.0", flags: { "qol.autoDig": true },
     }];
     setModListControl(() => loaded);
     try {
@@ -94,7 +94,7 @@ describe("modPluginContext session facts", () => {
       expect(Object.isFrozen(first)).toBe(true);
       expect(Object.isFrozen(first?.[1])).toBe(true);
       expect(Object.isFrozen(first?.[1]?.flags)).toBe(true);
-      loaded = [{ id: "interface", name: "Interface", version: "1.0.0" }];
+      loaded = [{ id: "interface", version: "1.0.0" }];
       expect(ctx.mods?.()).toEqual(loaded);
       expect(first).toHaveLength(2);
     } finally {

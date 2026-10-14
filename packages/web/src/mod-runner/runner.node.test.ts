@@ -10,13 +10,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
-import { CapabilitySet, headlessRunFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
+import { headlessRunFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { HeadlessRunReport, ModFinding } from "@rpgm-tools/neo-angband-mod-sdk";
 import { log } from "../logging";
 import { nodeModsSource } from "./node-source";
 import { runHeadless } from "./runner";
 import type { ModPlugin } from "../mod-plugin";
-import { api2Plugin } from "../mod-api2-shim";
 
 const REPO = fileURLToPath(new URL("../../../../", import.meta.url));
 const FIXTURES = join(REPO, "packages", "web", "test-fixtures", "mod-runner");
@@ -59,48 +58,6 @@ async function probe(plugin: ModPlugin): Promise<HeadlessRunReport> {
 }
 
 describe("the headless runner", () => {
-  it("loads an API 2 folder and registers through engine.core during composition", async () => {
-    const source = nodeModsSource([fixture("counter")]);
-    let compositions = 0;
-    let starts = 0;
-    const report = await runHeadless({ source: { ...source, readJson: async (id, file) => file === "manifest.json" ? {
-      format: "neo-angband/mod/manifest", schemaVersion: 2,
-      data: { id, name: "Engine probe", version: "1.0.0", facets: ["plugin"], runtime: "in-process", api: ">=2.0.0 <3.0.0", capabilities: ["engine:access"] },
-    } : source.readJson(id, file) }, importer: async () => ({ default: {
-      api: ">=2.0.0 <3.0.0",
-      hooks: ({ engine }: import("@rpgm-tools/neo-angband-mod-sdk").Api2HookContext) => {
-        if (!engine) throw new Error("no engine during composition");
-        engine.core.effectInfoRegistry().subtype.set("engine-probe", () => 7);
-        compositions += 1;
-        return {};
-      },
-      start: (mod: import("@rpgm-tools/neo-angband-mod-sdk").ModApi2) => {
-        if (mod.engine?.core.effectInfoRegistry().subtype.handlerFor("engine-probe")?.("probe", {} as never) !== 7) throw new Error("composition registration was lost");
-        starts += 1;
-      },
-    } }) });
-    expect(report.passed).toBe(true);
-    expect(compositions).toBeGreaterThan(0);
-    expect(starts).toBe(2);
-  });
-
-  it("runs a first-party API 2 toy controller through the legacy controller seam", async () => {
-    let decisions = 0;
-    const caps = CapabilitySet.fromManifest({ id: "runner-counter", name: "Controller probe", version: "1.0.0", shape: "plugin", capabilities: ["input:intent", "state:*.read"] });
-    const plugin = api2Plugin({ api: ">=2.0.0 <3.0.0", controller: (mod, input) => {
-      decisions += 1;
-      void mod.act.submit(input.token, { kind: "command", command: { code: "hold" } });
-    } }, () => ({ grants: caps, tier: "first-party" }));
-    const source = nodeModsSource([fixture("counter")]);
-    const report = await runHeadless({ source: { ...source, readJson: async (id, file) => {
-      const value = await source.readJson(id, file);
-      return file === "manifest.json" ? { ...(value as Record<string, unknown>), affectsGameplay: true,
-        capabilities: ["command:add", "input:intent", "state:*.read"] } : value;
-    } }, importer: async () => ({ default: plugin }) });
-    expect(report.passed).toBe(true);
-    expect(decisions).toBeGreaterThan(5);
-    expect(report.health[0]!.faults).toBe(0);
-  });
   it("retains invalid manifest candidates", async () => {
     const source = nodeModsSource([fixture("counter")]);
     const report = await runHeadless({ source: { ...source, readJson: async () => ({}) } });

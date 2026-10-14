@@ -46,7 +46,8 @@ export function installModWorkerBootstrap(
   let nextCallback = 0;
   const pending = new Map<number, Pending>();
   const listeners = new Map<number, Listener>();
-  const callbacks = new Map<number, (action: string) => void>();
+  const callbacks = new Map<number, (action: string, value?: string | boolean) => void>();
+  const backupCallbacks = new Map<number, (file: { readonly name: string; readonly text: string }) => void>();
 
   const freeze = <T>(value: T): T => {
     if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
@@ -85,7 +86,6 @@ export function installModWorkerBootstrap(
   };
   const method = (path: string) => (...args: unknown[]): Promise<never> => call(path, args);
   const granted = (capability: string): boolean => {
-    if (capability === "engine:access") return false;
     const list = meta?.granted ?? [];
     if (list.includes(capability)) return true;
     const state = /^state:([a-z0-9-]+)\.read$/u.exec(capability);
@@ -109,7 +109,6 @@ export function installModWorkerBootstrap(
         mods: method("meta.mods"),
       },
       view: {
-        options: method("view.options"),
         world: method("view.world"),
         player: method("view.player"),
         monsters: method("view.monsters"),
@@ -143,28 +142,13 @@ export function installModWorkerBootstrap(
       },
       hooks: { available: m.hooks, active },
       content: {
-        boundRecords: method("content.boundRecords"),
-        activations: method("content.activations"),
-        activation: method("content.activation"),
         own: method("content.own"),
         asset: method("content.asset"),
         records: method("content.records"),
         lookup: method("content.lookup"),
       },
       ui: {
-        onKey: async (listener: Listener): Promise<unknown> => {
-          const listenerId = ++nextListener;
-          listeners.set(listenerId, listener);
-          const result = await call("ui.onKey", [listenerId]) as { ok: boolean };
-          if (!result.ok) listeners.delete(listenerId);
-          return result;
-        },
-        offKey: (subscription: { readonly id: string }): Promise<unknown> => {
-          listeners.delete(Number(subscription.id));
-          return call("ui.offKey", [subscription]);
-        },
-        unmount: method("ui.unmount"),
-        mount: (panel: unknown, onAction?: (action: string) => void, onDismiss?: () => void): Promise<unknown> => {
+        mount: (panel: unknown, onAction?: (action: string, value?: string | boolean) => void, onDismiss?: () => void): Promise<unknown> => {
           let callbackId = 0;
           if (typeof onAction === "function") {
             nextCallback += 1;
@@ -172,17 +156,24 @@ export function installModWorkerBootstrap(
             callbacks.set(callbackId, onAction);
           }
           let dismissId = 0;
-          if (onDismiss) {
-            dismissId = ++nextCallback;
-            callbacks.set(dismissId, onDismiss);
-          }
+          if (typeof onDismiss === "function") { dismissId = ++nextCallback; callbacks.set(dismissId, onDismiss); }
           return call("ui.mount", [panel, callbackId, dismissId]);
         },
         patch: method("ui.patch"),
-        keys: { bind: method("ui.keys.bind"), list: method("ui.keys.list"), remove: method("ui.keys.remove") },
+        unmount: method("ui.unmount"),
+        commands: { register: (id: string, verb: string, run: () => void) => {
+          const callbackId = ++nextCallback;
+          callbacks.set(callbackId, run);
+          return call("ui.commands.register", [id, verb, callbackId]);
+        } },
+        gameMenu: { register: (action: string, label: string, run: () => void) => {
+          const callbackId = ++nextCallback;
+          callbacks.set(callbackId, run);
+          return call("ui.gameMenu.register", [action, label, callbackId]);
+        } },
+        keys: { isBindableTriggerKey: method("ui.keys.isBindableTriggerKey"), bind: method("ui.keys.bind"), list: method("ui.keys.list"), remove: method("ui.keys.remove") },
       },
       store: {
-        install: { get: method("store.install.get"), set: method("store.install.set") },
         prefs: { get: method("store.prefs.get"), set: method("store.prefs.set") },
         character: { get: method("store.character.get"), set: method("store.character.set") },
       },
@@ -197,6 +188,23 @@ export function installModWorkerBootstrap(
             set: method("net.credentials.set"),
             fromEnvironment: method("net.credentials.fromEnvironment"),
             remove: method("net.credentials.remove"),
+          },
+        },
+      } : {}),
+      ...(m.granted.includes("backup:folder") ? {
+        backupFolder: {
+          name: method("backupFolder.name"), choose: method("backupFolder.choose"), forget: method("backupFolder.forget"),
+          write: method("backupFolder.write"), list: method("backupFolder.list"),
+          onSave: async (listener: (file: { readonly name: string; readonly text: string }) => void) => {
+            const callbackId = ++nextCallback;
+            backupCallbacks.set(callbackId, listener);
+            const result = await call("backupFolder.onSave", [callbackId]) as { ok: boolean };
+            if (!result.ok) backupCallbacks.delete(callbackId);
+            return result;
+          },
+          off: async (subscription: { readonly id: string }) => {
+            backupCallbacks.delete(Number(subscription.id));
+            return call("backupFolder.off", [subscription]);
           },
         },
       } : {}),
@@ -222,7 +230,6 @@ export function installModWorkerBootstrap(
       policies: policies === undefined ? null : plain(policies),
       migrateBag: typeof d.migrateBag === "function",
       prefsVersion: d.prefs !== undefined && typeof d.prefs.version === "number" ? d.prefs.version : null,
-      installVersion: d.install !== undefined && typeof d.install.version === "number" ? d.install.version : null,
       start: typeof d.start === "function",
       stop: typeof d.stop === "function",
     };
@@ -240,6 +247,8 @@ export function installModWorkerBootstrap(
         throw new Error("the Worker entry's default export is not an API 2 mod definition (an object with an \"api\" range)");
       }
       definition = candidate as Api2ModDefinition;
+      if (definition.presentation !== undefined) throw new Error("Worker mods cannot declare presentation");
+      if (definition.birth !== undefined || definition.titleActions !== undefined) throw new Error("Worker mods cannot declare birth or title actions");
       send({ type: "ready", summary: summarize(definition, meta) });
     } catch (err) {
       fault("boot", err);
@@ -260,9 +269,6 @@ export function installModWorkerBootstrap(
       } else if (q.kind === "prefs.migrate") {
         if (!definition?.prefs) throw new Error("this mod declares no prefs migration");
         value = await definition.prefs.migrate(q.value as never, q.fromVersion);
-      } else if (q.kind === "install.migrate") {
-        if (!definition?.install) throw new Error("this mod declares no install migration");
-        value = await definition.install.migrate(q.value as never, q.fromVersion);
       }
       reply({ ok: true, value: plain(value) });
     } catch (err) {
@@ -310,10 +316,22 @@ export function installModWorkerBootstrap(
         const callback = callbacks.get(message.callbackId);
         if (!callback) return;
         try {
-          callback(String(message.action));
+          callback(String(message.action), message.value);
         } catch (err) {
           fault("panel action", err);
         }
+        return;
+      }
+      case "ui.dismissed": {
+        const callback = callbacks.get(message.callbackId);
+        callbacks.delete(message.callbackId);
+        try { callback?.(""); }
+        catch (error) { fault("panel dismissal", error); }
+        return;
+      }
+      case "backup.save": {
+        try { backupCallbacks.get(message.callbackId)?.(freeze(message.file)); }
+        catch (error) { fault("backup save listener", error); }
         return;
       }
       case "ask":
@@ -332,10 +350,13 @@ export function installModWorkerBootstrap(
       case "start": {
         if (started || definition === null || meta === null) return;
         started = true;
-        if (!definition.start) return;
         const active = [...Object.keys(declared), ...message.policyHooks];
         try {
-          const result = definition.start(buildApi(meta, active));
+          const mod = buildApi(meta, active);
+          for (const action of definition.actions ?? []) {
+            void mod.ui.gameMenu.register(action.action, action.label, () => action.run(mod));
+          }
+          const result = definition.start?.(mod);
           if (result && typeof (result as Promise<void>).then === "function") {
             (result as Promise<void>).then(undefined, (err: unknown) => fault("start()", err));
           }
@@ -349,6 +370,7 @@ export function installModWorkerBootstrap(
         definition = null;
         listeners.clear();
         callbacks.clear();
+        backupCallbacks.clear();
         for (const request of pending.values()) request.reject(new Error("the mod was stopped"));
         pending.clear();
         try {

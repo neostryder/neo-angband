@@ -69,20 +69,6 @@ function run(fixture: string, extra: readonly string[] = []): Run {
 }
 
 describe("a well-formed mod builds", { timeout: BUILD_TIMEOUT }, () => {
-  it("builds an API 2 definition using the manifest id instead of the folder name", () => {
-    const root = mkdtempSync(join(PKG, "api2-build-"));
-    temps.push(root);
-    writeFileSync(join(root, "manifest.json"), JSON.stringify({
-      format: "neo-angband/mod/manifest", schemaVersion: 2,
-      data: { id: "api2-probe", name: "Build probe", version: "1.0.0", facets: ["plugin"], runtime: "in-process", api: ">=2.0.0 <3.0.0" },
-    }));
-    writeFileSync(join(root, "plugin.ts"), 'export default { api: ">=2.0.0 <3.0.0", start() {} };\n');
-    const output = execFileSync(process.execPath, [BIN, "--root", root], { encoding: "utf8", windowsHide: true });
-    expect(output).toContain("api2-probe: wrote");
-    expect(readFileSync(join(root, "plugin.js"), "utf8")).toContain("api2-probe");
-    const check = execFileSync(process.execPath, [BIN, "--root", root, "--check"], { encoding: "utf8", windowsHide: true });
-    expect(check).toContain("committed plugin.js is current");
-  });
   /* One build, read by the three tests that only inspect its output. */
   let out = "";
   let built: Run = { code: -1, out: "not built" };

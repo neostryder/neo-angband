@@ -111,6 +111,10 @@ export class MenuRegistry implements MenuRegistryTarget {
     this.#actions.clear();
   }
 
+  removeAction(id: string, action: string, owner: string): void {
+    this.#actions.get(id)?.delete(`${owner}:${action}`);
+  }
+
   transform(id: string, rows: readonly MenuTransformRow[]): readonly MenuTransformRow[] {
     const installed = this.#handlers.get(id);
     let transformed: readonly MenuTransformRow[] = rows;

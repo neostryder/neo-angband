@@ -84,8 +84,6 @@ export function parseCapability(cap: string): ParsedCapability {
 function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolean {
   if (isTruthCapability(request)) return JSON.stringify(grant) === JSON.stringify(request);
   switch (request.kind) {
-    case "engine":
-      return grant.kind === "engine";
     case "command":
       /* The action is compared: adding a command to the act facade and asking
        * the broker to run one are two grants. */

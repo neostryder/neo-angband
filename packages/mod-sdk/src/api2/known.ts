@@ -71,8 +71,6 @@ export interface KnownPlayerStatus {
  * moves none of them.
  */
 export interface KnownPlayer {
-  readonly noscore: number;
-  readonly shopnum: number | null;
   readonly race: string;
   readonly cls: string;
   readonly level: number;
@@ -122,8 +120,6 @@ export interface KnownPlayer {
  * player has learned.
  */
 export interface KnownItem {
-  readonly baseName: string;
-  readonly carried: boolean;
   readonly handle: number;
   readonly kindKey: string;
   readonly itemKey?: string;

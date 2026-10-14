@@ -6,7 +6,7 @@
  * Nothing here reaches the game by a door API 1 does not already have; what
  * changes is what comes back. Reads go through the known-world builder, so a
  * mod sees what the player knows. Every value is cloned and frozen, so a mod
- * holds data outside the consented in-process engine domain. Every call answers with an Api2Result,
+ * holds data and never a live object. Every call answers with an Api2Result,
  * and a permission the player refused answers `not-granted` instead of
  * throwing.
  *
@@ -23,9 +23,10 @@ import {
   knownMonsterMidx,
   trueMonsterViews,
   tokenIsCurrent,
-  provenanceOf,
   type AgentCapabilities,
   type AgentViewDeps,
+  type ActionRegistry,
+  type CommandVerbTable,
   type GameEventMap,
   type GameEventType,
   type GameState,
@@ -40,10 +41,6 @@ import {
   api2Refused,
   api2Unavailable,
   MOD_API2_VERSION,
-  ENGINE_API2_VERSION,
-  type Api2Engine,
-  type Api2Activation,
-  type Api2BoundRecord,
   recordKey,
   type Api2Actor,
   type Api2Call,
@@ -61,6 +58,7 @@ import {
   type Api2TrueLevel,
   type Api2TrueMonster,
   type Api2Truth,
+  type Api2Title,
   type JsonRecord,
   type JsonValue,
   type KnownWorldData,
@@ -69,9 +67,11 @@ import {
 import type { ModPluginContext } from "./mod-plugin";
 import { createModWorkerPanelRenderer, type ModWorkerPanelRenderer } from "./mod-worker/panels";
 import type { WorkerJson } from "./mod-worker/protocol";
-import { modInstallPrefs, type ModPrefs } from "./mod-prefs";
-import { modRegistries } from "./mod-context";
-import { OPTION_ENTRIES } from "@rpgm-tools/neo-angband-core";
+import { bootPhase, onBootPhaseChanged } from "./presentation-phase";
+import { menuRegistry } from "./menu-registry";
+import { clearQueuedUiInputs, enqueueUiInputs, inputEvents } from "./input-door";
+import { modPanelsSuspended } from "./panel-runtime";
+import { removeBackupSink } from "./mod-backup";
 
 /** The loader must authorize namespaces before the host can expose them. */
 export interface Api2Allowlist {
@@ -79,14 +79,15 @@ export interface Api2Allowlist {
   readonly manage?: boolean;
   /** Hidden game state needs consent even when identity is first-party. */
   readonly truth?: boolean;
+  readonly presentation?: boolean;
 }
 
 /** What the loader tells the host about one mod. */
 export interface Api2HostOptions {
-  readonly intent?: ModPluginContext["intent"];
-  readonly execution?: "in-process" | "worker" | "data";
-  readonly install?: Api2PrefsMigration | Api2HostPrefsMigration;
-  readonly installStorage?: ModPrefs;
+  readonly commands?: {
+    readonly registry: Pick<ActionRegistry, "has" | "register" | "unregister">;
+    readonly verbs?: CommandVerbTable;
+  };
   /** Measured identity is independent of consent to hidden data. */
   readonly tier?: "first-party" | "public";
   /** The permissions the player granted this mod. */
@@ -113,22 +114,16 @@ export interface Api2HostPrefsMigration {
 }
 
 const NO_GAME = "no game is running yet";
+let commandHost: Api2HostOptions["commands"];
 
-export function api2Engine(ctx: ModPluginContext, options: Api2HostOptions): Api2Engine | undefined {
-  if (options.execution === "worker" || !(options.tier === "first-party" || options.grants.has("engine:access"))) return undefined;
-  return frozen({
-    api: ENGINE_API2_VERSION,
-    core: ctx.core,
-    get state() { return ctx.state; },
-    get registries() { return ctx.registries ?? modRegistries(); },
-  });
+export function setApi2CommandHost(host: Api2HostOptions["commands"]): void {
+  commandHost = host;
 }
+const disposers = new WeakMap<ModApi2, () => void>();
 
-const hostCleanup = new WeakMap<ModApi2, () => void>();
-
-export function stopApi2Host(api: ModApi2): void {
-  hostCleanup.get(api)?.();
-  hostCleanup.delete(api);
+export function disposeApi2Host(api: ModApi2): void {
+  disposers.get(api)?.();
+  disposers.delete(api);
 }
 
 /** A clone the caller cannot use to reach or change anything else. */
@@ -236,9 +231,9 @@ export function api2EventPayload<K extends Api2EventName>(
 
 /** Build the API 2 domains for one in-process mod over its API 1 context. */
 export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions): ModApi2 {
+  const cleanups = new Set<() => void>();
   const { grants } = options;
   const granted = (capability: string): boolean => {
-    if (capability === "engine:access") return options.execution !== "worker" && (options.tier === "first-party" || grants.has(capability));
     try {
       return grants.has(capability);
     } catch {
@@ -262,49 +257,131 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   };
 
   const subscriptions = new Map<string, { type: GameEventType; handler: (type: GameEventType, raw: unknown) => void }>();
-  const keySubscriptions = new Map<string, () => void>();
-  const ownedKeys = new Set<string>();
-  let stopped = false;
   let nextSubscription = 1;
-
-  const slot = (storage: ModPrefs, migration: Api2HostOptions["prefs"]): Api2Slot => {
-    const prefsEnvelope = "$api2prefs";
-    let prefsRevision = 0;
-    let pendingMigration: Promise<Api2Result<JsonValue | null>> | undefined;
-    const prefs: Api2Slot = {
-      get: () => guarded(async () => {
-        const raw = storage.get() as JsonValue | null;
-        if (!migration || raw === null || raw === undefined) return api2Ok(raw === undefined ? null : data(raw));
-        const enveloped = typeof raw === "object" && !Array.isArray(raw) && typeof raw[prefsEnvelope] === "number";
-        const from = enveloped ? (raw as Record<string, JsonValue>)[prefsEnvelope] as number : 0;
-        const value = enveloped ? (raw as Record<string, JsonValue>)["value"] ?? null : raw;
-        if (from >= migration.version || value === null) return api2Ok(data(value));
-        if (pendingMigration) return pendingMigration;
-        const revision = prefsRevision;
-        const migrating = (async (): Promise<Api2Result<JsonValue | null>> => {
-          const migrated = await migration.migrate(structuredClone(value), from);
-          if (revision !== prefsRevision) return prefs.get();
-          storage.set({ [prefsEnvelope]: migration.version, value: migrated });
-          return api2Ok(data(migrated));
-        })();
-        pendingMigration = migrating;
-        try {
-          return await migrating;
-        } finally {
-          pendingMigration = undefined;
+  const titleRows = new Map<string, () => void>();
+  const title: Api2Title | undefined = options.tier === "first-party" && options.firstParty?.presentation ? frozen<Api2Title>({
+    registerRow: (row) => guarded(() => {
+      if (!granted("ui:title")) return api2NotGranted("ui:title");
+      if (!ctx.title) return api2Unavailable("this front end has no title actions");
+      if (!/^[a-z][a-z0-9-]{0,63}$/.test(row.id) || titleRows.has(row.id)) return api2Refused("bad-title-row", "a title action needs a free id");
+      try {
+        const remove = ctx.title.registerRow(row);
+        titleRows.set(row.id, remove);
+        cleanups.add(remove);
+        return api2Ok(frozen({ id: row.id }));
+      } catch (error) {
+        return api2Refused("bad-title-row", error instanceof Error ? error.message : String(error));
+      }
+    }),
+    removeRow: (subscription) => guarded(() => {
+      if (!granted("ui:title")) return api2NotGranted("ui:title");
+      const remove = titleRows.get(subscription.id);
+      remove?.();
+      if (remove) cleanups.delete(remove);
+      titleRows.delete(subscription.id);
+      return api2Ok(null);
+    }),
+    choose: (label, choices) => guarded(async () => {
+      if (!granted("ui:title")) return api2NotGranted("ui:title");
+      return ctx.title ? api2Ok(await ctx.title.choose(label, [...choices])) : api2Unavailable("this front end has no title choices");
+    }),
+  }) : undefined;
+  const openPage = (spec: import("@rpgm-tools/neo-angband-mod-sdk").Api2PanelSpec) => guarded(() => {
+    if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
+    if (!ctx.ui) return api2Unavailable("this front end mounts no pages");
+    try {
+      const panel = ctx.ui.openPanel(spec);
+      const close = () => panel.close();
+      const onKey = (event: KeyboardEvent) => {
+        if (!panel.open || modPanelsSuspended() || ctx.ui?.openPanels.at(-1) !== panel.id) return;
+        if (!spec.modal && !panel.root.activeElement) return;
+        if (event.ctrlKey || event.altKey || event.metaKey) return;
+        if (event.key === "Escape") {
+          event.preventDefault(); event.stopImmediatePropagation();
+          if (!event.repeat && !event.isComposing) close();
+        } else if (["Tab", "ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "2", "4", "6", "8"].includes(event.key)) {
+          const controls = [...panel.root.querySelectorAll<HTMLElement>("button:not(:disabled),input:not(:disabled),a[href]")];
+          if (!controls.length) return;
+          event.preventDefault(); event.stopImmediatePropagation();
+          const index = controls.indexOf(panel.root.activeElement as HTMLElement);
+          const step = ["ArrowUp", "ArrowLeft", "4", "8"].includes(event.key) || event.shiftKey ? -1 : 1;
+          controls[(index + step + controls.length) % controls.length]!.focus();
+        } else if (event.key === "Enter" && panel.root.activeElement?.matches("button,a[href],input[type=checkbox]")) {
+          event.preventDefault(); event.stopImmediatePropagation();
+          (panel.root.activeElement as HTMLElement).click();
         }
-      }),
-      set: (value) => guarded(() => {
-        const raw = value === null || !migration ? value : { [prefsEnvelope]: migration.version, value: structuredClone(value) };
-        storage.set(raw);
-        prefsRevision += 1;
-        return api2Ok(null);
-      }),
-    };
-    return prefs;
+      };
+      inputEvents.addEventListener("keydown", onKey, true);
+      const off = () => inputEvents.removeEventListener("keydown", onKey, true);
+      cleanups.add(close);
+      cleanups.add(off);
+      void panel.closed.then(() => { off(); cleanups.delete(off); cleanups.delete(close); });
+      return api2Ok(panel);
+    } catch (error) {
+      return api2Refused("bad-panel", error instanceof Error ? error.message : String(error));
+    }
+  });
+  const backupListeners = new Map<string, (file: { readonly name: string; readonly text: string }) => void>();
+  const folder = ctx.backupFolder;
+  const backupFolder: import("@rpgm-tools/neo-angband-mod-sdk").Api2BackupFolder | undefined = folder && granted("backup:folder") ? frozen({
+    name: () => guarded(async () => api2Ok(await folder.name())),
+    choose: () => guarded(async () => api2Ok(await folder.choose())),
+    forget: () => guarded(async () => { await folder.forget(); return api2Ok(null); }),
+    write: (name: string, text: string) => guarded(async () => api2Ok(await folder.write(name, text))),
+    list: () => guarded(async () => api2Ok(data((await folder.list()).map((entry) => ({
+      name: entry.name, characterName: entry.characterName, level: entry.level,
+      ...(entry.lineage === undefined ? {} : { lineage: entry.lineage }),
+    }))))),
+    onSave: (listener: (file: { readonly name: string; readonly text: string }) => void) => guarded(() => {
+      const id = `${ctx.id}:backup:${nextSubscription++}`;
+      backupListeners.set(id, listener);
+      folder.onSave((file) => {
+        for (const callback of backupListeners.values()) callback(data({ name: file.name, text: file.text }));
+      });
+      return api2Ok(frozen({ id }));
+    }),
+    off: (subscription: { readonly id: string }) => guarded(() => {
+      backupListeners.delete(subscription.id);
+      if (!backupListeners.size) removeBackupSink(ctx.id);
+      return api2Ok(null);
+    }),
+  }) : undefined;
+  if (backupFolder) cleanups.add(() => { backupListeners.clear(); removeBackupSink(ctx.id); });
+
+  const prefsEnvelope = "$api2prefs";
+  let prefsRevision = 0;
+  let pendingMigration: Promise<Api2Result<JsonValue | null>> | undefined;
+  const prefs: Api2Slot = {
+    get: () => guarded(async () => {
+      const raw = ctx.prefs.get() as JsonValue | null;
+      const migration = options.prefs;
+      if (!migration || raw === null || raw === undefined) return api2Ok(raw === undefined ? null : data(raw));
+      const enveloped = typeof raw === "object" && !Array.isArray(raw) && typeof raw[prefsEnvelope] === "number";
+      const from = enveloped ? (raw as Record<string, JsonValue>)[prefsEnvelope] as number : 0;
+      const value = enveloped ? (raw as Record<string, JsonValue>)["value"] ?? null : raw;
+      if (from >= migration.version || value === null) return api2Ok(data(value));
+      if (pendingMigration) return pendingMigration;
+      const revision = prefsRevision;
+      const migrating = (async (): Promise<Api2Result<JsonValue | null>> => {
+        const migrated = await migration.migrate(structuredClone(value), from);
+        if (revision !== prefsRevision) return prefs.get();
+        ctx.prefs.set({ [prefsEnvelope]: migration.version, value: migrated });
+        return api2Ok(data(migrated));
+      })();
+      pendingMigration = migrating;
+      try {
+        return await migrating;
+      } finally {
+        pendingMigration = undefined;
+      }
+    }),
+    set: (value) => guarded(() => {
+      const migration = options.prefs;
+      ctx.prefs.set(value === null || !migration ? value : { [prefsEnvelope]: migration.version, value: structuredClone(value) });
+      prefsRevision += 1;
+      return api2Ok(null);
+    }),
   };
-  const prefs = slot(ctx.prefs, options.prefs);
-  const install = slot(options.installStorage ?? modInstallPrefs(ctx.id), options.install);
 
   const character: Api2Slot = {
     get: () => guarded(() => {
@@ -319,9 +396,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   };
 
   const records = (file: string): Api2Result<readonly JsonRecord[]> => {
-    if (file === "option") return api2Ok(data(OPTION_ENTRIES.filter((e) => e.name !== "none").map((e) => ({
-      name: e.name, birth: e.type === "BIRTH", cheat: e.type === "CHEAT", score: e.type === "SCORE",
-    }))));
     const composed = ctx.composedRecords;
     if (!composed) return api2Unavailable("the game's content has not been composed yet");
     const list = composed[file];
@@ -330,7 +404,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   };
 
   const api: ModApi2 = {
-    ...(api2Engine(ctx, options) ? { engine: api2Engine(ctx, options)! } : {}),
     meta: frozen({
       id: ctx.id,
       api: MOD_API2_VERSION,
@@ -347,15 +420,10 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           ? api2Refused("unknown-setting", `this mod declares no numeric setting "${id}"`)
           : api2Ok(kept);
       }),
-      mods: () => guarded(() => (ctx.mods ? api2Ok(data(ctx.mods().map((mod) => ({ ...mod, name: mod.name ?? mod.id })))) : api2Unavailable("this front end lists no mods"))),
+      mods: () => guarded(() => (ctx.mods ? api2Ok(data(ctx.mods())) : api2Unavailable("this front end lists no mods"))),
     }),
 
     view: frozen({
-      options: () => withState((state) => {
-        if (!readable("player")) return api2NotGranted("state:player.read");
-        const opts = state.options;
-        return opts ? api2Ok(data(opts.snapshot())) : api2Unavailable("this game has no options");
-      }),
       world: () => withState((state) => api2Ok(buildKnownWorld(state, options.viewDeps ?? {}, { has: granted }) as KnownWorldData)),
       player: () => withState((state) => {
         if (!readable("player")) return api2NotGranted("state:player.read");
@@ -378,7 +446,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         return api2Ok(data({
           token: snap.token,
           driver: snap.driver,
-          phase: snap.phase,
+          phase: snap.phase === "pregame" ? bootPhase() : snap.phase,
           messagePending: snap.messagePending,
           prompt: snap.prompt,
         }));
@@ -388,10 +456,8 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
 
     act: frozen({
       submit: (token, intent) => guarded(() => {
-        if (stopped) return api2Unavailable("this mod has stopped");
         if (!granted("input:intent")) return api2NotGranted("input:intent");
-        const gate = options.intent ?? ctx.intent;
-        if (!gate) return api2Unavailable("this front end takes no commands from mods");
+        if (!ctx.intent) return api2Unavailable("this front end takes no commands from mods");
         const copy = structuredClone(intent) as PlayerIntent;
         /* A monster target names the monster by its KnownMonster id. One the
          * player does not perceive now becomes 0, which the game refuses the
@@ -399,7 +465,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         const sent: PlayerIntent = copy.kind === "target" && "midx" in copy
           ? { ...copy, midx: (ctx.state ? knownMonsterMidx(ctx.state, copy.midx) : null) ?? 0 }
           : copy;
-        const result = gate.submit(structuredClone(token), sent);
+        const result = ctx.intent.submit(structuredClone(token), sent);
         return result.accepted
           ? api2Ok(null)
           : api2Refused(result.code ?? "rejected", result.reason ?? "the game refused it");
@@ -437,7 +503,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
 
     events: frozen({
       on: (name, listener) => guarded(() => {
-        if (stopped) return api2Unavailable("this mod has stopped");
         if (!(API2_EVENT_NAMES as readonly string[]).includes(name)) {
           return api2Refused("unknown-event", `API 2 has no event "${String(name)}"`);
         }
@@ -447,7 +512,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         const type = name as GameEventType;
         const handler = (_type: GameEventType, raw: unknown): void => {
           const payload = api2EventPayload(name, raw as never);
-          if (!stopped && payload !== undefined) listener(payload);
+          if (payload !== undefined) listener(payload);
         };
         ctx.events.on(type, handler as never);
         const id = `${ctx.id}:${nextSubscription++}`;
@@ -470,48 +535,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     content: frozen({
-      boundRecords: (file: string) => guarded(() => {
-        const reg = ctx.registries ?? modRegistries();
-        const list = records(file);
-        if (!list.ok) return list;
-        if (file !== "monster" && file !== "object") return api2Ok(data(list.value.map((record, index) => {
-          const from = provenanceOf(record);
-          const name = record["name"];
-          const label = typeof name === "string" ? name : name && typeof name === "object" && !Array.isArray(name) && typeof name["name"] === "string" ? name["name"] : "";
-          return { ...record, key: (file === "option" ? label : recordKey(file, record)) ?? label, index, name: label,
-            owner: from?.owner ?? "core", ...(from ? { from } : {}),
-          } as Api2BoundRecord;
-        })));
-        if (!reg) return api2Unavailable("the game's content has not been bound yet");
-        const bound = file === "monster" ? reg.monsters.races : file === "object" ? reg.objects.kinds : null;
-        if (!bound) return api2Unavailable("the game's content has not been bound yet");
-        const result: Api2BoundRecord[] = bound.filter((record) => record !== null).map((record) => {
-          const index = "ridx" in record ? record.ridx : record.kidx;
-          const raw = list.value.find((value) => {
-            const name = value["name"];
-            return name === record.name || (name && typeof name === "object" && !Array.isArray(name) && name["name"] === record.name);
-          });
-          return { key: (raw ? recordKey(file, raw) : null) ?? record.name, index, name: record.name,
-            ...("ridx" in record ? { base: record.base?.name ?? "" } : { tval: record.tval }),
-            owner: record.from?.owner ?? "core",
-            ...(record.from ? { from: record.from as NonNullable<Api2BoundRecord["from"]> } : {}),
-            ...(record.ext ? { ext: record.ext as Readonly<Record<string, JsonValue>> } : {}),
-          };
-        });
-        return api2Ok(data(result));
-      }),
-      activations: () => guarded(() => {
-        const reg = ctx.registries ?? modRegistries();
-        return reg ? api2Ok(data(reg.objects.activations.filter((a) => a !== null).map((a) => ({ ...a, effect: a.effect as unknown as JsonValue })))) : api2Unavailable("the game's content has not been bound yet");
-      }),
-      activation: (ref) => guarded(() => {
-        const reg = ctx.registries ?? modRegistries();
-        if (!reg) return api2Unavailable("the game's content has not been bound yet");
-        const entry = "tval" in ref ? reg.objects.lookupKind(ref.tval, ref.sval) : "ego" in ref
-          ? reg.objects.egos.find((e) => e?.name === ref.ego) : reg.objects.artifacts.find((a) => a?.name === ref.artifact);
-        const activation = entry?.activation;
-        return api2Ok(activation ? data({ ...activation, effect: activation.effect as unknown as JsonValue } satisfies Api2Activation) : null);
-      }),
       own: () => guarded(() => api2Ok(data({ ...ctx.data } as Record<string, JsonValue>))),
       asset: (path: string) => guarded(async () => {
         const url = await ctx.assetUrl(path);
@@ -521,7 +544,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       lookup: (ref) => guarded(() => {
         const list = records(ref.file);
         if (!list.ok) return list;
-        const found = list.value.find((record) => (ref.file === "option" ? record["name"] : recordKey(ref.file, record)) === ref.key);
+        const found = list.value.find((record) => recordKey(ref.file, record) === ref.key);
         return found
           ? api2Ok(found)
           : api2Refused("unknown-record", `the game's "${ref.file}" content has no record "${ref.key}"`);
@@ -529,43 +552,73 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     ui: frozen({
-      onKey: (listener) => guarded(() => {
-        if (stopped) return api2Unavailable("this mod has stopped");
-        if (!granted("keymap:write")) return api2NotGranted("keymap:write");
-        if (!ctx.display) return api2Unavailable("this front end sends no key events");
-        const id = `${ctx.id}:key:${nextSubscription++}`;
-        const off = ctx.display.onKey((event) => {
-          if (!stopped) listener(data({ key: event.key, code: event.code, modifiers: [
-            ...(event.shiftKey ? ["shift" as const] : []), ...(event.ctrlKey ? ["ctrl" as const] : []),
-            ...(event.altKey ? ["alt" as const] : []), ...(event.metaKey ? ["meta" as const] : []),
-          ], isRepeat: event.repeat }));
-        });
-        keySubscriptions.set(id, off);
-        return api2Ok(frozen({ id }));
+      ...(title ? { title } : {}),
+      ...(options.tier === "first-party" && options.firstParty?.presentation ? {
+        overlay: (spec: import("@rpgm-tools/neo-angband-mod-sdk").Api2PanelSpec = { id: "overlay", modal: true }) => openPage(spec),
+        mountPage: async (kind: string, mount: (root: ShadowRoot) => void, pageOptions?: Omit<import("@rpgm-tools/neo-angband-mod-sdk").Api2PanelSpec, "id">) => {
+          const opened = await openPage({ id: kind, ...pageOptions });
+          if (!opened.ok) return opened;
+          try { mount(opened.value.root); }
+          catch (error) {
+            opened.value.close();
+            return api2Refused("bad-page", error instanceof Error ? error.message : String(error));
+          }
+          return opened;
+        },
+      } : {}),
+      commands: frozen({
+        register: (id, verb, run) => guarded(() => {
+          if (!granted("registry:command") && !granted("command:add")) return api2NotGranted("command:add");
+          if (!id.startsWith(`${ctx.id}:`) || !/^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/.test(id) || !verb.trim() || typeof run !== "function") {
+            return api2Refused("bad-command", "a command needs an owned id, a verb and a handler");
+          }
+          const commands = options.commands ?? commandHost;
+          if (!commands) return api2Unavailable("this front end installs no mod commands");
+          if (commands.registry.has(id)) return api2Refused("command-taken", `command "${id}" is already registered`);
+          commands.registry.register(id, () => {
+            try {
+              const result = run();
+              if (result) void result.catch((error: unknown) => ctx.log(`command failed: ${String(error)}`));
+            } catch (error) {
+              ctx.log(`command failed: ${String(error)}`);
+            }
+            return 0;
+          });
+          commands.verbs?.set(id, verb);
+          cleanups.add(() => commands.registry.unregister(id));
+          return api2Ok(null);
+        }),
       }),
-      offKey: (subscription) => guarded(() => {
-        keySubscriptions.get(subscription.id)?.();
-        keySubscriptions.delete(subscription.id);
-        return api2Ok(null);
+      gameMenu: frozen({
+        register: (action, label, run) => guarded(() => {
+          if (!granted("registry:menu")) return api2NotGranted("registry:menu");
+          if (!/^[a-z][a-z0-9-]{0,63}$/.test(action) || !label.trim() || /[\r\n]/.test(label) || typeof run !== "function") {
+            return api2Refused("bad-action", "a menu action needs an id, a label and a handler");
+          }
+          menuRegistry.addAction("core:game-menu", action, label, run, ctx.id);
+          cleanups.add(() => menuRegistry.removeAction("core:game-menu", action, ctx.id));
+          return api2Ok(null);
+        }),
       }),
-      unmount: (panelId: string) => guarded(() => {
-        if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
-        const draw = renderer();
-        if (!draw) return api2Unavailable("this front end draws no panels");
-        draw.unmount(ctx.id, panelId);
-        return api2Ok(null);
-      }),
-      mount: (panel: Api2Panel, onAction?: (action: string) => void, onDismiss?: () => void) => guarded(() => {
-        if (stopped) return api2Unavailable("this mod has stopped");
+      mount: (panel: Api2Panel, onAction?: (action: string, value?: string | boolean) => void, onDismiss?: () => void) => guarded(() => {
         if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
         const draw = renderer();
         if (!draw) return api2Unavailable("this front end draws no panels");
         try {
-          draw.apply(ctx.id, "mount", structuredClone(panel) as unknown as WorkerJson, undefined, (_panelId, action) => { if (!stopped) onAction?.(action); }, onDismiss);
+          draw.apply(ctx.id, "mount", structuredClone(panel) as unknown as WorkerJson, undefined, (_panelId, action, value) => onAction?.(action, value), onDismiss);
+          cleanups.add(() => draw.teardown(ctx.id));
         } catch (e) {
           return api2Refused("bad-panel", e instanceof Error ? e.message : String(e));
         }
         return api2Ok(frozen({ panelId: panel.id }));
+      }),
+      unmount: (panelId) => guarded(() => {
+        if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
+        const draw = renderer();
+        if (!draw) return api2Unavailable("this front end draws no panels");
+        try { draw.apply(ctx.id, "unmount", null, panelId); }
+        catch (error) { return api2Refused("bad-panel", error instanceof Error ? error.message : String(error)); }
+        return api2Ok(null);
       }),
       patch: (panelId: string, patch: Api2PanelPatch) => guarded(() => {
         if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
@@ -579,13 +632,14 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         return api2Ok(frozen({ panelId }));
       }),
       keys: frozen({
+        isBindableTriggerKey: (trigger) => guarded(() => {
+          if (!granted("keymap:write")) return api2NotGranted("keymap:write");
+          return ctx.keymaps ? api2Ok(ctx.keymaps.isBindableTriggerKey(trigger)) : api2Unavailable(NO_GAME);
+        }),
         bind: (trigger: string, action: string) => guarded(() => {
-          if (stopped) return api2Unavailable("this mod has stopped");
           if (!granted("keymap:write")) return api2NotGranted("keymap:write");
           if (!ctx.keymaps) return api2Unavailable(NO_GAME);
-          const bound = ctx.keymaps.bind(trigger, action);
-          if (bound) ownedKeys.add(trigger);
-          return bound
+          return ctx.keymaps.bind(trigger, action)
             ? api2Ok(null)
             : api2Refused("trigger-taken", `"${trigger}" is not a free key in this keyset`);
         }),
@@ -604,21 +658,60 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       }),
     }),
 
-    store: frozen({ prefs: Object.freeze(prefs), install: Object.freeze(install), character: Object.freeze(character) }),
+    store: frozen({ prefs: Object.freeze(prefs), character: Object.freeze(character) }),
 
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
+    ...(backupFolder ? { backupFolder } : {}),
     ...(options.firstParty?.manage ? { manage: manageDomain(ctx) } : {}),
     ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}) } : {}),
+    ...(options.tier === "first-party" && options.firstParty?.presentation ? {
+      presentation: frozen({
+        cancelInput: (escapeCount: number = 3) => guarded(() => {
+          if (!Number.isSafeInteger(escapeCount) || escapeCount < 1) return api2Refused("bad-count", "cancellation needs a positive escape count");
+          clearQueuedUiInputs();
+          enqueueUiInputs(Array.from({ length: escapeCount }, () => ({
+            key: { key: "Escape", modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false },
+          })));
+          return api2Ok(null);
+        }),
+        ...(ctx.keyRepeat ? { keyRepeat: ctx.keyRepeat } : {}),
+        ...(title ? { title } : {}),
+        phase: bootPhase,
+        onPhaseChanged: (listener: (phase: import("@rpgm-tools/neo-angband-mod-sdk").Api2BootPhase) => void) => {
+          const off = onBootPhaseChanged((phase) => {
+            try { listener(phase); }
+            catch (error) { ctx.log(`phase listener failed: ${String(error)}`); }
+          });
+          cleanups.add(off);
+          return () => { off(); cleanups.delete(off); };
+        },
+        ...(ctx.display ? { display: frozen({
+          ...ctx.display,
+          onKey: (listener: (event: KeyboardEvent) => void) => {
+            const off = ctx.display!.onKey(listener);
+            cleanups.add(off);
+            return () => { off(); cleanups.delete(off); };
+          },
+          ...(ctx.display.onFrame ? { onFrame: (listener: () => void) => {
+            const off = ctx.display!.onFrame!(listener);
+            cleanups.add(off);
+            return () => { off(); cleanups.delete(off); };
+          } } : {}),
+        }) } : {}),
+        ...(ctx.subwindows ? { subwindows: ctx.subwindows } : {}),
+        ...(ctx.tiles ? { tiles: ctx.tiles } : {}),
+        ...(ctx.ui ? { panels: ctx.ui } : {}),
+        ...(typeof document !== "undefined" && document.getElementById("game-view") ? {
+          sidebarHost: document.getElementById("game-view")!,
+        } : {}),
+      }),
+    } : {}),
   };
-  hostCleanup.set(api, () => {
-    stopped = true;
-    panels?.teardown(ctx.id);
+  disposers.set(api, () => {
     for (const { type, handler } of subscriptions.values()) ctx.events?.off(type, handler as never);
     subscriptions.clear();
-    for (const off of keySubscriptions.values()) off();
-    keySubscriptions.clear();
-    for (const trigger of ownedKeys) ctx.keymaps?.remove(trigger);
-    ownedKeys.clear();
+    for (const cleanup of cleanups) cleanup();
+    cleanups.clear();
   });
   return Object.freeze(api);
 }

@@ -50,7 +50,6 @@ import { lookMonDesc, targetAble } from "../game/target.js";
 import { gearGet } from "../game/gear.js";
 import { numberCharging } from "../game/obj-cmd.js";
 import { knownDescOf } from "../game/describe.js";
-import { objectDesc, ODESC } from "../obj/desc.js";
 import { MON_RACE_FLAG_ENTRIES, MON_SPELL_ENTRIES, MON_TMD, OF, RF, TMD } from "../generated/index.js";
 import { squareIsSeen, squareIsView } from "../world/view.js";
 import type { Store } from "../store/store.js";
@@ -174,8 +173,6 @@ export interface KnownPlayerStatus {
 
 /** The player as the character sheet and status line show them. */
 export type KnownPlayer = Omit<PlayerView, "status" | "recall" | "descent"> & {
-  readonly noscore: number;
-  readonly shopnum: number | null;
   readonly status: KnownPlayerStatus;
   /** An active Word of Recall: the status line says "Recall", not when it fires. */
   readonly recall: boolean;
@@ -185,8 +182,6 @@ export type KnownPlayer = Omit<PlayerView, "status" | "recall" | "descent"> & {
 
 /** An item as its name and the inspect screen describe it. */
 export type KnownItem = Omit<ItemView, "timeout"> & {
-  readonly baseName: string;
-  readonly carried: boolean;
   /**
    * How many of the stack the name says are recharging: the count of
    * "(2 charging)" on a stack of rods, 1 for "(charging)", 0 when the name
@@ -512,11 +507,8 @@ function knownPlayer(state: GameState, player: PlayerView): KnownPlayer {
   const { status, recall, descent, ...rest } = player;
   const named = {} as Record<(typeof STATUS_EFFECTS)[number][0], string | null>;
   for (const [key, tmd] of STATUS_EFFECTS) named[key] = gradeName(state, tmd);
-  const shopnum = state.chunk.feature(state.actor.grid).shopnum;
   return {
     ...rest,
-    noscore: state.actor.player.noscore,
-    shopnum: shopnum > 0 ? shopnum - 1 : null,
     status: {
       ...named,
       food: Math.trunc((state.actor.player.timed[TMD.FOOD] ?? 0) / 100),
@@ -559,17 +551,13 @@ function knownItem(state: GameState, deps: AgentViewDeps, item: ItemView, obj: G
   const { timeout: _timeout, ...rest } = item;
   return {
     ...rest,
-    baseName: obj ? objectDesc({ ...obj, artifact: null, ego: null, number: 1 },
-      ODESC.BASE | ODESC.SINGULAR | ODESC.NOEGO | (shopWare ? ODESC.STORE : 0), state.actor.player, state.runeEnv,
-      { ...knownDescOf(state, true), isAware: () => item.aware }) : item.label,
-    carried: false,
     charging: obj ? chargingShown(state, deps, obj, shopWare) : 0,
     unknownRunes: obj ? unknownRunes(state, deps, obj, shopWare) : false,
   };
 }
 
 function carried(state: GameState, deps: AgentViewDeps, item: ItemView): KnownItem {
-  return { ...knownItem(state, deps, item, gearGet(state.gear, item.handle)), carried: true };
+  return knownItem(state, deps, item, gearGet(state.gear, item.handle));
 }
 
 function knownTarget(state: GameState): KnownTarget | null {
