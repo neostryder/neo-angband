@@ -282,6 +282,67 @@ describe("enablement, permission records, and settings", () => {
 });
 
 describe("updates, removal, restoration, and order", () => {
+  it("stages update-all as one plan and keeps the current metadata and decisions", async () => {
+    const stagePlan = vi.fn(async () => ({ ok: true as const, results: [] }));
+    const restart = vi.fn();
+    const f = fixture(undefined, { stagePlan, restart });
+    f.store.setEnabled(["a", "b"]);
+    f.remote.set("a", manifest("a", { version: "2.0.0", capabilities: ["ui:sidebar.replace"] }));
+    f.remote.set("b", manifest("b", { version: "2.0.0" }));
+    const pending = await f.service.updateAll();
+    expect((await accept(f.core, pending, { accepted: true, permissions: { a: { granted: ["ui:sidebar.replace"], refused: [] } } })).status).toBe("ok");
+    expect(stagePlan).toHaveBeenCalledTimes(1);
+    expect(stagePlan.mock.calls[0]).toMatchObject([{ downloads: [{ mod: { id: "a" } }, { mod: { id: "b" } }] }, { a: { granted: ["ui:sidebar.replace"] } }]);
+    expect(f.install).not.toHaveBeenCalled();
+    expect(f.store.getConsent("a")).toEqual([]);
+    expect(f.service.state.installed.map((mod) => mod.version)).toEqual(["1.0.0", "1.0.0"]);
+    expect(f.service.state).toMatchObject({ staged: true, installStatus: "staged, applies on next start", canRestart: true });
+    expect(f.service.restart().status).toBe("ok");
+    expect(restart).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not stage an incomplete or undeclared permission answer", async () => {
+    const stagePlan = vi.fn(async () => ({ ok: true as const, results: [] }));
+    const f = fixture(undefined, { stagePlan });
+    f.remote.set("a", manifest("a", { version: "2.0.0", capabilities: ["ui:sidebar.replace"] }));
+    expect(await accept(f.core, await f.service.update("a"))).toMatchObject({ status: "refused", code: "permissions" });
+    expect(await accept(f.core, await f.service.update("a"), { accepted: true, permissions: { a: { granted: [TRUTH_MAP], refused: [] } } })).toMatchObject({ status: "refused", code: "permissions" });
+    expect(stagePlan).not.toHaveBeenCalled();
+  });
+
+  it("reports a refused transaction and leaves its staged status clear", async () => {
+    const f = fixture(undefined, { stagePlan: async () => ({ ok: false, problem: "Storage quota reached." }) });
+    f.remote.set("a", manifest("a", { version: "2.0.0" }));
+    expect(await accept(f.core, await f.service.update("a"))).toMatchObject({ status: "refused", code: "install", reason: "Storage quota reached." });
+    expect(f.service.state.staged).toBe(false);
+    expect(f.install).not.toHaveBeenCalled();
+  });
+
+  it("stages retained rollback only after Core confirmation", async () => {
+    const stageRollback = vi.fn(async () => ({ ok: true as const, results: [] }));
+    const f = fixture(undefined, { stageRollback, previousVersion: async () => ({ ok: true, ref: { repo: "owner/a" }, mod: discovered(manifest("a", { version: "0.9.0" })) }) });
+    const pending = await f.service.rollback("a");
+    expect(pending).toMatchObject({ status: "confirmation", confirmation: { operation: "rollback", mods: [{ name: "Mod a", version: "0.9.0" }] } });
+    expect(stageRollback).not.toHaveBeenCalled();
+    expect((await accept(f.core, pending)).status).toBe("ok");
+    expect(stageRollback).toHaveBeenCalledWith("a");
+    expect(f.service.state.staged).toBe(true);
+    expect(f.discover).not.toHaveBeenCalled();
+    expect(f.install).not.toHaveBeenCalled();
+  });
+
+  it("passes the version to save retention when the player confirms an install", async () => {
+    const referenced = vi.fn((id: string, tag?: string) => id === "a" && tag === "v0.9.0");
+    const release = vi.fn(async (id: string, saves: (id: string, tag: string) => boolean) => {
+      expect(saves(id, "v0.9.0")).toBe(true);
+      return true;
+    });
+    const f = fixture(undefined, { saveReferences: referenced, releasePreviousVersions: release });
+    expect((await f.service.confirmInstalledVersion("a")).status).toBe("ok");
+    expect(referenced).toHaveBeenCalledWith("a", "v0.9.0");
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
   it("plans update-all conflicts before installing any of the set", async () => {
     const f = fixture();
     f.store.setEnabled(["a", "b"]);

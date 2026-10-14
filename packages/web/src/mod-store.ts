@@ -522,6 +522,13 @@ export interface ConsentRecord {
   readonly refused: readonly string[];
 }
 
+export interface ModConfiguration {
+  readonly ids: readonly string[];
+  readonly ruleFlags: readonly string[];
+  readonly state: ModState;
+  readonly settings: Record<string, Record<string, number>>;
+}
+
 function readField<K extends keyof ModState>(storage: StorageLike | null, name: K, fallback: NonNullable<ModState[K]>): NonNullable<ModState[K]> {
   return modState.read(storage, name) ?? fallback;
 }
@@ -538,6 +545,62 @@ function writeField<K extends keyof ModState>(storage: StorageLike | null, name:
  */
 export class ModStore {
   constructor(private readonly storage: StorageLike | null) {}
+
+  captureConfiguration(ids: readonly string[], ruleFlags: readonly string[] = []): ModConfiguration {
+    const raw = this.storage?.getItem(MOD_STATE_STORAGE_KEY);
+    const parsed = raw ? parseDocument(raw, modStateFormat) : null;
+    if (parsed && !parsed.ok) throw new Error("The mod configuration could not be read.");
+    const settingsRaw = this.storage?.getItem(MOD_SETTINGS_STORAGE_KEY);
+    const settings = settingsRaw ? parseDocument(settingsRaw, modSettingValuesFormat) : null;
+    if (settings && !settings.ok) throw new Error("The mod settings could not be read.");
+    return structuredClone({ ids: [...ids], ruleFlags: [...ruleFlags], state: parsed?.ok ? parsed.data : {}, settings: settings?.ok ? settings.data.values ?? {} : {} });
+  }
+
+  restoreConfiguration(snapshot: ModConfiguration): boolean {
+    if (!this.storage) return false;
+    try {
+      const current = this.captureConfiguration(snapshot.ids, snapshot.ruleFlags);
+      const state = { ...current.state };
+      const fields = ["choices", "consents", "refusals", "consentVersions", "unreviewedNotices", "pins", "sectionChoices"] as const;
+      for (const field of fields) {
+        const values: Record<string, unknown> = { ...state[field] };
+        for (const id of snapshot.ids) {
+          delete values[id];
+          const saved = snapshot.state[field]?.[id];
+          if (saved !== undefined) values[id] = saved;
+        }
+        if (Object.keys(values).length || snapshot.state[field] !== undefined) Object.assign(state, { [field]: values });
+        else delete state[field];
+      }
+      const enabled = (snapshot.state.enabled ?? []).filter((id) => snapshot.ids.includes(id));
+      const order = (current.state.enabled ?? []).filter((id) => !snapshot.ids.includes(id));
+      for (const id of enabled) {
+        const at = snapshot.state.enabled!.indexOf(id);
+        order.splice(Math.min(at, order.length), 0, id);
+      }
+      if (order.length || snapshot.state.enabled !== undefined || current.state.enabled !== undefined) state.enabled = order;
+      else delete state.enabled;
+      const rules = { ...current.state.ruleChoices };
+      for (const flag of new Set([...Object.keys(rules), ...Object.keys(snapshot.state.ruleChoices ?? {})])) {
+        if (!snapshot.ruleFlags.includes(flag) && !snapshot.ids.some((id) => flag.startsWith(`${id}.`) || flag.startsWith(`${id}:`))) continue;
+        delete rules[flag];
+        const saved = snapshot.state.ruleChoices?.[flag];
+        if (saved !== undefined) rules[flag] = saved;
+      }
+      if (Object.keys(rules).length || snapshot.state.ruleChoices !== undefined) state.ruleChoices = rules;
+      else delete state.ruleChoices;
+      const settings = { ...current.settings };
+      for (const id of snapshot.ids) {
+        delete settings[id];
+        if (snapshot.settings[id]) settings[id] = snapshot.settings[id];
+      }
+      this.storage.setItem(MOD_STATE_STORAGE_KEY, serializeDocument(modStateFormat, state, { compact: true }));
+      this.storage.setItem(MOD_SETTINGS_STORAGE_KEY, serializeDocument(modSettingValuesFormat, { values: settings }, { compact: true }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   /* --- Enabled set --------------------------------------------------- */
 

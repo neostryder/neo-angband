@@ -322,6 +322,7 @@ import {
   loadInstalledMods,
   uninstallMod,
 } from "./mod-install";
+import { activateModTransaction, stageModPlan, stageModRollback, previousModVersion, releasePreviousModVersions, type ModTransactionEnvironment } from "./mod-transactions";
 import { loadSessionMods } from "./mod-session";
 import type { ModUpgradeDeps } from "./mod-browse";
 import { pendingUpgrades, refreshInstalledMods, type ModUpgrade } from "./mod-refresh";
@@ -422,6 +423,7 @@ import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPac
 import { liveConflictLines } from "./mod-conflicts";
 import { composedObjects, hasFacet, resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
+  ModStore,
   defaultModStore,
   buildCatalog,
   resolveEnabledIds,
@@ -1107,7 +1109,9 @@ async function rediscoverModSources(): Promise<void> {
   );
 }
 
+let modTransactionNotice: string | null = null;
 {
+  modTransactionNotice = await activateModTransaction(modTransactionEnvironment());
   await rediscoverModSources();
 
   /* Safe mode is settled here: after the sources are listed, which only reads
@@ -13767,6 +13771,14 @@ async function chooseGameUpdatePass(
  * updater reads it with - so a player's one channel choice governs both, and there is
  * no second setting to fall out of step with the first.
  */
+function modTransactionEnvironment(): ModTransactionEnvironment {
+  return {
+    install: { fetch: (url) => fetch(url), subtle: crypto.subtle, scope: globalThis, now: () => new Date().toISOString() },
+    store: defaultModStore(), profileId: profileStore.activeId(), allowed: () => readConsent(channelStore()),
+    configurationStore: (id) => new ModStore(realGameStorage ? scopedStorage(realGameStorage, id) : null),
+  };
+}
+
 function modBrowseDeps(): ModUpgradeDeps {
   const net = { fetch: (url: string) => fetch(url) };
   const discoverEnv: DiscoverEnv = {
@@ -13785,6 +13797,17 @@ function modBrowseDeps(): ModUpgradeDeps {
   };
 
   return {
+    stagePlan: async (plan, permissions, progress) => {
+      const registry = await fetchRegistry(DEFAULT_REGISTRY_URL, net).catch(() => null);
+      return stageModPlan(plan, permissions, {
+        ...modTransactionEnvironment(),
+        listing: (repo, origin) => installListing(repo, origin === "curated", registry?.ok ? registry.registry : null),
+      }, progress);
+    },
+    stageRollback: (id) => stageModRollback(id, modTransactionEnvironment()),
+    previousVersion: (id) => previousModVersion(id, modTransactionEnvironment()),
+    releasePreviousVersions: (id, saveReferences) => releasePreviousModVersions(id, { ...modTransactionEnvironment(), saveReferences }),
+    restart: () => reloadAfterModChange({ resume: gameScreenLive }),
     installed: async () => {
       const metas = await installedMods(globalThis);
       return new Map(metas.map((m) => [m.id, m.tag] as const));
@@ -15132,6 +15155,14 @@ async function bootMenus(): Promise<void> {
    * return from here without painting anything.
    */
   stopLoading();
+  if (modTransactionNotice) {
+    const text = modTransactionNotice;
+    modTransactionNotice = null;
+    await openModal(() => showTextScreen(term, {
+      id: "core:mod-transaction-notice", title: "Mods", footer: "[ Press ESC to return ]",
+      blocks: [{ kind: "text", paragraphs: [[{ text }]], color: UI_BAD }],
+    }));
+  }
   /* The start reached the menus. A safe start is not counted (decideSafeLaunch),
    * so it does not clear the count either: the next normal start still knows
    * about the failures before it. */

@@ -10,6 +10,38 @@ import { pushRegion, regionSurface, popRegion } from "../ui-stack";
 import { installFailureScreen } from "./browse-views";
 import { repoPageUrl } from "../mod-source";
 import { classifyModTag } from "../mod-updates";
+import { drawPendingManagementConfirmation } from "./classic-confirmation";
+import type { RepoRef } from "../mod-source";
+
+export async function stageClassicPlan(
+  term: GridSurface & GridPointerInput,
+  deps: ModBrowseDeps,
+  refs: readonly { readonly ref: RepoRef; readonly origin: ModOrigin }[],
+  operation: "install" | "update" = "install",
+  enable = false,
+): Promise<boolean> {
+  if (refs.length === 0) return false;
+  const { service, core } = classicBrowser(deps);
+  const plan = await service.planInstall(refs, operation);
+  if (plan.status !== "ok") {
+    if (plan.status === "refused") await showTextScreen(term, installFailureScreen("", plan.reason));
+    return false;
+  }
+  service.applyPlan(plan.value.id, null, enable);
+  const result = await drawPendingManagementConfirmation(term, service, core);
+  if (result.status !== "ok") {
+    if (result.status === "refused" && result.code !== "cancelled") await showTextScreen(term, installFailureScreen("", result.reason));
+    return false;
+  }
+  await showTextScreen(term, "Mods", [{ text: "The mod set is staged, applies on next start.", color: C_GOOD }]);
+  if (deps.restart) {
+    const pick = await selectFromMenu(term, "core:mod-transaction-restart", "Mods", [
+      { label: "Restart now", color: C_WARN }, { label: "Later", color: C_FG },
+    ], SCREEN_FOOTER);
+    if (pick === 0) service.restart();
+  }
+  return true;
+}
 
 /** Ask the consent question, showing the disclaimer. Returns the new setting. */
 export async function askConsent(term: GridSurface & GridPointerInput, deps: ModBrowseDeps): Promise<boolean> {
@@ -148,6 +180,11 @@ export async function installOne(
   },
 ): Promise<boolean> {
   const m = entry.mod;
+  if (deps.stagePlan) {
+    const installed = await deps.installed();
+    const enable = !installed.has(m.id) && opts?.offerEnable !== false && !!deps.offerEnable;
+    return stageClassicPlan(term, deps, [{ ref: { repo: m.repo, tag: m.tag }, origin }], "install", enable);
+  }
   /* BEFORE the install, because afterwards there is nothing left to compare - the
    * meta record has already been overwritten with the new tag. */
   const before = (await deps.installed()).get(m.id) ?? null;
@@ -375,6 +412,9 @@ export async function showRecommendedActions(
         const at = installed.get(entry.mod.id) ?? null;
         return at === null || (updateExisting && classifyModTag(at, entry.mod.tag) === "behind");
       });
+      if (deps.stagePlan) {
+        return await stageClassicPlan(term, deps, todo.map((entry) => ({ ref: { repo: entry.mod.repo, tag: entry.mod.tag }, origin: "curated" })), "install", enableAfterInstall) || changed;
+      }
       for (const entry of todo) {
         if (await installOne(term, entry, "curated", deps, { offerEnable: false })) changed = true;
       }
@@ -388,6 +428,9 @@ export async function showRecommendedActions(
         const at = installed.get(entry.mod.id) ?? null;
         return at !== null && classifyModTag(at, entry.mod.tag) === "behind";
       });
+      if (deps.stagePlan) {
+        return await stageClassicPlan(term, deps, todo.map((entry) => ({ ref: { repo: entry.mod.repo, tag: entry.mod.tag }, origin: "curated" })), "update") || changed;
+      }
       for (const entry of todo) {
         if (await installOne(term, entry, "curated", deps, { offerEnable: false })) changed = true;
       }

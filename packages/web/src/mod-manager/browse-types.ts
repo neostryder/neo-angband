@@ -7,6 +7,7 @@ import { type AuthorRegister } from "../mod-authors";
 import { type ZipImportDeps } from "../mod-zip-source";
 import { type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { type ModRefresh } from "../mod-refresh";
+import type { ModManagerEnvironment } from "./types";
 
 /** One mod, discovered or not, ready to be a row. */
 export type BrowseEntry =
@@ -15,6 +16,11 @@ export type BrowseEntry =
 
 /** Everything the screen needs, injected so the tests need no network and no IndexedDB. */
 export interface ModBrowseDeps {
+  readonly stagePlan?: ModManagerEnvironment["stagePlan"];
+  readonly stageRollback?: ModManagerEnvironment["stageRollback"];
+  readonly previousVersion?: ModManagerEnvironment["previousVersion"];
+  readonly releasePreviousVersions?: ModManagerEnvironment["releasePreviousVersions"];
+  readonly restart?: () => void;
   /** id -> installed tag, for every mod already installed from a repository. */
   readonly installed: () => Promise<ReadonlyMap<string, string>>;
   /** Discover one repository. Wired to discoverMod, with the player's channel. */
