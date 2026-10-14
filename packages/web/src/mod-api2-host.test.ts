@@ -10,7 +10,7 @@ import {
   FEAT,
   MFLAG,
   SQUARE,
-  TMD,
+  observeKnownStore,
   knownMonsterMidx,
   knownMonsters,
   monsterIsObvious,
@@ -87,7 +87,7 @@ function host(
   prefs: ModPrefs = memoryPrefs(),
 ): ModApi2 {
   const caps = capabilities("probe", granted);
-  const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: caps, prefs });
+  const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: caps, prefs, registries: game.booted.registries });
   return createApi2Host(ctx, { grants: caps, ...extra });
 }
 
@@ -126,49 +126,6 @@ async function observedThroughHost(api: ModApi2): Promise<string> {
 const READS = ["state:*.read"];
 
 describe("the API 2 host's view", () => {
-  it("returns the game's depth string and CSS color table", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const api = host(game, READS);
-    expect(await api.view.player()).toMatchObject({ value: { depthText: "500' (L10)" } });
-    const colors = await api.content.colors();
-    expect(colors.ok).toBe(true);
-    if (!colors.ok) throw new Error("refused");
-    expect(colors.value).toHaveLength(32);
-    expect(colors.value[1]).toMatchObject({ index: 1, id: "white", css: expect.any(String) });
-    expect(Object.isFrozen(colors.value[1])).toBe(true);
-  });
-
-  it("returns the same loadout simulation for different counters in one timed grade", async () => {
-    const a = startGame(pack, { seed: SEED, depth: DEPTH });
-    const b = startGame(pack, { seed: SEED, depth: DEPTH });
-    a.state.actor.player.timed[TMD.FAST] = 10;
-    b.state.actor.player.timed[TMD.FAST] = 20;
-    expect(await host(b, READS).view.simulateLoadout({})).toEqual(await host(a, READS).view.simulateLoadout({}));
-  });
-
-  it("simulates a loadout without exposing timed counters", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const result = await host(game, READS).view.simulateLoadout({});
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error("refused");
-    expect(result.value.delta.unknownRunes).toBe(false);
-    expect(result.value.before.player.status.fast).toBeNull();
-    for (const item of result.value.before.inventory) expect(item).not.toHaveProperty("timeout");
-    expect(await host(game, ["state:player.read"]).view.simulateLoadout({})).toMatchObject({ reason: "not-granted", capability: "state:inventory.read" });
-    const grid = emptyGrid(game.state, false);
-    expect(await host(game, READS).view.simulateLoadout({ wield: [{ from: "floor", ...grid, index: 0 }] })).toMatchObject({ code: "unobserved-item" });
-  });
-
-  it("keeps look text unchanged when hidden terrain changes and hides wizard flow", async () => {
-    const a = startGame(pack, { seed: SEED, depth: DEPTH });
-    const b = startGame(pack, { seed: SEED, depth: DEPTH });
-    const grid = emptyGrid(a.state, false);
-    b.state.chunk.setFeat(grid, FEAT.GRANITE);
-    b.state.wizard = true;
-    expect(await host(b, READS).view.look(grid)).toEqual(await host(a, READS).view.look(grid));
-    expect(await host(a, []).view.look(grid)).toMatchObject({ reason: "not-granted" });
-  });
-
   it("does not change when an unseen monster's health and speed change (paired worlds)", async () => {
     const a = startGame(pack, { seed: SEED, depth: DEPTH });
     const b = startGame(pack, { seed: SEED, depth: DEPTH });
@@ -271,6 +228,64 @@ describe("the API 2 host's commands", () => {
 });
 
 describe("the first-party seams", () => {
+  it("reports perception independently of eye visibility, including detected monsters and mimics", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const mon = liveMonsters(game.state).find((mon) => !monsterIsObvious(mon))!;
+    const api = host(game, READS, { firstParty: { truth: true } });
+    const read = async () => {
+      const result = await api.truth!.monsters();
+      if (!result.ok) throw new Error("refused");
+      expect(Object.isFrozen(result.value)).toBe(true);
+      return result.value.find((monster) => monster.id === mon.midx)!;
+    };
+    expect((await read()).perceived).toBe(false);
+    mon.mflag.on(MFLAG.VISIBLE);
+    mon.mflag.off(MFLAG.VIEW);
+    mon.mflag.off(MFLAG.CAMOUFLAGE);
+    expect(await read()).toMatchObject({ visible: true, perceived: true });
+    mon.mflag.on(MFLAG.CAMOUFLAGE);
+    expect((await read()).perceived).toBe(false);
+  });
+
+  it("returns full race facts as frozen data without creating lore", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const api = host(game, READS, { firstParty: { truth: true } });
+    const race = game.booted.registries.monsters.races.find((race) => race.blows.length > 0 && !race.spellFlags.isEmpty())!;
+    const before = game.state.lore.size;
+    const result = await api.truth!.race(race.ridx);
+    if (!result.ok || !result.value) throw new Error("refused");
+    expect(result.value).toMatchObject({ ridx: race.ridx, level: race.level, sleep: race.sleep, spellPower: race.spellPower, freqInnate: race.freqInnate, freqSpell: race.freqSpell });
+    expect(result.value.spells).toEqual([...race.spellFlags].sort((a, b) => a - b));
+    expect(result.value.blows[0]).toMatchObject({ effect: race.blows[0]!.effect.name });
+    expect(Object.isFrozen(result.value.blows)).toBe(true);
+    expect(structuredClone(result.value)).toEqual(result.value);
+    expect(game.state.lore.size).toBe(before);
+    expect(await api.truth!.race(-1)).toEqual({ ok: true, value: null });
+  });
+
+  it("keeps store stock at the last observation and declares the current truth policy", async () => {
+    const games = [startGame({ ...pack, store: records("store") }, { seed: SEED, depth: DEPTH }), startGame({ ...pack, store: records("store") }, { seed: SEED, depth: DEPTH })];
+    for (const game of games) {
+      game.changeLevel(0);
+      game.state.turn = 12;
+      observeKnownStore(game.state, game.state.stores![0]!);
+      game.changeLevel(1);
+      game.state.turn = 20;
+    }
+    games[1]!.state.stores![0]!.stock = [];
+    const a = host(games[0]!, READS, { firstParty: { truth: true } });
+    const b = host(games[1]!, READS, { firstParty: { truth: true } });
+    const worldA = await a.view.world();
+    const worldB = await b.view.world();
+    if (!worldA.ok || !worldB.ok) throw new Error("refused");
+    expect(worldA.value.stores).toEqual(worldB.value.stores);
+    const result = await a.truth!.storeKnowledge();
+    if (!result.ok) throw new Error("refused");
+    expect(result.value[0]).toMatchObject({ storeIndex: 0, feat: games[0]!.state.stores![0]!.feat, depth: 1, lastVisitTurn: 12, snapshotTurn: 20, stalenessRule: "current", remoteStockUsable: true });
+    expect(result.value[1]!.lastVisitTurn).toBeNull();
+    expect(Object.isFrozen(result.value[0])).toBe(true);
+  });
+
   it("are absent without an allowlist, whatever the grants", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const api = host(game, [...READS, "profiles:manage", "session:control"]);

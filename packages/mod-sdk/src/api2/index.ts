@@ -14,13 +14,13 @@ export type {
   Api2Unavailable,
 } from "./result.js";
 export { KNOWN_WORLD_FORMAT } from "./known.js";
-export type { DerivedStatsView, ItemRef, LoadoutChange, LoadoutDelta, LoadoutItemRef, LoadoutSimulation, LoadoutView } from "./inspection.js";
 export type {
   KnownGrid,
   KnownItem,
   KnownLevel,
   KnownLevelCell,
   KnownMonster,
+  KnownMonsterBlow,
   KnownMonsterHealth,
   KnownMonsterStatus,
   KnownObjectAura,
@@ -137,6 +137,8 @@ export type {
   Api2TrueItem,
   Api2TrueLevel,
   Api2TrueMonster,
+  Api2TrueRace,
+  Api2StoreKnowledge,
   Api2Truth,
   Api2Ui,
   Api2View,

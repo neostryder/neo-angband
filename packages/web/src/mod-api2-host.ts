@@ -20,12 +20,11 @@ import {
   AgentCapabilityError,
   buildKnownWorld,
   createAgentView,
-  colorPrefId,
-  colorTableSnapshot,
-  colorToCss,
-  describeLookGrid,
   knownMonsterMidx,
-  knownLoadoutSimulation,
+  monsterIsObvious,
+  MON_RACE_FLAG_ENTRIES,
+  MON_SPELL_ENTRIES,
+  storeKnowledge,
   trueMonsterViews,
   tokenIsCurrent,
   type AgentCapabilities,
@@ -342,34 +341,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           prompt: snap.prompt,
         }));
       }),
-      look: (grid) => withState((state) => {
-        for (const domain of ["map", "floor", "monsters"]) {
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-        }
-        if (!Number.isInteger(grid.x) || !Number.isInteger(grid.y) || !state.chunk.inBounds(grid)) {
-          return api2Refused("invalid-grid", "the grid is outside the level");
-        }
-        return api2Ok(describeLookGrid(state, grid, 0, true).text);
-      }),
-      simulateLoadout: (change) => withState((state) => {
-        for (const domain of ["player", "inventory"]) {
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-        }
-        const refs = [...(change.wield ?? []), ...(change.wieldAt ?? []).map((entry) => entry.item),
-          ...(change.carry ?? []).map((entry) => entry.item)];
-        for (const ref of refs) {
-          const domain = ref.from === "store" ? "stores" : ref.from === "floor" ? "floor" : "inventory";
-          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.x && cell.y === ref.y && cell.seen))) {
-            return api2Refused("unobserved-item", "the floor item is not currently seen");
-          }
-          if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) {
-            return api2Refused("unobserved-item", "the store item is not currently seen");
-          }
-        }
-        const simulation = createAgentView(state, undefined, options.viewDeps ?? {}, { has: granted }).simulateLoadout?.(structuredClone(change));
-        return simulation ? api2Ok(data(knownLoadoutSimulation(state, simulation)) as import("@rpgm-tools/neo-angband-mod-sdk").LoadoutSimulation) : api2Unavailable("the game has no loadout calculation");
-      }),
       isCurrent: (token) => withState((state) => api2Ok(tokenIsCurrent(state, token))),
     }),
 
@@ -454,7 +425,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     content: frozen({
-      colors: () => guarded(() => api2Ok(data(colorTableSnapshot().map((_color, index) => ({ index, id: colorPrefId(index), css: colorToCss(index) }))))),
       own: () => guarded(() => api2Ok(data({ ...ctx.data } as Record<string, JsonValue>))),
       asset: (path: string) => guarded(async () => {
         const url = await ctx.assetUrl(path);
@@ -629,7 +599,35 @@ function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps): Api2Truth {
   return frozen({
     monsters: () => guarded(() => {
       if (!ctx.state) return api2Unavailable(NO_GAME);
-      return api2Ok(data(trueMonsterViews(ctx.state, deps)) as readonly Api2TrueMonster[]);
+      return api2Ok(data(trueMonsterViews(ctx.state, deps).map((mon) => ({
+        ...mon,
+        perceived: monsterIsObvious(ctx.state!.monsters[mon.id]!),
+      }))) as readonly Api2TrueMonster[]);
+    }),
+    race: (index: number) => guarded(() => {
+      if (!ctx.state) return api2Unavailable(NO_GAME);
+      if (!ctx.registries) return api2Unavailable("there are no monster races yet");
+      const race = ctx.registries.monsters.races.find((race) => race.ridx === index);
+      if (!race) return api2Ok(null);
+      return api2Ok(data({
+        ridx: race.ridx,
+        flags: [...race.flags].flatMap((flag) => MON_RACE_FLAG_ENTRIES[flag] ? [MON_RACE_FLAG_ENTRIES[flag]!.name] : []),
+        spells: [...race.spellFlags].filter((flag) => !!MON_SPELL_ENTRIES[flag]).sort((a, b) => a - b),
+        blows: race.blows.map((blow) => {
+          const dice = blow.dice?.randomValue();
+          return { dice: dice?.dice ?? 0, sides: dice?.sides ?? 0, effect: blow.effect.name };
+        }),
+        level: race.level,
+        sleep: race.sleep,
+        spellPower: race.spellPower,
+        freqInnate: race.freqInnate,
+        freqSpell: race.freqSpell,
+        hasFriends: race.friends.length > 0 || race.friendsBase.length > 0,
+      }));
+    }),
+    storeKnowledge: () => guarded(() => {
+      if (!ctx.state) return api2Unavailable(NO_GAME);
+      return api2Ok(data(storeKnowledge(ctx.state)));
     }),
     level: () => guarded(() => {
       if (!ctx.state) return api2Unavailable(NO_GAME);

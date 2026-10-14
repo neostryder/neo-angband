@@ -8,7 +8,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { FEAT, MFLAG, OF, RF, RSF, SQUARE, TMD, TRF, TV } from "../generated/index.js";
+import { FEAT, MFLAG, MON_TMD, OF, RF, RSF, SQUARE, TMD, TRF, TV } from "../generated/index.js";
 import { OBJ_MOD } from "../generated/object-modifiers.js";
 import { FlagSet } from "../bitflag.js";
 import { GameEvents } from "../events.js";
@@ -198,30 +198,41 @@ function kindNamed(game: StartedGame, tval: number, name: string): ObjectKind {
 }
 
 describe("KnownWorld paired worlds", () => {
-  it("names an artifact id only after the character knows it is an artifact", () => {
+  it("keeps hidden glow and changed terrain out of lighting and remembered passability", () => {
     const [a, b] = pair();
-    const objects = [a, b].map((game) => carry(game, kindNamed(game, TV.SWORD, "Dagger")));
-    objects.forEach((obj, index) => {
-      obj.artifact = [a, b][index]!.booted.registries.objects.artifacts.find((artifact) => artifact && artifact.aidx > index)!;
-      obj.notice &= ~OBJ_NOTICE.ASSESSED;
-    });
-    expect(observed(b.state)).toBe(observed(a.state));
-    const item = () => buildKnownWorld(b.state, b.state.knownWorldDeps).inventory!.find((entry) => entry.label.includes("Dagger"))!;
-    expect(item()).not.toHaveProperty("artifactId");
-    objects[1]!.notice |= OBJ_NOTICE.ASSESSED;
-    expect(item().artifactId).toBe(objects[1]!.artifact!.aidx);
+    const grid = hiddenEmptyGrid(a.state, { x: -1, y: -1 });
+    for (const game of [a, b]) {
+      game.state.chunk.setFeat(grid, FEAT.FLOOR);
+      squareMemorize(game.state, grid);
+    }
+    b.state.chunk.setFeat(grid, FEAT.GRANITE);
+    b.state.chunk.sqinfoOn(grid, SQUARE.GLOW);
+    expect(observed(a.state)).toBe(observed(b.state));
+    expect(createAgentView(a.state).tileActions!(grid).codes).toEqual(createAgentView(b.state).tileActions!(grid).codes);
+    const cell = buildKnownWorld(b.state).level!.cells.find((cell) => cell.x === grid.x && cell.y === grid.y)!;
+    expect(cell).toMatchObject({ lit: null, remembered: { feat: FEAT.FLOOR, passable: true } });
+    squareMemorize(b.state, grid);
+    expect(observed(a.state)).not.toBe(observed(b.state));
   });
 
-  it("reports every timed code without revealing durations", () => {
+  it("hides unobserved blows and exact status timers until lore learns the blows", () => {
     const [a, b] = pair();
-    a.state.actor.player.timed[TMD.SLOW] = 10;
-    b.state.actor.player.timed[TMD.SLOW] = 20;
-    expect(observed(b.state)).toBe(observed(a.state));
-    const timed = buildKnownWorld(a.state).player!.status.timed;
-    expect(Object.keys(timed)).toHaveLength(Object.keys(TMD).length);
-    expect(timed["SLOW"]).toEqual(expect.any(String));
-    b.state.actor.player.timed[TMD.SLOW] = 0;
-    expect(observed(b.state)).not.toBe(observed(a.state));
+    const monA = liveMonsters(a.state).find((mon) => mon.race.blows.length > 0)!;
+    const monB = twin(b.state, monA);
+    for (const mon of [monA, monB]) {
+      mon.mflag.on(MFLAG.VISIBLE);
+      mon.mflag.off(MFLAG.CAMOUFLAGE);
+      for (const timer of [MON_TMD.SLEEP, MON_TMD.FEAR, MON_TMD.CONF, MON_TMD.STUN]) mon.mTimed[timer] = 1;
+    }
+    for (const timer of [MON_TMD.SLEEP, MON_TMD.FEAR, MON_TMD.CONF, MON_TMD.STUN]) monB.mTimed[timer] = 90;
+    monB.race.blows[0] = { ...monB.race.blows[0]!, dice: null };
+    expect(observed(a.state)).toBe(observed(b.state));
+    expect(createAgentView(a.state).tileActions!(monA.grid).codes).toEqual(createAgentView(b.state).tileActions!(monB.grid).codes);
+    expect(knownMonsters(a.state).find((mon) => mon.raceIndex === monA.race.ridx)!.knownBlows).toEqual([]);
+    for (const game of [a, b]) getLore(game.state.lore, monA.race).blowKnown[0] = true;
+    expect(observed(a.state)).not.toBe(observed(b.state));
+    const blow = knownMonsters(a.state).find((mon) => mon.raceIndex === monA.race.ridx)!.knownBlows[0]!;
+    expect(blow).toMatchObject({ method: monA.race.blows[0]!.method.name, effect: monA.race.blows[0]!.effect.name });
   });
 
   it("uninspected store stock produces identical observations", () => {

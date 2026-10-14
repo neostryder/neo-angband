@@ -48,10 +48,9 @@ import type { MonsterRace } from "../mon/types.js";
 import type { GameState } from "../game/context.js";
 import { lookMonDesc, targetAble } from "../game/target.js";
 import { gearGet } from "../game/gear.js";
-import { fmtDepth } from "../game/display.js";
 import { numberCharging } from "../game/obj-cmd.js";
 import { knownDescOf } from "../game/describe.js";
-import { MON_RACE_FLAG_ENTRIES, MON_SPELL_ENTRIES, MON_TMD, OF, PLAYER_TIMED_ENTRIES, RF, TMD } from "../generated/index.js";
+import { MON_RACE_FLAG_ENTRIES, MON_SPELL_ENTRIES, MON_TMD, OF, RF, TMD } from "../generated/index.js";
 import { squareIsSeen, squareIsView } from "../world/view.js";
 import type { Store } from "../store/store.js";
 import type { FlagSet } from "../bitflag.js";
@@ -70,7 +69,6 @@ import type {
   AgentCapabilities,
   AgentViewDeps,
   ItemView,
-  LoadoutSimulation,
   PlayerView,
   SpellbookView,
   StoreItemView,
@@ -126,10 +124,20 @@ export interface KnownMonster {
   readonly knownFlags: readonly string[];
   /** Spells the player's lore has learned, by code. */
   readonly knownSpells: readonly string[];
+  readonly knownBlows: readonly KnownMonsterBlow[];
   readonly unique: boolean;
   readonly questGuardian: boolean;
   readonly finalGuardian: boolean;
   readonly glyph?: string;
+}
+
+export interface KnownMonsterBlow {
+  readonly method: string;
+  readonly effect: string;
+  readonly base: number;
+  readonly dice: number;
+  readonly sides: number;
+  readonly mBonus: number;
 }
 
 /** Why the monster list is withheld: the player is hallucinating. */
@@ -141,7 +149,6 @@ export type KnownMonstersHidden = "hallucinating";
  * when the effect is clear or its grade has no name on the status line.
  */
 export interface KnownPlayerStatus {
-  readonly timed: Readonly<Record<string, string | null>>;
   readonly blind: string | null;
   readonly confused: string | null;
   readonly afraid: string | null;
@@ -176,7 +183,6 @@ export interface KnownPlayerStatus {
 
 /** The player as the character sheet and status line show them. */
 export type KnownPlayer = Omit<PlayerView, "status" | "recall" | "descent"> & {
-  readonly depthText: string;
   readonly status: KnownPlayerStatus;
   /** An active Word of Recall: the status line says "Recall", not when it fires. */
   readonly recall: boolean;
@@ -194,7 +200,6 @@ export type KnownItem = Omit<ItemView, "timeout"> & {
   readonly charging: number;
   /** The name carries "{??}": the item has runes the player has not learned. */
   readonly unknownRunes: boolean;
-  readonly artifactId?: number;
 };
 
 /** One ware in a shop, or one item in the home. */
@@ -423,6 +428,7 @@ export function knownMonster(state: GameState, mon: Monster, deps: AgentViewDeps
   const quests = state.actor.player.quests;
   const finalRace = quests.length > 0 ? quests[quests.length - 1]!.race : -1;
   const flags = codes(knownRaceFlags(state, mon.race), MON_RACE_FLAG_ENTRIES);
+  const lore = state.lore.get(mon.race.ridx);
   const view: {
     -readonly [K in keyof KnownMonster]: KnownMonster[K];
   } = {
@@ -439,6 +445,11 @@ export function knownMonster(state: GameState, mon: Monster, deps: AgentViewDeps
     raceSpeed: mon.race.speed,
     knownFlags: flags,
     knownSpells: codes(knownRaceSpells(state, mon.race), MON_SPELL_ENTRIES),
+    knownBlows: mon.race.blows.filter((_, i) => lore?.allKnown || lore?.blowKnown[i] || lore?.blowTimesSeen[i]).map((blow) => ({
+      method: blow.method.name,
+      effect: blow.effect.name,
+      ...(blow.dice?.randomValue() ?? { base: 0, dice: 0, sides: 0, mBonus: 0 }),
+    })),
     unique: flags.includes("UNIQUE"),
     questGuardian: quests.some((q) => q.race === mon.race.ridx),
     finalGuardian: mon.race.ridx === finalRace,
@@ -471,7 +482,7 @@ export function knownMonsters(state: GameState, deps: AgentViewDeps = {}): Known
  * The player, items and the target.
  * ------------------------------------------------------------------ */
 
-const STATUS_EFFECTS: ReadonlyArray<readonly [Exclude<keyof KnownPlayerStatus, "food" | "foodGrade" | "fearful" | "timed">, number]> = [
+const STATUS_EFFECTS: ReadonlyArray<readonly [Exclude<keyof KnownPlayerStatus, "food" | "foodGrade" | "fearful">, number]> = [
   ["blind", TMD.BLIND],
   ["confused", TMD.CONFUSED],
   ["afraid", TMD.AFRAID],
@@ -514,11 +525,8 @@ function knownPlayer(state: GameState, player: PlayerView): KnownPlayer {
   for (const [key, tmd] of STATUS_EFFECTS) named[key] = gradeName(state, tmd);
   return {
     ...rest,
-    depthText: fmtDepth(player.depth),
     status: {
       ...named,
-      timed: Object.fromEntries(PLAYER_TIMED_ENTRIES.map((effect, index) => [effect.name,
-        (state.actor.player.timed[index] ?? 0) > 0 ? gradeName(state, index) ?? "active" : null])),
       food: Math.trunc((state.actor.player.timed[TMD.FOOD] ?? 0) / 100),
       foodGrade: gradeName(state, TMD.FOOD),
       fearful: status.fearful ?? false,
@@ -559,7 +567,6 @@ function knownItem(state: GameState, deps: AgentViewDeps, item: ItemView, obj: G
   const { timeout: _timeout, ...rest } = item;
   return {
     ...rest,
-    ...(item.artifact && obj?.artifact ? { artifactId: obj.artifact.aidx } : {}),
     charging: obj ? chargingShown(state, deps, obj, shopWare) : 0,
     unknownRunes: obj ? unknownRunes(state, deps, obj, shopWare) : false,
   };
@@ -567,28 +574,6 @@ function knownItem(state: GameState, deps: AgentViewDeps, item: ItemView, obj: G
 
 function carried(state: GameState, deps: AgentViewDeps, item: ItemView): KnownItem {
   return knownItem(state, deps, item, gearGet(state.gear, item.handle));
-}
-
-export function knownLoadoutSimulation(state: GameState, simulation: LoadoutSimulation) {
-  const item = (value: ItemView): KnownItem => {
-    const { timeout: _timeout, ...rest } = value;
-    const charging = /\((?:(\d+) )?charging\)/u.exec(value.name ?? "");
-    return { ...rest, charging: charging ? Number(charging[1] ?? 1) : 0,
-      unknownRunes: (value.name ?? "").includes("{??}") };
-  };
-  const loadout = (value: LoadoutSimulation["before"]) => ({
-    ...value,
-    player: knownPlayer(state, value.player),
-    equipment: value.equipment.map((entry) => entry ? item(entry) : null),
-    inventory: value.inventory.map(item),
-  });
-  return deepFreeze({
-    ...simulation,
-    before: loadout(simulation.before),
-    after: loadout(simulation.after),
-    placements: simulation.placements.map((placement) => ({ ...placement,
-      worn: item(placement.worn), displaced: placement.displaced ? item(placement.displaced) : null })),
-  });
 }
 
 function knownTarget(state: GameState): KnownTarget | null {
@@ -619,6 +604,29 @@ export function frozenKnownMonster(state: GameState, mon: Monster, deps: AgentVi
 }
 
 const storeObservations = new WeakMap<GameState, Map<Store, KnownStore>>();
+const storeObservationTurns = new WeakMap<GameState, Map<Store, number>>();
+
+export interface StoreKnowledge {
+  readonly storeIndex: number;
+  readonly feat: number;
+  readonly depth: number;
+  readonly lastVisitTurn: number | null;
+  readonly snapshotTurn: number;
+  readonly stalenessRule: "current";
+  readonly remoteStockUsable: true;
+}
+
+export function storeKnowledge(state: GameState): readonly StoreKnowledge[] {
+  return deepFreeze((state.stores ?? []).map((store, storeIndex) => ({
+    storeIndex,
+    feat: store.feat,
+    depth: state.chunk.depth,
+    lastVisitTurn: storeObservationTurns.get(state)?.get(store) ?? null,
+    snapshotTurn: state.turn,
+    stalenessRule: "current" as const,
+    remoteStockUsable: true as const,
+  })));
+}
 
 function storeBook(state: GameState): Map<Store, KnownStore> {
   let observations = storeObservations.get(state);
@@ -630,6 +638,12 @@ function storeBook(state: GameState): Map<Store, KnownStore> {
 }
 
 function rememberStore(state: GameState, deps: AgentViewDeps, live: Store, store: StoreView): void {
+  let turns = storeObservationTurns.get(state);
+  if (!turns) {
+    turns = new Map();
+    storeObservationTurns.set(state, turns);
+  }
+  turns.set(live, state.turn);
   storeBook(state).set(live, deepFreeze(structuredClone({
     ...store,
     stock: store.stock.map((ware) => ({

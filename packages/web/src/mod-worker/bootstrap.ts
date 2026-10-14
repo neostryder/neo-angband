@@ -112,8 +112,6 @@ export function installModWorkerBootstrap(
         player: method("view.player"),
         monsters: method("view.monsters"),
         level: method("view.level"),
-        look: method("view.look"),
-        simulateLoadout: method("view.simulateLoadout"),
         input: method("view.input"),
         isCurrent: method("view.isCurrent"),
       },
@@ -144,7 +142,6 @@ export function installModWorkerBootstrap(
       hooks: { available: m.hooks, active },
       content: {
         own: method("content.own"),
-        colors: method("content.colors"),
         asset: method("content.asset"),
         records: method("content.records"),
         lookup: method("content.lookup"),
