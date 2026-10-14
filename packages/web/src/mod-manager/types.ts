@@ -1,4 +1,4 @@
-import type { DeclaredConflict, PackManifest, SortPin } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { DeclaredConflict, PackManifest, SortPin, SaveModList } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { CatalogMod, ConsentRecord, ModStore } from "../mod-store";
 import type { ModTier } from "../mod-tier";
 import type { DiscoveredMod } from "../mod-discover";
@@ -9,6 +9,7 @@ import type { ModRegistry } from "../mod-curated";
 import type { ModRefresh } from "../mod-refresh";
 import type { ProfileMeta } from "../profiles";
 import type { BrowseEntry } from "./browse-types";
+import type { LookStore } from "../look-state";
 
 export type Immutable<T> = T extends object ? { readonly [K in keyof T]: Immutable<T[K]> } : T;
 
@@ -37,6 +38,8 @@ export interface ConfirmationMod {
 }
 
 export interface PendingConfirmation {
+  readonly planId?: number;
+  readonly downloads?: readonly { readonly name: string; readonly version: string; readonly bytes: number | null }[];
   readonly id: number;
   readonly operation: ManagementOperation;
   readonly requestedBy: string | null;
@@ -60,6 +63,12 @@ export interface InstallPlan {
   readonly downloads: readonly PlannedDownload[];
   readonly newGrants: readonly PermissionConfirmation[];
   readonly conflicts: readonly DeclaredConflict[];
+}
+
+export interface ModListRestorePlan extends InstallPlan {
+  readonly modList: SaveModList;
+  readonly unavailable: readonly { readonly id: string; readonly name: string }[];
+  readonly revision: string;
 }
 
 export interface ManagedMod {
@@ -104,10 +113,12 @@ export interface ManagerState {
 
 export interface ModManagerEnvironment {
   readonly store: ModStore;
+  readonly look?: LookStore;
   readonly listCatalog: () => readonly CatalogMod[];
   readonly rediscover?: () => Promise<void>;
   readonly installedMetadata?: () => Promise<readonly InstalledModMeta[]>;
   readonly discover?: (ref: RepoRef) => Promise<BrowseEntry>;
+  readonly discoverSavedVersion?: (mod: SaveModList["mods"][number]) => Promise<BrowseEntry | null>;
   readonly curated?: () => Promise<{ readonly registry: ModRegistry | null; readonly problem: string | null }>;
   readonly readManifest?: (mod: DiscoveredMod) => Promise<PackManifest>;
   readonly resolveDependency?: (id: string, range: string) => Promise<BrowseEntry>;
@@ -127,6 +138,7 @@ export interface ModManagerEnvironment {
     readonly write: (slot: string, winner: string | null) => boolean;
   };
   readonly previousVersion?: (id: string) => Promise<BrowseEntry | null>;
+  readonly restoreInstallations?: (previous: readonly { readonly id: string; readonly meta: InstalledModMeta | null }[]) => Promise<boolean>;
 }
 
 export interface ConfirmationDecision {

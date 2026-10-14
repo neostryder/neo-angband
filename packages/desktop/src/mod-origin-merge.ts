@@ -40,12 +40,13 @@
  * drifting apart is silent until a player's mods are gone.
  */
 export const MOD_DB_NAME = "neo-angband";
-export const MOD_DB_VERSION = 3;
+export const MOD_DB_VERSION = 4;
 export const STORE_MODS = "mods";
 export const STORE_MOD_META = "modsMeta";
 export const STORE_LINOLEUM = "linoleum";
+export const STORE_MOD_VERSIONS = "modVersions";
 /** Every store the version must create, in idb.ts's order. `handles` and `linoleum` are created and never read here - see the header. */
-export const MOD_DB_STORES = ["handles", STORE_MODS, STORE_MOD_META, STORE_LINOLEUM] as const;
+export const MOD_DB_STORES = ["handles", STORE_MODS, STORE_MOD_META, STORE_LINOLEUM, STORE_MOD_VERSIONS] as const;
 
 /**
  * One installed mod as it sits in an origin.

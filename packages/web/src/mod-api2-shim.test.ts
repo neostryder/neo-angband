@@ -241,8 +241,6 @@ describe("policy tables that install registrations", () => {
   });
 
   const tables: Api2Policies = {
-    prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
-    walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
     messageText: [{ find: "a", replace: "b" }], screenText: [{ find: "a", replace: "b" }],
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],
     effectIntro: [{ find: "a", replace: "b" }], historyAdd: [{ find: "a", replace: "b" }],
@@ -263,9 +261,8 @@ describe("policy tables that install registrations", () => {
       () => ({ grants: capabilities("tables", [capability]) }));
     const hooks = load("tables", plugin).hooks;
     const registrations = api2PluginRegistrations(plugin, "tables", { loud: true });
-    expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : name === "walkBlockedByDiggable" ? [name] : []);
+    expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : []);
     expect(Object.keys(registrations ?? {})).toEqual("registration" in target ? [target.registration] : []);
-    plugin.uninstall?.();
   });
 
   it("keeps granted policy tables when another registry permission is refused", () => {

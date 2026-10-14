@@ -108,23 +108,8 @@ export interface Api2TileRule {
   readonly packs?: readonly string[];
 }
 
-export interface Api2WalkBlockedByDiggablePolicy {
-  readonly kind: "walk-blocked-by-diggable";
-  readonly attempt: "tunnel";
-  readonly energy: "move";
-  readonly step: false;
-}
-
-export interface Api2PrefErrorsPolicy {
-  readonly kind: "pref-errors";
-  readonly continueAfterError: boolean;
-  readonly reportLimit: number;
-}
-
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
-  readonly prefErrors?: Api2PrefErrorsPolicy;
-  readonly walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   readonly messageText?: readonly Api2TextRule[];
   /** `where` may name `screen`, `part` and `column`. */
   readonly screenText?: readonly Api2TextRule[];
@@ -177,8 +162,6 @@ export type Api2TileFiller = (fill: Api2TileFill) => void;
 
 /** The game registrations a table can install, beside the hooks. */
 export interface Api2PolicyRegistrations {
-  prefErrors?: Api2PrefErrorsPolicy;
-  walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   /** Installed as the stores' discount roll. */
   discountRoll?: Api2DiscountRoll;
   /** Installed as the mod's tile filler. */
@@ -387,43 +370,6 @@ const LIST_KEYS: readonly string[] = ["dy", "-dy", "dx", "-dx"];
  * policies.test.ts, and list it under Policy tables in docs/modding/API2.md.
  */
 export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
-  {
-    name: "prefErrors",
-    capability: "registry:ui-entry",
-    summary: "Chooses whether preference loading continues after an error.",
-    target: { registration: "prefErrors" },
-    check(value) {
-      if (!isRecord(value)) return "prefErrors is an object";
-      const extra = unknownField("prefErrors", value, ["kind", "continueAfterError", "reportLimit"]);
-      if (extra) return extra;
-      if (value["kind"] !== "pref-errors") return "prefErrors.kind is \"pref-errors\"";
-      if (typeof value["continueAfterError"] !== "boolean") return "prefErrors.continueAfterError is true or false";
-      if (!isInt(value["reportLimit"], 0, 1000)) return "prefErrors.reportLimit is a whole number from 0 to 1000";
-      return null;
-    },
-    apply(value, out) {
-      out.registrations.prefErrors = value as Api2PrefErrorsPolicy;
-    },
-  },
-  {
-    name: "walkBlockedByDiggable",
-    capability: "registry:command",
-    summary: "Attempts one tunnel when a walk meets known diggable rock.",
-    target: { registration: "walkBlockedByDiggable" },
-    check(value) {
-      if (!isRecord(value)) return "walkBlockedByDiggable is an object";
-      const extra = unknownField("walkBlockedByDiggable", value, ["kind", "attempt", "energy", "step"]);
-      if (extra) return extra;
-      if (value["kind"] !== "walk-blocked-by-diggable") return "walkBlockedByDiggable.kind is \"walk-blocked-by-diggable\"";
-      if (value["attempt"] !== "tunnel") return "walkBlockedByDiggable.attempt is \"tunnel\"";
-      if (value["energy"] !== "move") return "walkBlockedByDiggable.energy is \"move\"";
-      if (value["step"] !== false) return "walkBlockedByDiggable.step is false";
-      return null;
-    },
-    apply(value, out) {
-      out.registrations.walkBlockedByDiggable = value as Api2WalkBlockedByDiggablePolicy;
-    },
-  },
   textKind("messageText", "messageText", "Rewrites message-line text.", "registry:message", [], (rules, hooks) => {
     hooks.messageText = (raw: string) => applyRules(rules, raw);
   }),

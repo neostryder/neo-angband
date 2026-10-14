@@ -1,4 +1,4 @@
-import { isTruthCapability, resolveSettingValue, sortModOrder, type DeclaredConflict, type SortResult } from "@rpgm-tools/neo-angband-mod-sdk";
+import { isTruthCapability, modListValidator, resolveSettingValue, sortModOrder, type DeclaredConflict, type SortResult, type SaveModList } from "@rpgm-tools/neo-angband-mod-sdk";
 import { declaredConflicts, undecidedCapabilities, unreviewedNoticeDue, needsGameplayNoscoreWarning } from "./state-rules";
 import { CONSENT_DISCLAIMER, type ModOrigin } from "../mod-consent";
 import { needsOwnConfirmation, playerHeld, tierRefusal, UNKNOWN_TIER } from "../mod-tier";
@@ -9,12 +9,15 @@ import type { RepoRef } from "../mod-source";
 import type { BrowseEntry } from "./browse-types";
 import { immutable, permissionConfirmation, refused } from "./confirmation";
 import { resolveInstallPlan } from "./install-plans";
+import { captureModList, matchesSavedVersion } from "./mod-lists";
 import type {
   ConfirmationDecision, ConfirmationMod, Immutable, InstallPlan, ManagementOperation,
-  ManagerResult, ManagerState, ModManagerEnvironment, PendingConfirmation, PermissionConfirmation,
+  ManagerResult, ManagerState, ModManagerEnvironment, PendingConfirmation, PermissionConfirmation, ModListRestorePlan,
 } from "./types";
 
 export interface CoreConfirmationRequest {
+  readonly planId?: number;
+  readonly downloads?: PendingConfirmation["downloads"];
   readonly operation: ManagementOperation;
   readonly mods?: readonly ConfirmationMod[];
   readonly permissions?: readonly PermissionConfirmation[];
@@ -48,6 +51,7 @@ export class ModManagerService {
   #catalog: ManagerState["catalog"] = { curated: [], community: [], sideloads: [], problems: [] };
   #updates: ManagerState["updates"] = [];
   #plans = new Map<number, InstallPlan>();
+  #modLists = new Map<number, ModListRestorePlan>();
   #pending: PendingConfirmation | null = null;
   #pendingAction: ((decision: ConfirmationDecision) => Promise<ManagerResult<unknown>>) | null = null;
   #busy = false;
@@ -77,7 +81,7 @@ export class ModManagerService {
       markUnreviewedNotice: (id, version) => mutate(() => env.store.markUnreviewedNotice(id, version)),
       setRuleChoice: (flag, on) => mutate(() => env.store.setRuleChoice(flag, on)),
       setSectionChoice: (id, section, on) => mutate(() => env.store.setSectionChoice(id, section, on)),
-      setSettingValue: (id, setting, value) => mutate(() => env.store.setSettingValue(id, setting, value)),
+      setSettingValue: (id, setting, value) => mutate(() => { env.store.setSettingValue(id, setting, value); env.look?.recordSetting(id, setting, value); }),
       writeThirdPartyConsent: (allow) => { const result = env.consent?.write(allow) ?? false; service.#publish(); return result; },
       installConfirmed: async (mod, origin, progress) => {
         const result = env.install ? await env.install(mod, origin, progress) : { ok: false as const, problem: "The host cannot install mods." };
@@ -180,6 +184,7 @@ export class ModManagerService {
     if (!plan) return refused("plan", "This mod plan is no longer available.");
     return this.#request({
       operation: plan.operation, requestedBy,
+      planId: plan.id,
       mods: plan.downloads.map(({ mod }) => this.#subject(mod)),
       permissions: plan.newGrants, conflicts: plan.conflicts,
       riskNotice: plan.downloads.some((d) => d.origin === "third-party") ? CONSENT_DISCLAIMER : [],
@@ -329,6 +334,123 @@ export class ModManagerService {
     });
   }
 
+  async captureModList(name = ""): Promise<SaveModList> {
+    if (this.#env.installedMetadata) this.#metadata = await this.#env.installedMetadata();
+    return captureModList(name, this.#env.store, this.#env.listCatalog(), this.#metadata);
+  }
+
+  async planRestoreModList(list: SaveModList): Promise<ManagerResult<ModListRestorePlan>> {
+    return this.#guard(async () => {
+      if (this.#pending || this.#busy) return refused("busy", "A mod operation is already waiting for confirmation.");
+      const valid = modListValidator.validate(list);
+      if (!valid.ok || new Set(list.mods.map((m) => m.id)).size !== list.mods.length ||
+          new Set(list.resolvedOrder).size !== list.resolvedOrder.length || list.resolvedOrder.some((id) => !list.mods.some((m) => m.id === id))) {
+        return refused("mod-list", "The mod list is invalid.");
+      }
+      const revision = this.#env.store.configurationRevision();
+      if (this.#env.installedMetadata) this.#metadata = await this.#env.installedMetadata();
+      const catalog = this.#env.listCatalog();
+      const roots: { entry: BrowseEntry; origin: ModOrigin }[] = [];
+      const unavailable: { id: string; name: string }[] = [];
+      for (const id of list.resolvedOrder) {
+        const saved = list.mods.find((m) => m.id === id)!;
+        if (matchesSavedVersion(saved, catalog.find((m) => m.id === id && !m.missing), this.#metadata.find((m) => m.id === id))) continue;
+        const ref = { repo: saved.repository ?? "", tag: saved.tag ?? saved.commit ?? "" };
+        let entry: BrowseEntry | null = null;
+        try {
+          entry = await this.#env.discoverSavedVersion?.(saved) ?? null;
+          if (!entry && saved.repository && (saved.tag || saved.commit)) entry = await this.#env.discover?.(ref) ?? null;
+        }
+        catch { /* A missing repository leaves the save readable. */ }
+        if (!entry?.ok || entry.mod.id !== id || entry.mod.version !== saved.version || (saved.commit !== null && entry.mod.sha !== saved.commit)) {
+          unavailable.push({ id, name: saved.name });
+        } else roots.push({ entry, origin: "third-party" });
+      }
+      const id = ++this.#nextId;
+      const resolved = roots.length ? await resolveInstallPlan(this.#env, roots, catalog, this.#metadata, id, "restore")
+        : { status: "ok" as const, value: { id, operation: "restore" as const, downloads: [], newGrants: [], conflicts: [] } };
+      if (resolved.status !== "ok") return resolved;
+      if (resolved.value.downloads.some((d) => !list.mods.some((m) => m.id === d.mod.id && m.version === d.mod.version))) {
+        return refused("mod-list-dependency", "The saved mod list does not contain its exact dependencies.");
+      }
+      const grants = [...resolved.value.newGrants];
+      const kept = catalog.filter((m) => list.resolvedOrder.includes(m.id) && !unavailable.some((u) => u.id === m.id));
+      for (const mod of kept) for (const capability of undecidedCapabilities(mod)) {
+        if (!grants.some((g) => g.modId === mod.id && g.capability === capability)) grants.push(permissionConfirmation(mod.id, capability));
+      }
+      const plan: ModListRestorePlan = immutable({ ...resolved.value, newGrants: grants, modList: list, unavailable, revision });
+      this.#modLists.set(id, plan);
+      this.#plans.set(id, plan);
+      this.#publish();
+      return { status: "ok", value: plan };
+    });
+  }
+
+  applyModListPlan(id: number, continueWithout: readonly string[] = []): ManagerResult<unknown> {
+    const plan = this.#modLists.get(id);
+    if (!plan) return refused("plan", "This mod plan is no longer available.");
+    if (plan.unavailable.some((m) => !continueWithout.includes(m.id))) return refused("unavailable-version", "Choose whether to continue without each unavailable mod.");
+    return this.#request({ operation: "restore", planId: plan.id, downloads: plan.downloads.map(({ mod, bytes }) => ({ name: mod.name, version: mod.version, bytes })), mods: plan.modList.mods.filter((m) => plan.modList.resolvedOrder.includes(m.id) && !plan.unavailable.some((u) => u.id === m.id)).map((m) => ({ id: m.id, name: m.name, version: m.version, repository: m.repository, commit: m.commit, digests: m.payloadDigest })), permissions: plan.newGrants,
+      conflicts: plan.conflicts, riskNotice: plan.downloads.length ? CONSENT_DISCLAIMER : [],
+    }, async (decision) => {
+      if (plan.revision !== this.#env.store.configurationRevision()) return refused("revision", "The mod configuration changed in another window. Review it again.");
+      const previous = plan.downloads.map(({ mod }) => ({ id: mod.id, meta: this.#metadata.find((m) => m.id === mod.id) ?? null }));
+      let attemptedInstall = false;
+      let activated = false;
+      const activate = async (): Promise<ManagerResult<unknown>> => {
+        for (const grant of plan.newGrants) {
+          const choices = decision.permissions?.[grant.modId];
+          if (!choices || (!choices.granted.includes(grant.capability) && !choices.refused.includes(grant.capability))) return refused("permissions", "Choose each new permission before enabling this mod.");
+        }
+        for (const download of plan.downloads) {
+          attemptedInstall = true;
+          const result = await this.#env.install?.(download.mod, download.origin, () => {});
+          if (!result?.ok) return refused("install", result && !result.ok ? result.problem : "The host cannot install mods.");
+          this.#metadata = [...this.#metadata.filter((m) => m.id !== result.meta.id), result.meta];
+          const saved = plan.modList.mods.find((m) => m.id === result.meta.id)!;
+          if (!matchesSavedVersion(saved, download.manifest, result.meta)) return refused("version", "The downloaded mod does not match the saved version.");
+        }
+        await this.#env.rediscover?.();
+        if (this.#env.installedMetadata) this.#metadata = await this.#env.installedMetadata();
+        if (plan.revision !== this.#env.store.configurationRevision()) return refused("revision", "The mod configuration changed in another window. Review it again.");
+        const catalog = this.#env.listCatalog();
+        const order = plan.modList.resolvedOrder.filter((modId) => !plan.unavailable.some((m) => m.id === modId));
+        for (const modId of order) {
+          const mod = catalog.find((m) => m.id === modId && !m.missing);
+          const saved = plan.modList.mods.find((m) => m.id === modId)!;
+          if (!matchesSavedVersion(saved, mod, this.#metadata.find((m) => m.id === modId))) return refused("version", "The installed mod does not match the saved version.");
+          const choices = decision.permissions?.[modId];
+          if (choices) {
+            const invalid = this.#consentRefusal(mod!, choices);
+            if (invalid) return invalid;
+          }
+        }
+        if (!this.#env.store.applyModList({ ...plan.modList, resolvedOrder: order }, plan.revision, catalog.filter((mod) => mod.enabled).map((mod) => mod.id))) return refused("storage", "The mod list could not be activated.");
+        activated = true;
+        for (const modId of order) {
+          const choices = decision.permissions?.[modId];
+          if (choices) {
+            const result = this.#writeConsent(modId, choices);
+            if (result.status !== "ok") return result;
+          }
+          this.#env.advanceSaveRatchets?.(catalog.find((m) => m.id === modId)!);
+        }
+        this.#modLists.delete(id);
+        this.#plans.delete(id);
+        return { status: "ok", value: null };
+      };
+      let result: ManagerResult<unknown>;
+      try { result = await activate(); }
+      catch (error) { result = refused("host", error instanceof Error ? error.message : String(error)); }
+      if (attemptedInstall && !activated && this.#env.restoreInstallations) {
+        if (!(await this.#env.restoreInstallations(previous))) return refused("rollback", "The previous mod versions could not be restored.");
+        if (this.#env.installedMetadata) this.#metadata = await this.#env.installedMetadata();
+        await this.#env.rediscover?.();
+      }
+      return result;
+    });
+  }
+
   async rollback(id: string, requestedBy: string | null = null): Promise<ManagerResult<unknown>> {
     return this.#guard(async () => {
       const previous = await this.#env.previousVersion?.(id);
@@ -391,6 +513,7 @@ export class ModManagerService {
     const setting = this.#find(id)?.manifest.settings?.find((s) => s.id === settingId);
     if (!setting || !Number.isFinite(value)) return refused("setting", "This mod setting is not valid.");
     this.#env.store.setSettingValue(id, settingId, resolveSettingValue(setting, value));
+    this.#env.look?.recordSetting(id, settingId, resolveSettingValue(setting, value));
     if (!setting.requiresReload) this.#env.applySettingLive?.(id, settingId);
     this.#publish();
     return { status: "ok", value: null };
@@ -461,7 +584,7 @@ export class ModManagerService {
   }
 
   #confirmation(request: CoreConfirmationRequest): PendingConfirmation {
-    return immutable({ id: ++this.#nextId, operation: request.operation, requestedBy: request.requestedBy ?? null, mods: request.mods ?? [], permissions: request.permissions ?? [], riskNotice: request.riskNotice ?? [], conflicts: request.conflicts ?? [] });
+    return immutable({ id: ++this.#nextId, operation: request.operation, requestedBy: request.requestedBy ?? null, mods: request.mods ?? [], permissions: request.permissions ?? [], riskNotice: request.riskNotice ?? [], conflicts: request.conflicts ?? [], ...(request.planId !== undefined ? { planId: request.planId } : {}), ...(request.downloads ? { downloads: request.downloads } : {}) });
   }
 
   #request(request: CoreConfirmationRequest, action: (decision: ConfirmationDecision) => Promise<ManagerResult<unknown>>): ManagerResult<unknown> {
@@ -491,6 +614,8 @@ export class ModManagerService {
 
   #publish(): void {
     const store = this.#env.store;
+    const lookMod = this.#env.listCatalog().find((mod) => mod.id === "anybandui" && mod.enabled);
+    this.#env.look?.complete(lookMod?.manifest, lookMod?.enabled ?? false);
     const order = store.getEnabled();
     const pins = store.getPins();
     const sections = store.getSectionChoices();

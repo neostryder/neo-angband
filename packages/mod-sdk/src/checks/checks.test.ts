@@ -655,23 +655,6 @@ describe("checker regressions", () => {
     const r = await report({ files: { "manifest.json": v2({ api: "^2.0.0", runtime: "in-process" }), "plugin.js": `export default { api: ${JSON.stringify(api)}, start() {} };` } });
     expect(r.findings.find((f) => f.rule === "checks/api-mismatch")?.severity).toBe("block");
   });
-
-  it("matches a walk declaration to its registry permission", async () => {
-    const code = "export default { api: \"^2.0.0\", policies() { return { walkBlockedByDiggable: { kind: \"walk-blocked-by-diggable\", attempt: \"tunnel\", energy: \"move\", step: false } }; } };";
-    for (const granted of [false, true]) {
-      const r = await report({ files: {
-        "manifest.json": v2({ api: "^2.0.0", runtime: "worker", entry: "plugin.js", capabilities: granted ? ["registry:command"] : [] }),
-        "plugin.js": code,
-      } });
-      expect(r.findings.some((f) => f.rule === "checks/undeclared-capability")).toBe(!granted);
-      expect(r.findings.some((f) => f.rule === "checks/plugin-shape")).toBe(false);
-    }
-    const r = await report({ files: {
-      "manifest.json": v2({ api: "^2.0.0", runtime: "worker", entry: "plugin.js", capabilities: ["registry:command"] }),
-      "plugin.js": code.replace("step: false", "step: true"),
-    } });
-    expect(r.findings.find((f) => f.rule === "checks/plugin-shape")?.message).toContain("walkBlockedByDiggable.step is false");
-  });
 });
 
 describe("the report", () => {

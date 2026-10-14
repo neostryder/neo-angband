@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { SaveModList } from "@rpgm-tools/neo-angband-mod-sdk";
 import { buildCatalog, ModStore, type StorageLike } from "../mod-store";
 import { assignTier, effectiveGrants, resetModTiers, setModGrants, setModTiers, TRUTH_MAP } from "../mod-tier";
 import type { DiscoveredMod } from "../mod-discover";
@@ -70,6 +71,106 @@ async function accept(core: CoreModManager, result: ManagerResult<unknown>, deci
 }
 
 afterEach(() => { resetModTiers(); });
+
+describe("saved mod list restore plans", () => {
+  async function savedFixture() {
+    const f = fixture();
+    f.metadata.set("a", { id: "a", name: "Mod a", repo: "owner/a", tag: "v1.0.0", sha: "commit-1.0.0", files: [], digests: { "manifest.json": "digest" }, installedAt: "today" });
+    f.store.setModEnabled("a", true);
+    f.store.setSettingValue("a", "amount", 4);
+    f.store.setSectionChoice("a", "part", false);
+    const list = await f.service.captureModList("My mods");
+    return { ...f, list };
+  }
+
+  it.each(["mod removed", "repository deleted", "version delisted", "version unavailable"])("keeps %s readable and restores the exact configuration later", async (reason) => {
+    const f = await savedFixture();
+    f.local.delete("a");
+    f.metadata.delete("a");
+    f.remote.delete("a");
+    if (reason === "version unavailable") f.remote.set("a", manifest("a", { version: "2.0.0" }));
+    else f.discover.mockImplementationOnce(async (ref) => ({ ok: false, ref, problem: reason }));
+    const missing = await f.service.planRestoreModList(f.list);
+    expect(missing.status).toBe("ok");
+    if (missing.status !== "ok") return;
+    expect(missing.value.unavailable).toEqual([{ id: "a", name: "Mod a" }]);
+    expect(missing.value.downloads).toEqual([]);
+    expect(f.service.applyModListPlan(missing.value.id)).toMatchObject({ status: "refused", code: "unavailable-version" });
+    expect(await accept(f.core, f.service.applyModListPlan(missing.value.id, ["a"]))).toMatchObject({ status: "ok" });
+    expect(f.store.getEnabled()).toEqual([]);
+    expect(f.list.mods[0]?.settings).toEqual({ amount: 4 });
+    f.remote.set("a", manifest("a"));
+    const recovered = await f.service.planRestoreModList(f.list);
+    expect(recovered.status).toBe("ok");
+    if (recovered.status !== "ok") return;
+    expect(recovered.value.downloads.map((d) => d.mod.version)).toEqual(["1.0.0"]);
+    expect(await accept(f.core, f.service.applyModListPlan(recovered.value.id))).toMatchObject({ status: "ok" });
+    expect(f.store.getEnabled()).toEqual(["a"]);
+    expect(f.store.getSettingValues()["a"]).toEqual({ amount: 4 });
+    expect(f.store.getSectionChoices()["a"]).toEqual({ part: false });
+  });
+
+  it("refuses a moved tag instead of substituting the new commit", async () => {
+    const f = await savedFixture();
+    f.local.delete("a");
+    f.metadata.delete("a");
+    f.discover.mockImplementation(async (ref) => ({ ok: true, ref, mod: { ...discovered(manifest("a")), sha: "moved" } }));
+    const plan = await f.service.planRestoreModList(f.list);
+    expect(plan).toMatchObject({ status: "ok", value: { downloads: [], unavailable: [{ name: "Mod a" }] } });
+  });
+
+  it("rejects a changed payload before enabling the configuration", async () => {
+    const f = await savedFixture();
+    f.local.delete("a");
+    f.metadata.delete("a");
+    const list: SaveModList = { ...f.list, mods: f.list.mods.map((m) => ({ ...m, payloadDigest: { "manifest.json": "saved-digest" } })) };
+    const before = f.store.configurationRevision();
+    const plan = await f.service.planRestoreModList(list);
+    if (plan.status !== "ok") throw new Error("The restore plan failed.");
+    expect(await accept(f.core, f.service.applyModListPlan(plan.value.id))).toMatchObject({ status: "refused", code: "version" });
+    expect(f.store.configurationRevision()).toBe(before);
+  });
+
+  it("checks the shared revision again after the Core confirmation", async () => {
+    const f = await savedFixture();
+    const plan = await f.service.planRestoreModList(f.list);
+    if (plan.status !== "ok") throw new Error("The restore plan failed.");
+    const pending = f.service.applyModListPlan(plan.value.id);
+    f.store.setModEnabled("b", true);
+    expect(await accept(f.core, pending)).toMatchObject({ status: "refused", code: "revision" });
+    expect(f.store.getEnabled()).toEqual(["a", "b"]);
+  });
+
+  it("does not activate any part when one download fails", async () => {
+    const f = await savedFixture();
+    f.local.delete("a");
+    f.metadata.delete("a");
+    f.install.mockResolvedValueOnce({ ok: false, problem: "offline" } as never);
+    const before = f.store.configurationRevision();
+    const plan = await f.service.planRestoreModList(f.list);
+    if (plan.status !== "ok") throw new Error("The restore plan failed.");
+    expect(await accept(f.core, f.service.applyModListPlan(plan.value.id))).toMatchObject({ status: "refused", code: "install" });
+    expect(f.store.configurationRevision()).toBe(before);
+  });
+
+  it("rolls back payload installations after a later download fails", async () => {
+    const rollback = vi.fn(async () => true);
+    const f = fixture(undefined, { restoreInstallations: rollback });
+    f.store.setEnabled(["a", "b"]);
+    const list = await f.service.captureModList("Both mods");
+    const requested = { ...list, mods: list.mods.map((m) => ({ ...m, repository: `owner/${m.id}`, tag: "v1.0.0", commit: "commit-1.0.0", payloadDigest: { "manifest.json": "digest" } })) };
+    f.store.setEnabled([]);
+    f.local.clear();
+    const before = f.store.configurationRevision();
+    const install = f.install.getMockImplementation()!;
+    f.install.mockImplementationOnce(install).mockResolvedValueOnce({ ok: false, problem: "offline" } as never);
+    const plan = await f.service.planRestoreModList(requested);
+    if (plan.status !== "ok") throw new Error("The restore plan failed.");
+    expect(await accept(f.core, f.service.applyModListPlan(plan.value.id))).toMatchObject({ status: "refused", code: "install" });
+    expect(rollback).toHaveBeenCalledWith([{ id: "a", meta: null }, { id: "b", meta: null }]);
+    expect(f.store.configurationRevision()).toBe(before);
+  });
+});
 
 describe("ModManagerService snapshots and catalog", () => {
   it("copies and freezes every nested state field", () => {

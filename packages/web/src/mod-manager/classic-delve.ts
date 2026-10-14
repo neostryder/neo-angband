@@ -14,6 +14,7 @@ import { type ModOrigin as ConsentOrigin } from "../mod-consent";
 import { enableMod } from "./classic-actions";
 import { delveSyncLastSeenRevision, loadDelveSyncArrival, delveSyncCanAutoApply, markDelveSyncSeen } from "../mod-delve-sync";
 import { installedMods } from "../mod-install";
+import { restoreModListScreen } from "./classic-mod-list";
 
 /** "Save a Delve...": name/description, a pre-checked mod checklist, options, then save/copy. */
 export async function runSaveDelve(term: GridSurface & GridPointerInput, deps: ModManagerDeps): Promise<void> {
@@ -100,7 +101,11 @@ export async function runSaveDelve(term: GridSurface & GridPointerInput, deps: M
       candidates.map((c) => c.entry),
       checked,
     );
+    const configuration = await classicManager(deps).service.captureModList(name.trim());
+    const modList = { ...configuration, mods: configuration.mods.filter((m) => checked.has(m.id)), resolvedOrder: configuration.resolvedOrder.filter((id) => checked.has(id)) };
+    deps.modLists?.save(modList);
     const file = buildDelveFile({
+      modList,
       name: name.trim(),
       ...(description !== null && description.trim() !== "" ? { description: description.trim() } : {}),
       createdAt: new Date().toISOString(),
@@ -316,6 +321,7 @@ export async function runLoadDelve(
   if (preloadedText !== undefined) {
     text = preloadedText;
   } else {
+    const savedLists = Object.values(deps.modLists?.list() ?? {});
     const sourcePick = await selectFromMenu(
       term,
       "core:load-delve-source",
@@ -323,10 +329,15 @@ export async function runLoadDelve(
       [
         { label: t("modsScreen.delve.load.fromFile", "From a file..."), color: C_FG },
         { label: t("modsScreen.delve.load.pasteText", "Paste text..."), color: C_FG },
+        ...(savedLists.length ? [{ label: "My mod lists", color: C_FG }] : []),
       ],
       t("modsScreen.delve.common.footer.abcEsc", "[ a/b or tap, ESC to cancel ]"),
     );
     if (sourcePick === null) return false;
+    if (sourcePick === 2) {
+      const pick = await selectFromMenu(term, "core:load-mod-list", "My mod lists", savedLists.map((list) => ({ label: list.name })), "[ arrows or tap; Enter selects; ESC cancels ]");
+      return pick !== null && savedLists[pick] !== undefined ? restoreModListScreen(term, deps, savedLists[pick]) : false;
+    }
 
     if (sourcePick === 0) {
       const picked = await pickTextFile(`${DELVE_EXT},.json,application/json`, DELVE_MAX_TEXT_BYTES);
@@ -360,6 +371,7 @@ export async function runLoadDelve(
     return false;
   }
   const file = decoded.file;
+  if (file.modList) return restoreModListScreen(term, deps, file.modList);
   if (file.mods.length === 0) {
     await showTextScreen(term, TITLE, [
       { text: t("modsScreen.delve.load.empty", "That Delve names no mods to import."), color: C_DIM },

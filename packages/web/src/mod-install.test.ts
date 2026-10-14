@@ -20,7 +20,7 @@ import { discoverMod, type DiscoverEnv, type DiscoveredMod, type PayloadEntry } 
 import { classifyModPin, classifyModTag } from "./mod-updates";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { STORE_MODS, STORE_MOD_META } from "./idb";
+import { STORE_MODS, STORE_MOD_META, STORE_MOD_VERSIONS } from "./idb";
 import {
   FILE_ORIGIN,
   installModFromRepo,
@@ -37,6 +37,11 @@ import {
   type InstallEnv,
   type InstalledModMeta,
   uninstallMod,
+  archivedVersions,
+  archivedMod,
+  restoreArchivedVersion,
+  archivedSavedMod,
+  restoreInstallations,
 } from "./mod-install";
 import { badPath, rawUrl } from "./mod-registry";
 import { originConflict } from "./mod-source";
@@ -307,6 +312,77 @@ async function envFor(
 
 /** A curated install: the origin every test here uses unless it is about consent. */
 const CURATED = { origin: "curated", allowed: false } as const;
+
+describe("retained save versions", () => {
+  it.each(["mod removed", "repository deleted", "version delisted", "version unavailable"])("restores local bytes after %s without a network request", async () => {
+    const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
+    const { env, stores } = await envFor(files);
+    const first = await installModFromRepo(discovered([{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }], { sha: "first-commit" }), null, env, CURATED);
+    if (!first.ok) throw new Error(first.problem);
+    expect(await uninstallMod("demo", env.scope)).toBe(true);
+    expect(await installedMods(env.scope)).toEqual([]);
+    expect((await archivedVersions(env.scope)).map((m) => m.sha)).toContain("first-commit");
+    const retained = await archivedMod({ repo: first.meta.repo, tag: "first-commit" }, env.scope);
+    expect(retained?.mod.version).toBe("1.0.0");
+    expect(await restoreArchivedVersion(first.meta, env.scope)).toMatchObject({ ok: true });
+    expect(stores.get(STORE_MODS)?.get("demo/plugin.js")).toEqual(enc(PLUGIN));
+    expect((await installedMods(env.scope))[0]?.digests).toEqual(first.meta.digests);
+  });
+
+  it("keeps every local version across replacements", async () => {
+    const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
+    const { env } = await envFor(files);
+    const payload: PayloadEntry[] = [{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }];
+    const first = await installModFromRepo(discovered(payload, { sha: "first" }), null, env, CURATED);
+    if (!first.ok) throw new Error(first.problem);
+    files["manifest.json"] = enc(MANIFEST.replace("1.0.0", "2.0.0"));
+    const second = await installModFromRepo(discovered(payload, { sha: "second", tag: "v2.0.0", version: "2.0.0" }), first.meta, env, CURATED);
+    expect(second.ok).toBe(true);
+    expect((await archivedVersions(env.scope)).map((m) => m.sha).sort()).toEqual(["first", "second"]);
+    expect(await restoreArchivedVersion(first.meta, env.scope)).toMatchObject({ ok: true });
+    expect((await installedMods(env.scope))[0]?.sha).toBe("first");
+    expect((await archivedVersions(env.scope)).map((m) => m.sha).sort()).toEqual(["first", "second"]);
+  });
+
+  it("refuses corrupt retained bytes", async () => {
+    const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
+    const { env, stores } = await envFor(files);
+    const first = await installModFromRepo(discovered([{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }]), null, env, CURATED);
+    if (!first.ok) throw new Error(first.problem);
+    const archived = [...stores.get(STORE_MOD_VERSIONS)!.values()][0] as { files: [string, Uint8Array][] };
+    archived.files[1]![1] = enc("changed");
+    expect(await restoreArchivedVersion(first.meta, env.scope)).toMatchObject({ ok: false, problem: "The saved mod version failed its digest check." });
+  });
+
+  it("finds an exact payload when a tag moved and its commit was unknown", async () => {
+    const files: Record<string, Uint8Array> = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
+    const { env } = await envFor(files);
+    const payload: PayloadEntry[] = [{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }];
+    const first = await installModFromRepo(discovered(payload), null, env, CURATED);
+    if (!first.ok) throw new Error(first.problem);
+    files["extra.txt"] = enc("extra");
+    expect((await installModFromRepo(discovered([...payload, { kind: "file", path: "extra.txt" }]), first.meta, env, CURATED)).ok).toBe(true);
+    const saved = { id: "demo", name: "Demo", version: "1.0.0", repository: first.meta.repo, tag: first.meta.tag, commit: null, payloadDigest: { ...first.meta.digests }, api: "*", settings: {}, sections: {} };
+    const exact = await archivedSavedMod(saved, env.scope);
+    expect(exact?.meta.digests).toEqual(first.meta.digests);
+    expect(exact?.mod.tag).toMatch(/^archive:/u);
+    expect((await archivedMod({ repo: first.meta.repo, tag: exact!.mod.tag }, env.scope))?.meta.digests).toEqual(first.meta.digests);
+  });
+
+  it("rolls a failed batch back to the previous payloads and removes newly installed mods", async () => {
+    const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
+    const { env, stores } = await envFor(files);
+    const payload: PayloadEntry[] = [{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }];
+    const first = await installModFromRepo(discovered(payload, { sha: "first" }), null, env, CURATED);
+    if (!first.ok) throw new Error(first.problem);
+    files["plugin.js"] = enc(`${PLUGIN}\n`);
+    expect((await installModFromRepo(discovered(payload, { sha: "second" }), first.meta, env, CURATED)).ok).toBe(true);
+    expect(await restoreInstallations([{ id: "demo", meta: first.meta }, { id: "new-mod", meta: null }], env.scope)).toBe(true);
+    expect((await installedMods(env.scope))[0]?.sha).toBe("first");
+    expect(stores.get(STORE_MODS)?.get("demo/plugin.js")).toEqual(enc(PLUGIN));
+    expect(stores.get(STORE_MOD_META)?.has("new-mod")).toBe(false);
+  });
+});
 
 describe("sha256Hex", () => {
   it("matches the published digest of the empty string", async () => {

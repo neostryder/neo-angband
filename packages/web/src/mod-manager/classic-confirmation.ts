@@ -17,13 +17,14 @@ export async function drawPendingManagementConfirmation(
 ): Promise<ManagerResult<unknown>> {
   const pending = service.state.pendingConfirmation;
   if (!pending) return refused("confirmation", "There is no pending mod confirmation.");
-  const title = pending.mods.map((mod) => `${mod.name} v${mod.version}`).join(", ") || t("modBrowse.consent.allowConfirm", "Allow third-party mods?");
+  const title = pending.operation === "restore" ? "Restore my mods" : pending.mods.map((mod) => `${mod.name} v${mod.version}`).join(", ") || t("modBrowse.consent.allowConfirm", "Allow third-party mods?");
   const lines: ScreenLine[] = pending.mods.flatMap((mod) => [
     { text: `${mod.name} v${mod.version}`, color: UI_TEXT },
     ...(mod.repository ? [{ text: mod.repository, color: UI_DIM }] : []),
     ...(mod.commit ? [{ text: mod.commit, color: UI_DIM }] : []),
     ...Object.entries(mod.digests ?? {}).map(([path, digest]) => ({ text: `${path}: ${digest}`, color: UI_DIM })),
   ]);
+  lines.push(...(pending.downloads ?? []).map((mod) => ({ text: `Download: ${mod.name} v${mod.version}${mod.bytes === null ? "" : ` (${mod.bytes} bytes)`}`, color: UI_TEXT })));
   lines.push(...pending.riskNotice.map((text) => ({ text, color: UI_GOLD })));
   lines.push(...pending.conflicts.map((conflict) => ({ text: conflict.because, color: UI_GOLD })));
   await showTextScreen(term, { id: "core:mod-manage-confirm", title, footer: SCREEN_FOOTER, blocks: [{ kind: "lines", lines }] });
@@ -35,7 +36,7 @@ export async function drawPendingManagementConfirmation(
   const permissions: Record<string, ConsentRecord> = {};
   if (pending.permissions.length > 0) {
     const catalog = structuredClone(service.state.installed.map((mod) => mod.catalogMod)) as CatalogMod[];
-    const downloads = service.state.pendingPlans.flatMap((plan) => plan.downloads);
+    const downloads = service.state.pendingPlans.filter((plan) => pending.planId === undefined || plan.id === pending.planId).flatMap((plan) => plan.downloads);
     const asks = pending.mods.flatMap((subject) => {
       const caps = pending.permissions.filter((permission) => permission.modId === subject.id).map((permission) => permission.capability);
       if (caps.length === 0) return [];

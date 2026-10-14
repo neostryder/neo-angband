@@ -9,6 +9,7 @@
  */
 
 import { defineFormat, type ValidationResult, type Validator } from "./index.js";
+import { modListValidator } from "./mod-list.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return (
@@ -44,6 +45,10 @@ const validator: Validator<Record<string, unknown>> = {
   validate(value, path = "$"): ValidationResult<Record<string, unknown>> {
     if (!isSavedGameHeader(value)) {
       return { ok: false, issues: [{ path, message: "expected a save header" }] };
+    }
+    if (value["modList"] !== undefined) {
+      const result = modListValidator.validate(value["modList"], `${path}.modList`);
+      if (!result.ok) return result;
     }
     /* The same object, so a round trip keeps mod bags, key order and fields this version does not name. */
     return { ok: true, value };
