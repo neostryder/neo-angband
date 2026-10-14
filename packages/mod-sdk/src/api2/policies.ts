@@ -121,42 +121,17 @@ export interface Api2PrefErrorsPolicy {
   readonly reportLimit: number;
 }
 
-export interface Api2StartingOptionsPolicy {
-  readonly kind: "starting-options";
-  readonly values: Readonly<Record<string, boolean>>;
-  readonly hitpointWarn?: number;
-  readonly delayFactor?: number;
-  readonly lazymoveDelay?: number;
-}
-
-export interface Api2IgnorePolicyEntry {
-  readonly tval: "light";
-  readonly kindNameContains: "Torch" | "Lantern";
-  readonly ignore: true;
-}
-
-export interface Api2DisplayOptionsPolicy {
-  readonly kind: "display-options";
-  readonly storeItemNameEllipsis: boolean;
-  readonly storeSelectionDescription: boolean;
-  readonly monsterListColorKey: boolean;
-}
-
-export interface Api2PurgeInputPolicy {
-  readonly kind: "purge-input";
-  readonly trigger: "F2";
-  readonly modifiers: readonly [];
-  readonly freshOnly: true;
-  readonly escapeCount: number;
+export interface Api2ValueFloorPolicy {
+  readonly kind: "valueFloor";
+  readonly tvals: readonly number[];
+  readonly appliesTo: "egoOrPositiveToA";
+  readonly comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc";
+  readonly price: "objectValueReal";
 }
 
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
   readonly prefErrors?: Api2PrefErrorsPolicy;
-  readonly startingOptions?: Api2StartingOptionsPolicy;
-  readonly ignore?: readonly Api2IgnorePolicyEntry[];
-  readonly displayOptions?: Api2DisplayOptionsPolicy;
-  readonly purgeInput?: Api2PurgeInputPolicy;
   readonly walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   readonly messageText?: readonly Api2TextRule[];
   /** `where` may name `screen`, `part` and `column`. */
@@ -178,6 +153,7 @@ export interface Api2Policies {
   readonly shapeLearnObviousFlagsDirectly?: boolean;
   /** The discount a store gives on the stock it makes. */
   readonly storeDiscountRoll?: Api2DiscountRollPolicy;
+  readonly valueFloor?: Api2ValueFloorPolicy;
   /** Tiles for monsters and objects the tile pack does not draw. */
   readonly tileMap?: readonly Api2TileRule[];
 }
@@ -211,13 +187,10 @@ export type Api2TileFiller = (fill: Api2TileFill) => void;
 /** The game registrations a table can install, beside the hooks. */
 export interface Api2PolicyRegistrations {
   prefErrors?: Api2PrefErrorsPolicy;
-  startingOptions?: Api2StartingOptionsPolicy;
-  ignore?: readonly Api2IgnorePolicyEntry[];
-  displayOptions?: Api2DisplayOptionsPolicy;
-  purgeInput?: Api2PurgeInputPolicy;
   walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   /** Installed as the stores' discount roll. */
   discountRoll?: Api2DiscountRoll;
+  valueFloor?: Api2ValueFloorPolicy;
   /** Installed as the mod's tile filler. */
   tileFiller?: Api2TileFiller;
 }
@@ -443,95 +416,6 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
     },
   },
   {
-    name: "startingOptions",
-    capability: "registry:ui-entry",
-    summary: "Applies saved option choices to a new character.",
-    target: { registration: "startingOptions" },
-    check(value) {
-      if (!isRecord(value)) return "startingOptions is an object";
-      const extra = unknownField("startingOptions", value, ["kind", "values", "hitpointWarn", "delayFactor", "lazymoveDelay"]);
-      if (extra) return extra;
-      if (value["kind"] !== "starting-options") return "startingOptions.kind is \"starting-options\"";
-      const values = value["values"];
-      if (!isRecord(values)) return "startingOptions.values is an object";
-      const entries = Object.entries(values);
-      if (entries.length > 512) return "startingOptions.values has at most 512 options";
-      for (const [name, enabled] of entries) {
-        if (name.length === 0 || name.length > 128) return "startingOptions.values has option names of 1 to 128 characters";
-        if (typeof enabled !== "boolean") return `startingOptions.values.${name} is true or false`;
-      }
-      for (const [field, max] of [["hitpointWarn", 9], ["delayFactor", 255], ["lazymoveDelay", 255]] as const) {
-        if (value[field] !== undefined && !isInt(value[field], 0, max)) return `startingOptions.${field} is a whole number from 0 to ${String(max)}`;
-      }
-      return null;
-    },
-    apply(value, out) {
-      out.registrations.startingOptions = value as Api2StartingOptionsPolicy;
-    },
-  },
-  {
-    name: "ignore",
-    capability: "registry:ui-entry",
-    summary: "Ignores matching items while preserving prior ignore choices.",
-    target: { registration: "ignore" },
-    check(value) {
-      if (!Array.isArray(value) || value.length === 0 || value.length > 16) return "ignore lists 1 to 16 entries";
-      for (let index = 0; index < value.length; index += 1) {
-        const entry: unknown = value[index];
-        const at = `ignore[${String(index)}]`;
-        if (!isRecord(entry)) return `${at} is an object`;
-        const extra = unknownField(at, entry, ["tval", "kindNameContains", "ignore"]);
-        if (extra) return extra;
-        if (entry["tval"] !== "light") return `${at}.tval is "light"`;
-        if (entry["kindNameContains"] !== "Torch" && entry["kindNameContains"] !== "Lantern") return `${at}.kindNameContains is "Torch" or "Lantern"`;
-        if (entry["ignore"] !== true) return `${at}.ignore is true`;
-      }
-      return null;
-    },
-    apply(value, out) {
-      out.registrations.ignore = value as readonly Api2IgnorePolicyEntry[];
-    },
-  },
-  {
-    name: "displayOptions",
-    capability: "registry:ui-entry",
-    summary: "Chooses store and monster-list display options.",
-    target: { registration: "displayOptions" },
-    check(value) {
-      if (!isRecord(value)) return "displayOptions is an object";
-      const extra = unknownField("displayOptions", value, ["kind", "storeItemNameEllipsis", "storeSelectionDescription", "monsterListColorKey"]);
-      if (extra) return extra;
-      if (value["kind"] !== "display-options") return "displayOptions.kind is \"display-options\"";
-      for (const field of ["storeItemNameEllipsis", "storeSelectionDescription", "monsterListColorKey"] as const) {
-        if (typeof value[field] !== "boolean") return `displayOptions.${field} is true or false`;
-      }
-      return null;
-    },
-    apply(value, out) {
-      out.registrations.displayOptions = value as Api2DisplayOptionsPolicy;
-    },
-  },
-  {
-    name: "purgeInput",
-    capability: "registry:command",
-    summary: "Sends Escape cancellations on a fresh dedicated key press.",
-    target: { registration: "purgeInput" },
-    check(value) {
-      if (!isRecord(value)) return "purgeInput is an object";
-      const extra = unknownField("purgeInput", value, ["kind", "trigger", "modifiers", "freshOnly", "escapeCount"]);
-      if (extra) return extra;
-      if (value["kind"] !== "purge-input") return "purgeInput.kind is \"purge-input\"";
-      if (value["trigger"] !== "F2") return "purgeInput.trigger is \"F2\"";
-      if (!Array.isArray(value["modifiers"]) || value["modifiers"].length !== 0) return "purgeInput.modifiers is an empty list";
-      if (value["freshOnly"] !== true) return "purgeInput.freshOnly is true";
-      if (!isInt(value["escapeCount"], 1, 10)) return "purgeInput.escapeCount is a whole number from 1 to 10";
-      return null;
-    },
-    apply(value, out) {
-      out.registrations.purgeInput = value as Api2PurgeInputPolicy;
-    },
-  },
-  {
     name: "walkBlockedByDiggable",
     capability: "registry:command",
     summary: "Attempts one tunnel when a walk meets known diggable rock.",
@@ -679,6 +563,33 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
         for (const tier of tiers) if (roll.oneIn(tier.oneIn)) return tier.percent;
         return 0;
       };
+    },
+  },
+  {
+    name: "valueFloor",
+    capability: "registry:tval",
+    summary: "Floors enhanced armor prices at the cheapest plain kind with greater armor class.",
+    target: { registration: "valueFloor" },
+    check(value) {
+      if (!isRecord(value)) return "valueFloor is an object";
+      const extra = unknownField("valueFloor", value, ["kind", "tvals", "appliesTo", "comparison", "price"]);
+      if (extra) return extra;
+      for (const [field, expected] of Object.entries({
+        kind: "valueFloor", appliesTo: "egoOrPositiveToA",
+        comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal",
+      })) {
+        if (value[field] !== expected) return `valueFloor.${field} is "${expected}"`;
+      }
+      const tvals = value["tvals"];
+      if (!Array.isArray(tvals) || tvals.length === 0 || tvals.length > API2_POLICY_LIMITS.rules) {
+        return "valueFloor.tvals lists 1 to 256 item class indices";
+      }
+      if (!tvals.every((tval) => isInt(tval, 0, 100_000))) return "valueFloor.tvals holds whole numbers from 0 to 100000";
+      if (new Set(tvals).size !== tvals.length) return "valueFloor.tvals has no duplicate indices";
+      return null;
+    },
+    apply(value, out) {
+      out.registrations.valueFloor = value as Api2ValueFloorPolicy;
     },
   },
   {

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { Rng, StoreBehaviourRegistry, type ModRegistryHost } from "@rpgm-tools/neo-angband-core";
+import { Rng, StoreBehaviourRegistry, TvalRegistry, type ModRegistryHost, type TvalValueAdjustContext } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet, type Api2PolicyRegistrations } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installApi2PolicyRegistrations } from "./mod-api2-shim";
 import type { ModPlugin } from "./mod-plugin";
@@ -39,22 +39,28 @@ describe("main boot order", () => {
 
   it.each([["process", "worker"], ["worker", "process"]])("installs mixed-runtime registrations in %s then %s order", (first, second) => {
     const stores = new StoreBehaviourRegistry();
+    const tvals = new TvalRegistry();
     const fillers: string[] = [];
-    const plugin: ModPlugin = { api: 1, register: (host) => { host.stores.setDiscountRoll(() => 10); } };
+    const plugin: ModPlugin = { api: 1, register: (host) => {
+      host.stores.setDiscountRoll(() => 10);
+      host.tval.valueAdjust.set(10, () => 10);
+    } };
     const code = { plugins: [{ id: "process", plugin, manifest: { capabilities: [] }, data: {} }] };
-    const registrations: Api2PolicyRegistrations = { discountRoll: () => 20, tileFiller: () => undefined };
+    const registrations: Api2PolicyRegistrations = {
+      discountRoll: () => 20, tileFiller: () => undefined,
+      valueFloor: { kind: "valueFloor", tvals: [10], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" },
+    };
     const deps: Record<string, unknown> = {
       workerPlugins: new Map([["worker", { start: () => undefined }]]),
       workerRegistrations: new Map([["worker", registrations]]),
       enabledModIds: () => [first, second], activeModCode: () => code,
-      displayControl: { onKey: () => () => undefined },
       api2PluginRegistrations: () => ({ tileFiller: () => undefined }), installApi2PolicyRegistrations,
       state: { storeBehaviour: stores }, tileRegistry: { forOwner: (id: string) => ({ register: () => { fillers.push(id); } }) },
       modHealth: () => ({ isOff: () => false, run: (_id: string, _site: string, f: () => unknown) => f() }),
       folderRuleFlags: new Map(), installedPluginIds: new Set(), CapabilitySet: { fromManifest: () => CapabilitySet.fromManifest({ id: "p", name: "p", version: "1", shape: "plugin" }) },
-      createModRegistryHost: () => ({ stores: { setDiscountRoll: (handler: Parameters<StoreBehaviourRegistry["registerDiscountRoll"]>[0]) => stores.registerDiscountRoll(handler) } }) as unknown as ModRegistryHost,
+      createModRegistryHost: () => ({ stores: { setDiscountRoll: (handler: Parameters<StoreBehaviourRegistry["registerDiscountRoll"]>[0]) => stores.registerDiscountRoll(handler) }, tval: tvals }) as unknown as ModRegistryHost,
       effectRegistry: {}, booted: { registries: { rooms: {}, profiles: {} } }, registry: {},
-      effectInfoRegistry: () => ({}), randartRegistry: () => ({}), tvalRegistry: () => ({}), runeRegistry: () => ({}),
+      effectInfoRegistry: () => ({}), randartRegistry: () => ({}), tvalRegistry: () => tvals, runeRegistry: () => ({}),
       VocabularyRegistry: class {}, menuRegistry: { forOwner: () => ({}) }, modPluginContext: () => ({}),
       modOwnFiles: () => ({}), sessionFacts: {}, reportModFault: () => undefined, retireSharedValues: () => undefined,
       log: { error: () => undefined }, faultMessage: String,
@@ -66,6 +72,7 @@ describe("main boot order", () => {
     const emitted = ts.transpileModule(mainSource.slice(start, end), { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
     new Function(...Object.keys(deps), emitted)(...Object.values(deps));
     expect(stores.discountRollHandler()?.({ rng: new Rng(42), cost: 100 })).toBe(second === "worker" ? 20 : 10);
+    expect(tvals.valueAdjust.handlerFor(10)?.({ obj: { ego: null, toA: 0 }, baseValue: 20 } as TvalValueAdjustContext)).toBe(second === "worker" ? 20 : 10);
     expect(fillers).toEqual([first, second]);
   });
 

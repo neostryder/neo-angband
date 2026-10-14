@@ -83,15 +83,11 @@ export {
 export type {
   Api2DiscountRoll,
   Api2DiscountRollPolicy,
-  Api2DisplayOptionsPolicy,
-  Api2PurgeInputPolicy,
   Api2DiscountTier,
   Api2HistoryRule,
-  Api2IgnorePolicyEntry,
   Api2ObjectListKey,
   Api2Policies,
   Api2PrefErrorsPolicy,
-  Api2StartingOptionsPolicy,
   Api2PolicyEffects,
   Api2PolicyKind,
   Api2PolicyName,
@@ -104,6 +100,7 @@ export type {
   Api2TileFiller,
   Api2TileRule,
   Api2WalkBlockedByDiggablePolicy,
+  Api2ValueFloorPolicy,
 } from "./policies.js";
 export { defineApi2Mod } from "./domains.js";
 export type {
