@@ -8,12 +8,11 @@
  * player, whose hit points are on screen. A monster is named by its id only
  * while the player perceives it; otherwise it is `"unseen"`, and movement or
  * healing by a monster the player cannot see does not arrive at all. Game events that would reveal more (level generation,
- * a thrown object) have no API 2
+ * the path of a bolt the player did not see, a thrown object) have no API 2
  * form.
  */
 
 import type { KnownGrid, KnownToken } from "./known.js";
-import type { Api2RunEndEvent } from "./character.js";
 
 /** A message the game printed. */
 export interface Api2MessageEvent {
@@ -86,9 +85,6 @@ export type Api2DriverEvent =
  * notice that something changed; read the view for the new value.
  */
 export interface Api2EventMap {
-  bolt: Api2BoltEvent;
-  explosion: Api2ExplosionEvent;
-  "run-end": Api2RunEndEvent;
   message: Api2MessageEvent;
   dungeonlevel: Api2LevelEvent;
   "combat-outcome": Api2CombatEvent;
@@ -117,9 +113,6 @@ export type Api2EventName = keyof Api2EventMap;
 
 /** Every API 2 event name. */
 export const API2_EVENT_NAMES: readonly Api2EventName[] = Object.freeze([
-  "bolt",
-  "explosion",
-  "run-end",
   "message",
   "dungeonlevel",
   "combat-outcome",
@@ -146,16 +139,4 @@ export const API2_EVENT_NAMES: readonly Api2EventName[] = Object.freeze([
 /** The permission an event needs. */
 export function api2EventCapability(name: Api2EventName): string {
   return `event:${name}`;
-}
-
-export interface Api2BoltEvent {
-  readonly grid: KnownGrid;
-  readonly element: string;
-  readonly beam: boolean;
-}
-
-export interface Api2ExplosionEvent {
-  readonly grids: readonly KnownGrid[];
-  readonly element: string;
-  readonly arc: boolean;
 }

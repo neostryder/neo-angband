@@ -7,7 +7,8 @@ const MAX_CHILDREN = 32;
 export function panelDescription(value: WorkerJson): ModWorkerPanel | null {
   if (!record(value) || !panelId(value["id"]) || !node(value["root"])) return null;
   if (value["title"] !== undefined && !text(value["title"])) return null;
-  if (!only(value, ["id", "title", "root"])) return null;
+  if (value["modal"] !== undefined && typeof value["modal"] !== "boolean") return null;
+  if (!only(value, ["id", "title", "modal", "root"])) return null;
   return value as unknown as ModWorkerPanel;
 }
 
@@ -28,7 +29,13 @@ export function panelId(value: unknown): value is string {
 function node(value: unknown, depth: number = 0): value is ModWorkerPanelNode {
   if (depth > 16 || !record(value) || typeof value["type"] !== "string") return false;
   if (value["type"] === "text") return only(value, ["type", "text"]) && text(value["text"]);
-  if (value["type"] === "button") return only(value, ["type", "label", "action"]) && text(value["label"]) && panelId(value["action"]);
+  if (value["disabled"] !== undefined && typeof value["disabled"] !== "boolean") return false;
+  if (value["type"] === "button") return only(value, ["type", "label", "action", "disabled"]) && text(value["label"]) && panelId(value["action"]);
+  if (value["type"] === "input") return only(value, ["type", "label", "action", "value", "placeholder", "disabled"]) && text(value["label"]) && panelId(value["action"]) &&
+    (value["value"] === undefined || text(value["value"])) && (value["placeholder"] === undefined || text(value["placeholder"]));
+  if (value["type"] === "checkbox") return only(value, ["type", "label", "action", "checked", "disabled"]) && text(value["label"]) && panelId(value["action"]) && typeof value["checked"] === "boolean";
+  if (value["type"] === "download") return only(value, ["type", "label", "name", "text", "disabled"]) && text(value["label"]) && text(value["text"]) &&
+    typeof value["name"] === "string" && value["name"].length > 0 && value["name"].length <= 255 && !/[\\/\x00-\x1f]/.test(value["name"]) && value["name"] !== "." && value["name"] !== "..";
   if (value["type"] !== "row" && value["type"] !== "column") return false;
   if (!only(value, ["type", "children"]) || !Array.isArray(value["children"]) || value["children"].length > MAX_CHILDREN) return false;
   return value["children"].every((child) => node(child, depth + 1));
