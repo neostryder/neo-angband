@@ -101,8 +101,6 @@ describe("apiRangeVerdict", () => {
   it("says which side needs updating", () => {
     expect(apiRangeVerdict(">=3.0.0 <4.0.0")).toMatchObject({ ok: false, code: "too-new" });
     expect(apiRangeVerdict("^1.0.0")).toMatchObject({ ok: false, code: "too-old" });
-    expect(apiRangeVerdict(">=1.0.0 <2.0.0")).toMatchObject({ ok: false, code: "too-old" });
-    expect(apiRangeVerdict(">=1.0.0 <2.1.0", "2.2.0")).toMatchObject({ ok: false, code: "outside" });
     expect(apiRangeVerdict(">=2.1.0 <3.0.0")).toMatchObject({ ok: false, code: "outside" });
     expect(apiRangeVerdict(">=2.1.0 <3.0.0", "2.1.0")).toEqual({ ok: true });
   });

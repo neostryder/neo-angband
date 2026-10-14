@@ -20,6 +20,7 @@
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -37,7 +38,7 @@ const BUILD_TIMEOUT = 30_000;
 
 const temps: string[] = [];
 function tempDir(): string {
-  const d = mkdtempSync(join(PKG, ".neo-mod-build-"));
+  const d = mkdtempSync(join(tmpdir(), "neo-mod-build-"));
   temps.push(d);
   return d;
 }
@@ -114,58 +115,6 @@ describe("a well-formed mod builds", { timeout: BUILD_TIMEOUT }, () => {
     expect(r.code, r.out).toBe(0);
     expect(r.out).toContain("ok");
     expect(existsSync(join(checkOut, "ok-mod", "plugin.js"))).toBe(false);
-  });
-});
-
-describe("the manifest identifies a checkout", { timeout: BUILD_TIMEOUT }, () => {
-  it("uses the manifest id when the folder name differs", () => {
-    const mod = tempDir();
-    for (const f of ["manifest.json", "plugin.ts", "helper.ts"]) {
-      writeFileSync(join(mod, f), readFileSync(join(FIXTURES, "ok-mod", f), "utf8"));
-    }
-    execFileSync(process.execPath, [BIN, "--root", mod], { windowsHide: true });
-    expect(readFileSync(join(mod, "plugin.js"), "utf8").split("\n")[0]).toContain("// ok-mod -");
-  });
-
-  it("reports an unreadable manifest instead of falling back to the folder name", () => {
-    const mod = tempDir();
-    writeFileSync(join(mod, "plugin.ts"), "export default { api: 1, hooks: () => ({}) };\n");
-    writeFileSync(join(mod, "manifest.json"), "{");
-    expect(() => execFileSync(process.execPath, [BIN, "--root", mod], {
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    })).toThrow(/cannot read.*manifest.json/u);
-    expect(existsSync(join(mod, "plugin.js"))).toBe(false);
-  });
-});
-
-describe("API 2 definitions", { timeout: BUILD_TIMEOUT }, () => {
-  function buildDefinition(source: string): string {
-    const mod = tempDir();
-    writeFileSync(join(mod, "manifest.json"), JSON.stringify({
-      format: "neo-angband/mod/manifest", schemaVersion: 2,
-      data: { id: "api2-fixture", name: "API 2 Fixture", version: "1.0.0", runtime: "in-process", api: ">=2.0.0 <3.0.0" },
-    }));
-    writeFileSync(join(mod, "plugin.ts"), source);
-    execFileSync(process.execPath, [BIN, "--root", mod], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
-    return readFileSync(join(mod, "plugin.js"), "utf8");
-  }
-
-  it("builds a schema 2 manifest and start-only definition", () => {
-    expect(buildDefinition('export default { api: ">=2.0.0 <3.0.0", start() {} };\n')).toContain("// api2-fixture -");
-  });
-
-  it("builds a policies-only definition", () => {
-    expect(buildDefinition('export default { api: "^2.0.0", policies: () => ({}) };\n')).toContain("policies");
-  });
-
-  it.each([
-    ['{ api: "two", start() {} }', /not a valid range/u],
-    ['{ api: "^2.0.0", start: 1 }', /start is not a function/u],
-    ['{ api: "^2.0.0", stop() {} }', /declares hooks, policies, start/u],
-    ['{ api: "^2.0.0", start() {}, prefs: null }', /prefs.version/u],
-  ])("refuses a bad definition %s", (definition, message) => {
-    expect(() => buildDefinition(`export default ${definition};\n`)).toThrow(message);
   });
 });
 

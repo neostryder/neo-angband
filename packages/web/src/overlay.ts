@@ -566,6 +566,12 @@ function hasGridGeometry(surface: GridSurface): surface is GridSurface & GridGeo
  * the terminal's existing map-box interior.  The terminal still owns the box
  * and footer; this layer owns only the graphical miniature itself.
  */
+let displayedMap: import("./display-frame").DisplayMapLayer | undefined;
+
+export function displayMapLayer(): import("./display-frame").DisplayMapLayer | undefined {
+  return displayedMap;
+}
+
 function mountGraphicsOverview(
   host: GridSurface,
   overview: Extract<LevelOverview, { kind: "graphics" }>,
@@ -632,6 +638,7 @@ function mountGraphicsOverview(
   ctx.drawImage(source, 0, 0, width, height);
   try {
     document.body.appendChild(canvas);
+    displayedMap = { canvas, origin: overview.origin, width: overview.width, height: overview.height };
     return canvas;
   } catch {
     return null;
@@ -685,6 +692,7 @@ function paintLevelMapOnTerminal(
     const paint = (): void => {
       graphics?.remove();
       graphics = null;
+      displayedMap = undefined;
       const overview = overviewForPaint();
       const { cols, rows } = term.size();
       term.clear();
@@ -727,6 +735,7 @@ function paintLevelMapOnTerminal(
       window.removeEventListener("pointerdown", onTap, true);
       disconnectRepaint();
       graphics?.remove();
+      displayedMap = undefined;
       resolve();
     };
     const onKey = (ev: KeyboardEvent): void => {

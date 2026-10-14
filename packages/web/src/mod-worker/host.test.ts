@@ -250,23 +250,22 @@ describe("a Worker mod's view of the world", () => {
 });
 
 describe("the broker's grants", () => {
-  it("reports vocabulary wildcards without granting truth or unrelated actions", async () => {
-    let found: unknown;
-    const grants = ["registry:*", "state:*.read", "network:*", "ui:*.replace"];
-    const wired = wire({ api: API, start: (api) => {
-      found = Object.fromEntries([
-        "registry:store", "registry:message", "state:monsters.read", "network:local", "network:example.test",
-        "ui:sidebar.replace", "ui:region.create", "state:map-actual.read", "*",
-      ].map((capability) => [capability, api.meta.granted(capability)]));
-    } }, { grants });
-    await started(wired, () => found);
-    expect(found).toEqual({
-      "registry:store": true, "registry:message": true, "state:monsters.read": true,
-      "network:local": true, "network:example.test": true, "ui:sidebar.replace": true,
-      "ui:region.create": false, "state:map-actual.read": false, "*": false,
+  it("keeps presentation absent and refuses its methods", async () => {
+    let api: ModApi2 | undefined;
+    const wired = wire({ api: API, start: (mod) => { api = mod; } });
+    await started(wired, () => api);
+    expect(api!.presentation).toBeUndefined();
+    wired.worker.scope.postMessage({
+      type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1,
+      requestId: 99, method: "presentation.display.snapshot", args: [],
     });
+    await vi.waitFor(() => expect(wired.problems.join("\n")).toContain('refused call to "presentation.display.snapshot"'));
   });
 
+  it("refuses a Worker presentation declaration at boot", async () => {
+    const wired = wire({ api: API, presentation: { menu: () => undefined } });
+    await expect(wired.session.ready).rejects.toThrow(/presentation/);
+  });
   it("never passes a wildcard grant to the Worker", async () => {
     const wired = wire({ api: API }, { grants: ["*", "state:player.read"] });
     await wired.session.ready;

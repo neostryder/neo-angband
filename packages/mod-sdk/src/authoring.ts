@@ -694,8 +694,6 @@ export function checkRecords(
   };
 
   for (const [file, records] of Object.entries(subject)) {
-    // These declarations extend compiled tables and have no shipped record blueprint.
-    if (file === "tval" || file === "message_type") continue;
     const bp = RECORD_BLUEPRINTS[file];
     if (bp === undefined) {
       add({

@@ -448,6 +448,9 @@ function displayFor(id: string, session: ModSessionFacts): ModDisplay | undefine
   if (!display) return undefined;
   const facade: ModDisplay = {
     snapshot: () => display.snapshot(),
+    ...(display.cellAt ? { cellAt: (x: number, y: number) => display.cellAt!(x, y) } : {}),
+    ...(display.frame ? { frame: () => display.frame!() } : {}),
+    ...(display.onFrame ? { onFrame: (listener: () => void) => display.onFrame!(listener) } : {}),
     onKey: (listener) => display.onKey(listener),
     setGrid: (request) => display.setGrid(request),
     getGrid: () => display.getGrid?.() ?? null,
