@@ -31,6 +31,7 @@ import type {
 import type { Api2Call, Api2Capability } from "./result.js";
 import type { Api2Inspect, LoadoutChange, LoadoutSimulation } from "./inspection.js";
 import type { Api2Character } from "./character.js";
+import type { Api2Knowledge } from "./knowledge.js";
 
 /** Whether a mod is one of the game's own (first-party) or anyone else's. */
 export type Api2Tier = "first-party" | "public";
@@ -170,6 +171,7 @@ export interface Api2InputState {
 /** The known world, read at the current input wait. */
 export interface Api2View {
   character(): Api2Call<Api2Character>;
+  knowledge(category?: string, id?: string): Api2Call<Api2Knowledge>;
   readonly inspect: Api2Inspect;
   catalogue(): Api2Call<{
     readonly token: KnownToken;

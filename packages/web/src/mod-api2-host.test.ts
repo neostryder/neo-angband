@@ -23,6 +23,7 @@ import {
 } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet, type JsonValue, type ModApi2, type RunReport } from "@rpgm-tools/neo-angband-mod-sdk";
 import { createRunReports } from "./run-report";
+import { createModKnowledge } from "./knowledge-read";
 import { api2EventPayload, createApi2Host, type Api2HostOptions } from "./mod-api2-host";
 import { modPluginContext } from "./mod-context";
 import type { ModPrefs } from "./mod-prefs";
@@ -127,6 +128,22 @@ async function observedThroughHost(api: ModApi2): Promise<string> {
 const READS = ["state:*.read"];
 
 describe("the API 2 host's view", () => {
+  it("clones the knowledge menu and keeps an unknown entry without a recall", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grants = capabilities("probe", READS);
+    const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: grants, prefs: memoryPrefs() });
+    const knowledge = createModKnowledge({ runes: { groups: () => ({ title: "Runes", groups: [{ name: "Flags",
+      rows: [{ member: "known" as never, label: "Free action", color: "white" }] }] }), key: (member) => String(member),
+      recall: () => ({ id: "core:text", title: "Rune", footer: "", blocks: [] }) } }, () => game.state.rng);
+    const api = createApi2Host({ ...ctx, knowledge }, { grants });
+    const result = await api.view.knowledge("runes", "unknown");
+    expect(result).toMatchObject({ value: { recall: null, lists: { runes: { groups: [{ entries: [{ id: "known" }] }] } } } });
+    expect(await api.view.knowledge("runes", "known")).toMatchObject({ value: { recall: { title: "Rune" } } });
+    if (!result.ok) throw new Error("refused");
+    expect(Object.isFrozen(result.value.lists)).toBe(true);
+    expect(await host(game, []).view.knowledge()).toMatchObject({ capability: "state:knowledge.read" });
+  });
+
   it("keeps unseen bolt origins and blast grids out of animation events", () => {
     const bolt = { projType: 1, element: "FIRE", drawing: true, seen: true, beam: false, oy: 8, ox: 9, y: 2, x: 3 };
     expect(api2EventPayload("bolt", { ...bolt, oy: 99, ox: 88 })).toEqual(api2EventPayload("bolt", bolt));

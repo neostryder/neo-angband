@@ -56,6 +56,7 @@ export const WORKER_CALLS = [
   "meta.mods",
   "view.world",
   "view.character",
+  "view.knowledge",
   "view.player",
   "view.monsters",
   "view.level",

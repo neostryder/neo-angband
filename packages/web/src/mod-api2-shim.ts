@@ -326,7 +326,7 @@ export const API1_CONTEXT_MAP: Readonly<Record<keyof ModPluginContext, string>> 
   keyRepeat: "retired: host input timing",
   options: "hooks.optionsChanged (read); setting options has no API 2 form yet",
   keybindings: "ui.keys",
-  knowledge: "not yet in API 2: the knowledge menu's contents",
+  knowledge: "view.knowledge (category and id select a recall page)",
   saves: "not yet in API 2: save management, a later manage member (first-party only)",
   session: "manage.session (first-party only)",
   shared: "not yet in API 2: values shared between mods",

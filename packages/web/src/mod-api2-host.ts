@@ -338,6 +338,18 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
 
     view: frozen({
+      knowledge: (category, id) => guarded(() => {
+        if (!readable("knowledge")) return api2NotGranted("state:knowledge.read");
+        const knowledge = ctx.knowledge;
+        if (!knowledge) return api2Unavailable("this front end has no knowledge menu");
+        const categories = knowledge.categories();
+        const lists = Object.fromEntries(categories.flatMap(({ id: categoryId }) => {
+          const list = knowledge.list(categoryId);
+          return list ? [[categoryId, list]] : [];
+        }));
+        return api2Ok(data({ categories, lists,
+          recall: category !== undefined && id !== undefined ? knowledge.recall(category, id) : null }));
+      }),
       character: () => guarded(() => {
         if (!readable("player")) return api2NotGranted("state:player.read");
         const character = ctx.character;
