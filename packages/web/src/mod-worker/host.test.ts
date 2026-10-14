@@ -250,23 +250,6 @@ describe("a Worker mod's view of the world", () => {
 });
 
 describe("the broker's grants", () => {
-  it("reports vocabulary wildcards without granting truth or unrelated actions", async () => {
-    let found: unknown;
-    const grants = ["registry:*", "state:*.read", "network:*", "ui:*.replace"];
-    const wired = wire({ api: API, start: (api) => {
-      found = Object.fromEntries([
-        "registry:store", "registry:message", "state:monsters.read", "network:local", "network:example.test",
-        "ui:sidebar.replace", "ui:region.create", "state:map-actual.read", "*",
-      ].map((capability) => [capability, api.meta.granted(capability)]));
-    } }, { grants });
-    await started(wired, () => found);
-    expect(found).toEqual({
-      "registry:store": true, "registry:message": true, "state:monsters.read": true,
-      "network:local": true, "network:example.test": true, "ui:sidebar.replace": true,
-      "ui:region.create": false, "state:map-actual.read": false, "*": false,
-    });
-  });
-
   it("never passes a wildcard grant to the Worker", async () => {
     const wired = wire({ api: API }, { grants: ["*", "state:player.read"] });
     await wired.session.ready;
@@ -527,13 +510,13 @@ describe("a Worker mod's network access", () => {
       api: API,
       start: async (api) => {
         if (!api.net) throw new Error("no net domain");
-        const response = await api.net.request({ url: "https://api.example.com/x", headers: { Authorization: api.net.credential("token", "Bearer "), "x-api-key": api.net.credential("token") } });
+        const response = await api.net.request({ url: "https://api.example.com/x", headers: { Authorization: api.net.credential("token") } });
         found = { response, status: await api.net.credentials.status("token") };
       },
     }, { api: hostApi({ grants, net }), grants, net: true });
     await started(wired, () => found);
     expect(found).toMatchObject({ response: { ok: true, value: { status: 200, body: "fine" } }, status: { ok: true, value: { present: true } } });
-    expect(requests[0]?.headers).toEqual({ Authorization: "Bearer {secret:token}", "x-api-key": "{secret:token}" });
+    expect(requests[0]?.headers).toEqual({ Authorization: "{secret:token}" });
     expect(JSON.stringify(wired.worker.sent)).not.toContain(secret);
     /* The request's wait is network time, apart from CPU time. */
     expect(wired.health.stats().find((s) => s.id === "probe")?.netMs).toBeGreaterThanOrEqual(15);

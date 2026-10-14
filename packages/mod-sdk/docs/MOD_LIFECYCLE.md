@@ -442,28 +442,6 @@ Seams and formats come first, because they are cheap now and expensive to retrof
 3. Future release: the in-game mod browser over `mods/registry.json`, with no marketplace server and no Nexus Mods or mod.io mirror, the externally authored enabled-set/order file, and a Vortex/MO2 extension over the shared on-disk format.
 
 Authors check a pack in CI with `neo-angband-mod-check` (the same rules the game enforces at install) and produce a distributable `plugin.js` with `neo-angband-mod-build`. Both ship in `@rpgm-tools/neo-angband-mod-sdk`. The repo carries sample mods that CI installs and runs.
-
-### Running the checks in a mod repository's CI
-
-The SDK package `@rpgm-tools/neo-angband-mod-sdk` ships the `neo-angband-mod-check` command, so a mod repository needs no Core checkout. A mod repository adds the SDK as a dev dependency and runs the command from the repository root. The fixed checks (undeclared reads of the `ctx` object, dangling references, and record checks) are in SDK releases after 1.22.0. SDK 1.22.0 and earlier run only the requirement rules.
-
-A CI job runs these steps:
-
-```yaml
-- run: pnpm install --frozen-lockfile
-- run: pnpm exec neo-angband-mod-check . --first-party
-```
-
-The `--first-party` flag belongs only to the game's own mods, because it allows the capabilities that only first-party mods may request. A third-party mod omits it.
-
-The command behaves as follows:
-
-- It checks a mod folder or a `.zip`, and the path defaults to the current directory.
-- It exits 0 when no finding is a block, 1 when at least one finding is a block, and 2 when the path cannot be checked.
-- `--json` prints the report as JSON.
-- It composes the mod's records over the base game when `@rpgm-tools/neo-angband-content` is installed, and `--base <dir>` points it at a pack folder otherwise.
-
-An undeclared `ctx.installMod` read in ModForge shows what the check is for: the mod's own tests miss the read, and the check reports it before a release.
 ---
 
 ## Summary

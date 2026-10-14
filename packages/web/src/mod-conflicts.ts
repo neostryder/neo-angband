@@ -27,8 +27,6 @@ import {
   describeContested,
   describeDeclaredConflict,
   foldDiscards,
-  satisfies,
-  SemverError,
   type Claim,
   type ContestedSlot,
   type DeclaredConflict,
@@ -301,19 +299,11 @@ function hookDescription(hook: keyof ModHooks): string {
 export function declaredConflicts(
   manifests: readonly PackManifest[],
 ): DeclaredConflict[] {
-  const enabled = new Map(manifests.map((m) => [m.id, m]));
+  const enabled = new Set(manifests.map((m) => m.id));
   const out: DeclaredConflict[] = [];
   for (const m of manifests) {
     for (const c of m.compat ?? []) {
       if (c.claim !== "conflicts" || !enabled.has(c.with)) continue;
-      if (c.range !== undefined) {
-        try {
-          if (!satisfies(enabled.get(c.with)!.version, c.range)) continue;
-        } catch (error) {
-          if (error instanceof SemverError) continue;
-          throw error;
-        }
-      }
       out.push({
         packId: m.id,
         with: c.with,

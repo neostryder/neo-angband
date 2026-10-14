@@ -26,8 +26,6 @@
 
 import {
   API2_HOOK_NAMES,
-  CAPABILITY_VOCABULARY,
-  CapabilitySet,
   api2PolicyEffects,
   api2Refused,
   api2Unavailable,
@@ -169,12 +167,6 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   const stallMs = deps.timing?.stallMs ?? STALL_MS;
   const maxCalls = deps.timing?.maxCallsPerSecond ?? MAX_CALLS_PER_SECOND;
   const grants = deps.grants.filter((g) => g !== "*");
-  const capabilities = CapabilitySet.fromManifest({
-    id: deps.id, name: deps.id, version: "0.0.0", shape: "plugin", capabilities: grants,
-  });
-  const implied = CAPABILITY_VOCABULARY.filter((entry) => entry.args.length === 0 && capabilities.has(entry.capability))
-    .map((entry) => entry.capability);
-  const workerGrants = [...new Set([...grants, ...implied])];
   const now = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
   let state: Lifecycle = "starting";
@@ -340,7 +332,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       const why = checkApi2Policies(s.policies);
       if (why) problem(`its policies are not valid, so none is installed: ${why}`);
       else ({ hooks, registrations } = api2PolicyEffects(s.policies as unknown as Api2Policies,
-        (capability) => capabilities.has(capability)));
+        (capability) => grants.includes(capability) || grants.includes("registry:*")));
     }
     policyHooks = (Object.keys(hooks) as Api2HookName[]).filter((h) => API2_HOOK_NAMES.includes(h));
     const notify = s.notify.filter((h) => NOTIFY_HOOKS.includes(h));
@@ -597,7 +589,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       tier: "public",
       flags: { ...deps.flags },
       newCharacter: deps.newCharacter,
-      granted: workerGrants,
+      granted: grants,
       net: deps.net,
       hooks: [...API2_HOOK_NAMES],
     },

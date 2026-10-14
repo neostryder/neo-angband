@@ -29,6 +29,9 @@ import type {
   KnownWorldData,
 } from "./known.js";
 import type { Api2Call, Api2Capability } from "./result.js";
+import type { Api2Inspect, LoadoutChange, LoadoutSimulation } from "./inspection.js";
+import type { Api2Character } from "./character.js";
+import type { Api2Knowledge } from "./knowledge.js";
 
 /** Whether a mod is one of the game's own (first-party) or anyone else's. */
 export type Api2Tier = "first-party" | "public";
@@ -136,10 +139,45 @@ export interface Api2InputState {
   readonly phase: Api2Phase;
   readonly messagePending: boolean;
   readonly prompt: Api2Prompt | null;
+  readonly resting: {
+    readonly active: boolean;
+    readonly mode: "turns" | "complete" | "all-points" | "some-points" | null;
+    readonly turnsRequested: number | null;
+    readonly turnsRemaining: number | null;
+    readonly turnsRested: number | null;
+  } | null;
+  readonly running: boolean;
+  readonly repeating: boolean;
+  readonly repeatsLeft: number;
+  readonly unignoring: boolean;
+  readonly messages: readonly { readonly text: string; readonly count: number; readonly color?: string }[] | null;
+  readonly storeStatus: {
+    readonly token: KnownToken;
+    readonly feat: number;
+    readonly ready: boolean;
+    readonly noSelling: boolean;
+    readonly inventory: readonly { readonly handle: number; readonly location?: "pack" | "quiver" | "equipment";
+      readonly eligible: boolean; readonly price: number | null }[];
+  } | null;
+  readonly activeBlast: {
+    readonly token: KnownToken;
+    readonly radius: number;
+    readonly arc?: number;
+    readonly element: string;
+    readonly wallsStop: boolean;
+  } | null;
 }
 
 /** The known world, read at the current input wait. */
 export interface Api2View {
+  character(): Api2Call<Api2Character>;
+  knowledge(category?: string, id?: string): Api2Call<Api2Knowledge>;
+  readonly inspect: Api2Inspect;
+  catalogue(): Api2Call<{
+    readonly token: KnownToken;
+    readonly commands: readonly { readonly code: string; readonly verb: string | null; readonly args: string; readonly phase: "play" | "store" }[];
+    readonly intents: readonly { readonly kind: string; readonly args: string }[];
+  }>;
   /** Everything the mod may read, in one value. Parts without permission are null. */
   world(): Api2Call<KnownWorldData>;
   /** The player. Needs `state:player.read`. */
@@ -148,6 +186,8 @@ export interface Api2View {
   monsters(): Api2Call<readonly KnownMonster[]>;
   /** The level as the player remembers it. Needs `state:map.read`. */
   level(): Api2Call<KnownLevel>;
+  look(grid: KnownGrid): Api2Call<string>;
+  simulateLoadout(change: LoadoutChange): Api2Call<LoadoutSimulation>;
   /** The input wait. Needs `state:interaction.read`. */
   input(): Api2Call<Api2InputState>;
   /** Whether `token` still names the current input wait. */
@@ -250,6 +290,7 @@ export interface Api2ContentRef {
 
 /** The game's content and this mod's own files, as data. */
 export interface Api2Content {
+  colors(): Api2Call<readonly { readonly index: number; readonly id: string; readonly css: string }[]>;
   /** This mod's own record files, parsed, keyed without `.json`. */
   own(): Api2Call<Readonly<Record<string, JsonValue>>>;
   /** A URL for one of this mod's own files, by path inside its folder. */
@@ -327,7 +368,6 @@ export interface Api2Store {
 /** An opaque name for a credential the host keeps. The mod never holds the value. */
 export interface Api2CredentialRef {
   readonly credential: string;
-  readonly prefix?: string;
 }
 
 /** An HTTP request. A header may name a credential, which the host fills in. */
@@ -364,7 +404,7 @@ export interface Api2Credentials {
 export interface Api2Net {
   request(request: Api2NetRequest): Api2Call<Api2NetResponse>;
   /** A reference to a credential, for a request header. */
-  credential(name: string, prefix?: string): Api2CredentialRef;
+  credential(name: string): Api2CredentialRef;
   readonly credentials: Api2Credentials;
 }
 
@@ -404,7 +444,6 @@ export interface Api2TrueMonster {
   readonly raceId?: string;
   readonly grid: KnownGrid;
   readonly visible: boolean;
-  readonly perceived: boolean;
   readonly hp: number;
   readonly maxHp: number;
   readonly speed: number;
@@ -423,35 +462,12 @@ export interface Api2TrueMonster {
   readonly glyph?: string;
 }
 
-export interface Api2TrueRace {
-  readonly ridx: number;
-  readonly flags: readonly string[];
-  readonly spells: readonly number[];
-  readonly blows: readonly { readonly dice: number; readonly sides: number; readonly effect: string }[];
-  readonly level: number;
-  readonly sleep: number;
-  readonly spellPower: number;
-  readonly freqInnate: number;
-  readonly freqSpell: number;
-  readonly hasFriends: boolean;
-}
-
-export interface Api2StoreKnowledge {
-  readonly storeIndex: number;
-  readonly feat: number;
-  readonly depth: number;
-  readonly lastVisitTurn: number | null;
-  readonly snapshotTurn: number;
-  readonly stalenessRule: "current";
-  readonly remoteStockUsable: true;
-}
-
 /** One grid as it really is. */
 /**
  * A real object on the level. It carries the turns left until it recharges
  * (`timeout`) where a known item carries only what its name says.
  */
-export type Api2TrueItem = Omit<KnownItem, "charging" | "unknownRunes"> & { readonly timeout: number };
+export type Api2TrueItem = Omit<KnownItem, "charging" | "unknownRunes" | "artifactId"> & { readonly timeout: number };
 
 export interface Api2TrueCell {
   readonly x: number;
@@ -480,8 +496,6 @@ export interface Api2TrueLevel {
  */
 export interface Api2Truth {
   monsters(): Api2Call<readonly Api2TrueMonster[]>;
-  race(index: number): Api2Call<Api2TrueRace | null>;
-  storeKnowledge(): Api2Call<readonly Api2StoreKnowledge[]>;
   level(): Api2Call<Api2TrueLevel>;
 }
 

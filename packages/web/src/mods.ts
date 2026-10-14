@@ -82,7 +82,6 @@ import {
 import {
   confirmCommunityUpdate,
   listedRepos,
-  registryUpdateWaitingText,
   showModUpgrades,
   showRecommendedMods,
   type ListedRepos,
@@ -90,7 +89,7 @@ import {
 } from "./mod-browse";
 import { displayName } from "./mod-authors";
 import { modUpgradeRowLabel } from "./mod-refresh";
-import { declaredConflicts, type ConflictReportLines } from "./mod-conflicts";
+import type { ConflictReportLines } from "./mod-conflicts";
 import { DEFAULT_TURN_BUDGET_MS, FAULT_LIMIT, FAULT_WINDOW_TURNS, type ModHealthStats } from "./mod-health";
 import {
   isTruthCapability,
@@ -1996,12 +1995,21 @@ async function confirmDeclaredConflicts(
         })
       : t("modsScreen.conflicts.claim", "{a} says it conflicts with {b}.", { a, b });
 
-  for (const c of declaredConflicts([m.manifest, ...enabled.map((other) => other.manifest)])) {
-    if (c.packId !== m.id && c.with !== m.id) continue;
+  for (const c of m.manifest.compat ?? []) {
+    if (c.claim !== "conflicts" || !enabled.some((e) => e.id === c.with)) continue;
     claims.push({
-      text: claimText(nameOf(c.packId), nameOf(c.with), c.scope),
+      text: claimText(m.name, nameOf(c.with), c.scope),
       because: c.because,
     });
+  }
+  for (const other of enabled) {
+    for (const c of other.manifest.compat ?? []) {
+      if (c.claim !== "conflicts" || c.with !== m.id) continue;
+      claims.push({
+        text: claimText(other.name, m.name, c.scope),
+        because: c.because,
+      });
+    }
   }
   if (claims.length === 0) return true;
 
@@ -4618,10 +4626,6 @@ async function runLoadDelve(
     const installedTag = installed.get(entry.id) ?? null;
     if (row.state === "different-version" && installedTag !== null && modBrowse.consent.read()) {
       listed ??= await listedRepos(modBrowse);
-      if (!listed.readable) {
-        resultLines.push({ text: `${entry.name}: ${registryUpdateWaitingText()}`, color: C_DANGER });
-        continue;
-      }
       const mod = row.resolution.mod;
       if (
         listed.community.has(mod.repo.toLowerCase()) &&
