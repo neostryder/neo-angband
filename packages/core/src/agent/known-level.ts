@@ -88,6 +88,7 @@ export interface KnownLevelCell {
   readonly remembered: RememberedCell;
   readonly visible: boolean;
   readonly seen: boolean;
+  readonly glow: boolean;
   readonly actual?: ActualCell;
 }
 
@@ -172,6 +173,7 @@ export function captureKnownLevel(
         remembered,
         visible: chunk.sqinfoHas(grid, SQUARE.VIEW),
         seen: squareIsSeen(chunk, grid),
+        glow: (state.known.glow?.[y * chunk.width + x] ?? 0) !== 0,
       };
       if (includeActual) {
         const index = y * chunk.width + x;

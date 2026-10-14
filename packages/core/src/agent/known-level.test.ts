@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { PlayerCommand } from "../game/context.js";
 import { runGameLoop } from "../game/loop.js";
-import { saveGame, startGame } from "../session/game.js";
+import { loadGame, saveGame, startGame } from "../session/game.js";
 import type { GamePack, StartedGame } from "../session/game.js";
 import { TMD, FEAT, TRF, SQUARE } from "../generated/index.js";
 import { squareKnowPile, squareMemorize } from "../game/known.js";
@@ -117,6 +117,26 @@ function caps(...granted: string[]) {
 }
 
 describe("known level", () => {
+  it("remembers glow across unseen changes and save loading", () => {
+    const game = newGame();
+    const { state } = game;
+    const grid = gridAwayFromPlayer(game);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    state.chunk.sqinfoOn(grid, SQUARE.GLOW);
+    squareMemorize(state, grid);
+    state.chunk.sqinfoOff(grid, SQUARE.SEEN);
+    const cell = () => createAgentView(state).knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)!;
+    const before = cell();
+    expect(before.glow).toBe(true);
+    state.chunk.sqinfoOff(grid, SQUARE.GLOW);
+    expect(cell()).toEqual(before);
+    const loaded = loadGame(pack, saveGame(game));
+    expect(createAgentView(loaded.state).knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)?.glow).toBe(true);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    squareMemorize(state, grid);
+    expect(cell().glow).toBe(false);
+  });
+
   it("distinguishes a seen square from an unlit square in view", () => {
     const game = newGame();
     const { state } = game;

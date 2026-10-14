@@ -315,6 +315,7 @@ export interface KnownLevelCell {
   /** In view right now. */
   readonly visible: boolean;
   readonly seen: boolean;
+  readonly glow: boolean;
 }
 
 /** The level as the player remembers it, never the real map. */
