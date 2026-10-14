@@ -565,7 +565,7 @@ function unknownRunes(state: GameState, deps: AgentViewDeps, obj: GameObject, sh
   return (shadow.notice & OBJ_NOTICE.ASSESSED) !== 0;
 }
 
-function knownItem(state: GameState, deps: AgentViewDeps, item: ItemView, obj: GameObject | null, shopWare = false): KnownItem {
+export function knownItem(state: GameState, deps: AgentViewDeps, item: ItemView, obj: GameObject | null, shopWare = false): KnownItem {
   const { timeout: _timeout, ...rest } = item;
   return {
     ...rest,

@@ -26,6 +26,7 @@ import {
   describeLookGrid,
   knownMonsterMidx,
   knownLoadoutSimulation,
+  squareIsSeen,
   trueMonsterViews,
   tokenIsCurrent,
   type AgentCapabilities,
@@ -243,7 +244,8 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   /* One part of the known world, built with only that part readable. */
   const part = (state: GameState, domain: string): KnownWorldData =>
     keyed(buildKnownWorld(state, options.viewDeps ?? state.knownWorldDeps ?? {}, {
-      has: (c) => c === `state:${domain}.read` && readable(domain),
+      has: (c) => (c === `state:${domain}.read` && readable(domain)) ||
+        (domain === "map" && c === "state:floor.read" && readable("floor")),
     }));
   const inspectRead = <T>(domains: readonly string[], read: (state: GameState, view: AgentView) => T): Api2Call<T> =>
     withState((state) => {
@@ -360,7 +362,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       inspect: frozen({
         simulateLoadout: (change) => api.view.simulateLoadout(change),
         item: (ref) => inspectRead(["inventory", ...(typeof ref === "number" ? [] : "floor" in ref ? ["floor"] : ["stores"])], (state, view) => {
-          if (typeof ref !== "number" && "floor" in ref && (!state.chunk.inBounds(ref.floor) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.floor.x && cell.y === ref.floor.y && cell.seen))) return null;
+          if (typeof ref !== "number" && "floor" in ref && (!state.chunk.inBounds(ref.floor) || !squareIsSeen(state.chunk, ref.floor))) return null;
           if (typeof ref !== "number" && "store" in ref && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) return null;
           return view.inspectItem!(ref);
         }),
@@ -373,7 +375,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         blastArea: (to, radius, arc) => inspectRead(["map"], (_state, view) => view.blastArea!(to, radius, arc)),
         travelPath: (to) => inspectRead(["map"], (_state, view) => view.travelPath!(to)),
         compareLoadoutSlots: (ref) => inspectRead(["player", "inventory", ...(ref.from === "floor" ? ["floor"] : ref.from === "store" ? ["stores"] : [])], (state, view) => {
-          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.x && cell.y === ref.y && cell.seen))) return { token: part(state, "player").token, slots: [] };
+          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !squareIsSeen(state.chunk, ref))) return { token: part(state, "player").token, slots: [] };
           if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) return { token: part(state, "player").token, slots: [] };
           const result = view.compareLoadoutSlots!(ref);
           return { ...result, slots: result.slots.map((slot) => ({ ...slot, comparison: knownLoadoutSimulation(state, slot.comparison) })) } as import("@rpgm-tools/neo-angband-mod-sdk").LoadoutSlotsResult;
@@ -438,7 +440,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         for (const ref of refs) {
           const domain = ref.from === "store" ? "stores" : ref.from === "floor" ? "floor" : "inventory";
           if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
-          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !part(state, "map").level?.cells.some((cell) => cell.x === ref.x && cell.y === ref.y && cell.seen))) {
+          if (ref.from === "floor" && (!state.chunk.inBounds(ref) || !squareIsSeen(state.chunk, ref))) {
             return api2Refused("unobserved-item", "the floor item is not currently seen");
           }
           if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) {

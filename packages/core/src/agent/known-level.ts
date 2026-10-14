@@ -13,6 +13,7 @@ import { ODESC } from "../obj/desc.js";
 import { inputToken } from "./boundary.js";
 import type { InputToken } from "./boundary.js";
 import { itemView } from "./entity-views.js";
+import { knownItem, type KnownItem } from "./known-world.js";
 import type { AgentViewDeps, ItemView } from "./types.js";
 
 export interface TrapView {
@@ -72,6 +73,7 @@ export interface RememberedCell {
   readonly featCode?: string;
   readonly traps: readonly TrapView[];
   readonly objects: readonly RememberedObject[];
+  readonly items: readonly KnownItem[] | null;
 }
 
 export interface ActualCell {
@@ -116,6 +118,7 @@ export function captureKnownLevel(
   state: GameState,
   deps: AgentViewDeps = {},
   includeActual = false,
+  includeItems = true,
 ): KnownLevelView {
   const { chunk } = state;
   const cells: KnownLevelCell[] = [];
@@ -162,6 +165,15 @@ export function captureKnownLevel(
             ...(aura ? { aura } : {}),
           };
         }),
+        items: includeItems ? pile.flatMap((entry, index) => {
+          if (entry.sensed) return [];
+          const seen = squareIsSeen(chunk, grid) && (state.floor.get(y * chunk.width + x)?.includes(entry.obj) ?? false);
+          const obj = seen ? entry.obj : entry.remembered ?? entry.obj;
+          const item = itemView(0, obj, state, deps);
+          const floorIndex = seen ? state.floor.get(y * chunk.width + x)!.indexOf(entry.obj) : undefined;
+          return [knownItem(state, deps, { ...item, name: describeObject(state, obj, ODESC.PREFIX | ODESC.FULL),
+            itemKey: `memory:${x},${y}:${index}`, ...(floorIndex !== undefined ? { floorIndex } : {}) }, obj)];
+        }) : null,
       };
       const rememberedCode = chunk.features.get(feat).code;
       if (rememberedCode !== null && rememberedCode !== undefined) {

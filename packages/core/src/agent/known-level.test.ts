@@ -117,6 +117,29 @@ function caps(...granted: string[]) {
 }
 
 describe("known level", () => {
+  it("returns known items from stale floor memory without live changes", () => {
+    const game = newGame();
+    const { state } = game;
+    const grid = gridAwayFromPlayer(game);
+    const index = grid.y * state.chunk.width + grid.x;
+    const obj = floorObject(game);
+    state.floor.set(index, [obj]);
+    squareKnowPile(state, grid);
+    state.chunk.sqinfoOff(grid, SQUARE.SEEN);
+    const view = createAgentView(state, undefined, {}, caps("state:map.read", "state:floor.read"));
+    const items = () => view.knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)!.remembered.items!;
+    const before = items();
+    expect(before).toHaveLength(1);
+    expect(before[0]).toHaveProperty("name", expect.any(String));
+    expect(before[0]).not.toHaveProperty("timeout");
+    expect(before[0]).not.toHaveProperty("floorIndex");
+    obj.number += 5;
+    state.floor.delete(index);
+    expect(items()).toEqual(before);
+    const limited = createAgentView(state, undefined, {}, caps("state:map.read"));
+    expect(limited.knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)!.remembered.items).toBeNull();
+  });
+
   it("names the terrain record's code without a content id resolver", () => {
     const game = newGame();
     const { state } = game;

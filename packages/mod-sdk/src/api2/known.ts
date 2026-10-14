@@ -305,6 +305,7 @@ export interface KnownRememberedCell {
   readonly featCode?: string;
   readonly traps: readonly KnownTrap[];
   readonly objects: readonly KnownRememberedObject[];
+  readonly items: readonly KnownItem[] | null;
 }
 
 /** One grid of the remembered level. There is no field for the real grid. */
