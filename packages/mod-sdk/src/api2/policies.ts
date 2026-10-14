@@ -129,10 +129,17 @@ export interface Api2StartingOptionsPolicy {
   readonly lazymoveDelay?: number;
 }
 
+export interface Api2IgnorePolicyEntry {
+  readonly tval: "light";
+  readonly kindNameContains: "Torch" | "Lantern";
+  readonly ignore: true;
+}
+
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
   readonly prefErrors?: Api2PrefErrorsPolicy;
   readonly startingOptions?: Api2StartingOptionsPolicy;
+  readonly ignore?: readonly Api2IgnorePolicyEntry[];
   readonly walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   readonly messageText?: readonly Api2TextRule[];
   /** `where` may name `screen`, `part` and `column`. */
@@ -188,6 +195,7 @@ export type Api2TileFiller = (fill: Api2TileFill) => void;
 export interface Api2PolicyRegistrations {
   prefErrors?: Api2PrefErrorsPolicy;
   startingOptions?: Api2StartingOptionsPolicy;
+  ignore?: readonly Api2IgnorePolicyEntry[];
   walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   /** Installed as the stores' discount roll. */
   discountRoll?: Api2DiscountRoll;
@@ -440,6 +448,29 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
     },
     apply(value, out) {
       out.registrations.startingOptions = value as Api2StartingOptionsPolicy;
+    },
+  },
+  {
+    name: "ignore",
+    capability: "registry:ui-entry",
+    summary: "Ignores matching items while preserving prior ignore choices.",
+    target: { registration: "ignore" },
+    check(value) {
+      if (!Array.isArray(value) || value.length === 0 || value.length > 16) return "ignore lists 1 to 16 entries";
+      for (let index = 0; index < value.length; index += 1) {
+        const entry: unknown = value[index];
+        const at = `ignore[${String(index)}]`;
+        if (!isRecord(entry)) return `${at} is an object`;
+        const extra = unknownField(at, entry, ["tval", "kindNameContains", "ignore"]);
+        if (extra) return extra;
+        if (entry["tval"] !== "light") return `${at}.tval is \"light\"`;
+        if (entry["kindNameContains"] !== "Torch" && entry["kindNameContains"] !== "Lantern") return `${at}.kindNameContains is \"Torch\" or \"Lantern\"`;
+        if (entry["ignore"] !== true) return `${at}.ignore is true`;
+      }
+      return null;
+    },
+    apply(value, out) {
+      out.registrations.ignore = value as readonly Api2IgnorePolicyEntry[];
     },
   },
   {

@@ -85,6 +85,7 @@ export type {
   Api2DiscountRollPolicy,
   Api2DiscountTier,
   Api2HistoryRule,
+  Api2IgnorePolicyEntry,
   Api2ObjectListKey,
   Api2Policies,
   Api2PrefErrorsPolicy,

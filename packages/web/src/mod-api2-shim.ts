@@ -15,7 +15,7 @@
  */
 
 import type { ModHooks, ModPluginContext } from "@rpgm-tools/neo-angband-core";
-import { inputToken, movementTunnelTest, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, type CaveCmdDeps, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
+import { inputToken, movementTunnelTest, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, TV, type CaveCmdDeps, type GameObject, type GameState, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
 import {
   api2PolicyEffects,
   apiRangeVerdict,
@@ -25,6 +25,7 @@ import {
   type Api2ModDefinition,
   type Api2Policies,
   type Api2PolicyRegistrations,
+  type Api2IgnorePolicyEntry,
   type Api2StartingOptionsPolicy,
   type Api2TileFill,
   type JsonValue,
@@ -194,6 +195,7 @@ export function mergePolicies(policies: unknown, hooks: Api2Hooks | undefined, g
  * skipped.
  */
 export interface Api2PolicyTargets {
+  readonly state?: GameState | null;
   readonly stores: {
     registerDiscountRoll(handler: (roll: { readonly rng: { oneIn(n: number): boolean }; readonly cost: number }) => number): void;
   } | null;
@@ -271,6 +273,12 @@ export function installApi2PolicyRegistrations(
   targets: Api2PolicyTargets,
   active: () => boolean,
 ): void {
+  const ignoreRules = registrations.ignore;
+  const state = targets.state;
+  if (ignoreRules && state) {
+    const prior = state.isIgnored;
+    state.isIgnored = (object: GameObject) => active() && shouldIgnoreByPolicy(ignoreRules, object) ? true : prior?.(object) ?? false;
+  }
   const roll = registrations.discountRoll;
   if (roll && targets.stores) {
     targets.stores.registerDiscountRoll((ctx) => (active() ? roll({ cost: ctx.cost, oneIn: (n) => ctx.rng.oneIn(n) }) : 0));
@@ -281,6 +289,11 @@ export function installApi2PolicyRegistrations(
       if (active()) filler(fill);
     });
   }
+}
+
+function shouldIgnoreByPolicy(rules: readonly Api2IgnorePolicyEntry[], object: GameObject): boolean {
+  if (object.artifact || object.note?.includes("!k") || object.note?.includes("!*")) return false;
+  return rules.some((rule) => object.tval === TV[rule.tval.toUpperCase() as keyof typeof TV] && object.kind.name.includes(rule.kindNameContains));
 }
 
 const pluginPolicies = new WeakMap<ModPlugin, { id: string; flags: Readonly<Record<string, boolean>>; registrations: Api2PolicyRegistrations }>();

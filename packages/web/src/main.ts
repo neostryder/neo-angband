@@ -16258,7 +16258,7 @@ for (const id of enabledModIds()) {
     if (registrations) {
       installApi2PolicyRegistrations(
         registrations,
-        { stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(id) },
+        { state, stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(id) },
         () => workerPlugins.has(id) && !modHealth().isOff(id),
       );
     }
@@ -16271,7 +16271,7 @@ for (const id of enabledModIds()) {
     if (registrations) {
       installApi2PolicyRegistrations(
         registrations,
-        { stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(loaded.id) },
+        { state, stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(loaded.id) },
         () => !modHealth().isOff(loaded.id),
       );
     }

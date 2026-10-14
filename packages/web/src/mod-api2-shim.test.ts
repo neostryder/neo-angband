@@ -9,6 +9,7 @@ import {
   OptionState,
   Rng,
   StoreBehaviourRegistry,
+  TV,
   type HistoryAddEntry,
   type GameState,
   type ModHooks,
@@ -68,6 +69,27 @@ describe("starting-options policy", () => {
     const hooks = api2PolicyModHooks({ startingOptions: { kind: "starting-options", values: { auto_more: true } } }, () => false);
     hooks.newCharacter?.({ options } as GameState, {} as never);
     expect(options.get("auto_more")).toBe(false);
+  });
+});
+
+describe("ignore policy", () => {
+  it("wraps the prior ignore callback with case-sensitive light rules and exemptions", () => {
+    const state = { isIgnored: () => false } as unknown as GameState;
+    let active = true;
+    installApi2PolicyRegistrations({ ignore: [
+      { tval: "light", kindNameContains: "Torch", ignore: true },
+      { tval: "light", kindNameContains: "Lantern", ignore: true },
+    ] }, { state, stores: null, tiles: null }, () => active);
+    const check = (name: string, values: Partial<{ tval: number; artifact: unknown; note: string | null }> = {}) =>
+      state.isIgnored!({ tval: TV.LIGHT, artifact: null, note: null, kind: { name }, ...values } as never);
+    expect(check("& Wooden Torch~")).toBe(true);
+    expect(check("& Lantern~")).toBe(true);
+    expect(check("& wooden torch~")).toBe(false);
+    expect(check("& Wooden Torch~", { artifact: {} })).toBe(false);
+    expect(check("& Wooden Torch~", { note: "!k" })).toBe(false);
+    expect(check("& Wooden Torch~", { note: "!*" })).toBe(false);
+    active = false;
+    expect(check("& Wooden Torch~")).toBe(false);
   });
 });
 
@@ -274,6 +296,7 @@ describe("policy tables that install registrations", () => {
   const tables: Api2Policies = {
     prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
     startingOptions: { kind: "starting-options", values: { auto_more: true } },
+    ignore: [{ tval: "light", kindNameContains: "Torch", ignore: true }],
     walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
     messageText: [{ find: "a", replace: "b" }], screenText: [{ find: "a", replace: "b" }],
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],
