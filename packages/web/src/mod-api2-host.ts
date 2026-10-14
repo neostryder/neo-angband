@@ -20,6 +20,7 @@ import {
   AgentCapabilityError,
   buildKnownWorld,
   createAgentView,
+  describeLookGrid,
   knownMonsterMidx,
   trueMonsterViews,
   tokenIsCurrent,
@@ -336,6 +337,15 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           messagePending: snap.messagePending,
           prompt: snap.prompt,
         }));
+      }),
+      look: (grid) => withState((state) => {
+        for (const domain of ["map", "floor", "monsters"]) {
+          if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
+        }
+        if (!Number.isInteger(grid.x) || !Number.isInteger(grid.y) || !state.chunk.inBounds(grid)) {
+          return api2Refused("invalid-grid", "the grid is outside the level");
+        }
+        return api2Ok(describeLookGrid(state, grid, 0, true).text);
       }),
       isCurrent: (token) => withState((state) => api2Ok(tokenIsCurrent(state, token))),
     }),

@@ -125,6 +125,16 @@ async function observedThroughHost(api: ModApi2): Promise<string> {
 const READS = ["state:*.read"];
 
 describe("the API 2 host's view", () => {
+  it("keeps look text unchanged when hidden terrain changes and hides wizard flow", async () => {
+    const a = startGame(pack, { seed: SEED, depth: DEPTH });
+    const b = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grid = emptyGrid(a.state, false);
+    b.state.chunk.setFeat(grid, FEAT.GRANITE);
+    b.state.wizard = true;
+    expect(await host(b, READS).view.look(grid)).toEqual(await host(a, READS).view.look(grid));
+    expect(await host(a, []).view.look(grid)).toMatchObject({ reason: "not-granted" });
+  });
+
   it("does not change when an unseen monster's health and speed change (paired worlds)", async () => {
     const a = startGame(pack, { seed: SEED, depth: DEPTH });
     const b = startGame(pack, { seed: SEED, depth: DEPTH });

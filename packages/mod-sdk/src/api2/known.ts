@@ -279,6 +279,7 @@ export type KnownRememberedObject =
       readonly sensed: false;
       readonly aware: true;
       readonly kindIndex: number;
+      readonly name: string;
       readonly kindId?: string;
       readonly aura?: KnownObjectAura;
     }
@@ -306,6 +307,7 @@ export interface KnownLevelCell {
   readonly remembered: KnownRememberedCell;
   /** In view right now. */
   readonly visible: boolean;
+  readonly seen: boolean;
 }
 
 /** The level as the player remembers it, never the real map. */
