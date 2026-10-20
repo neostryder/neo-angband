@@ -17,6 +17,25 @@
 
 ## The two seams (inherited from upstream, kept on purpose)
 
+```mermaid
+flowchart TD
+  Desktop["@rpgm-tools/neo-angband-desktop<br/>Electron"] -->|"wraps"| Web["@rpgm-tools/neo-angband-web"]
+  Web --> Queue["Command queue"]
+  Other["@rpgm-tools/neo-angband-cli<br/>@rpgm-tools/neo-angband-mcp"] --> Queue
+  Mods["Borg and scripted plugins"] --> Queue
+  Queue -->|"typed commands"| Core["@rpgm-tools/neo-angband-core<br/>Headless engine"]
+  Core -->|"typed state-change events"| Events["Event bus"]
+  Events --> Web
+  Events --> Other
+  Events --> Mods
+  Content["@rpgm-tools/neo-angband-content<br/>Angband 4.2.6 pack zero"] -->|"gamedata"| Core
+  Registry["mods/registry.json"] -.->|"curated list"| Mods
+  Reference["reference/<br/>Read-only Angband 4.2.6 C tree"] -.->|"upstream sources"| Parity["parity/<br/>Port provenance ledger"]
+  Parity -.->|"maps port modules"| Core
+```
+
+*Source of truth: `docs/ARCHITECTURE.md` and `pnpm-workspace.yaml`. `mods/registry.json` lists the Borg repository, and the engine holds no UI references.*
+
 Upstream Angband's core/UI boundary is unusually clean, built on two
 mechanisms this port preserves as its public API:
 
@@ -30,6 +49,23 @@ Everything that talks to the engine - the web UI, the CLI, the Borg autoplayer,
 the MCP server, scripted plugins - speaks through these two seams.
 
 ## The screen, by name
+
+```mermaid
+flowchart TD
+  Regions["regions.ts<br/>messages, sidebar, map, status<br/>Cell rectangles and optional CSS pixels"] --> World["world-view.ts<br/>WorldFrame<br/>Semantic layers and terminal visual"]
+  Regions --> Hud["hud-view.ts<br/>HudFrame<br/>Keyed entries and terminal runs"]
+  World --> MapRuntime["frontend-runtime.ts<br/>Last eligible candidate owns the map"]
+  Hud --> HudRuntime["hud-runtime.ts<br/>Last eligible candidate owns each region"]
+  Core["Core renderer<br/>Candidate zero"] --> MapRuntime
+  Core --> HudRuntime
+  MapRuntime --> Map["Selected map sink"]
+  HudRuntime --> Furniture["Selected messages, sidebar and status sinks"]
+  Map -->|"replacement throws"| MapRecovery["Core resumes the map"]
+  Furniture -->|"replacement throws"| HudRecovery["Core resumes that region"]
+  Hud -.-> Help["Targeting question-mark help<br/>Can extend above the status row"]
+```
+
+*Source of truth: `packages/web/src/regions.ts`, `world-view.ts`, and `hud-view.ts`. Targeting help is the one documented exception in `docs/ARCHITECTURE.md`.*
 
 Upstream's two seams get data OUT of the engine. They say nothing about how it
 is arranged, and for most of the port's life the arrangement was private: the
@@ -74,6 +110,27 @@ bigger blast radius than the grant.
 
 ## What changes from upstream (the five chokepoints)
 
+```mermaid
+flowchart TD
+  Base["@rpgm-tools/neo-angband-content<br/>Pack zero"] --> Compose["composeContentPacks<br/>Namespaced records and deterministic composition"]
+  Packs["Content packs"] --> Compose
+  Compose --> Checks["@rpgm-tools/neo-angband-mod-sdk<br/>checkPacks reports findings"]
+  Compose --> Effects["Effect records<br/>EffectRegistry dispatches registered handlers"]
+  Compose --> Abilities["player_property.json<br/>Abilities resolve generated PF and OF codes"]
+  Compose --> Generation["Dungeon and room data<br/>DungeonProfiles and RoomRegistry"]
+  Compose --> Parser["Compiled gamedata records<br/>Pack composition replaces per-file loading order"]
+  Compose --> Quests["quest.json<br/>Sauron then Morgoth<br/>bindQuests and questCheck"]
+  Effects --> State["GameState<br/>Explicit game context with rng"]
+  Abilities --> State
+  Generation --> State
+  Parser --> State
+  Quests --> State
+  Plugins["Trusted plugins"] -->|"registry:effect"| Effects
+  Plugins -->|"registry:room and registry:profile"| Generation
+```
+
+*Source of truth: `packages/mod-sdk/src/loader.ts`, `packages/core/src/effects/interpreter.ts`, and `packages/content/pack/quest.json`. The abilities and RNG paths follow the code, not the older ARCHITECTURE wording.*
+
 The C original locks behavior behind compiled code. The port dissolves each
 chokepoint into data:
 
@@ -95,6 +152,38 @@ chokepoint into data:
    the classic Sauron-then-Morgoth spine is simply the core pack's content.
 
 ## Boot: nothing paints the map until there is a game
+
+```mermaid
+stateDiagram-v2
+  state "Loading animation" as Loading
+  state "Title and birth flow" as Menus
+  state "Game screen live" as Playing
+  state "Modal owns the terminal" as Modal
+  [*] --> Loading
+  Loading --> Menus: maybeTitle stops loading
+  Loading --> Playing: Boot route skips title and completes
+  Menus --> Playing: bootMenus completes
+  Playing --> Modal: modalDepth becomes positive
+  Modal --> Playing: modalDepth returns to zero
+  note left of Loading
+    main.ts creates GameState at module scope
+    gameScreenLive starts false
+    loading.ts uses a display-only seeded LCG
+  end note
+  note right of Menus
+    renderBackground returns while gameScreenLive is false
+  end note
+  note right of Playing
+    Boot stops loading and sets gameScreenLive true
+    renderBackground can now call render
+  end note
+  note right of Modal
+    renderBackground returns while modalDepth is positive
+    Explicit command render calls bypass the gate
+  end note
+```
+
+*Source of truth: `packages/web/src/main.ts` and `loading.ts`. Targeting, locate, and level-map renders bypass the boot gate on purpose.*
 
 `packages/web/src/main.ts` builds a real game at module scope. It has to, because
 every screen below the title reads from a live `GameState`. That made one thing

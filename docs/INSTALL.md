@@ -4,6 +4,26 @@ Play on a build you control, because that is the only kind of build a bug report
 
 ## The short answer
 
+```mermaid
+flowchart TD
+  Web["@rpgm-tools/neo-angband-web<br/>Web bundle"] --> Hosted["angband.rpgm.world<br/>Published release in a browser"]
+  Web --> Static["Static self-host<br/>packages/web/dist-web"]
+  Hosted --> PWA["Installed PWA<br/>Offline browser build"]
+  Static --> PWA
+  Web --> Desktop["Electron desktop app"]
+  Desktop --> Release["GitHub release downloads<br/>Windows, macOS and Linux"]
+  Source["Source checkout"] --> Dev["pnpm --filter<br/>@rpgm-tools/neo-angband-web dev"]
+  Hosted -.-> Storage["Saves stay in each origin or app's storage"]
+  Static -.-> Storage
+  PWA -.-> Storage
+  Desktop -.-> Storage
+  Dev -.-> Storage
+  Storage --> Export["Shift-X exports a .neochar file"]
+  Export --> Import["Shift-M imports on another surface"]
+```
+
+*Source of truth: `README.md` and `docs/INSTALL.md`. Desktop builds before 0.34.1 need a manual update when download-host validation fails.*
+
 **[Download a build from Releases.](https://github.com/neostryder/neo-angband/releases)**
 Windows, macOS and Linux, plus the static site as a zip. The Windows
 **portable** `.exe` and the Linux **AppImage** need no installer: download, run,
