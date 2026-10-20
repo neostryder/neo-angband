@@ -129,7 +129,7 @@ flowchart TD
   Plugins -->|"registry:room and registry:profile"| Generation
 ```
 
-*Source of truth: `packages/mod-sdk/src/loader.ts`, `packages/core/src/effects/interpreter.ts`, and `packages/content/pack/quest.json`. The abilities and RNG paths follow the code, not the older ARCHITECTURE wording.*
+*Source of truth: `packages/mod-sdk/src/loader.ts`, `packages/core/src/effects/interpreter.ts`, and `packages/content/pack/quest.json`.*
 
 The C original locks behavior behind compiled code. The port dissolves each
 chokepoint into data:
