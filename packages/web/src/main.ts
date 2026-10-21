@@ -440,7 +440,7 @@ import { runProfileScreen } from "./profile-ui";
 import { setPrefsStorage } from "./mod-prefs";
 import { startModWorker, type ModWorkerLike, type StartedModWorker } from "./mod-worker/host";
 import { settleWorkerHooks } from "./mod-worker/hooks";
-import { api2PluginRegistrations, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "./mod-api2-shim";
+import { api2DisplayOption, api2PluginRegistrations, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "./mod-api2-shim";
 import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
@@ -847,7 +847,9 @@ import type { TileModeMenu, SidebarModeMenu, SubwindowMenu } from "./options";
 import { loadColorPrefs, saveColorPrefs } from "./colors";
 import { applyStoredEntryRenderers, applyVisualDocument, consumeStoredAutoinscriptions, convertStoredUserPrefFiles, modPreferenceText } from "./pref-documents";
 import {
+  clearQueuedUiInputs,
   dispatchUiInput,
+  enqueueUiInputs,
   inputEvents,
   setAutoplayerInterruptOwner,
   setKeymapResolver,
@@ -3229,7 +3231,7 @@ function paintSubwindowContent(
     messages: () => messageSubwindowPainter.paint(panel, msglog),
     inventory: () => paintInventorySubwindow(panel, state, constants, quiverItemization),
     equipment: () => paintEquipmentSubwindow(panel, state),
-    monsters: () => paintMonsterSubwindow(panel, state, monsterListColorKey),
+    monsters: () => paintMonsterSubwindow(panel, state, api2DisplayOption("monsterListColorKey", monsterListColorKey)),
     items: () => paintItemListSubwindow(panel, state),
     "player-basic": () => paintPlayerBasicSubwindow(panel, state, playerName),
     "player-extra": () =>
@@ -4039,7 +4041,7 @@ async function runContextMenuPlayerOther(): Promise<void> {
       await showTextScreen(term, messageHistoryScreen(msglog));
       break;
     case "monsters":
-      await showMonsterList(term, state, monsterListColorKey);
+      await showMonsterList(term, state, api2DisplayOption("monsterListColorKey", monsterListColorKey));
       break;
     case "objects":
       await showTextScreen(term, objectListScreen(state));
@@ -11162,8 +11164,8 @@ async function enterStoreModal(store: Store): Promise<void> {
       },
       featureName: feat?.name ?? store.featName,
       rogueLike: state.options?.get("rogue_like_commands") ?? false,
-      storeItemNameEllipsis,
-      storeSelectionDescription,
+      storeItemNameEllipsis: api2DisplayOption("storeItemNameEllipsis", storeItemNameEllipsis),
+      storeSelectionDescription: api2DisplayOption("storeSelectionDescription", storeSelectionDescription),
       // store_examine (ui-store.c L749): the object_info screen for a fully
       // known store item, header capitalised as ODESC_CAPITAL does.
       examine: async (obj) => {
@@ -11934,7 +11936,7 @@ function buildCommandTable(): CommandRow[] {
     { desc: "Full dungeon map", cat: "Information", o: "M", act: () => void openModal(showLevelMapForShell) },
     { desc: "Toggle ignoring of items", cat: "Information", o: "K", r: "O", act: () => { state.ignore.unignoring = !state.ignore.unignoring; void openModal(() => applyIgnoreDrop()); } },
     { desc: "Display visible item list", cat: "Information", o: "]", act: () => void openModal(() => withPanelTwin("items", () => showTextScreen(term, objectListScreen(state)))) },
-    { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(() => withPanelTwin("monsters", () => showMonsterList(term, state, monsterListColorKey))) },
+    { desc: "Display visible monster list", cat: "Information", o: "[", act: () => void openModal(() => withPanelTwin("monsters", () => showMonsterList(term, state, api2DisplayOption("monsterListColorKey", monsterListColorKey)))) },
     { desc: "Locate player on map", cat: "Information", o: "L", r: "W", act: () => void openModal(() => runLocate()) },
     { desc: "Identify symbol", cat: "Information", o: "/", act: () => void openModal(querySymbolCmd) },
     { desc: "Character description", cat: "Information", o: "C", act: () => void openModal(() => withPanelTwin("player-basic", () => showCharacterSheet(term, state, playerName, charSheetOpts()))) },
@@ -16241,6 +16243,18 @@ finishWorkerPolicies();
 /* Then each Worker mod's `start`, as the in-process mods register below, and
  * the registrations its policy tables stand for. */
 for (const worker of workerPlugins.values()) worker.start();
+const purgeInputTarget = {
+  display: displayControl,
+  isBindableTriggerKey: (trigger: string) => isBindableTriggerKey(trigger) &&
+    keymapFind(keymapModeFor(state.options?.get("rogue_like_commands") ?? false), trigger) === null,
+  keyRepeat: () => keyRepeatTracker.last(),
+  cancelInput: (escapeCount: number) => {
+    clearQueuedUiInputs();
+    enqueueUiInputs(Array.from({ length: escapeCount }, () => ({
+      key: { key: "Escape", modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false },
+    })));
+  },
+};
 /* Both runtimes share the selected order because store rolls and tile fillers depend on precedence. */
 for (const id of enabledModIds()) {
   const worker = workerPlugins.get(id);
@@ -16249,7 +16263,7 @@ for (const id of enabledModIds()) {
     if (registrations) {
       installApi2PolicyRegistrations(
         registrations,
-        { stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(id) },
+        { id, state, stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(id), purgeInput: purgeInputTarget },
         () => workerPlugins.has(id) && !modHealth().isOff(id),
       );
     }
@@ -16262,7 +16276,7 @@ for (const id of enabledModIds()) {
     if (registrations) {
       installApi2PolicyRegistrations(
         registrations,
-        { stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(loaded.id) },
+        { id: loaded.id, state, stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(loaded.id), purgeInput: purgeInputTarget },
         () => !modHealth().isOff(loaded.id),
       );
     }

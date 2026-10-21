@@ -47,6 +47,7 @@ describe("main boot order", () => {
       workerPlugins: new Map([["worker", { start: () => undefined }]]),
       workerRegistrations: new Map([["worker", registrations]]),
       enabledModIds: () => [first, second], activeModCode: () => code,
+      displayControl: { onKey: () => () => undefined },
       api2PluginRegistrations: () => ({ tileFiller: () => undefined }), installApi2PolicyRegistrations,
       state: { storeBehaviour: stores }, tileRegistry: { forOwner: (id: string) => ({ register: () => { fillers.push(id); } }) },
       modHealth: () => ({ isOff: () => false, run: (_id: string, _site: string, f: () => unknown) => f() }),

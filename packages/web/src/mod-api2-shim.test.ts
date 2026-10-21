@@ -2,13 +2,16 @@
  * The shim: an API 1 plugin runs unchanged, and an API 2 definition runs
  * through the same loader path as an API 1 plugin.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   composeModHooks,
   guardModHooks,
+  OptionState,
   Rng,
   StoreBehaviourRegistry,
+  TV,
   type HistoryAddEntry,
+  type GameState,
   type ModHooks,
   type ModPluginContext,
   type ModRegistryHost,
@@ -26,9 +29,12 @@ import {
   API1_CONTEXT_MAP,
   api2Plugin,
   api2PluginRegistrations,
+  api2PolicyModHooks,
+  api2DisplayOption,
   api2ToModHooks,
   checkApi2Definition,
   installApi2PolicyRegistrations,
+  removeApi2PolicyRegistrations,
   mergePolicies,
 } from "./mod-api2-shim";
 import { modPluginContext } from "./mod-context";
@@ -39,6 +45,112 @@ function capabilities(id: string, granted: string[]): CapabilitySet {
     id, name: id, version: "1.0.0", shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: granted,
   });
 }
+
+describe("starting-options policy", () => {
+  it("applies through OptionState setters on a new character and skips birth options", () => {
+    const options = new OptionState();
+    const hooks = api2PolicyModHooks({ startingOptions: {
+      kind: "starting-options",
+      values: { birth_no_selling: true, cheat_live: true, auto_more: true },
+      hitpointWarn: 7,
+      delayFactor: 9,
+      lazymoveDelay: 40,
+    } }, () => true);
+    hooks.newCharacter?.({ options } as GameState, {} as never);
+    expect(options.get("birth_no_selling")).toBe(false);
+    expect(options.get("cheat_live")).toBe(true);
+    expect(options.get("score_live")).toBe(true);
+    expect(options.get("auto_more")).toBe(true);
+    expect(options.hitpointWarn).toBe(7);
+    expect(options.delayFactor).toBe(9);
+    expect(options.lazymoveDelay).toBe(40);
+  });
+
+  it("does not apply after the mod stops", () => {
+    const options = new OptionState();
+    const hooks = api2PolicyModHooks({ startingOptions: { kind: "starting-options", values: { auto_more: true } } }, () => false);
+    hooks.newCharacter?.({ options } as GameState, {} as never);
+    expect(options.get("auto_more")).toBe(false);
+  });
+});
+
+describe("ignore policy", () => {
+  it("wraps the prior ignore callback with case-sensitive light rules and exemptions", () => {
+    const state = { isIgnored: () => false } as unknown as GameState;
+    let active = true;
+    installApi2PolicyRegistrations({ ignore: [
+      { tval: "light", kindNameContains: "Torch", ignore: true },
+      { tval: "light", kindNameContains: "Lantern", ignore: true },
+    ] }, { state, stores: null, tiles: null }, () => active);
+    const check = (name: string, values: Partial<{ tval: number; artifact: unknown; note: string | null }> = {}) =>
+      state.isIgnored!({ tval: TV.LIGHT, artifact: null, note: null, kind: { name }, ...values } as never);
+    expect(check("& Wooden Torch~")).toBe(true);
+    expect(check("& Lantern~")).toBe(true);
+    expect(check("& wooden torch~")).toBe(false);
+    expect(check("& Wooden Torch~", { artifact: {} })).toBe(false);
+    expect(check("& Wooden Torch~", { note: "!k" })).toBe(false);
+    expect(check("& Wooden Torch~", { note: "!*" })).toBe(false);
+    active = false;
+    expect(check("& Wooden Torch~")).toBe(false);
+  });
+});
+
+describe("display-options policy", () => {
+  it("uses the last active contribution and falls back after removal or stop", () => {
+    let firstActive = true;
+    let secondActive = true;
+    const value = { kind: "display-options" as const, storeItemNameEllipsis: true, storeSelectionDescription: true, monsterListColorKey: true };
+    installApi2PolicyRegistrations({ displayOptions: value }, { id: "first", stores: null, tiles: null }, () => firstActive);
+    expect(api2DisplayOption("storeItemNameEllipsis", false)).toBe(true);
+    installApi2PolicyRegistrations({ displayOptions: { ...value, storeItemNameEllipsis: false } }, { id: "second", stores: null, tiles: null }, () => secondActive);
+    expect(api2DisplayOption("storeItemNameEllipsis", true)).toBe(false);
+    secondActive = false;
+    expect(api2DisplayOption("storeItemNameEllipsis", false)).toBe(true);
+    removeApi2PolicyRegistrations("first");
+    firstActive = false;
+    expect(api2DisplayOption("storeItemNameEllipsis", false)).toBe(false);
+    removeApi2PolicyRegistrations("second");
+  });
+});
+
+describe("purge-input policy", () => {
+  it("consumes fresh unmodified presses and sends the declared Escape count", () => {
+    let listener: ((event: KeyboardEvent) => void) | undefined;
+    const cancel = vi.fn();
+    installApi2PolicyRegistrations({ purgeInput: { kind: "purge-input", trigger: "F2", modifiers: [], freshOnly: true, escapeCount: 3 } }, {
+      id: "purger", stores: null, tiles: null,
+      purgeInput: {
+        display: { onKey: (callback) => { listener = callback; return () => { listener = undefined; }; } },
+        isBindableTriggerKey: () => true,
+        keyRepeat: () => ({ isRepeat: false }),
+        cancelInput: cancel,
+      },
+    }, () => true);
+    let prevented = false;
+    let stopped = false;
+    listener?.({ key: "F2", ctrlKey: false, altKey: false, metaKey: false, shiftKey: false,
+      preventDefault: () => { prevented = true; }, stopImmediatePropagation: () => { stopped = true; } } as KeyboardEvent);
+    expect(prevented).toBe(true);
+    expect(stopped).toBe(true);
+    expect(cancel).toHaveBeenCalledWith(3);
+    removeApi2PolicyRegistrations("purger");
+    expect(listener).toBeUndefined();
+  });
+
+  it("consumes but does not repeat a held key", () => {
+    let listener: ((event: KeyboardEvent) => void) | undefined;
+    const cancel = vi.fn();
+    installApi2PolicyRegistrations({ purgeInput: { kind: "purge-input", trigger: "F2", modifiers: [], freshOnly: true, escapeCount: 3 } }, {
+      id: "repeat-purger", stores: null, tiles: null,
+      purgeInput: { display: { onKey: (callback) => { listener = callback; return () => undefined; } }, isBindableTriggerKey: () => true,
+        keyRepeat: () => ({ isRepeat: true }), cancelInput: cancel },
+    }, () => true);
+    listener?.({ key: "F2", ctrlKey: false, altKey: false, metaKey: false, shiftKey: false,
+      preventDefault: () => undefined, stopImmediatePropagation: () => undefined } as KeyboardEvent);
+    expect(cancel).not.toHaveBeenCalled();
+    removeApi2PolicyRegistrations("repeat-purger");
+  });
+});
 
 /* What the loader does with one plugin: validate, ask for hooks, guard, fold, register. */
 function load(id: string, plugin: ModPlugin, granted: string[] = []): { hooks: ModHooks | undefined; ctx: ModPluginContext } {
@@ -242,6 +354,10 @@ describe("policy tables that install registrations", () => {
 
   const tables: Api2Policies = {
     prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
+    startingOptions: { kind: "starting-options", values: { auto_more: true } },
+    ignore: [{ tval: "light", kindNameContains: "Torch", ignore: true }],
+    displayOptions: { kind: "display-options", storeItemNameEllipsis: true, storeSelectionDescription: true, monsterListColorKey: true },
+    purgeInput: { kind: "purge-input", trigger: "F2", modifiers: [], freshOnly: true, escapeCount: 3 },
     walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
     messageText: [{ find: "a", replace: "b" }], screenText: [{ find: "a", replace: "b" }],
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],
@@ -263,7 +379,7 @@ describe("policy tables that install registrations", () => {
       () => ({ grants: capabilities("tables", [capability]) }));
     const hooks = load("tables", plugin).hooks;
     const registrations = api2PluginRegistrations(plugin, "tables", { loud: true });
-    expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : name === "walkBlockedByDiggable" ? [name] : []);
+    expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : name === "walkBlockedByDiggable" || name === "startingOptions" ? [name === "startingOptions" ? "newCharacter" : name] : []);
     expect(Object.keys(registrations ?? {})).toEqual("registration" in target ? [target.registration] : []);
     plugin.uninstall?.();
   });
