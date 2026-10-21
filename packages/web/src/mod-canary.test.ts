@@ -75,12 +75,37 @@ afterAll(() => {
 
 /* Generous, because this is a scheduled job and not a keystroke: a large tile
  * archive is 10.6 MiB and the whole curated set is ~25 MiB. */
-const TIMEOUT = 180_000;
+const TIMEOUT = 300_000;
+
+/* A scheduled job against GitHub sees the odd hung or dropped request, and one of
+ * those used to fail the whole run (2026-10-15 and 2026-10-19). Only a transport
+ * failure or a status that means "try later" is retried, a few times with a short
+ * pause and a cap on how long one request may take. A 404 or any other answer is
+ * the world telling us something and is never retried, because a deleted tag or a
+ * renamed file is exactly what this canary exists to report. */
+const ATTEMPTS = 3;
+const REQUEST_MS = 120_000;
+const RETRY_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+async function fetchWithRetry(url: string): Promise<Response> {
+  let last: unknown;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_MS) });
+      if (!RETRY_STATUS.has(res.status) || attempt === ATTEMPTS) return res;
+      last = new Error(`HTTP ${String(res.status)} for ${url}`);
+    } catch (e) {
+      last = e;
+    }
+    await new Promise((resolve) => setTimeout(resolve, attempt * 2_000));
+  }
+  throw last instanceof Error ? last : new Error(String(last));
+}
 
 const env: DiscoverEnv = {
   engineVersion: ENGINE_VERSION,
   fetch: async (url) => {
-    const res = await fetch(url);
+    const res = await fetchWithRetry(url);
     return { ok: res.ok, status: res.status, text: () => res.text() };
   },
 };
@@ -90,13 +115,24 @@ interface Fetched {
   readonly cors: string | null;
 }
 
-async function get(url: string): Promise<Fetched> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${String(res.status)} for ${url}`);
-  return {
-    bytes: new Uint8Array(await res.arrayBuffer()),
-    cors: res.headers.get("access-control-allow-origin"),
-  };
+/* One download per URL for the whole file. The payload test and both manifest tests
+ * read the same archives, and a 17 MiB tile archive fetched three times is how a
+ * slow link turned a passing canary into a timeout. */
+const downloads = new Map<string, Promise<Fetched>>();
+
+function get(url: string): Promise<Fetched> {
+  const known = downloads.get(url);
+  if (known) return known;
+  const started = (async (): Promise<Fetched> => {
+    const res = await fetchWithRetry(url);
+    if (!res.ok) throw new Error(`HTTP ${String(res.status)} for ${url}`);
+    return {
+      bytes: new Uint8Array(await res.arrayBuffer()),
+      cors: res.headers.get("access-control-allow-origin"),
+    };
+  })();
+  downloads.set(url, started);
+  return started;
 }
 
 /**
@@ -163,7 +199,7 @@ describe.skipIf(!ON)("the curated mods still serve what this build needs", () =>
   it(
     "the list is readable, and CORS-open so the static web build can read it too",
     async () => {
-      const res = await fetch(DEFAULT_REGISTRY_URL);
+      const res = await fetchWithRetry(DEFAULT_REGISTRY_URL);
       expect(res.ok).toBe(true);
       /* The one header that decides whether the deployed site can do this at all.
        * Measured rather than assumed, because it is not this project's to guarantee. */
