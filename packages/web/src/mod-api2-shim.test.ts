@@ -2,14 +2,24 @@
  * The shim: an API 1 plugin runs unchanged, and an API 2 definition runs
  * through the same loader path as an API 1 plugin.
  */
-import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   composeModHooks,
   guardModHooks,
   OptionState,
   Rng,
   StoreBehaviourRegistry,
+  ObjRegistry,
   TV,
+  bindConstants,
+  massProduce,
+  objectPrep,
+  objectValueReal,
+  registerCoreStoreBehaviour,
+  resetTvalRegistry,
+  tvalRegistry,
+  type ObjPackJson,
   type HistoryAddEntry,
   type GameState,
   type ModHooks,
@@ -39,6 +49,28 @@ import {
 } from "./mod-api2-shim";
 import { modPluginContext } from "./mod-context";
 import { defineModPlugin, validateModPlugin, type ModPlugin } from "./mod-plugin";
+
+afterEach(() => resetTvalRegistry());
+
+function loadJson<T>(name: string): T {
+  return JSON.parse(readFileSync(new URL(`../../content/pack/${name}.json`, import.meta.url), "utf8")) as T;
+}
+
+const pricingRegistry = new ObjRegistry({
+  objectBase: loadJson("object_base"), object: loadJson("object"),
+  egoItem: loadJson("ego_item"), artifact: loadJson("artifact"),
+  curse: loadJson("curse"), brand: loadJson("brand"), slay: loadJson("slay"),
+  activation: loadJson("activation"), objectProperty: loadJson("object_property"), flavor: loadJson("flavor"),
+} as ObjPackJson);
+const pricingConstants = bindConstants(loadJson("constants"));
+
+function armor(name: string, toA = 0) {
+  const kind = pricingRegistry.kinds.find((candidate) => candidate.name === name);
+  if (!kind) throw new Error(`no armor kind named ${name}`);
+  const obj = objectPrep(new Rng(1), pricingRegistry, pricingConstants, kind, 0, "minimise");
+  obj.toA = toA;
+  return obj;
+}
 
 function capabilities(id: string, granted: string[]): CapabilitySet {
   return CapabilitySet.fromManifest({
@@ -365,6 +397,7 @@ describe("policy tables that install registrations", () => {
     historyDisplay: [{ find: "a", replace: "b" }], objectListOrder: ["dy"], saveNoiseScent: true,
     shapeLearnObviousFlagsDirectly: true, storeDiscountRoll: { tiers: [{ oneIn: 1, percent: 20 }] },
     tileMap: [{ monster: 2, like: 1 }],
+    valueFloor: { kind: "valueFloor", tvals: [10, 11], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" },
   };
 
   it.each(Object.keys(tables))("requires a registry grant for the in-process %s policy", (name) => {
@@ -431,5 +464,124 @@ describe("policy tables that install registrations", () => {
     expect(stores.discountRollHandler()?.({ rng, cost: 100 })).toBe(0);
     expect(JSON.stringify(rng.getState())).toBe(before);
     expect(filled).toBe(0);
+  });
+
+  const floor: Api2Policies = {
+    valueFloor: { kind: "valueFloor", tvals: [10, 11, 12, 13, 14, 15, 16, 17, 18], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" },
+  };
+
+  function installFloor() {
+    const plugin = api2Plugin({ api: "^2.0.0", policies: () => floor }, () => ({ grants: capabilities("floor", ["registry:tval"]) }));
+    load("floor", plugin);
+    const registrations = api2PluginRegistrations(plugin, "floor", { loud: true })!;
+    installApi2PolicyRegistrations(registrations, { stores: null, tiles: null, valueAdjust: tvalRegistry().valueAdjust },
+      () => api2PluginRegistrations(plugin, "floor", { loud: true }) === registrations);
+    return plugin;
+  }
+
+  it.each([
+    ["Studded Leather Armour~", 2, 1, 266, 336],
+    ["Studded Leather Armour~", 2, 3, 798, 1008],
+    ["Hard Leather Armour~", 1, 1, 374, 546],
+    ["Hard Leather Armour~", 3, 1, 546, 546],
+  ] as const)("matches Bug Fixes' real price for %s +%i, quantity %i", (name, toA, qty, faithful, fixed) => {
+    const obj = armor(name, toA);
+    const before = JSON.stringify(obj);
+    expect(objectValueReal(pricingRegistry, obj, qty)).toBe(faithful);
+    const plugin = installFloor();
+    expect(objectValueReal(pricingRegistry, obj, qty)).toBe(fixed);
+    expect(JSON.stringify(obj)).toBe(before);
+    plugin.uninstall?.();
+    expect(objectValueReal(pricingRegistry, obj, qty)).toBe(faithful);
+  });
+
+  it.each([
+    ["Studded Leather Armour~", 0], ["Studded Leather Armour~", -3], ["Adamantite Plate Mail~", 5],
+  ] as const)("keeps the live route's no-op for %s +%i", (name, toA) => {
+    const obj = armor(name, toA);
+    const faithful = objectValueReal(pricingRegistry, obj, 1);
+    installFloor();
+    expect(objectValueReal(pricingRegistry, obj, 1)).toBe(faithful);
+  });
+
+  it("applies the floor to an ego without positive toA and leaves other classes alone", () => {
+    const obj = armor("Studded Leather Armour~");
+    obj.ego = pricingRegistry.egos[0]!;
+    const swordKind = pricingRegistry.kinds.find((kind) => kind.tval === TV.SWORD)!;
+    const sword = objectPrep(new Rng(1), pricingRegistry, pricingConstants, swordKind, 0, "minimise");
+    sword.toA = 2;
+    const faithful = objectValueReal(pricingRegistry, sword, 1);
+    installFloor();
+    expect(objectValueReal(pricingRegistry, obj, 1)).toBe(336);
+    expect(objectValueReal(pricingRegistry, sword, 1)).toBe(faithful);
+    expect(tvalRegistry().valueAdjust.has(TV.SWORD)).toBe(false);
+  });
+
+  it("uses the last contribution and restores preceding handlers on stop", () => {
+    const obj = armor("Studded Leather Armour~", 2);
+    tvalRegistry().valueAdjust.set(obj.tval, () => 1234);
+    const first = installFloor();
+    expect(objectValueReal(pricingRegistry, obj, 1)).toBe(336);
+    const second = installFloor();
+    first.uninstall?.();
+    expect(objectValueReal(pricingRegistry, obj, 1)).toBe(336);
+    second.uninstall?.();
+    expect(objectValueReal(pricingRegistry, obj, 1)).toBe(1234);
+  });
+
+  const discounts: Api2Policies = {
+    storeDiscountRoll: { minCost: 5, tiers: [{ oneIn: 25, percent: 10 }, { oneIn: 50, percent: 25 }, { oneIn: 150, percent: 50 }, { oneIn: 300, percent: 75 }, { oneIn: 500, percent: 90 }] },
+  };
+
+  function classicDiscount(rng: Rng, cost: number): number {
+    if (cost < 5) return 0;
+    if (rng.oneIn(25)) return 10;
+    if (rng.oneIn(50)) return 25;
+    if (rng.oneIn(150)) return 50;
+    if (rng.oneIn(300)) return 75;
+    if (rng.oneIn(500)) return 90;
+    return 0;
+  }
+
+  it("matches Cutting Room Floor's stocking, stack size and game RNG", () => {
+    const plugin = api2Plugin({ api: "^2.0.0", policies: () => discounts }, () => ({ grants: capabilities("discounts", ["registry:store"]) }));
+    load("discounts", plugin);
+    const registrations = api2PluginRegistrations(plugin, "discounts", { loud: true })!;
+    const declared = new StoreBehaviourRegistry();
+    const live = new StoreBehaviourRegistry();
+    registerCoreStoreBehaviour(declared);
+    registerCoreStoreBehaviour(live);
+    installApi2PolicyRegistrations(registrations, { stores: declared, tiles: null }, () => true);
+    live.registerDiscountRoll(({ rng, cost }) => classicDiscount(rng, cost));
+    const kind = pricingRegistry.kinds.find((candidate) => candidate.tval === TV.POTION && candidate.cost >= 5)!;
+    for (let seed = 1; seed <= 256; seed += 1) {
+      const original = objectPrep(new Rng(1), pricingRegistry, pricingConstants, kind, 0, "minimise");
+      for (const cost of [4, kind.cost]) {
+        const left = { ...original, kind: { ...kind, cost } };
+        const right = { ...original, kind: { ...kind, cost } };
+        const rng = new Rng(seed);
+        const twin = new Rng(seed);
+        massProduce(pricingRegistry, rng, left, declared);
+        massProduce(pricingRegistry, twin, right, live);
+        expect([left.discount, left.number]).toEqual([right.discount, right.number]);
+        expect(rng.getState()).toEqual(twin.getState());
+      }
+    }
+  });
+
+  it("restores the preceding discount declaration without drawing after both stop", () => {
+    const stores = new StoreBehaviourRegistry();
+    let firstActive = true;
+    let secondActive = true;
+    const rng = new Rng(42);
+    const before = rng.getState();
+    installApi2PolicyRegistrations({ discountRoll: () => 10 }, { stores, tiles: null }, () => firstActive);
+    installApi2PolicyRegistrations({ discountRoll: () => 90 }, { stores, tiles: null }, () => secondActive);
+    expect(stores.discountRollHandler()?.({ rng, cost: 100 })).toBe(90);
+    secondActive = false;
+    expect(stores.discountRollHandler()?.({ rng, cost: 100 })).toBe(10);
+    firstActive = false;
+    expect(stores.discountRollHandler()?.({ rng, cost: 100 })).toBe(0);
+    expect(rng.getState()).toEqual(before);
   });
 });

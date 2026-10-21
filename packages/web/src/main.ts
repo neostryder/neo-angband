@@ -16263,7 +16263,7 @@ for (const id of enabledModIds()) {
     if (registrations) {
       installApi2PolicyRegistrations(
         registrations,
-        { id, state, stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(id), purgeInput: purgeInputTarget },
+        { id, state, stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(id), purgeInput: purgeInputTarget, valueAdjust: tvalRegistry().valueAdjust },
         () => workerPlugins.has(id) && !modHealth().isOff(id),
       );
     }
@@ -16276,8 +16276,8 @@ for (const id of enabledModIds()) {
     if (registrations) {
       installApi2PolicyRegistrations(
         registrations,
-        { id: loaded.id, state, stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(loaded.id), purgeInput: purgeInputTarget },
-        () => !modHealth().isOff(loaded.id),
+        { id: loaded.id, state, stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(loaded.id), purgeInput: purgeInputTarget, valueAdjust: tvalRegistry().valueAdjust },
+        () => !modHealth().isOff(loaded.id) && api2PluginRegistrations(loaded.plugin, loaded.id, folderRuleFlags.get(loaded.id) ?? {}) === registrations,
       );
     }
     const register = loaded.plugin.register;

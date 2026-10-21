@@ -22,6 +22,13 @@ import {
   squareForget,
   squareMemorize,
   startGame,
+  ObjRegistry,
+  Rng,
+  bindConstants,
+  objectPrep,
+  objectValueReal,
+  resetTvalRegistry,
+  tvalRegistry,
   tunnelAux,
   walkAction,
   type CaveCmdDeps,
@@ -33,7 +40,7 @@ import {
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
 import { API2_POLICY_KINDS, CapabilitySet, type Api2ModDefinition, type Api2Policies, type Api2PolicyRegistrations, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
-import { api2Plugin, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "../mod-api2-shim";
+import { api2Plugin, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "../mod-api2-shim";
 import { createApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
 import { ModHealthMonitor, type ModSwitchOff } from "../mod-health";
@@ -172,6 +179,7 @@ const sessions: StartedModWorker[] = [];
 afterEach(() => {
   for (const session of sessions.splice(0)) session.teardown();
   resetWorkerHooks();
+  resetTvalRegistry();
 });
 
 function wire(definition: Api2ModDefinition, deps: Partial<ModWorkerHostDeps> = {}): Wired {
@@ -500,6 +508,7 @@ describe("a Worker mod's hooks", () => {
     historyDisplay: [{ find: "a", replace: "b" }], objectListOrder: ["dy"], saveNoiseScent: true,
     shapeLearnObviousFlagsDirectly: true, storeDiscountRoll: { tiers: [{ oneIn: 1, percent: 20 }] },
     tileMap: [{ monster: 2, like: 1 }],
+    valueFloor: { kind: "valueFloor", tvals: [10, 11], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" },
   };
 
   it.each(Object.keys(tables))("requires a registry grant for the Worker %s policy", async (name) => {
@@ -570,6 +579,53 @@ describe("a Worker mod's hooks", () => {
     await wired.session.ready;
     expect(wired.problems.join("\n")).toMatch(/its policies are not valid/u);
     expect(workerModHooks("probe")).toBeUndefined();
+  });
+
+  it("prices armor from Worker data in the host and restores the live handler on teardown", async () => {
+    const reg = new ObjRegistry(pack.obj);
+    const constants = bindConstants(pack.constants);
+    const rng = new Rng(1);
+    const kind = reg.kinds.find((candidate) => candidate.name === "Studded Leather Armour~")!;
+    const obj = objectPrep(rng, reg, constants, kind, 0, "minimise");
+    obj.toA = 2;
+    const before = rng.getState();
+    expect(objectValueReal(reg, obj, 1)).toBe(266);
+    tvalRegistry().valueAdjust.set(obj.tval, () => 1234);
+    let active = true;
+    let received: unknown;
+    const wired = wire({
+      api: API,
+      policies: (context) => {
+        expect(context.engine).toBeUndefined();
+        return { valueFloor: { kind: "valueFloor", tvals: [10, 11, 12, 13, 14, 15, 16, 17, 18], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" } };
+      },
+    }, {
+      grants: ["registry:tval"],
+      onHooks: (_hooks, _notify, registrations) => {
+        received = registrations.valueFloor;
+        installApi2PolicyRegistrations(registrations, { stores: null, tiles: null, valueAdjust: tvalRegistry().valueAdjust }, () => active);
+      },
+      onTeardown: () => { active = false; },
+    });
+    await wired.session.ready;
+    expect(received).toMatchObject({ kind: "valueFloor", price: "objectValueReal" });
+    expect(objectValueReal(reg, obj, 1)).toBe(336);
+    expect(objectValueReal(reg, obj, 3)).toBe(1008);
+    expect(rng.getState()).toEqual(before);
+    wired.session.teardown();
+    expect(objectValueReal(reg, obj, 1)).toBe(1234);
+  });
+
+  it("refuses a malformed Worker value floor before registering a handler", async () => {
+    let registrations: Api2PolicyRegistrations = {};
+    const wired = wire({ api: API, policies: () => ({ valueFloor: { kind: "unknown" } }) as never }, {
+      grants: ["registry:tval"],
+      onHooks: (_hooks, _notify, found) => { registrations = found; },
+    });
+    await wired.session.ready;
+    expect(registrations).toEqual({});
+    expect(wired.problems.join("\n")).toContain("valueFloor.kind");
+    expect(tvalRegistry().valueAdjust.keys()).toEqual([]);
   });
 
   it("forwards the notification hooks it declared", async () => {
