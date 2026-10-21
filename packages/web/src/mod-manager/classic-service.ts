@@ -1,5 +1,6 @@
 import { validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { archivedManifest, archivedMod, archivedSavedMod, archivedVersions, installedMods, restoreArchivedVersion, restoreInstallations } from "../mod-install";
+import { archivedMod, archivedSavedMod, installedMods, restoreArchivedVersion, restoreInstallations } from "../mod-install";
+import { previousModVersion } from "../mod-transactions";
 import { installBlocked } from "../mod-consent";
 import { originConflict } from "../mod-source";
 import { buildCatalog, defaultModStore, ModStore, type CatalogMod } from "../mod-store";
@@ -20,7 +21,7 @@ const managers = new WeakMap<ModManagerDeps, ClassicService>();
 const browsers = new WeakMap<ModBrowseDeps, ClassicService>();
 const catalogCores = new WeakMap<CatalogMod, CoreModManager>();
 
-function browsingEnvironment(deps: ModBrowseDeps): Pick<ModManagerEnvironment, "discover" | "curated" | "readManifest" | "install" | "stagePlan" | "stageRollback" | "previousVersion" | "releasePreviousVersions" | "restart" | "uninstall" | "consent" | "refreshUpdates"> {
+function browsingEnvironment(deps: ModBrowseDeps): Pick<ModManagerEnvironment, "discover" | "curated" | "readManifest" | "install" | "stagePlan" | "stageRollback" | "previousVersion" | "releasePreviousVersions" | "saveReferences" | "restart" | "uninstall" | "consent" | "refreshUpdates"> {
   return {
     discover: async (ref) => {
       const cached = await archivedMod(ref);
@@ -38,6 +39,7 @@ function browsingEnvironment(deps: ModBrowseDeps): Pick<ModManagerEnvironment, "
     ...(deps.stageRollback ? { stageRollback: deps.stageRollback } : {}),
     ...(deps.previousVersion ? { previousVersion: deps.previousVersion } : {}),
     ...(deps.releasePreviousVersions ? { releasePreviousVersions: deps.releasePreviousVersions } : {}),
+    ...(deps.saveReferences ? { saveReferences: deps.saveReferences } : {}),
     ...(deps.restart ? { restart: deps.restart } : {}),
     uninstall: deps.uninstall,
     consent: deps.consent,
@@ -58,15 +60,7 @@ export function classicManager(deps: ModManagerDeps): ClassicService {
         return cached ? { ok: true, ref: { repo: cached.mod.repo, tag: cached.mod.tag }, mod: cached.mod } : null;
       },
       conflictOverrides: { read: () => deps.store.getConflictOverrides(), write: (slot, winner) => deps.store.setConflictOverride(slot, winner) },
-      previousVersion: async (id) => {
-        const current = (await installedMods()).find((m) => m.id === id);
-        const previous = [...await archivedVersions()].reverse().find((m) => m.id === id && (m.sha !== current?.sha || m.tag !== current?.tag || JSON.stringify(m.digests) !== JSON.stringify(current?.digests)));
-        if (!previous) return null;
-        const manifest = await archivedManifest(previous);
-        if (!manifest) return null;
-        const cached = await archivedSavedMod({ id, name: manifest.name, version: manifest.version, repository: previous.repo, tag: previous.tag, commit: previous.sha ?? null, payloadDigest: previous.digests ? { ...previous.digests } : null, api: manifest.api ?? "*", settings: {}, sections: {} });
-        return cached ? { ok: true, ref: { repo: cached.mod.repo, tag: cached.mod.tag }, mod: cached.mod } : null;
-      },
+      previousVersion: (id) => previousModVersion(id, { store: deps.store, allowed: deps.modBrowse?.consent.read ?? (() => false), install: { fetch: (url) => fetch(url), subtle: crypto.subtle, scope: globalThis, now: () => new Date().toISOString() } }),
       listCatalog: deps.listCatalog,
       installedMetadata: () => installedMods(globalThis),
       safeMode: safeLaunch,

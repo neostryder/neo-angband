@@ -14,8 +14,8 @@
  * job lives in API 2, or why it has no API 2 form.
  */
 
-import type { DiscountRollHandler, GameObject, ModHooks, ModPluginContext, TvalValueAdjustContext, TvalValueAdjustHandler } from "@rpgm-tools/neo-angband-core";
-import { inputToken, movementTunnelTest, objectValueReal, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, type CaveCmdDeps, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
+import type { ModHooks, ModPluginContext } from "@rpgm-tools/neo-angband-core";
+import { inputToken, movementTunnelTest, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, type CaveCmdDeps, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
 import {
   api2PolicyEffects,
   apiRangeVerdict,
@@ -194,14 +194,9 @@ export function mergePolicies(policies: unknown, hooks: Api2Hooks | undefined, g
  */
 export interface Api2PolicyTargets {
   readonly stores: {
-    registerDiscountRoll(handler: DiscountRollHandler): void;
-    discountRollHandler?(): DiscountRollHandler | null;
+    registerDiscountRoll(handler: (roll: { readonly rng: { oneIn(n: number): boolean }; readonly cost: number }) => number): void;
   } | null;
   readonly tiles: { register(filler: (fill: Api2TileFill) => void): void } | null;
-  readonly valueAdjust?: {
-    handlerFor(tval: number): TvalValueAdjustHandler | null;
-    set(tval: number, handler: TvalValueAdjustHandler): void;
-  } | null;
 }
 
 export function api2PolicyModHooks(registrations: Api2PolicyRegistrations, active: () => boolean): ModHooks {
@@ -253,45 +248,11 @@ export function contributeApi2PrefErrors(id: string, registrations: Api2PolicyRe
   };
 }
 
-function valueFloor(ctx: TvalValueAdjustContext): number {
-  const { reg, obj, qty, baseValue, totalAc } = ctx;
-  if (obj.ego == null && obj.toA <= 0) return baseValue;
-  let cheapest: number | null = null;
-  for (const kind of reg.kinds) {
-    if (kind.tval !== obj.tval || kind.ac <= totalAc) continue;
-    const flags = obj.flags.clone();
-    flags.wipe();
-    const plain: GameObject = {
-      ...obj,
-      kind,
-      tval: kind.tval,
-      sval: kind.sval,
-      ac: kind.ac,
-      toA: 0,
-      toH: kind.toH.base,
-      toD: kind.toD.base,
-      weight: kind.weight,
-      dd: kind.dd,
-      ds: kind.ds,
-      pval: 0,
-      ego: null,
-      artifact: null,
-      brands: null,
-      slays: null,
-      curses: null,
-      activation: null,
-      modifiers: obj.modifiers.map(() => 0),
-      flags,
-      elInfo: obj.elInfo.map(() => ({ resLevel: 0, flags: 0 })),
-    };
-    // Plain comparisons skip this policy when pricing calls it again.
-    const price = objectValueReal(reg, plain, qty);
-    if (cheapest === null || price < cheapest) cheapest = price;
-  }
-  return cheapest === null ? baseValue : Math.max(baseValue, cheapest);
-}
-
-/** Preceding registrations remain available when a contributing mod stops. */
+/**
+ * Install a mod's policy registrations. `active` is asked on every use, and a
+ * mod that is no longer active answers as if it had installed nothing: no
+ * discount and no roll drawn, and no tile filled.
+ */
 export function installApi2PolicyRegistrations(
   registrations: Api2PolicyRegistrations,
   targets: Api2PolicyTargets,
@@ -299,14 +260,7 @@ export function installApi2PolicyRegistrations(
 ): void {
   const roll = registrations.discountRoll;
   if (roll && targets.stores) {
-    const prior = targets.stores.discountRollHandler?.();
-    targets.stores.registerDiscountRoll((ctx) => (active() ? roll({ cost: ctx.cost, oneIn: (n) => ctx.rng.oneIn(n) }) : prior?.(ctx) ?? 0));
-  }
-  if (registrations.valueFloor && targets.valueAdjust) {
-    for (const tval of registrations.valueFloor.tvals) {
-      const prior = targets.valueAdjust.handlerFor(tval);
-      targets.valueAdjust.set(tval, (ctx) => active() ? valueFloor(ctx) : prior?.(ctx) ?? ctx.baseValue);
-    }
+    targets.stores.registerDiscountRoll((ctx) => (active() ? roll({ cost: ctx.cost, oneIn: (n) => ctx.rng.oneIn(n) }) : 0));
   }
   const filler = registrations.tileFiller;
   if (filler && targets.tiles) {
@@ -524,7 +478,6 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
   plugin.uninstall = () => {
     stopped = true;
     generation += 1;
-    pluginPolicies.delete(plugin as ModPlugin);
     releasePrefErrors();
     try { definition.stop?.(); } finally {
       for (const mod of hosts) disposeApi2Host(mod);

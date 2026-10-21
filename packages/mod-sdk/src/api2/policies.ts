@@ -121,14 +121,6 @@ export interface Api2PrefErrorsPolicy {
   readonly reportLimit: number;
 }
 
-export interface Api2ValueFloorPolicy {
-  readonly kind: "valueFloor";
-  readonly tvals: readonly number[];
-  readonly appliesTo: "egoOrPositiveToA";
-  readonly comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc";
-  readonly price: "objectValueReal";
-}
-
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
   readonly prefErrors?: Api2PrefErrorsPolicy;
@@ -153,7 +145,6 @@ export interface Api2Policies {
   readonly shapeLearnObviousFlagsDirectly?: boolean;
   /** The discount a store gives on the stock it makes. */
   readonly storeDiscountRoll?: Api2DiscountRollPolicy;
-  readonly valueFloor?: Api2ValueFloorPolicy;
   /** Tiles for monsters and objects the tile pack does not draw. */
   readonly tileMap?: readonly Api2TileRule[];
 }
@@ -190,7 +181,6 @@ export interface Api2PolicyRegistrations {
   walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   /** Installed as the stores' discount roll. */
   discountRoll?: Api2DiscountRoll;
-  valueFloor?: Api2ValueFloorPolicy;
   /** Installed as the mod's tile filler. */
   tileFiller?: Api2TileFiller;
 }
@@ -563,33 +553,6 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
         for (const tier of tiers) if (roll.oneIn(tier.oneIn)) return tier.percent;
         return 0;
       };
-    },
-  },
-  {
-    name: "valueFloor",
-    capability: "registry:tval",
-    summary: "Floors enhanced armor prices at the cheapest plain kind with greater armor class.",
-    target: { registration: "valueFloor" },
-    check(value) {
-      if (!isRecord(value)) return "valueFloor is an object";
-      const extra = unknownField("valueFloor", value, ["kind", "tvals", "appliesTo", "comparison", "price"]);
-      if (extra) return extra;
-      for (const [field, expected] of Object.entries({
-        kind: "valueFloor", appliesTo: "egoOrPositiveToA",
-        comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal",
-      })) {
-        if (value[field] !== expected) return `valueFloor.${field} is "${expected}"`;
-      }
-      const tvals = value["tvals"];
-      if (!Array.isArray(tvals) || tvals.length === 0 || tvals.length > API2_POLICY_LIMITS.rules) {
-        return "valueFloor.tvals lists 1 to 256 item class indices";
-      }
-      if (!tvals.every((tval) => isInt(tval, 0, 100_000))) return "valueFloor.tvals holds whole numbers from 0 to 100000";
-      if (new Set(tvals).size !== tvals.length) return "valueFloor.tvals has no duplicate indices";
-      return null;
-    },
-    apply(value, out) {
-      out.registrations.valueFloor = value as Api2ValueFloorPolicy;
     },
   },
   {

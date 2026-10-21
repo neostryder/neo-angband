@@ -20,7 +20,6 @@ describe("checkApi2Policies", () => {
     const policies: Api2Policies = {
       prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
       walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
-      valueFloor: { kind: "valueFloor", tvals: [10, 11], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" },
       messageText: [{ find: "You feel", replace: "You sense", match: "prefix" }],
       screenText: [{ find: "a", replace: "b", where: { screen: "char", column: 2 } }],
       historyAdd: [{ find: "Found", drop: true, match: "prefix", where: { duplicate: true } }],
@@ -168,7 +167,7 @@ describe("API2_POLICY_KINDS", () => {
       messageText: "registry:message", screenText: "registry:ui-entry", characterBackground: "registry:message",
       objectInfoText: "registry:effect-info", effectIntro: "registry:effect-info", historyAdd: "registry:message",
       historyDisplay: "registry:message", objectListOrder: "registry:tval", saveNoiseScent: "registry:monster",
-      shapeLearnObviousFlagsDirectly: "registry:rune", storeDiscountRoll: "registry:store", valueFloor: "registry:tval", tileMap: "registry:tiles",
+      shapeLearnObviousFlagsDirectly: "registry:rune", storeDiscountRoll: "registry:store", tileMap: "registry:tiles",
     });
   });
 
@@ -178,7 +177,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "valueFloor"]).toContain(kind.target.registration);
+      else expect(["discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors"]).toContain(kind.target.registration);
     }
   });
 
@@ -196,7 +195,7 @@ describe("the store discount roll", () => {
   const classic: Api2Policies = {
     storeDiscountRoll: {
       minCost: 5,
-      tiers: [{ oneIn: 25, percent: 10 }, { oneIn: 50, percent: 25 }, { oneIn: 150, percent: 50 }, { oneIn: 300, percent: 75 }, { oneIn: 500, percent: 90 }],
+      tiers: [{ oneIn: 25, percent: 25 }, { oneIn: 150, percent: 50 }, { oneIn: 300, percent: 75 }, { oneIn: 500, percent: 90 }],
     },
   };
 
@@ -204,22 +203,16 @@ describe("the store discount roll", () => {
     const discount = api2PolicyEffects(classic).registrations.discountRoll;
     const a = roll(100, [150, 500]);
     expect(discount?.(a.roll)).toBe(50);
-    expect(a.drawn).toEqual([25, 50, 150]);
+    expect(a.drawn).toEqual([25, 150]);
     const b = roll(100, []);
     expect(discount?.(b.roll)).toBe(0);
-    expect(b.drawn).toEqual([25, 50, 150, 300, 500]);
+    expect(b.drawn).toEqual([25, 150, 300, 500]);
   });
 
   it("draws nothing for an object worth less than minCost", () => {
     const cheap = roll(4, [25]);
     expect(api2PolicyEffects(classic).registrations.discountRoll?.(cheap.roll)).toBe(0);
     expect(cheap.drawn).toEqual([]);
-  });
-
-  it.each([[25, 10], [50, 25], [150, 50], [300, 75], [500, 90]])("matches the classic one-in-%i tier at %i percent", (oneIn, percent) => {
-    const attempt = roll(5, [oneIn]);
-    expect(api2PolicyEffects(classic).registrations.discountRoll?.(attempt.roll)).toBe(percent);
-    expect(attempt.drawn).toEqual([25, 50, 150, 300, 500].slice(0, [25, 50, 150, 300, 500].indexOf(oneIn) + 1));
   });
 
   it("installs no hook, only the registration", () => {
@@ -235,34 +228,6 @@ describe("the store discount roll", () => {
     expect(checkApi2Policies({ storeDiscountRoll: { tiers: [{ oneIn: 0, percent: 10 }] } })).toMatch(/oneIn is a whole number/u);
     expect(checkApi2Policies({ storeDiscountRoll: { tiers: [{ oneIn: 2, percent: 10, odds: 3 }] } })).toMatch(/unknown field "odds"/u);
     expect(checkApi2Policies({ storeDiscountRoll: { minCost: -1, tiers: [{ oneIn: 2, percent: 10 }] } })).toMatch(/minCost/u);
-  });
-});
-
-describe("the value floor", () => {
-  const declaration = {
-    kind: "valueFloor", tvals: [10, 11, 12, 13, 14, 15, 16, 17, 18],
-    appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal",
-  } as const;
-
-  it("copies the data only when its item class grant is held", () => {
-    expect(checkApi2Policies({ valueFloor: declaration })).toBeNull();
-    expect(api2PolicyEffects({ valueFloor: declaration }, () => false).registrations).toEqual({});
-    const effects = api2PolicyEffects({ valueFloor: declaration }, (capability) => capability === "registry:tval");
-    expect(effects.hooks).toEqual({});
-    expect(effects.registrations.valueFloor).toEqual(declaration);
-    expect(effects.registrations.valueFloor?.tvals).not.toBe(declaration.tvals);
-  });
-
-  it("refuses unknown kinds, fields and comparison choices", () => {
-    for (const field of ["kind", "appliesTo", "comparison", "price"]) {
-      expect(checkApi2Policies({ valueFloor: { ...declaration, [field]: "unknown" } })).toContain(`valueFloor.${field}`);
-    }
-    expect(checkApi2Policies({ valueFloor: { ...declaration, floor: 100 } })).toContain("unknown field \"floor\"");
-    expect(checkApi2Policies({ valueFloor: null })).toContain("is an object");
-  });
-
-  it.each([undefined, [], [10, 10], [-1], [1.5], [100001], ["armor"], Array.from({ length: 257 }, (_, i) => i)])("refuses malformed item class indices: %j", (tvals) => {
-    expect(checkApi2Policies({ valueFloor: { ...declaration, tvals } })).toContain("valueFloor.tvals");
   });
 });
 

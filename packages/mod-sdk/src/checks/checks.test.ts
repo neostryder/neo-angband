@@ -690,23 +690,6 @@ describe("checker regressions", () => {
     } });
     expect(r.findings.find((f) => f.rule === "checks/plugin-shape")?.message).toContain("walkBlockedByDiggable.step is false");
   });
-
-  it("matches a value floor to its registry permission and refuses other price formulas", async () => {
-    const code = "export default { api: \"^2.0.0\", policies() { return { valueFloor: { kind: \"valueFloor\", tvals: [10, 11], appliesTo: \"egoOrPositiveToA\", comparison: \"cheapestPlainSameTvalWithStrictlyGreaterAc\", price: \"objectValueReal\" } }; } };";
-    for (const granted of [false, true]) {
-      const r = await report({ files: {
-        "manifest.json": v2({ api: "^2.0.0", runtime: "worker", entry: "plugin.js", capabilities: granted ? ["registry:tval"] : [] }),
-        "plugin.js": code,
-      } });
-      expect(r.findings.some((f) => f.rule === "checks/undeclared-capability")).toBe(!granted);
-      expect(r.findings.some((f) => f.rule === "checks/plugin-shape")).toBe(false);
-    }
-    const r = await report({ files: {
-      "manifest.json": v2({ api: "^2.0.0", runtime: "worker", entry: "plugin.js", capabilities: ["registry:tval"] }),
-      "plugin.js": code.replace("objectValueReal", "customPrice"),
-    } });
-    expect(r.findings.find((f) => f.rule === "checks/plugin-shape")?.message).toContain("valueFloor.price");
-  });
 });
 
 describe("the report", () => {

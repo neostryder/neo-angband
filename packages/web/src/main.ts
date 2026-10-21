@@ -317,6 +317,7 @@ import {
 } from "./disk-packs";
 import {
   installModFromRepo,
+  archivedMod,
   installedMeta,
   installedMods,
   loadInstalledMods,
@@ -600,7 +601,7 @@ import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
 import { LookStore, NEO_PENDING_TEXT } from "./look-state";
 import { runLookChoice } from "./mod-manager/classic-look";
-import { captureModList, ModListStore, ModSaveGuard, retainMissingModList } from "./mod-manager/mod-lists";
+import { captureModList, ModListStore, ModSaveGuard, retainMissingModList, savedModReferences } from "./mod-manager/mod-lists";
 import { prepareSaveModList } from "./mod-manager/classic-mod-list";
 import { modSaveApprovalFormat } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { InstalledModMeta } from "./mod-install";
@@ -7839,15 +7840,7 @@ async function buildModManagerDeps(): Promise<ModManagerDeps> {
     store,
     look: lookStore,
     modLists,
-    saveReferences: (id) => {
-      for (let index = 0; index < (realGameStorage?.length ?? 0); index++) {
-        const key = realGameStorage!.key(index);
-        if (!key || (!key.startsWith("neo-angband-save:") && !key.includes(":neo-angband-save:"))) continue;
-        const stored = realGameStorage!.getItem(key);
-        if (stored && decodeSavedGame(b64ToBytes(stored), undefined, SAVE_CODECS).save?.modList?.mods.some((mod) => mod.id === id)) return true;
-      }
-      return false;
-    },
+    saveReferences: (id, tag) => savedModReferences(id, tag, realGameStorage),
     listCatalog: () =>
       buildCatalog({
         content: discoverContentModManifests(),
@@ -13818,6 +13811,7 @@ function modTransactionEnvironment(): ModTransactionEnvironment {
     install: { fetch: (url) => fetch(url), subtle: crypto.subtle, scope: globalThis, now: () => new Date().toISOString() },
     store: defaultModStore(), profileId: profileStore.activeId(), allowed: () => readConsent(channelStore()),
     configurationStore: (id) => new ModStore(realGameStorage ? scopedStorage(realGameStorage, id) : null),
+    saveReferences: (id, tag) => savedModReferences(id, tag, realGameStorage),
   };
 }
 
@@ -13840,7 +13834,8 @@ function modBrowseDeps(): ModUpgradeDeps {
 
   return {
     stagePlan: async (plan, permissions, progress) => {
-      const registry = await fetchRegistry(DEFAULT_REGISTRY_URL, net).catch(() => null);
+      const cached = await Promise.all(plan.downloads.map((download) => archivedMod({ repo: download.mod.repo, tag: download.mod.tag.startsWith("archive:") ? download.mod.tag : download.mod.sha ?? download.mod.tag })));
+      const registry = plan.downloads.some((download, index) => cached[index] === null && !download.mod.tag.startsWith("archive:")) ? await fetchRegistry(DEFAULT_REGISTRY_URL, net).catch(() => null) : null;
       return stageModPlan(plan, permissions, {
         ...modTransactionEnvironment(),
         listing: (repo, origin) => installListing(repo, origin === "curated", registry?.ok ? registry.registry : null),
@@ -13849,6 +13844,7 @@ function modBrowseDeps(): ModUpgradeDeps {
     stageRollback: (id) => stageModRollback(id, modTransactionEnvironment()),
     previousVersion: (id) => previousModVersion(id, modTransactionEnvironment()),
     releasePreviousVersions: (id, saveReferences) => releasePreviousModVersions(id, { ...modTransactionEnvironment(), saveReferences }),
+    saveReferences: (id, tag) => savedModReferences(id, tag, realGameStorage),
     restart: () => reloadAfterModChange({ resume: gameScreenLive }),
     installed: async () => {
       const metas = await installedMods(globalThis);
@@ -15185,8 +15181,11 @@ async function bootMenus(): Promise<void> {
   const approval = approvalText ? parseDocument(approvalText, modSaveApprovalFormat) : null;
   const reviewed = approval?.ok && approval.data.slot === getActiveId() && approval.data.revision === defaultModStore().configurationRevision();
   allowModSetOverwrite = reviewed ? approval.data.allowOverwrite : false;
-  if (resumedActive && !reviewed && game.modList) {
-    const decision = await openModal(() => prepareSaveModList(term, saveDeps, game.modList));
+  if (modTransactionNotice || resumedActive && !reviewed && game.modList) {
+    const text = modTransactionNotice;
+    modTransactionNotice = null;
+    const decision = await openModal(() => prepareSaveModList(term, saveDeps, resumedActive && !reviewed ? game.modList : undefined, text));
+    if (classicManager(saveDeps).service.state.staged) { reloadAfterModChange({ resume: resumedActive }); return; }
     if (!decision.load) { detachSlot(); resumedActive = false; needsSelect = true; }
     else {
       allowModSetOverwrite = decision.allowOverwrite;
@@ -15216,14 +15215,6 @@ async function bootMenus(): Promise<void> {
    * It stays idempotent, and boot's tail still calls it for the routes that
    * return from here without painting anything.
    */
-  if (modTransactionNotice) {
-    const text = modTransactionNotice;
-    modTransactionNotice = null;
-    await openModal(() => showTextScreen(term, {
-      id: "core:mod-transaction-notice", title: "Mods", footer: "[ Press ESC to return ]",
-      blocks: [{ kind: "text", paragraphs: [[{ text }]], color: UI_BAD }],
-    }));
-  }
   /* The start reached the menus. A safe start is not counted (decideSafeLaunch),
    * so it does not clear the count either: the next normal start still knows
    * about the failures before it. */
@@ -16258,7 +16249,7 @@ for (const id of enabledModIds()) {
     if (registrations) {
       installApi2PolicyRegistrations(
         registrations,
-        { stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(id), valueAdjust: tvalRegistry().valueAdjust },
+        { stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(id) },
         () => workerPlugins.has(id) && !modHealth().isOff(id),
       );
     }
@@ -16271,8 +16262,8 @@ for (const id of enabledModIds()) {
     if (registrations) {
       installApi2PolicyRegistrations(
         registrations,
-        { stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(loaded.id), valueAdjust: tvalRegistry().valueAdjust },
-        () => !modHealth().isOff(loaded.id) && api2PluginRegistrations(loaded.plugin, loaded.id, folderRuleFlags.get(loaded.id) ?? {}) === registrations,
+        { stores: state.storeBehaviour ?? null, tiles: tileRegistry.forOwner(loaded.id) },
+        () => !modHealth().isOff(loaded.id),
       );
     }
     const register = loaded.plugin.register;
