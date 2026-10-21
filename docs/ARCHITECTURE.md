@@ -129,6 +129,8 @@ flowchart TD
   Plugins -->|"registry:room and registry:profile"| Generation
 ```
 
+![The five chokepoints that change from upstream, dark-skin view](img/neo-angband-chokepoints.png)
+
 *Source of truth: `packages/mod-sdk/src/loader.ts`, `packages/core/src/effects/interpreter.ts`, and `packages/content/pack/quest.json`.*
 
 The C original locks behavior behind compiled code. The port dissolves each
