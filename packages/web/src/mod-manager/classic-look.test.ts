@@ -25,7 +25,7 @@ describe("Core look choice", () => {
     vi.mocked(selectFromMenu).mockResolvedValueOnce(0);
     await runLookChoice({} as GridSurface & GridPointerInput, f.deps);
     expect(selectFromMenu).toHaveBeenCalledWith(expect.anything(), "core:look-choice", "Choose your look", [
-      { label: "Vanilla - Classic Angband presentation" }, { label: "Neo - AnybandUI presentation" },
+      { label: "Vanilla - Classic Angband presentation" }, { label: "Neo Angband - AnybandUI presentation" },
     ], expect.any(String));
     expect(f.look.read()).toMatchObject({ chosen: true, desired: "Vanilla", active: "Vanilla" });
   });

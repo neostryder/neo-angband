@@ -2,7 +2,7 @@ import { lookFormat, parseDocument, serializeDocument, type LookState, type Pack
 import type { ModStore, StorageLike } from "./mod-store";
 
 export const LOOK_STORAGE_KEY = "neo-angband:look";
-export const NEO_PENDING_TEXT = "Neo is waiting for AnybandUI to download";
+export const NEO_PENDING_TEXT = "Neo Angband is waiting for AnybandUI to download";
 
 export function vanillaLook(): LookState {
   return { chosen: false, desired: "Vanilla", active: "Vanilla", pending: null, snapshot: null, neoSettings: {}, playerChanges: {} };

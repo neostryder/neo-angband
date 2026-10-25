@@ -392,7 +392,7 @@ async function drawPermissionChoices(
           hint: truthAsked
             ? t(
                 "modsScreen.consent.allowDefaultsHintTruth",
-                "Allows everything listed except seeing the real map, which stays off unless you choose it one by one.",
+                "Allows all but the real map, which stays off unless you pick it one by one.",
               )
             : t("modsScreen.consent.allowDefaultsHint", "Allows everything listed."),
         },

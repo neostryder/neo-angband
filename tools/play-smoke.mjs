@@ -36,7 +36,11 @@
  * from the shipped artifact, so this reads pixels instead.
  *
  * Usage:
- *   node tools/play-smoke.mjs [--keep] [--shots <dir>] [--port <n>]
+ *   node tools/play-smoke.mjs [--keep] [--shots <dir>] [--port <n>] [--look vanilla|neo]
+ *
+ * `--look neo` takes the second answer on "Choose your look" instead of the
+ * first. That path asks the registry for AnybandUI, so it needs the network and
+ * is not part of the CI gate; run it by hand to check the Neo look end to end.
  *
  * Requires `pnpm --dir packages/web bundle` and the desktop build to have run,
  * and a display - on a Linux runner, `xvfb-run -a node tools/play-smoke.mjs`.
@@ -62,6 +66,11 @@ const opt = (name, fallback) => {
 
 const PORT = Number(opt("--port", "9334"));
 const SHOTS = opt("--shots", path.join(repoRoot, "smoke-shots"));
+const LOOK = opt("--look", "vanilla");
+if (LOOK !== "vanilla" && LOOK !== "neo") {
+  console.error(`--look takes vanilla or neo, not ${LOOK}`);
+  process.exit(2);
+}
 /* Its own profile, never the developer's: this launches with a real user-data
  * directory and a character gets created. Pointing that at a normal install
  * would put a throwaway smoke character beside somebody's real ones. */
@@ -204,9 +213,20 @@ function keySpec(key) {
  * screen that looks like the one before it opened, so they are not required to
  * differ from their own predecessor.
  */
+const NEO_LOOK_STEPS = [
+  /* The Core-drawn confirmation for installing AnybandUI: details, then the yes/no menu. */
+  { key: "Escape", label: "neo-confirm-details", settle: 2000, mustChange: true },
+  { key: "a", label: "neo-confirm-yes", settle: 3000, mustChange: true },
+  { key: "Escape", label: "neo-consent-review", settle: 2000, mustChange: true },
+  { key: "a", label: "neo-allow-these", settle: 12_000, mustChange: true },
+];
+
 const SCRIPT = [
   /* A fresh profile opens on "Choose your look" before the title screen. */
-  { key: "a", label: "choose-vanilla-look", settle: 2500, mustChange: true },
+  LOOK === "neo"
+    ? { key: "b", label: "choose-neo-look", settle: 12_000, mustChange: true }
+    : { key: "a", label: "choose-vanilla-look", settle: 2500, mustChange: true },
+  ...(LOOK === "neo" ? NEO_LOOK_STEPS : []),
   { key: "n", label: "new-game", settle: 2500, mustChange: true },
   { key: "@", label: "random-character", settle: 2500, mustChange: true },
   { key: "Enter", label: "accept-character", settle: 3000, mustChange: true },
@@ -218,6 +238,11 @@ const SCRIPT = [
   { key: "C", label: "character-sheet", settle: 1800, mustChange: true },
   { key: "Escape", label: "close-sheet", settle: 1200, mustChange: false },
 ];
+
+/* The Neo path ends once a character has been born and has taken the stairs.
+ * Past that the script walks into whatever a random character meets, and a
+ * monster that interrupts it with a -more- prompt desyncs the later keys. */
+const STEPS = LOOK === "neo" ? SCRIPT.slice(0, SCRIPT.findIndex((s) => s.label === "descend") + 1) : SCRIPT;
 
 function fail(message) {
   console.error(`\nplay-smoke FAILED: ${message}`);
@@ -380,7 +405,7 @@ try {
   }
 
   let step = 0;
-  for (const s of SCRIPT) {
+  for (const s of STEPS) {
     step += 1;
     await cdp.press(s.key, s.settle);
     const now = await cdp.frame();
@@ -403,7 +428,7 @@ try {
   if (errors.length) fail(`${errors.length} error-level log line(s) while playing`);
 
   if (!process.exitCode) {
-    console.log(`\nplay-smoke OK: played ${SCRIPT.length} steps, no exceptions, no error logs`);
+    console.log(`\nplay-smoke OK: played ${STEPS.length} steps, no exceptions, no error logs`);
     console.log(`Screenshots: ${SHOTS}`);
   }
 } catch (err) {

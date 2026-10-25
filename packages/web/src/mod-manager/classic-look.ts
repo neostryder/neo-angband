@@ -8,7 +8,7 @@ export async function runLookChoice(term: GridSurface & GridPointerInput, deps: 
   if (!deps.look) return;
   const pick = await selectFromMenu(term, "core:look-choice", "Choose your look", [
     { label: "Vanilla - Classic Angband presentation" },
-    { label: "Neo - AnybandUI presentation" },
+    { label: "Neo Angband - AnybandUI presentation" },
   ], "[ a/b, arrows, or tap; Enter selects; ESC cancels ]");
   if (pick === null && deps.look.read().chosen) return;
   const before = deps.look.read().active;
