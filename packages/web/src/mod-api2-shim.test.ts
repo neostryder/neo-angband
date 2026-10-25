@@ -106,6 +106,43 @@ describe("starting-options policy", () => {
   });
 });
 
+describe("engine hooks", () => {
+  const veto = (_gen: unknown, _quest: boolean): boolean => false;
+  const build = (tier: "first-party" | "public", grants: readonly string[], engineHooks: () => never) =>
+    api2Plugin({ api: "^2.0.0", engineHooks } as never, () => ({ grants: capabilities("eh", [...grants]), tier }));
+
+  it("hands a first-party mod's own game hooks to the game", () => {
+    const plugin = build("first-party", [], (() => ({ levelGenerated: veto, partialStackMerge: () => true })) as never);
+    const hooks = load("eh", plugin).hooks;
+    expect(hooks?.levelGenerated?.({}, false)).toBe(false);
+    expect(hooks?.partialStackMerge?.({} as never, {} as never)).toBe(true);
+  });
+
+  it("asks a mod with no engine access for nothing", () => {
+    let asked = false;
+    const plugin = build("public", [], (() => { asked = true; return { levelGenerated: veto }; }) as never);
+    const hooks = load("eh", plugin).hooks;
+    expect(asked).toBe(false);
+    expect(hooks?.levelGenerated).toBeUndefined();
+  });
+
+  it("serves a public mod the player gave engine access", () => {
+    const plugin = build("public", ["engine:access"], (() => ({ levelGenerated: veto })) as never);
+    expect(load("eh", plugin).hooks?.levelGenerated?.({}, false)).toBe(false);
+  });
+
+  it("refuses a name that is not a game hook, a value that is not a function, and a hook it already declares", () => {
+    const refuse = (declared: unknown, pattern: RegExp) => {
+      const plugin = api2Plugin({ api: "^2.0.0", hooks: () => ({ messageText: (raw: string) => raw }), engineHooks: () => declared } as never,
+        () => ({ grants: capabilities("eh", []), tier: "first-party" }));
+      expect(() => plugin.hooks?.(modPluginContext("eh", { loud: true }, undefined, {}, { capabilities: capabilities("eh", []) }))).toThrow(pattern);
+    };
+    refuse({ notAHook: veto }, /not a game hook/u);
+    refuse({ levelGenerated: 3 }, /not a function/u);
+    refuse({ messageText: (raw: string) => raw }, /already declares/u);
+  });
+});
+
 describe("projection radius clamp policy", () => {
   it("holds a radius above the maximum range at it and leaves the rest alone", () => {
     const hooks = api2PolicyModHooks({ projectionRadiusClamp: true }, () => true);

@@ -677,6 +677,16 @@ export interface Api2ModDefinition {
    */
   hooks?(context: Api2HookContext): Api2Hooks | undefined;
   /**
+   * The game's own hook members, for the points API 2 has no hook for (a
+   * generated level, a stack merge, a pack overflow, an artifact commit). They
+   * take the live arguments the game passes, as API 1 hooks did, so this needs
+   * the `engine` domain: it is asked only for a first-party mod or one the
+   * player gave `engine:access`, and never in a Worker. A name that has an API
+   * 2 form (a hook or a policy table) is refused; declare that one the API 2
+   * way.
+   */
+  engineHooks?(context: Api2HookContext & { readonly engine: Api2Engine }): Readonly<Record<string, (...args: never[]) => unknown>> | undefined;
+  /**
    * Changes as policy tables the host applies itself, synchronously, given
    * the mod's flags: hook answers, and the registrations the kinds in
    * `API2_POLICY_KINDS` install. A hook function from `hooks` takes

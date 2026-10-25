@@ -15,7 +15,7 @@
  */
 
 import type { DiscountRollHandler, GameObject, ModHooks, ModPluginContext, TvalValueAdjustContext, TvalValueAdjustHandler } from "@rpgm-tools/neo-angband-core";
-import { inputToken, movementTunnelTest, objectValueReal, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, TV, type CaveCmdDeps, type GameState, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
+import { MOD_HOOK_FOLDS, inputToken, movementTunnelTest, objectValueReal, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, TV, type CaveCmdDeps, type GameState, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
 import {
   api2PolicyEffects,
   apiRangeVerdict,
@@ -332,6 +332,24 @@ function valueFloor(ctx: TvalValueAdjustContext): number {
   return cheapest === null ? baseValue : Math.max(baseValue, cheapest);
 }
 
+/**
+ * A first-party mod's own hook members, checked: each name is one of the game's
+ * hooks, each value is a function, and none repeats a hook the mod already
+ * gives through its API 2 hooks or tables.
+ */
+function nativeHooks(declared: unknown, taken: ModHooks): ModHooks {
+  if (declared === undefined || declared === null) return {};
+  if (typeof declared !== "object") throw new Error("its engineHooks is not an object");
+  const out: Record<string, unknown> = {};
+  for (const [name, fn] of Object.entries(declared)) {
+    if (!(name in MOD_HOOK_FOLDS)) throw new Error(`its engineHooks names "${name}", which is not a game hook`);
+    if (typeof fn !== "function") throw new Error(`its engineHooks "${name}" is not a function`);
+    if (name in taken) throw new Error(`its engineHooks names "${name}", which it already declares through API 2`);
+    out[name] = (fn as (...args: unknown[]) => unknown).bind(declared);
+  }
+  return out as ModHooks;
+}
+
 /** Preceding registrations remain available when a contributing mod stops. */
 export function installApi2PolicyRegistrations(
   registrations: Api2PolicyRegistrations,
@@ -482,9 +500,10 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
       ? (ctx: ModPluginContext) => birth.call(definition.birth ? definition : definition.presentation, hostFor(ctx))
       : undefined,
   });
-  if (definition.hooks || definition.policies) {
+  if (definition.hooks || definition.policies || definition.engineHooks) {
     const hooksOf = definition.hooks?.bind(definition);
     const policiesOf = definition.policies?.bind(definition);
+    const engineHooksOf = definition.engineHooks?.bind(definition);
     plugin.hooks = (ctx: ModPluginContext): ModHooks | undefined => {
       stopped = false;
       const installedGeneration = generation;
@@ -511,10 +530,13 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
         }
       }
       active = declaredHooks(merged);
-      return merged ? {
+      const fromApi2: ModHooks = merged ? {
         ...api2ToModHooks(merged),
         ...api2PolicyModHooks(pluginPolicies.get(plugin)?.registrations ?? {}, () => !stopped && generation === installedGeneration),
-      } : undefined;
+      } : {};
+      const native = engine && engineHooksOf ? nativeHooks(engineHooksOf({ ...context, engine }), fromApi2) : {};
+      const all = { ...native, ...fromApi2 };
+      return Object.keys(all).length > 0 || merged ? all : undefined;
     };
   }
   if (definition.start || definition.actions?.length || definition.titleActions?.length) {

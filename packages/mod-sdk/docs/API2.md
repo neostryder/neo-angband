@@ -117,10 +117,12 @@ These API 1 hooks have no API 2 form:
 
 | Hook | Why | Instead |
 | --- | --- | --- |
-| `newCharacter`, `walkBlockedByDiggable`, `levelGenerated`, `partialStackMerge`, `packOverflowVictim` | They pass live game objects or the whole game state. | An API 1 plugin. |
+| `newCharacter`, `walkBlockedByDiggable`, `levelGenerated`, `partialStackMerge`, `packOverflowVictim` | They pass live game objects or the whole game state. | `engineHooks`, or an API 1 plugin. |
 | `levelRevisited` | It passes the restored level itself. | The `levelRevisitTracking` policy table. |
 | `projectionRadius` | It runs for projections the player never sees. | The `projectionRadiusClamp` policy table. |
-| `artifactCommit` | It runs when an artifact is generated, before the player has seen it. | `artifactIdentified` for what the player learns. |
+| `artifactCommit` | It runs when an artifact is generated, before the player has seen it. | `engineHooks`, or `artifactIdentified` for what the player learns. |
+
+`engineHooks(context)` is the way to reach those. It returns the game's own hook members by name, and the game calls them with the live arguments it always passed. It is asked only when the mod has the `engine` domain, which is every first-party mod and any other mod the player gave `engine:access`, and never in a Worker. A name that already has an API 2 form is refused, so each hook is declared one way.
 
 ## Policy tables
 

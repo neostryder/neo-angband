@@ -322,9 +322,9 @@ These hooks have no API 2 form:
 | Hook | Why | Meanwhile |
 | --- | --- | --- |
 | `levelRevisited` | It passes the restored level itself. | The `levelRevisitTracking` policy table for noise and scent tracking, or keep the mod on API 1. |
-| `newCharacter`, `walkBlockedByDiggable`, `levelGenerated`, `partialStackMerge`, `packOverflowVictim` | They pass live game objects or the whole game state. | Keep the mod on API 1. For the mod's own setup at the start of a life, `meta.newCharacter` tells `start` whether the character was just created. It cannot change the game state the way `newCharacter` can. |
+| `newCharacter`, `walkBlockedByDiggable`, `levelGenerated`, `partialStackMerge`, `packOverflowVictim` | They pass live game objects or the whole game state. | `engineHooks(context)` in an in-process mod with the `engine` domain, or keep the mod on API 1. For the mod's own setup at the start of a life, `meta.newCharacter` tells `start` whether the character was just created. It cannot change the game state the way `newCharacter` can. |
 | `projectionRadius` | It runs for projections the player never sees. | The `projectionRadiusClamp` policy table for a clamp at the maximum range, or keep the mod on API 1. |
-| `artifactCommit` | It runs when an artifact is generated, before the player has seen it. | `artifactIdentified` for what the player learns, or keep the mod on API 1. |
+| `artifactCommit` | It runs when an artifact is generated, before the player has seen it. | `engineHooks(context)` with the `engine` domain, `artifactIdentified` for what the player learns, or keep the mod on API 1. |
 
 ## Step 9: move panels and keys
 
