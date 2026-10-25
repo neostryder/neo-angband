@@ -10,6 +10,12 @@ import { decidePermissions } from "./classic-permissions";
 import type { CoreModManager, ModManagerService } from "./service";
 import type { ManagerResult } from "./types";
 
+/** The saved copy is pinned by file hashes; a player needs the count, not forty-eight hex strings. */
+function digestLine(digests: Readonly<Record<string, string>> | null | undefined): ScreenLine[] {
+  const count = Object.keys(digests ?? {}).length;
+  return count === 0 ? [] : [{ text: `Checked against ${count} saved ${count === 1 ? "file" : "files"}.`, color: UI_DIM }];
+}
+
 export async function drawPendingManagementConfirmation(
   term: GridSurface & GridPointerInput,
   service: ModManagerService,
@@ -23,7 +29,7 @@ export async function drawPendingManagementConfirmation(
     ...(pending.operation !== "restore" && pending.mods.length === 1 ? [] : [{ text: `${mod.name} v${mod.version}`, color: UI_TEXT }]),
     ...(mod.repository ? [{ text: mod.repository, color: UI_DIM }] : []),
     ...(mod.commit ? [{ text: mod.commit, color: UI_DIM }] : []),
-    ...Object.entries(mod.digests ?? {}).map(([path, digest]) => ({ text: `${path}: ${digest}`, color: UI_DIM })),
+    ...digestLine(mod.digests),
   ]);
   lines.push(...(pending.downloads ?? []).map((mod) => ({ text: `Download: ${mod.name} v${mod.version}${mod.bytes === null ? "" : ` (${mod.bytes} bytes)`}`, color: UI_TEXT })));
   lines.push(...pending.riskNotice.map((text) => ({ text, color: UI_GOLD })));
