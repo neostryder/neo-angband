@@ -212,6 +212,7 @@ describe("API2_POLICY_KINDS", () => {
       objectInfoText: "registry:effect-info", effectIntro: "registry:effect-info", historyAdd: "registry:message",
       historyDisplay: "registry:message", objectListOrder: "registry:tval", saveNoiseScent: "registry:monster",
       shapeLearnObviousFlagsDirectly: "registry:rune", storeDiscountRoll: "registry:store", valueFloor: "registry:tval", tileMap: "registry:tiles",
+      projectionRadiusClamp: "registry:projection", levelRevisitTracking: "registry:monster",
     });
   });
 
@@ -221,7 +222,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor"]).toContain(kind.target.registration);
+      else expect(["discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
     }
   });
 
@@ -353,6 +354,37 @@ describe("the tile map", () => {
     const p = pack("gervais", false);
     filler?.(p.fill as Api2TileFill);
     expect([...p.monsters.keys()].sort()).toEqual([1, 2]);
+  });
+
+  it("draws a named sheet cell on a tile sheet, only where nothing is drawn, and skips a loose pack", () => {
+    const rules = [{ monster: 40, cell: [0x14, 0x05], packs: ["gervais"] }, { object: 7, cell: [1, 2], packs: ["gervais"] }, { monster: 1, cell: [3, 4], packs: ["gervais"] }] as const;
+    const filler = api2PolicyEffects({ tileMap: rules }).registrations.tileFiller;
+    const monsters = new Map<number, unknown>([[1, "orc"]]);
+    const objects = new Map<number, unknown>([[7, "ring"]]);
+    const door = (engine: string): Api2TileFill => ({
+      pack: { engine, id: "gervais", menuname: "gervais" },
+      monsterTile: () => null,
+      objectTile: () => null,
+      fillMonster: (i, tile) => (monsters.has(i) ? false : (monsters.set(i, tile), true)),
+      fillObject: (i, tile) => (objects.has(i) ? false : (objects.set(i, tile), true)),
+      derive: () => null,
+    });
+    filler?.(door("linoleum"));
+    expect(monsters.has(40)).toBe(false);
+    filler?.(door("tilesheet"));
+    expect(monsters.get(40)).toEqual({ attr: 0x85, char: 0x94 });
+    expect(monsters.get(1)).toBe("orc");
+    expect(objects.get(7)).toBe("ring");
+  });
+
+  it("refuses a cell rule that is malformed, turned by a hue, or not tied to its packs", () => {
+    expect(checkApi2Policies({ tileMap: [{ monster: 1, cell: [0, 0], packs: ["a"] }] })).toBeNull();
+    expect(checkApi2Policies({ tileMap: [{ monster: 1, like: 2, cell: [0, 0], packs: ["a"] }] })).toMatch(/exactly one of like and cell/u);
+    expect(checkApi2Policies({ tileMap: [{ monster: 1, packs: ["a"] }] })).toMatch(/exactly one of like and cell/u);
+    expect(checkApi2Policies({ tileMap: [{ monster: 1, cell: [0, 128], packs: ["a"] }] })).toMatch(/cell is \[column, row\]/u);
+    expect(checkApi2Policies({ tileMap: [{ monster: 1, cell: [0], packs: ["a"] }] })).toMatch(/cell is \[column, row\]/u);
+    expect(checkApi2Policies({ tileMap: [{ monster: 1, cell: [0, 0], hue: 90, packs: ["a"] }] })).toMatch(/hue/u);
+    expect(checkApi2Policies({ tileMap: [{ monster: 1, cell: [0, 0] }] })).toMatch(/needs the packs/u);
   });
 
   it("refuses a rule that names both sorts, neither, or a bad hue", () => {

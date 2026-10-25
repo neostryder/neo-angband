@@ -227,6 +227,23 @@ export function api2PolicyModHooks(registrations: Api2PolicyRegistrations, activ
     if (!active() || !state.options) return;
     applyStartingOptions(state.options, registrations.startingOptions!);
   };
+  if (registrations.projectionRadiusClamp) hooks.projectionRadius = (rad, maxRange) => (active() && rad > maxRange ? maxRange : rad);
+  if (registrations.levelRevisitTracking) hooks.levelRevisited = (chunk, frozenAt, now) => {
+    if (!active()) return;
+    /* Upstream's age_scent and forget_noise (5c45eb958): the scent grows by the
+     * world ticks (one per ten game turns) that passed, a sum past the 16-bit
+     * range fades the trail instead of wrapping it fresh, and the noise is
+     * cleared in the interior only. */
+    const increment = Math.trunc(now / 10) - Math.trunc(frozenAt / 10);
+    for (let y = 1; y < chunk.height - 1; y += 1) {
+      for (let x = 1; x < chunk.width - 1; x += 1) {
+        const i = y * chunk.width + x;
+        const scent = chunk.scent[i] ?? 0;
+        if (scent > 0) chunk.scent[i] = increment <= 65535 && scent <= 65535 - increment ? scent + increment : 0;
+        chunk.noise[i] = 0;
+      }
+    }
+  };
   return hooks;
 }
 

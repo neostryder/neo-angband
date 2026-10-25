@@ -117,8 +117,9 @@ These API 1 hooks have no API 2 form:
 
 | Hook | Why | Instead |
 | --- | --- | --- |
-| `newCharacter`, `walkBlockedByDiggable`, `levelGenerated`, `partialStackMerge`, `packOverflowVictim`, `levelRevisited` | They pass live game objects or the whole game state. | An API 1 plugin. |
-| `projectionRadius` | It runs for projections the player never sees. | An API 1 plugin. |
+| `newCharacter`, `walkBlockedByDiggable`, `levelGenerated`, `partialStackMerge`, `packOverflowVictim` | They pass live game objects or the whole game state. | An API 1 plugin. |
+| `levelRevisited` | It passes the restored level itself. | The `levelRevisitTracking` policy table. |
+| `projectionRadius` | It runs for projections the player never sees. | The `projectionRadiusClamp` policy table. |
 | `artifactCommit` | It runs when an artifact is generated, before the player has seen it. | `artifactIdentified` for what the player learns. |
 
 ## Policy tables
@@ -138,6 +139,8 @@ Each table needs its matching registry permission, listed below, in either runti
 | `objectListOrder` | `objectListTiebreak` | not a rule table | `registry:tval` |
 | `saveNoiseScent` | the same | not a rule table | `registry:monster` |
 | `shapeLearnObviousFlagsDirectly` | the same | not a rule table | `registry:rune` |
+| `projectionRadiusClamp` | `projectionRadius` | not a rule table | `registry:projection` |
+| `levelRevisitTracking` | `levelRevisited` | not a rule table | `registry:monster` |
 | `storeDiscountRoll` | the stores' discount roll | not a rule table | `registry:store` |
 | `tileMap` | the mod's tile filler | not a rule table | `registry:tiles` |
 
@@ -145,7 +148,9 @@ A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whol
 
 `storeDiscountRoll` is `{ minCost, tiers }`. When a store stocks an object worth at least `minCost` (0 if left out), it tries each tier `{ oneIn, percent }` in order, and the first one-in-`oneIn` roll that comes up takes `percent` off that stack. The rolls come from the game's own random numbers, so a seeded game stays repeatable. If two mods declare a discount roll, the one that loads later is used.
 
-`tileMap` lists rules of the form `{ monster, like, hue, packs }`, or `object` in place of `monster`. A rule gives a monster race or object kind the tile that the `like` index has now, turned `hue` degrees around the colour wheel when `hue` is set. It only fills a tile the pack leaves empty, so it never repaints anything a pack draws. `packs` limits a rule to those pack ids, and a pack that cannot recolour skips any rule with a `hue`.
+`tileMap` lists rules of the form `{ monster, like, hue, packs }` or `{ monster, cell, packs }`, with `object` in place of `monster`. A rule gives a monster race or object kind the tile that the `like` index has now, turned `hue` degrees around the colour wheel when `hue` is set. It only fills a tile the pack leaves empty, so it never repaints anything a pack draws. `packs` limits a rule to those pack ids, and a pack that cannot recolour skips any rule with a `hue`. A `cell` rule names a spot on a tile sheet instead of a donor: `[column, row]`, each from 0 to 127. It only works on a pack that is a fixed tile sheet, so it has to list its `packs`, it cannot also take a `hue`, and any other pack skips it.
+
+Two more tables are plain switches. `projectionRadiusClamp: true` keeps a blast from growing past the maximum projection range, which is what upstream's `project()` does. `levelRevisitTracking: true` makes a level you come back to forget its old noise and age its scent by the world ticks you were away, the way upstream's `age_scent()` and `forget_noise()` do. The game applies both itself, so the mod never sees the level or the projection.
 
 Both runtimes install registrations in the selected mod order. A later discount roll replaces an earlier one, and tile fillers run in that order, so the first filler for an empty tile wins.
 

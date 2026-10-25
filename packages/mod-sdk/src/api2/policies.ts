@@ -100,8 +100,14 @@ export interface Api2TileRule {
   readonly monster?: number;
   /** The object kind index to supply a tile for. */
   readonly object?: number;
-  /** The index, of the same sort, whose current tile is copied. */
-  readonly like: number;
+  /** The index, of the same sort, whose current tile is copied. Exactly one of `like` and `cell`. */
+  readonly like?: number;
+  /**
+   * A cell of the pack's tile sheet, `[column, row]`, each 0 to 127. Only a
+   * fixed tile sheet has cells, so a rule with `cell` must name its `packs`,
+   * cannot take a `hue`, and is skipped for a pack that is not a tile sheet.
+   */
+  readonly cell?: readonly [number, number];
   /** Degrees to rotate the copy's hue, 1 to 359. Absent copies it as it is; a pack that cannot recolour skips the rule. */
   readonly hue?: number;
   /** The ids of the packs the rule applies to. Absent means every pack. */
@@ -184,6 +190,10 @@ export interface Api2Policies {
   readonly saveNoiseScent?: boolean;
   /** True lets a shapechange teach its obvious flags directly. */
   readonly shapeLearnObviousFlagsDirectly?: boolean;
+  /** True holds a blast's radius at the game's maximum projection range. */
+  readonly projectionRadiusClamp?: boolean;
+  /** True clears the noise and ages the scent of a level that comes back after being put aside. */
+  readonly levelRevisitTracking?: boolean;
   /** The discount a store gives on the stock it makes. */
   readonly storeDiscountRoll?: Api2DiscountRollPolicy;
   readonly valueFloor?: Api2ValueFloorPolicy;
@@ -228,6 +238,10 @@ export interface Api2PolicyRegistrations {
   /** Installed as the stores' discount roll. */
   discountRoll?: Api2DiscountRoll;
   valueFloor?: Api2ValueFloorPolicy;
+  /** Installed as the game's projection radius seam. */
+  projectionRadiusClamp?: true;
+  /** Installed as the game's level revisit seam. */
+  levelRevisitTracking?: true;
   /** Installed as the mod's tile filler. */
   tileFiller?: Api2TileFiller;
 }
@@ -422,6 +436,20 @@ function switchKind(name: Api2PolicyName, hook: "saveNoiseScent" | "shapeLearnOb
     check: (value) => (typeof value === "boolean" ? null : `${name} is true or false`),
     apply(value, out) {
       if (value === true) out.hooks[hook] = () => true;
+    },
+  };
+}
+
+/** A registration switch: true asks the host to install the game's own rule for it. */
+function registrationSwitch(name: "projectionRadiusClamp" | "levelRevisitTracking", summary: string, capability: string): Api2PolicyKind {
+  return {
+    name,
+    summary,
+    capability,
+    target: { registration: name },
+    check: (value) => (typeof value === "boolean" ? null : `${name} is true or false`),
+    apply(value, out) {
+      if (value === true) out.registrations[name] = true;
     },
   };
 }
@@ -655,6 +683,8 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   },
   switchKind("saveNoiseScent", "saveNoiseScent", "Keeps monster noise and scent in the save.", "registry:monster"),
   switchKind("shapeLearnObviousFlagsDirectly", "shapeLearnObviousFlagsDirectly", "Lets a shapechange teach its obvious flags directly.", "registry:rune"),
+  registrationSwitch("projectionRadiusClamp", "Holds a blast's radius at the game's maximum projection range.", "registry:projection"),
+  registrationSwitch("levelRevisitTracking", "Clears the noise and ages the scent of a level that comes back after being put aside.", "registry:monster"),
   {
     name: "storeDiscountRoll",
     capability: "registry:store",
@@ -731,12 +761,19 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
         const at = `tileMap[${String(i)}]`;
         const rule = rules[i];
         if (!isRecord(rule)) return `${at} is not an object`;
-        const unknown = unknownField(at, rule, ["monster", "object", "like", "hue", "packs"]);
+        const unknown = unknownField(at, rule, ["monster", "object", "like", "cell", "hue", "packs"]);
         if (unknown) return unknown;
         const sorts = ["monster", "object"].filter((key) => rule[key] !== undefined);
         if (sorts.length !== 1) return `${at} names exactly one of monster and object`;
         if (!isInt(rule[sorts[0] ?? ""], 0, 100_000)) return `${at}.${sorts[0] ?? ""} is an index of 0 or more`;
-        if (!isInt(rule["like"], 0, 100_000)) return `${at}.like is an index of 0 or more`;
+        if ((rule["like"] === undefined) === (rule["cell"] === undefined)) return `${at} names exactly one of like and cell`;
+        if (rule["like"] !== undefined && !isInt(rule["like"], 0, 100_000)) return `${at}.like is an index of 0 or more`;
+        if (rule["cell"] !== undefined) {
+          const cell = rule["cell"];
+          if (!Array.isArray(cell) || cell.length !== 2 || !cell.every((n) => isInt(n, 0, 127))) return `${at}.cell is [column, row], each a whole number from 0 to 127`;
+          if (rule["hue"] !== undefined) return `${at}.cell cannot be turned by a hue`;
+          if (rule["packs"] === undefined) return `${at}.cell needs the packs it names cells of`;
+        }
         if (rule["hue"] !== undefined && !isInt(rule["hue"], 1, 359)) return `${at}.hue is a whole number of degrees from 1 to 359`;
         const packs = rule["packs"];
         if (packs !== undefined) {
@@ -753,7 +790,16 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
         for (const rule of rules) {
           if (rule.packs !== undefined && !rule.packs.includes(fill.pack.id)) continue;
           const monster = rule.monster !== undefined;
-          const donor = monster ? fill.monsterTile(rule.like) : fill.objectTile(rule.like);
+          if (rule.cell !== undefined) {
+            /* A tile sheet draws the cell its (attr, char) pair names: 0x80 plus the row, 0x80 plus the column. */
+            if (fill.pack.engine !== "tilesheet") continue;
+            const cell = { attr: 0x80 | rule.cell[1], char: 0x80 | rule.cell[0] };
+            if (monster) fill.fillMonster(rule.monster ?? 0, cell);
+            else fill.fillObject(rule.object ?? 0, cell);
+            continue;
+          }
+          const like = rule.like ?? 0;
+          const donor = monster ? fill.monsterTile(like) : fill.objectTile(like);
           if (donor === null) continue;
           const tile = rule.hue === undefined ? donor : fill.derive(donor, rule.hue);
           if (tile === null) continue;

@@ -106,6 +106,61 @@ describe("starting-options policy", () => {
   });
 });
 
+describe("projection radius clamp policy", () => {
+  it("holds a radius above the maximum range at it and leaves the rest alone", () => {
+    const hooks = api2PolicyModHooks({ projectionRadiusClamp: true }, () => true);
+    expect(hooks.projectionRadius?.(25, 20)).toBe(20);
+    expect(hooks.projectionRadius?.(20, 20)).toBe(20);
+    expect(hooks.projectionRadius?.(3, 20)).toBe(3);
+  });
+
+  it("gives the radius back unchanged after the mod stops", () => {
+    expect(api2PolicyModHooks({ projectionRadiusClamp: true }, () => false).projectionRadius?.(25, 20)).toBe(25);
+  });
+
+  it("installs nothing when the table is absent", () => {
+    expect(api2PolicyModHooks({}, () => true).projectionRadius).toBeUndefined();
+  });
+});
+
+describe("level revisit tracking policy", () => {
+  function level(): { width: number; height: number; noise: Uint16Array; scent: Uint16Array } {
+    return { width: 6, height: 6, noise: new Uint16Array(36), scent: new Uint16Array(36) };
+  }
+  const at = (x: number, y: number): number => y * 6 + x;
+  const revisit = (hooks: ReturnType<typeof api2PolicyModHooks>, chunk: ReturnType<typeof level>, from: number, to: number): void =>
+    hooks.levelRevisited?.(chunk as never, from, to);
+
+  it("clears the interior noise and ages scent by the world ticks that passed", () => {
+    const chunk = level();
+    chunk.noise.fill(81);
+    chunk.scent[at(2, 2)] = 1;
+    chunk.scent[at(3, 2)] = 65534;
+    revisit(api2PolicyModHooks({ levelRevisitTracking: true }, () => true), chunk, 19, 50);
+    expect(chunk.noise[at(2, 2)]).toBe(0);
+    expect(chunk.noise[at(0, 0)]).toBe(81);
+    expect(chunk.scent[at(2, 2)]).toBe(5);
+    expect(chunk.scent[at(3, 2)]).toBe(0);
+    expect(chunk.scent[at(4, 2)]).toBe(0);
+  });
+
+  it("counts a tick boundary even when fewer than ten turns passed", () => {
+    const chunk = level();
+    chunk.scent[at(2, 2)] = 7;
+    revisit(api2PolicyModHooks({ levelRevisitTracking: true }, () => true), chunk, 19, 20);
+    expect(chunk.scent[at(2, 2)]).toBe(8);
+  });
+
+  it("leaves the level as it was after the mod stops", () => {
+    const chunk = level();
+    chunk.noise.fill(9);
+    chunk.scent[at(2, 2)] = 3;
+    revisit(api2PolicyModHooks({ levelRevisitTracking: true }, () => false), chunk, 0, 100);
+    expect(chunk.noise[at(2, 2)]).toBe(9);
+    expect(chunk.scent[at(2, 2)]).toBe(3);
+  });
+});
+
 describe("ignore policy", () => {
   it("wraps the prior ignore callback with case-sensitive light rules and exemptions", () => {
     const state = { isIgnored: () => false } as unknown as GameState;
@@ -396,7 +451,7 @@ describe("policy tables that install registrations", () => {
     effectIntro: [{ find: "a", replace: "b" }], historyAdd: [{ find: "a", replace: "b" }],
     historyDisplay: [{ find: "a", replace: "b" }], objectListOrder: ["dy"], saveNoiseScent: true,
     shapeLearnObviousFlagsDirectly: true, storeDiscountRoll: { tiers: [{ oneIn: 1, percent: 20 }] },
-    tileMap: [{ monster: 2, like: 1 }],
+    tileMap: [{ monster: 2, like: 1 }], projectionRadiusClamp: true, levelRevisitTracking: true,
     valueFloor: { kind: "valueFloor", tvals: [10, 11], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" },
   };
 
@@ -412,7 +467,8 @@ describe("policy tables that install registrations", () => {
       () => ({ grants: capabilities("tables", [capability]) }));
     const hooks = load("tables", plugin).hooks;
     const registrations = api2PluginRegistrations(plugin, "tables", { loud: true });
-    expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : name === "walkBlockedByDiggable" || name === "startingOptions" ? [name === "startingOptions" ? "newCharacter" : name] : []);
+    const policyHook: Partial<Record<string, string>> = { walkBlockedByDiggable: "walkBlockedByDiggable", startingOptions: "newCharacter", projectionRadiusClamp: "projectionRadius", levelRevisitTracking: "levelRevisited" };
+    expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : policyHook[name] ? [policyHook[name]] : []);
     expect(Object.keys(registrations ?? {})).toEqual("registration" in target ? [target.registration] : []);
     plugin.uninstall?.();
   });
