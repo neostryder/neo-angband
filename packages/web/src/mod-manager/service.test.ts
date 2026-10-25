@@ -133,6 +133,24 @@ describe("saved mod list restore plans", () => {
     expect(f.store.configurationRevision()).toBe(before);
   });
 
+  it("restores a recommended mod with the third-party switch off but still blocks a community one", async () => {
+    const f = fixture();
+    for (const id of ["a", "b"]) {
+      f.metadata.set(id, { id, name: `Mod ${id}`, repo: `owner/${id}`, tag: "v1.0.0", sha: "commit-1.0.0", files: [], digests: { "manifest.json": "digest" }, installedAt: "today" });
+      f.store.setModEnabled(id, true);
+    }
+    const list = await f.service.captureModList("Both");
+    for (const id of ["a", "b"]) { f.local.delete(id); f.metadata.delete(id); }
+    f.setThirdParty(false);
+    const community = await f.service.planRestoreModList({ ...list, mods: list.mods.filter((m) => m.id === "b"), resolvedOrder: ["b"] });
+    expect(community).toMatchObject({ status: "refused", code: "consent" });
+    expect(f.install).not.toHaveBeenCalled();
+    const recommended = await f.service.planRestoreModList({ ...list, mods: list.mods.filter((m) => m.id === "a"), resolvedOrder: ["a"] });
+    if (recommended.status !== "ok") throw new Error("The restore plan failed.");
+    expect(await accept(f.core, f.service.applyModListPlan(recommended.value.id))).toMatchObject({ status: "ok" });
+    expect(f.install).toHaveBeenCalledTimes(1);
+  });
+
   it("checks the shared revision again after the Core confirmation", async () => {
     const f = await savedFixture();
     const plan = await f.service.planRestoreModList(f.list);

@@ -4,6 +4,7 @@ import type { GridSurface, GridPointerInput } from "../term";
 import type { ModManagerDeps } from "./classic-types";
 import { classicManager } from "./classic-service";
 import { drawPendingManagementConfirmation } from "./classic-confirmation";
+import { wrapped } from "./classic-mod-views";
 import { sameModList } from "./mod-lists";
 import { UI_BAD } from "../ui-colors";
 
@@ -11,7 +12,7 @@ export async function restoreModListScreen(term: GridSurface & GridPointerInput,
   const { service, core } = classicManager(deps);
   const result = await service.planRestoreModList(list);
   if (result.status !== "ok") {
-    if (result.status === "refused") await showTextScreen(term, "Restore my mods", [{ text: result.reason }]);
+    if (result.status === "refused") await showTextScreen(term, "Restore my mods", wrapped(result.reason, term.size().cols - 2));
     return false;
   }
   const plan = result.value;
@@ -25,7 +26,7 @@ export async function restoreModListScreen(term: GridSurface & GridPointerInput,
   if (pending.status !== "confirmation") return false;
   const applied = await drawPendingManagementConfirmation(term, service, core);
   if (applied.status !== "ok") {
-    if (applied.status === "refused") await showTextScreen(term, "Restore my mods", [{ text: applied.reason }]);
+    if (applied.status === "refused") await showTextScreen(term, "Restore my mods", wrapped(applied.reason, term.size().cols - 2));
     return false;
   }
   if (list.name.trim()) deps.modLists?.save(list);

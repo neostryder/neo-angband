@@ -1,3 +1,4 @@
+import { safeLaunch } from "../safe-launch";
 import { t } from "@rpgm-tools/neo-angband-core";
 import { C_FG, C_WARN, C_GOLD_TEXT, C_DANGER, C_ENABLED, C_DISABLED, C_TITLE, C_DIM } from "./classic-colors";
 import { type ScreenLine, type MenuItem } from "../overlay";
@@ -431,7 +432,7 @@ export function rowDetail(
   for (const s of skipped) {
     trouble.push(
       { text: "", color: C_FG },
-      ...wrapped(t("modsScreen.detail.trouble.notLoaded", "Not loaded: {reason}", { reason: s }), w, C_WARN),
+      ...wrapped(t("modsScreen.detail.trouble.notLoaded", "Not loaded: {reason}", { reason: s === "not enabled" && safeLaunch() ? t("modsScreen.detail.trouble.safeMode", "safe mode is on for this session") : s }), w, C_WARN),
     );
   }
 

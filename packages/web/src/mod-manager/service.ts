@@ -384,6 +384,8 @@ export class ModManagerService {
       const revision = this.#env.store.configurationRevision();
       if (this.#env.installedMetadata) this.#metadata = await this.#env.installedMetadata();
       const catalog = this.#env.listCatalog();
+      const { registry } = await this.#env.curated?.().catch(() => ({ registry: null })) ?? { registry: null };
+      const vouched = new Set((registry?.mods ?? []).map((ref) => ref.repo.toLowerCase()));
       const roots: { entry: BrowseEntry; origin: ModOrigin }[] = [];
       const unavailable: { id: string; name: string }[] = [];
       for (const id of list.resolvedOrder) {
@@ -398,7 +400,7 @@ export class ModManagerService {
         catch { /* A missing repository leaves the save readable. */ }
         if (!entry?.ok || entry.mod.id !== id || entry.mod.version !== saved.version || (saved.commit !== null && entry.mod.sha !== saved.commit)) {
           unavailable.push({ id, name: saved.name });
-        } else roots.push({ entry, origin: "third-party" });
+        } else roots.push({ entry, origin: vouched.has((saved.repository ?? "").toLowerCase()) ? "curated" : "third-party" });
       }
       const id = ++this.#nextId;
       const resolved = roots.length ? await resolveInstallPlan(this.#env, roots, catalog, this.#metadata, id, "restore")
