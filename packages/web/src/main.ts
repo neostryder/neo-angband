@@ -246,7 +246,7 @@ import {
 import { installCrashScreen } from "./crash-screen.js";
 import { offerSafeLaunch, showSafeLaunchNotice, showSafeModeScreen } from "./safe-mode.js";
 import { addressWithoutSafeLaunch, bootCompleted, decideSafeLaunch, enterSafeLaunch, safeLaunch, watchSafeKey } from "./safe-launch";
-import { labTrust } from "./lab-trust";
+import { labBuild, labTrust } from "./lab-trust";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, effectInfoRegistry, randartRegistry, runeRegistry, tvalRegistry, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
 import type { AgentController, AgentSession } from "@rpgm-tools/neo-angband-core";
 import {
@@ -16806,6 +16806,19 @@ setAutoplayerInterruptOwner({
     return true;
   },
 });
+
+/* A lab build lets a harness read the screen as text, so a check that asks "is
+ * this menu showing" costs a few hundred characters instead of an image. It is
+ * read-only and compiled in only for `NEO_ANGBAND_LAB_BUILD=1`, so a release
+ * build never carries it (lab-trust.ts). */
+if (labBuild()) {
+  (window as unknown as { __neoLab?: unknown }).__neoLab = {
+    screen: () => term.snapshot(),
+    size: () => term.size(),
+    modal: () => modalDepth > 0,
+    turn: () => state.turn,
+  };
+}
 
 // Dev-only diagnostic hook for automated verification; Vite strips this whole
 // block from the production bundle (import.meta.env.DEV is false there).

@@ -69,6 +69,7 @@ still calls itself.
 - [Internal] [Modding-API] **Policy tables can clamp a blast radius, track a revisited level, and name a tile-sheet cell.** `projectionRadiusClamp: true` holds a blast's radius at the maximum projection range, and `levelRevisitTracking: true` clears the noise and ages the scent of a level that returns after being put aside. A `tileMap` rule can take `cell: [column, row]` in place of `like` to draw that cell of a fixed tile sheet.
 - [Internal] [Modding-API] **An in-process API 2 mod can give the game's own hooks.** `engineHooks(context)` returns hook members such as `levelGenerated`, `partialStackMerge`, `packOverflowVictim`, and `artifactCommit` by name. The game asks only a mod that has the engine domain and refuses a name the mod already declares through an API 2 hook or table.
 - [Internal] [Modding-API] **The mod checker accepts an in-process mod written for API 2.** `neo-angband-mod-check` no longer reports a missing `modApi` for a schema 2 manifest whose `api` range admits the API this build runs, which is the test the loader applies.
+- [Internal] **A lab build can be read as text.** A build compiled with `NEO_ANGBAND_LAB_BUILD=1` exposes a read-only `window.__neoLab` with the screen's rows, its size, whether a menu is open and the turn count, so a test can check what a screen says without taking a screenshot. A release build never carries it.
 
 ### Changed
 
