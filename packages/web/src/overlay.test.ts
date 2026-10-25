@@ -16,6 +16,7 @@ import {
   getQuantity,
   getKeyInline,
   inscripTagRow,
+  fitHint,
   AIM_STAR,
   AIM_CLOSEST,
 } from "./overlay";
@@ -2091,5 +2092,20 @@ describe("selectFromMenu: a detail pane cannot squeeze the list away", () => {
     expect(shot).toContain("more than fits here");
     press(win, "Escape");
     await done;
+  });
+});
+
+describe("fitHint", () => {
+  it("leaves a hint that fits alone", () => {
+    expect(fitHint("Allows everything listed.", 79)).toBe("Allows everything listed.");
+  });
+
+  it("ends a hint that does not fit in an ellipsis at a word boundary, inside the width", () => {
+    const hint = "Download, check, and turn it on for the next reload. Permissions are still asked separately.";
+    const fitted = fitHint(hint, 79);
+    expect(fitted.length).toBeLessThanOrEqual(79);
+    expect(fitted.endsWith("...")).toBe(true);
+    expect(hint.startsWith(fitted.slice(0, -3))).toBe(true);
+    expect(fitted.slice(0, -3).endsWith(" ")).toBe(false);
   });
 });

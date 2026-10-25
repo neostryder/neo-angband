@@ -76,6 +76,14 @@ export interface ScreenLine {
 import { UI_TEXT, UI_DIM, UI_GOLD, UI_BG, UI_CURSOR } from "./ui-colors";
 import { openExternalUrl, openMailtoLink } from "./external-link";
 
+/** A hint that does not fit its one row ends in "..." at a word boundary, so a cut sentence never reads as a whole one. */
+export function fitHint(hint: string, width: number): string {
+  if (hint.length <= width) return hint;
+  const room = Math.max(0, width - 3);
+  const cut = hint.lastIndexOf(" ", room);
+  return `${hint.slice(0, cut > room / 2 ? cut : room).trimEnd()}...`;
+}
+
 const FG = UI_TEXT;
 /** curs_attrs[CURS_KNOWN][1] (ui-menu.c:32): the selected menu row's colour. */
 const CURSOR = UI_CURSOR;
@@ -2319,7 +2327,7 @@ export function selectFromMenu(
       if (hasHints) {
         const hint = items[cursor]?.hint ?? "";
         if (boxed) term.eraseToEol(0, rows - 2);
-        if (hint) term.print(0, rows - 2, hint.slice(0, cols - 1), DIM);
+        if (hint) term.print(0, rows - 2, fitHint(hint, cols - 1), DIM);
       }
       /* No footer row in overlay mode: the legend is already on the title row,
        * and a bar across the bottom of the map is the thing this avoids. */

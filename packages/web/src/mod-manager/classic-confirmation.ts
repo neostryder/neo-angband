@@ -18,8 +18,9 @@ export async function drawPendingManagementConfirmation(
   const pending = service.state.pendingConfirmation;
   if (!pending) return refused("confirmation", "There is no pending mod confirmation.");
   const title = pending.operation === "restore" ? "Restore my mods" : pending.mods.map((mod) => `${mod.name} v${mod.version}`).join(", ") || t("modBrowse.consent.allowConfirm", "Allow third-party mods?");
+  /* One mod already names itself in the title, so its first line would only repeat it. */
   const lines: ScreenLine[] = pending.mods.flatMap((mod) => [
-    { text: `${mod.name} v${mod.version}`, color: UI_TEXT },
+    ...(pending.operation !== "restore" && pending.mods.length === 1 ? [] : [{ text: `${mod.name} v${mod.version}`, color: UI_TEXT }]),
     ...(mod.repository ? [{ text: mod.repository, color: UI_DIM }] : []),
     ...(mod.commit ? [{ text: mod.commit, color: UI_DIM }] : []),
     ...Object.entries(mod.digests ?? {}).map(([path, digest]) => ({ text: `${path}: ${digest}`, color: UI_DIM })),
