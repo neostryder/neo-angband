@@ -14,11 +14,22 @@
 import { agentQuery } from "./agent-mode.js";
 
 export const SAFE_MODE_SWITCH = "--safe-mode";
+/** `--lab-trust=qol,squire`: lab builds only, see the web package's lab-trust.ts. */
+export const LAB_TRUST_SWITCH = "--lab-trust=";
 
-/** `?agent=<id>&safe=1`, either half, or `""` for an ordinary launch. */
-export function rendererQuery(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): string {
+declare const __NEO_LAB_BUILD__: boolean | undefined;
+
+/** True only when this shell was bundled with `NEO_ANGBAND_LAB_BUILD=1`. */
+export function labShell(): boolean {
+  return typeof __NEO_LAB_BUILD__ === "boolean" && __NEO_LAB_BUILD__;
+}
+
+/** `?agent=<id>&safe=1&labtrust=<ids>`, any part, or `""` for an ordinary launch. */
+export function rendererQuery(argv: readonly string[], env: NodeJS.ProcessEnv = process.env, lab: boolean = labShell()): string {
   const params = new URLSearchParams(agentQuery(env));
   if (argv.includes(SAFE_MODE_SWITCH)) params.set("safe", "1");
+  const trusted = argv.find((arg) => arg.startsWith(LAB_TRUST_SWITCH));
+  if (lab && trusted !== undefined && trusted.length > LAB_TRUST_SWITCH.length) params.set("labtrust", trusted.slice(LAB_TRUST_SWITCH.length));
   const query = params.toString();
   return query === "" ? "" : `?${query}`;
 }

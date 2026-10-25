@@ -517,6 +517,7 @@ export async function measureModTiers(
   sources: { readonly session: ReadonlySet<string>; readonly folder: ReadonlySet<string> },
   records: readonly InstallRecordFacts[],
   verify: (id: string) => Promise<boolean>,
+  labTrusted: ReadonlySet<string> = new Set(),
 ): Promise<Map<string, ModTier>> {
   const byId = new Map(records.map((record) => [record.id, record]));
   const out = new Map<string, ModTier>();
@@ -529,7 +530,7 @@ export async function measureModTiers(
     }
     const record = byId.get(id);
     if (sources.folder.has(id) || !record) {
-      out.set(id, assignTier({ id, source: "folder", execution }));
+      out.set(id, assignTier({ id, source: "folder", execution, labTrusted: labTrusted.has(id) }));
       continue;
     }
     const firstParty = record.repo !== undefined && firstPartyOrigin(record.repo) !== undefined;

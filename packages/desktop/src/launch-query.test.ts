@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rendererQuery, SAFE_MODE_SWITCH } from "./launch-query";
+import { labShell, rendererQuery, SAFE_MODE_SWITCH } from "./launch-query";
 
 describe("rendererQuery", () => {
   it("is empty for an ordinary launch", () => {
@@ -20,6 +20,13 @@ describe("rendererQuery", () => {
     /* A value or a near-miss spelling is not the switch; guessing would start
      * a player's game without mods they did not ask to lose. */
     expect(rendererQuery(["--safe-mode=0", "--safemode", "-safe-mode"], {})).toBe("");
+  });
+
+  it("passes --lab-trust to a lab shell only", () => {
+    expect(rendererQuery(["--lab-trust=anybandui,squire"], {}, true)).toBe("?labtrust=anybandui%2Csquire");
+    expect(rendererQuery(["--lab-trust=anybandui,squire"], {}, false)).toBe("");
+    expect(rendererQuery(["--lab-trust="], {}, true)).toBe("");
+    expect(labShell()).toBe(false);
   });
 
   it("leaves the agent query as agent-mode writes it", () => {

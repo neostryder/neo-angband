@@ -46,6 +46,7 @@ export default defineConfig({
   base: "./",
   define: {
     __NEO_BUILD_ID__: JSON.stringify(BUILD_ID),
+    __NEO_LAB_BUILD__: JSON.stringify(process.env.NEO_ANGBAND_LAB_BUILD === "1"),
   },
   build: {
     outDir: "dist-web",

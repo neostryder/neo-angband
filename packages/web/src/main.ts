@@ -246,6 +246,7 @@ import {
 import { installCrashScreen } from "./crash-screen.js";
 import { offerSafeLaunch, showSafeLaunchNotice, showSafeModeScreen } from "./safe-mode.js";
 import { addressWithoutSafeLaunch, bootCompleted, decideSafeLaunch, enterSafeLaunch, safeLaunch, watchSafeKey } from "./safe-launch";
+import { labTrust } from "./lab-trust";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, effectInfoRegistry, randartRegistry, runeRegistry, tvalRegistry, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
 import type { AgentController, AgentSession } from "@rpgm-tools/neo-angband-core";
 import {
@@ -1097,6 +1098,7 @@ async function rediscoverModSources(): Promise<void> {
       async (id) => {
         return subtle !== undefined ? await installed.verifyDigests(id, subtle) : false;
       },
+      labTrust(),
     ),
   );
 

@@ -196,6 +196,20 @@ describe("a tier comes from where the bytes came from", () => {
     expect(tiers.get("dev")?.trust).toBe("sideloaded");
     expect(verify).toHaveBeenCalledTimes(1);
   });
+
+  it("trusts a folder mod as first-party only when a lab build names it and it is a first-party id", async () => {
+    const tiers = await measureModTiers(
+      [codePack("anybandui", []), codePack("squire", []), codePack("stranger", [])],
+      { session: new Set(), folder: new Set(["anybandui", "squire", "stranger"]) },
+      [],
+      () => Promise.resolve(false),
+      new Set(["anybandui", "stranger"]),
+    );
+    expect(tiers.get("anybandui")).toMatchObject({ trust: "first-party", capabilityTier: "first-party" });
+    expect(tiers.get("anybandui")?.seams).toContain(TRUTH_MAP);
+    expect(tiers.get("squire")?.trust).toBe("sideloaded");
+    expect(tiers.get("stranger")?.trust).toBe("sideloaded");
+  });
 });
 
 describe("the seam policy", () => {

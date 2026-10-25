@@ -104,6 +104,8 @@ export interface ModTierFacts {
   readonly installedByModId?: string;
   /** Every installed file still matches its recorded digest. False when unchecked. */
   readonly digestsMatch?: boolean;
+  /** A lab build was told to treat this folder mod as first-party (lab-trust.ts). */
+  readonly labTrusted?: boolean;
 }
 
 /** A mod's tier, with the reason in words for the manager. */
@@ -137,7 +139,11 @@ function fetchedFromRepo(facts: ModTierFacts): boolean {
 /** The tier the facts support. */
 export function assignTier(facts: ModTierFacts): ModTier {
   const trustAndWhy = ((): { trust: ModTrust; why: string; origin?: FirstPartyOrigin } => {
-    if (facts.source === "folder") return { trust: "sideloaded", why: "loaded from a mods folder" };
+    if (facts.source === "folder") {
+      const origin = facts.labTrusted === true ? FIRST_PARTY_ORIGINS.find((o) => o.id === facts.id) : undefined;
+      if (origin) return { trust: "first-party", why: "loaded from a mods folder and trusted by this lab build", origin };
+      return { trust: "sideloaded", why: "loaded from a mods folder" };
+    }
     if (facts.source === "session") return { trust: "sideloaded", why: "loaded for this session only" };
     const origin = facts.repo === undefined ? undefined : firstPartyOrigin(facts.repo);
     if (origin && fetchedFromRepo(facts)) {

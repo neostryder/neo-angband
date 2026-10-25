@@ -33,6 +33,8 @@ const common = {
   external: ["electron"],
   sourcemap: true,
   logLevel: "info",
+  /* True only for a lab build (NEO_ANGBAND_LAB_BUILD=1); a release leaves it false. */
+  define: { __NEO_LAB_BUILD__: process.env.NEO_ANGBAND_LAB_BUILD === "1" ? "true" : "false" },
 };
 
 await build({
