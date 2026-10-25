@@ -205,6 +205,8 @@ function keySpec(key) {
  * differ from their own predecessor.
  */
 const SCRIPT = [
+  /* A fresh profile opens on "Choose your look" before the title screen. */
+  { key: "a", label: "choose-vanilla-look", settle: 2500, mustChange: true },
   { key: "n", label: "new-game", settle: 2500, mustChange: true },
   { key: "@", label: "random-character", settle: 2500, mustChange: true },
   { key: "Enter", label: "accept-character", settle: 3000, mustChange: true },
