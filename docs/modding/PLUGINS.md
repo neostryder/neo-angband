@@ -1070,7 +1070,7 @@ In the table, "any code mod" means first-party, reviewed, sideloaded and Worker 
 | `registry:effect-info` | Change what the game tells you about a spell, potion or wand effect | The mod does not start, because it installs this change as it loads. | yes | in-process |
 | `registry:randart` | Change how random artifacts are built - what powers they can get, and what each kind of item starts with | The mod does not start, because it installs this change as it loads. | yes | in-process |
 | `registry:rune` | Teach the game about a new kind of RUNE - what it is called, what an item carries, and how the player learns it | The mod does not start, because it installs this change as it loads. | yes | in-process |
-| `registry:tval` | Teach the game about a new kind of item - whether it can be worn or wielded, how it is priced, and whether it has an unidentified flavour | The mod does not start, because it installs this change as it loads. | yes | in-process |
+| `registry:tval` | Change how items are priced and how floor items are ordered, and teach the game about a new kind of item - whether it can be worn or wielded and whether it has an unidentified flavour | The mod does not start, because it installs this change as it loads. | yes | in-process |
 | `registry:vocab` | Add new vocabulary - flags, stats, and other terms | The mod does not start, because it installs this change as it loads. | no | in-process |
 | `registry:menu` | Rewrite one named game menu's semantic rows and layout | The mod does not start, because it installs this change as it loads. | yes | in-process |
 | `registry:message` | Add new message types, and choose which sounds play for them | The mod does not start, because it installs this change as it loads. | no | in-process |

@@ -180,7 +180,7 @@ const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
   ["effect-info", "Change what the game tells you about objects and effects", true],
   ["randart", "Change how random artifacts are built - what powers they can get, and what each kind of item starts with", true],
   ["rune", "Teach the game about a new kind of RUNE - what it is called, what an item carries, and how the player learns it, including during a shapechange", true],
-  ["tval", "Teach the game about a new kind of item - whether it can be worn or wielded, how it is priced, whether it has an unidentified flavour, and how floor items are ordered", true],
+  ["tval", "Change how items are priced and how floor items are ordered, and teach the game about a new kind of item - whether it can be worn or wielded and whether it has an unidentified flavour", true],
   ["vocab", "Add new vocabulary - flags, stats, and other terms", false],
   ["menu", "Rewrite one named game menu's semantic rows and layout", true],
   ["message", "Change message text and character history, add message types, and choose which sounds play for them", false],
