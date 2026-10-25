@@ -1084,7 +1084,7 @@ describe("API 2 management", () => {
   });
 
   it("reads and sets the look through the host's look and refuses anything but the two looks", async () => {
-    let state = { chosen: true, desired: "Neo" as const, active: "Neo" as const, pending: null };
+    let state: { chosen: boolean; desired: "Vanilla" | "Neo"; active: "Vanilla" | "Neo"; pending: "Vanilla" | "Neo" | null } = { chosen: true, desired: "Neo", active: "Neo", pending: null };
     const choose = vi.fn((look: "Vanilla" | "Neo") => { state = { ...state, desired: look, active: look }; return state; });
     const api = management(["screens:manage"], { look: { read: () => state, choose } }).manage!;
     expect(await api.look.read()).toEqual({ ok: true, value: { chosen: true, desired: "Neo", active: "Neo", pending: null } });
