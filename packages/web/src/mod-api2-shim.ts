@@ -647,6 +647,7 @@ export const API1_CONTEXT_MAP: Readonly<Record<keyof ModPluginContext, string>> 
   keyRepeat: "presentation.keyRepeat (first-party only)",
   options: "view.options, manage.options (first-party editor)",
   keybindings: "manage.keys (first-party editor)",
+  look: "manage.look (first-party manager)",
   knowledge: "view.knowledge (category and id select a recall page)",
   saves: "manage.saves (first-party only)",
   session: "manage.session (first-party only)",

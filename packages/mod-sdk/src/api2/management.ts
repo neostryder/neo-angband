@@ -48,6 +48,23 @@ export interface Api2Saves {
   delete(id: string): Api2Call<null>;
 }
 
+/** The two looks the title offers. */
+export type Api2LookName = "Vanilla" | "Neo";
+
+/** Which look the player wants, which one is showing, and which one is waiting on a download. */
+export interface Api2LookView {
+  readonly chosen: boolean;
+  readonly desired: Api2LookName;
+  readonly active: Api2LookName;
+  readonly pending: Api2LookName | null;
+}
+
+/** Reading and choosing the look, under `screens:manage`. A choice shows on the next start; ask for it with `reloadGame`. */
+export interface Api2ManagedLook {
+  read(): Api2Call<Api2LookView>;
+  choose(look: Api2LookName): Api2Call<Api2LookView>;
+}
+
 export interface Api2OptionsView {
   readonly entries: readonly {
     readonly name: string;

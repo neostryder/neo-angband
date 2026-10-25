@@ -24,7 +24,7 @@ import * as neoAuthoring from "@rpgm-tools/neo-angband-mod-sdk";
 import { log } from "./logging";
 import { faultMessage, reportModFault } from "./mod-problems";
 import { modHealth } from "./mod-health";
-import type { CoreRegistries, GameState, KnownLevelView, ModBag } from "@rpgm-tools/neo-angband-core";
+import type { CoreRegistries, GameState, KnownLevelView, ModBag, ModLook } from "@rpgm-tools/neo-angband-core";
 import {
   IN_PROCESS_MOD_API_VERSION,
   type BackupFolder,
@@ -191,6 +191,7 @@ export function modPluginContext(
   const net = netFor(id, session);
   const keymaps = keymapsFor(id, state, session);
   const options = optionsFor(id, state, session);
+  const look = lookFor(id, session);
   const keybindings = keybindingsFor(state, session);
   const knowledge = knowledgeFor(state, session);
   const settings = modSettingsFor(id);
@@ -274,6 +275,7 @@ export function modPluginContext(
     ...(knowledge ? { knowledge } : {}),
     ...(options ? { options } : {}),
     ...(keybindings ? { keybindings } : {}),
+    ...(look ? { look } : {}),
     ...(characterStore ? { characterStore } : {}),
     /* Defaults FALSE, which is the safe way round: a mod that seeds something
      * for a new life must not seed it over a character who already lived one,
@@ -332,6 +334,18 @@ function knowledgeFor(state: GameState | undefined, session: ModSessionFacts): M
   const caps = session.capabilities;
   if (!state || !knowledgeSource || !caps || !(caps.has("state:knowledge.read") || caps.has("state:*.read"))) return undefined;
   return knowledgeSource();
+}
+
+let lookHost: ModLook | undefined;
+
+/** Install or clear the look behind `ctx.look` (boot path and tests). */
+export function setModLookHost(host: ModLook | undefined): void {
+  lookHost = host;
+}
+
+function lookFor(id: string, session: ModSessionFacts): ModLook | undefined {
+  if (!lookHost || session.capabilities?.has("screens:manage") !== true || modStartGrants(id).firstParty?.manage !== true) return undefined;
+  return lookHost;
 }
 
 export function setModOptionsAfterChange(after: (() => void) | undefined): void {

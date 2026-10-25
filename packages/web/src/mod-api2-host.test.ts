@@ -1076,11 +1076,22 @@ describe("API 2 management", () => {
     const calls = [
       api.profiles.list(), api.profiles.create("New"), api.profiles.setEnabledMods("p", []), api.profiles.switchTo(null),
       api.saves.list(), api.saves.create(), api.saves.load("s"), api.saves.rename("s", "Name"), api.saves.delete("s"),
-      api.options.get(), api.options.set({}), api.keys.keyset(), api.keys.list(), api.keys.set("F2", "h"), api.keys.remove("F2"),
+      api.options.get(), api.options.set({}), api.look.read(), api.look.choose("Vanilla"), api.keys.keyset(), api.keys.list(), api.keys.set("F2", "h"), api.keys.remove("F2"),
       api.keys.commands(), api.keys.capture(), api.keys.cancelCapture(), api.authoring(), api.wizard(), api.loadForSession(new Uint8Array()),
       api.reloadGame(), api.session.save(), api.session.exitToTitle(), api.session.quit(), api.mods.snapshot(), api.mods.browse(),
     ];
     for (const result of await Promise.all(calls)) expect(result).toMatchObject({ ok: false, reason: "not-granted" });
+  });
+
+  it("reads and sets the look through the host's look and refuses anything but the two looks", async () => {
+    let state = { chosen: true, desired: "Neo" as const, active: "Neo" as const, pending: null };
+    const choose = vi.fn((look: "Vanilla" | "Neo") => { state = { ...state, desired: look, active: look }; return state; });
+    const api = management(["screens:manage"], { look: { read: () => state, choose } }).manage!;
+    expect(await api.look.read()).toEqual({ ok: true, value: { chosen: true, desired: "Neo", active: "Neo", pending: null } });
+    expect(await api.look.choose("Vanilla")).toMatchObject({ ok: true, value: { desired: "Vanilla", active: "Vanilla" } });
+    expect(await api.look.choose("Elvish" as never)).toMatchObject({ ok: false, code: "look" });
+    expect(choose).toHaveBeenCalledTimes(1);
+    expect(await management(["screens:manage"]).manage!.look.read()).toMatchObject({ ok: false, reason: "unavailable" });
   });
 
   it("passes a character-start action and records arming independently of ownership", async () => {

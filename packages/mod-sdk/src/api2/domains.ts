@@ -34,7 +34,7 @@ import type { Api2Inspect, LoadoutChange, LoadoutSimulation } from "./inspection
 import type { Api2Character } from "./character.js";
 import type { Api2Knowledge } from "./knowledge.js";
 import type { Api2Options } from "./hooks.js";
-import type { Api2KeyValueStore, Api2ManagedKeys, Api2ManagedMods, Api2ManagedOptions, Api2ProfileAction, Api2Saves, Api2Wizard } from "./management.js";
+import type { Api2KeyValueStore, Api2ManagedKeys, Api2ManagedLook, Api2ManagedMods, Api2ManagedOptions, Api2ProfileAction, Api2Saves, Api2Wizard } from "./management.js";
 
 /** In-process hosts supply the engine types without making the SDK depend on Core. */
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- Core augments this interface with its live types.
@@ -519,6 +519,7 @@ export interface Api2Manage {
   readonly saves: Api2Saves;
   readonly options: Api2ManagedOptions;
   readonly keys: Api2ManagedKeys;
+  readonly look: Api2ManagedLook;
   readonly mods: Api2ManagedMods;
   authoring(): Api2Call<typeof import("../index.js")>;
   wizard(): Api2Call<Api2Wizard>;

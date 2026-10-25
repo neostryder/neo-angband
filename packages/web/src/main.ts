@@ -380,6 +380,7 @@ import {
   setModTitleControl,
   setModProfilesControl,
   setModControllerArmedControl,
+  setModLookHost,
   setModOptionsAfterChange,
   setModKnowledgeSource,
   setModRunReports,
@@ -1010,6 +1011,16 @@ try {
 }
 setModStorage(scopedGameStorage);
 const lookStore = new LookStore(scopedGameStorage, defaultModStore());
+setModLookHost({
+  read: () => {
+    const state = lookStore.read();
+    return { chosen: state.chosen, desired: state.desired, active: state.active, pending: state.pending?.look ?? null };
+  },
+  choose: (look) => {
+    const state = lookStore.choose(look);
+    return { chosen: state.chosen, desired: state.desired, active: state.active, pending: state.pending?.look ?? null };
+  },
+});
 const modLists = new ModListStore(scopedGameStorage);
 let modSaveGuard: ModSaveGuard | null = null;
 let saveCatalog: (() => CatalogMod[]) | null = null;

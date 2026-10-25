@@ -119,6 +119,15 @@ describe("required rules, each shown failing", () => {
     }
   });
 
+  it("plugin-declares-modapi: accepts an in-process API 2 mod, which has no ABI number", () => {
+    const files = ["manifest.json", "plugin.js"];
+    const api2 = { ...GOOD_MANIFEST, manifestSchema: 2, runtime: "in-process", api: ">=2.0.0 <3.0.0", modApi: undefined };
+    expect(failed(goodMod({ files }, api2))).not.toContain("plugin-declares-modapi");
+    for (const api of [">=3.0.0 <4.0.0", "nonsense"]) {
+      expect(failed(goodMod({ files }, { ...api2, api })), api).toContain("plugin-declares-modapi");
+    }
+  });
+
   it("plugin-declares-modapi: says nothing about a mod that ships no code", () => {
     /* The rule must not become "every mod needs modApi". A data pack has no ABI. */
     expect(failed(goodMod())).toEqual([]);

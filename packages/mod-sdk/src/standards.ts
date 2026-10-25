@@ -39,6 +39,7 @@ import { checksMarkdown } from "./checks/rules.js";
 import { CapabilitySet } from "./capabilities.js";
 import { ManifestError, hasFacet, manifestFields, validateManifest, type PackManifest } from "./manifest.js";
 import { compareSemver, satisfies } from "./semver.js";
+import { MOD_API2_VERSION } from "./api2/version.js";
 
 /** The file a mod's code lives in, when it has any. */
 export const PLUGIN_FILE = "plugin.js";
@@ -147,6 +148,15 @@ export interface CheckReport {
 }
 
 /** The parsed manifest, or null. Kept private so each rule cannot re-parse. */
+/** Whether a schema 2 `api` range admits the API 2 this build runs; false for a range that does not parse. */
+function admitsApi2(range: string): boolean {
+  try {
+    return satisfies(MOD_API2_VERSION, range);
+  } catch {
+    return false;
+  }
+}
+
 function manifestObject(mod: ModUnderTest): Record<string, unknown> | null {
   if (mod.manifestText === null) return null;
   try {
@@ -350,6 +360,9 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
       /* A schema 2 manifest comes back normalized, with `modApi` filled in only
        * when its `api` range admits an API the game runs. */
       if (m["manifestSchema"] === 2) {
+        /* An in-process mod written for API 2 has no ABI number: the loader accepts it
+         * when the range admits API 2 and wraps its default export itself. */
+        if (m["runtime"] === "in-process" && typeof m["api"] === "string" && admitsApi2(m["api"])) return null;
         return `ships ${PLUGIN_FILE} but its api range ${String(m["api"])} admits no API the game runs in-process`;
       }
       return `ships ${PLUGIN_FILE} but declares no modApi`;

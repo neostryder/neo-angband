@@ -90,8 +90,8 @@ describe("API 2 boundary values", () => {
   });
 
   it("tracks the first-party management namespace", () => {
-    const names: Record<keyof Api2Manage, true> = { profiles: true, session: true, saves: true, options: true, keys: true, mods: true, authoring: true, wizard: true, loadForSession: true, reloadGame: true };
-    expect(Object.keys(names).sort()).toEqual(["authoring", "keys", "loadForSession", "mods", "options", "profiles", "reloadGame", "saves", "session", "wizard"]);
+    const names: Record<keyof Api2Manage, true> = { profiles: true, session: true, saves: true, options: true, keys: true, look: true, mods: true, authoring: true, wizard: true, loadForSession: true, reloadGame: true };
+    expect(Object.keys(names).sort()).toEqual(["authoring", "keys", "loadForSession", "look", "mods", "options", "profiles", "reloadGame", "saves", "session", "wizard"]);
   });
 });
 

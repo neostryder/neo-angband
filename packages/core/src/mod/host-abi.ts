@@ -571,6 +571,12 @@ export interface ModPluginContext {
   /** The player's keymap editor for the current keyset, under `keymap:edit` (mod-keybindings.ts). */
   readonly keybindings?: ModKeybindings;
   /**
+   * The look (Vanilla or Neo Angband) the game is showing, for the first-party
+   * manager that offers the switch, under `screens:manage`. Choosing takes effect
+   * on the next start of the game, which the mod asks for with `reloadGame`.
+   */
+  readonly look?: ModLook;
+  /**
    * The knowledge menu's contents, under `state:knowledge.read`: each category's
    * known members as the game groups them, and each one's recall page as a
    * `ScreenView` (knowledge-read.ts). Reading a page changes nothing in the game.
@@ -2427,6 +2433,22 @@ export type ModOptionsResult = {
   readonly ok: false;
   readonly reason: string;
 };
+
+/** The two looks the title offers. */
+export type ModLookName = "Vanilla" | "Neo";
+
+/** Which look the player wants, which one is showing, and which one is waiting on a download. */
+export interface ModLookState {
+  readonly chosen: boolean;
+  readonly desired: ModLookName;
+  readonly active: ModLookName;
+  readonly pending: ModLookName | null;
+}
+
+export interface ModLook {
+  read(): ModLookState;
+  choose(look: ModLookName): ModLookState;
+}
 
 export interface ModOptions {
   get(): ModOptionsView;

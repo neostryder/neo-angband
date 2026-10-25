@@ -1132,6 +1132,18 @@ function manageDomain(ctx: ModPluginContext, options: Api2HostOptions, cleanups:
       }),
       remove: (trigger, keyset) => keyCommand((keys) => keys.remove(trigger, keyset) ? api2Ok(null) : api2Refused("keymap", "The key has no binding.")),
     }),
+    look: frozen({
+      read: () => guarded(() => {
+        if (!options.grants.has("screens:manage")) return api2NotGranted("screens:manage");
+        return ctx.look ? api2Ok(data(ctx.look.read())) : api2Unavailable("The look is unavailable.");
+      }),
+      choose: (look) => guarded(() => {
+        if (!options.grants.has("screens:manage")) return api2NotGranted("screens:manage");
+        if (!ctx.look) return api2Unavailable("The look is unavailable.");
+        if (look !== "Vanilla" && look !== "Neo") return api2Refused("look", "The look must be Vanilla or Neo.");
+        return api2Ok(data(ctx.look.choose(look)));
+      }),
+    }),
     mods: managedMods(ctx.id, options, cleanups, stopped),
     authoring: () => guarded(() => options.grants.has("mod:authoring") ? api2Ok(ctx.authoring) : api2NotGranted("mod:authoring")),
     wizard: () => guarded(() => options.grants.has("debug:wizard")
