@@ -195,6 +195,12 @@ const GOOD_ARCHIVE = (): Uint8Array => zip([
 /* One trip and one pass per rule                                       */
 /* ------------------------------------------------------------------ */
 
+/** A first-party API 2 mod that puts one row on the title screen. */
+const titleRow = (id: string): Files => ({
+  "manifest.json": v2({ api: ">=2.0.0 <3.0.0", runtime: "in-process", capabilities: ["ui:title"] }),
+  "plugin.js": `export default { api: ">=2.0.0 <3.0.0", start(mod) { mod.ui.title.registerRow({ id: ${JSON.stringify(id)}, label: "New", run() {} }); } };`,
+});
+
 const OK = "export default { api: 1, register(host, ctx) { ctx.log('hello'); } };";
 const NET = ["network:api.example.com"];
 const WORKER_ONLY_IN_PROCESS = ["display:replace", "ui:panel.mount", "registry:tiles", "ui:region.create"].find((c) => !capabilityTiers(c).includes("worker"));
@@ -384,6 +390,10 @@ const CASES: Record<string, { readonly trip: () => Run; readonly pass: () => Run
   "secret-host": {
     trip: () => ({ files: plugin(NET, "export default { api: 1, register(host, ctx) { ctx.net.secrets.set('my-key', 'v', { hosts: ['other.example.org'] }); } };") }),
     pass: () => ({ files: plugin(NET, "export default { api: 1, register(host, ctx) { ctx.net.secrets.set('my-key', 'v', { hosts: ['api.example.com'] }); } };") }),
+  },
+  "title-row-id": {
+    trip: () => ({ files: titleRow("squire:new-character"), firstParty: true }),
+    pass: () => ({ files: titleRow("squire-new-character"), firstParty: true }),
   },
   webassembly: {
     trip: () => ({ files: plugin([], "export default { api: 1, register() { WebAssembly.compile(new Uint8Array()); } };") }),

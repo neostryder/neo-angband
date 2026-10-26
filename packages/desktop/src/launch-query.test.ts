@@ -22,6 +22,12 @@ describe("rendererQuery", () => {
     expect(rendererQuery(["--safe-mode=0", "--safemode", "-safe-mode"], {})).toBe("");
   });
 
+  it("passes --log to any build, for the four level names only", () => {
+    expect(rendererQuery(["--log=info"], {}, false)).toBe("?log=info");
+    expect(rendererQuery(["--log=debug"], {}, true)).toBe("?log=debug");
+    expect(rendererQuery(["--log=loud"], {}, false)).toBe("");
+    expect(rendererQuery(["--log="], {}, false)).toBe("");
+  });
   it("passes --lab-seed to a lab shell only, and only a whole 32-bit number", () => {
     expect(rendererQuery(["--lab-seed=1234"], {}, true)).toBe("?seed=1234");
     expect(rendererQuery(["--lab-seed=1234"], {}, false)).toBe("");

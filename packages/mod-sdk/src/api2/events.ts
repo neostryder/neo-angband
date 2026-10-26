@@ -68,7 +68,7 @@ export interface Api2HealEvent {
   readonly playerAmount?: number;
 }
 
-/** A command the player (or the controller playing for them) gave. */
+/** A command the player gave, reported before it runs. A controller's own commands do not fire it. */
 export interface Api2CommandEvent {
   readonly code: string;
   readonly dir?: number;

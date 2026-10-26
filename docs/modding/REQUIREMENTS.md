@@ -259,6 +259,12 @@ A dynamic `import()` of a computed specifier can load anything, and the checker 
 
 An import from a URL, `data:` or `blob:` address, or through `importScripts` runs code that was never part of the reviewed payload.
 
+### Give each title row an id the game accepts
+
+`checks/title-row-id` - warning, functionality
+
+The game refuses a title row whose id is not lower-case letters, digits and hyphens starting with a letter, up to 64 characters, and the refusal comes back as a result, so the row never appears and nothing is logged.
+
 ### Ship only scripts the entry module uses
 
 `checks/unreachable-code` - note, functionality

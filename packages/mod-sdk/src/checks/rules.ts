@@ -178,6 +178,11 @@ export const CHECK_RULES: readonly CheckRule[] = [
     title: "Load code only from the mod's own files",
     reason: "An import from a URL, `data:` or `blob:` address, or through `importScripts` runs code that was never part of the reviewed payload.",
   }),
+  rule("title-row-id", {
+    severity: "warning", kind: "functionality", area: "code",
+    title: "Give each title row an id the game accepts",
+    reason: "The game refuses a title row whose id is not lower-case letters, digits and hyphens starting with a letter, up to 64 characters, and the refusal comes back as a result, so the row never appears and nothing is logged.",
+  }),
   rule("unreachable-code", {
     severity: "note", kind: "functionality", area: "code",
     title: "Ship only scripts the entry module uses",

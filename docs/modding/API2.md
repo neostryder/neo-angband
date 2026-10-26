@@ -85,6 +85,14 @@ A controller can act in an open store. The host asks it for a decision at phase 
 
 `ui.mount` takes the same panel grammar as Worker mods: `text`, `button`, `row` and `column` nodes under a panel `id`. The `id` and each button's `action` are lower-case letters, digits and hyphens, start with a letter, and run to 64 characters at most. A text holds up to 4096 characters, a row or column up to 32 children, and the tree nests up to 16 deep. The host draws the panel, and `onAction` hears the `action` of each button the player uses. `ui.patch` replaces the title (`null` removes it), the tree, or `visible`. A panel outside the grammar, a second panel with an id already mounted, or a patch to a panel that is not mounted comes back `refused` with the code `bad-panel`. A mod in API 2 does not get a DOM element.
 
+### Title screen rows
+
+A first-party mod with `ui:title` adds a row to the title screen with `ui.title.registerRow({ id, label, run })` and removes it with `ui.title.removeRow`. The `id` uses the same format as a panel `id`: lower-case letters, digits and hyphens, a letter first, 64 characters at most, and free among the mod's own rows. An id outside the format, such as `squire:new-character`, or one already in use comes back `refused` with the code `bad-title-row`. The result is the only sign, since nothing is logged and no row appears, so a mod checks it. `neo-angband-mod-check` flags a literal id outside the format as `checks/title-row-id`.
+
+### Mod logs
+
+`mod.meta.log(message)` writes an `info` line on the channel `mod:<id>` in the game's log. A release build keeps warnings and errors only, so those lines stay out of the log until the level is raised. There are three ways to raise it: press `L` on the "Report a problem" page, which keeps the choice; launch the desktop game with `--log=info` (or `--log=debug`), which applies to that launch only; or add `?log=info` to the address of the web build. The desktop game writes the log to a file in the `logs` folder beside the saves, one file per launch, and the report page includes the tail.
+
 ## Events
 
 An event arrives only when the player could know about it. `combat-outcome` reports outcomes against the player or a perceived monster in view; attacking an unseen monster does not reveal its position or outcome. A monster appears as `{ monster: id }` when the player perceived it as the event happened and as `"unseen"` otherwise, even when the event removed it (a kill). Movement or healing by a monster the player cannot perceive in view does not arrive. A movement omits `from` when the player did not perceive the monster at its origin before it moved. Damage and healing amounts are given only for the player, as `playerDamage` and `playerAmount`. Suppressed events assign no monster handles, and healing while the player was away from a persistent level emits no event.
@@ -96,7 +104,7 @@ An event arrives only when the player could know about it. `combat-outcome` repo
 | `combat-outcome` | `{ attacker, target, kind, hit, died, grid, playerDamage? }` |
 | `motion` | `{ who, from?, to, kind }` |
 | `heal` | `{ who, grid, playerAmount? }` |
-| `player-command` | `{ code, dir?, phase, token }` |
+| `player-command` | `{ code, dir?, args?, phase, token }` |
 | `driver-changed` | `{ kind: "player" }` or `{ kind: "controller", owner, label?, reason? }`: who holds the keyboard |
 | `hp` `mana` `gold` `experience` `playerlevel` `status` | `null` |
 | `inventory` `equipment` `monsterlist` `itemlist` | `null` |
@@ -104,6 +112,8 @@ An event arrives only when the player could know about it. `combat-outcome` repo
 | `leave-store` | `null`: the player left the shop. |
 | `enter-world` | `null`: a game is starting to run. |
 | `leave-world` | `null`: the game is stopping. |
+
+`player-command` fires as the game loop takes a command from the player and before the command runs, so a `state:*` read in the listener still shows the world the command answered, and the command's effect arrives later as its own events (`motion`, `combat-outcome`, `hp`). It carries `dir` when the command has one. `args` keeps only `handle`, `floor`, `spell` and `index`, and only when each is a non-negative whole number. The commands an installed controller gives, the follow-up steps of a run or a repeat count, and shop buying and selling do not fire it.
 
 A `null` payload is a notice that something changed: read the view for the new value. Level generation, bolts, missiles and explosions have no API 2 event, since they show things the player did not see.
 

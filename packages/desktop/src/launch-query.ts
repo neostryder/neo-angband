@@ -16,6 +16,8 @@ import { agentQuery } from "./agent-mode.js";
 export const SAFE_MODE_SWITCH = "--safe-mode";
 /** `--lab-trust=qol,squire`: lab builds only, see the web package's lab-trust.ts. */
 export const LAB_TRUST_SWITCH = "--lab-trust=";
+/** `--log=debug`: the logging level for this launch, as `?log=` is on the web; one of error, warn, info, debug. */
+export const LOG_LEVEL_SWITCH = "--log=";
 /** `--lab-seed=1234`: lab builds only; starts new games from that master seed so a failing run replays. */
 export const LAB_SEED_SWITCH = "--lab-seed=";
 
@@ -26,10 +28,12 @@ export function labShell(): boolean {
   return typeof __NEO_LAB_BUILD__ === "boolean" && __NEO_LAB_BUILD__;
 }
 
-/** `?agent=<id>&safe=1&labtrust=<ids>&seed=<n>`, any part, or `""` for an ordinary launch. */
+/** `?agent=<id>&safe=1&log=<level>&labtrust=<ids>&seed=<n>`, any part, or `""` for an ordinary launch. */
 export function rendererQuery(argv: readonly string[], env: NodeJS.ProcessEnv = process.env, lab: boolean = labShell()): string {
   const params = new URLSearchParams(agentQuery(env));
   if (argv.includes(SAFE_MODE_SWITCH)) params.set("safe", "1");
+  const level = argv.find((arg) => arg.startsWith(LOG_LEVEL_SWITCH))?.slice(LOG_LEVEL_SWITCH.length);
+  if (level !== undefined && ["error", "warn", "info", "debug"].includes(level)) params.set("log", level);
   const trusted = argv.find((arg) => arg.startsWith(LAB_TRUST_SWITCH));
   if (lab && trusted !== undefined && trusted.length > LAB_TRUST_SWITCH.length) params.set("labtrust", trusted.slice(LAB_TRUST_SWITCH.length));
   const seeded = argv.find((arg) => arg.startsWith(LAB_SEED_SWITCH));

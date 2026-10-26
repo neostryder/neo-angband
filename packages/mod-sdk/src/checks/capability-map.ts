@@ -129,6 +129,12 @@ export const GATED_MEMBERS: ReadonlyMap<string, CapabilityNeed> = new Map<string
 /** Event subscriptions, whose capability is `event:<first argument>`. */
 export const EVENT_SUBSCRIBE: ReadonlySet<string> = new Set(["ctx:events.on", "api2:events.on"]);
 
+/** Title screen rows, whose first argument carries the row's `id`. */
+export const TITLE_ROW: ReadonlySet<string> = new Set(["api2:ui.title.registerRow"]);
+
+/** The id a title row, like a panel or a button action, must match. */
+export const TITLE_ROW_ID = /^[a-z][a-z0-9-]{0,63}$/u;
+
 /** Network requests, whose first argument carries the URL. */
 export const NET_REQUEST: ReadonlySet<string> = new Set(["ctx:net.request", "api2:net.request"]);
 

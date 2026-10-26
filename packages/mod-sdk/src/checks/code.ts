@@ -35,6 +35,8 @@ import {
   FACET_METHODS,
   NET_REQUEST,
   SECRET_BIND,
+  TITLE_ROW,
+  TITLE_ROW_ID,
   anyOf,
   gatedMember,
   memberKey,
@@ -255,6 +257,7 @@ class Analysis {
   readonly workers: ModFindingEvidence[] = [];
   readonly scripts: ModFindingEvidence[] = [];
   readonly requests: Array<{ readonly url: AnyNode | null; readonly values: VSet; readonly evidence: ModFindingEvidence; readonly direct: boolean }> = [];
+  readonly titleRows: Array<{ readonly id: VSet; readonly evidence: ModFindingEvidence }> = [];
   readonly secretBinds: Array<{ readonly name: VSet; readonly hosts: VSet | null; readonly evidence: ModFindingEvidence }> = [];
   readonly eventSubs: Array<{ readonly names: VSet; readonly evidence: ModFindingEvidence }> = [];
   readonly dynamicImports: Array<{ readonly module: string; readonly node: AnyNode; readonly spec: string | null }> = [];
@@ -381,7 +384,7 @@ class Analysis {
   /** Run passes until nothing changes; false when the limit was reached first. */
   run(seed: () => void): boolean {
     for (const list of [this.reaches, this.computed, this.globalComputed, this.invocations, this.escapes, this.evals, this.network,
-      this.workers, this.scripts, this.requests, this.secretBinds, this.eventSubs, this.dynamicImports, this.remoteScripts, this.wasm]) list.length = 0;
+      this.workers, this.scripts, this.requests, this.titleRows, this.secretBinds, this.eventSubs, this.dynamicImports, this.remoteScripts, this.wasm]) list.length = 0;
     let passes = 0;
     do {
       this.changed = false;
@@ -1230,6 +1233,7 @@ class Analysis {
       const urlVals = this.member(args[0] ?? EMPTY, ["url"], node);
       this.requests.push({ url: urlNode, values: urlVals, evidence: this.at(node), direct: false });
     }
+    if (TITLE_ROW.has(key)) this.titleRows.push({ id: this.member(args[0] ?? EMPTY, ["id"], node), evidence: this.at(node) });
     const secret = SECRET_BIND.get(key);
     if (secret !== undefined) {
       const raw = args[secret.index];
@@ -1905,6 +1909,15 @@ export function checkCode(subject: CheckSubject, options: CodeCheckOptions): Mod
   }
   if (inUrl.length > 0) {
     out.push(finding("credential-in-url", "A request URL carries a key or token in its query string.", { evidence: limitEvidence(dedupeEvidence(inUrl)) }));
+  }
+
+  /* Title rows: the host refuses an id outside the format, and says so only as a result. */
+  for (const row of analysis.titleRows) {
+    for (const value of row.id) {
+      if (value.k === "str" && !TITLE_ROW_ID.test(value.value)) {
+        out.push(finding("title-row-id", `${JSON.stringify(value.value)} cannot be a title row id; use lower-case letters, digits and hyphens, start with a letter, and keep it to 64 characters.`, { evidence: [row.evidence] }));
+      }
+    }
   }
 
   /* Secrets. */
