@@ -42,6 +42,7 @@ import {
   type GameEventMap,
   type GameEventType,
   type GameState,
+  type ModRegistryHost,
   type PlayerIntent,
   type PromptAnswer,
 } from "@rpgm-tools/neo-angband-core";
@@ -109,6 +110,8 @@ export interface Api2Allowlist {
 export interface Api2HostOptions {
   readonly intent?: ModPluginContext["intent"];
   readonly execution?: "in-process" | "worker" | "data";
+  /** The gated registry host the loader built for this mod; offered as `engine.registry` while `start` runs. */
+  readonly registry?: ModRegistryHost;
   readonly install?: Api2PrefsMigration | Api2HostPrefsMigration;
   readonly installStorage?: ModPrefs;
   readonly kvStorage?: PrefsStorage | null;
@@ -176,6 +179,7 @@ export function api2Engine(ctx: ModPluginContext, options: Api2HostOptions): Api
     core: ctx.core,
     get state() { return ctx.state; },
     get registries() { return ctx.registries ?? modRegistries(); },
+    registry: options.registry,
   });
 }
 

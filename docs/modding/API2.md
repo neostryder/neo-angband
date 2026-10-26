@@ -138,6 +138,8 @@ These API 1 hooks have no API 2 form:
 
 `engineTiles(context)` is the same door for a tile set. It returns a `filler` that supplies tiles for monsters and objects the pack does not draw, and a `player` provider that picks the player's tile from the character's shape, class, race and level. It needs `registry:tiles` and the `engine` domain, and a mod that also declares a `tileMap` table declares its filler in only one of the two.
 
+`engine.registry` is the door for what a mod registers with the game itself: effect handlers, projection handlers, commands and their verbs, rooms, profiles, blows, stores, menus and the rest of what an API 1 `register(host, ctx)` was given as `host`. It is that same host, and each member needs the same `registry:` permission it needs there (`registry:effect`, `registry:projection`, `registry:command` and so on; `neo-angband-mod-check` reports one the manifest lacks). It is present only for first-party mods and for a mod the player gave `engine:access`, never in a Worker, and only while `start` runs: the game builds it for the mod then, so `hooks`, `policies`, `engineHooks` and `engineTiles` do not see it. A mod reads `mod.engine?.registry` in `start` and installs what it needs.
+
 ## Policy tables
 
 `policies(context)` returns changes as data: hook answers, and a few game registrations. The game applies them itself, without calling the mod, so a table works the same in a Worker and in process. Tables do not limit what a mod can change. An in-process mod keeps every hook function it has, and when it declares a function and a table for the same hook, the function is used.

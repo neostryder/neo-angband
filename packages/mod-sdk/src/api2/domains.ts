@@ -49,6 +49,14 @@ export interface Api2Engine {
   readonly core: EngineBinding<"core">;
   readonly state: EngineBinding<"state"> | undefined;
   readonly registries: EngineBinding<"registries"> | undefined;
+  /**
+   * The registry host an API 1 `register(host, ctx)` was given: effects, projections,
+   * commands and their verbs, rooms, profiles, blows, stores, menus and the rest, each
+   * gated by the matching `registry:` capability in the manifest. Present only while
+   * `start` runs, because the game builds it for the mod then; a mod reads it there and
+   * installs what it needs. Not offered to `hooks`, `policies`, `engineHooks` or `engineTiles`.
+   */
+  readonly registry: EngineBinding<"registry"> | undefined;
 }
 
 /** Whether a mod is one of the game's own (first-party) or anyone else's. */

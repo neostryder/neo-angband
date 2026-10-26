@@ -420,6 +420,17 @@ describe("an API 2 definition through the shim", () => {
     expect(refused.ok).toBe(false);
   });
 
+  it("offers the registry host to a first-party mod's start, and to no other mod", () => {
+    const host = { marker: true } as unknown as ModRegistryHost;
+    const seen: Record<string, unknown> = {};
+    for (const tier of ["first-party", "public"] as const) {
+      const plugin = api2Plugin({ api: ">=2.0.0 <3.0.0", start(mod: ModApi2) { seen[tier] = mod.engine?.registry; } } as never, () => ({ grants: capabilities("reg", []), tier }));
+      plugin.register?.(host, modPluginContext("reg", {}, undefined, {}, { capabilities: capabilities("reg", []) }));
+    }
+    expect(seen["first-party"]).toBe(host);
+    expect(seen["public"]).toBeUndefined();
+  });
+
   it("composes with an API 1 plugin's hooks in load order", () => {
     const legacy = defineModPlugin({ api: 1, hooks: () => ({ messageText: (raw) => `[${raw}]` }) });
     const modern = api2Plugin(

@@ -8,6 +8,7 @@ import type {
 import type { KnownLevelView } from "../agent/known-level.js";
 import type { GameState } from "../game/context.js";
 import type { CoreRegistries } from "../session/boot.js";
+import type { ModRegistryHost } from "./registry-host.js";
 import type {
   ComposedRecords, NetProblemCode, NetRequest, PackCompat, ScreenRegions, ScreenView,
   WorldFrame,
@@ -18,6 +19,7 @@ declare module "@rpgm-tools/neo-angband-mod-sdk" {
     readonly core: ModCoreApi;
     readonly state: GameState;
     readonly registries: CoreRegistries;
+    readonly registry: ModRegistryHost;
   }
 }
 

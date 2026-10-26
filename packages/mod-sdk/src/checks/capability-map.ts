@@ -43,7 +43,7 @@ export const ANY_NETWORK: CapabilityNeed = {
 const HUD = anyOf("ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:*.replace");
 
 /** Gated members, keyed `root:dotted.path`. */
-export const GATED_MEMBERS: ReadonlyMap<string, CapabilityNeed> = new Map<string, CapabilityNeed>([
+const GATED_BASE: ReadonlyMap<string, CapabilityNeed> = new Map<string, CapabilityNeed>([
   ["ctx:net", ANY_NETWORK],
   ["ctx:installMod", anyOf("mod:install")],
   ["ctx:reloadGame", anyOf("mod:install", "mod:session")],
@@ -124,6 +124,15 @@ export const GATED_MEMBERS: ReadonlyMap<string, CapabilityNeed> = new Map<string
   ["api2:store.kv", anyOf("store:kv")],
   ["api2:store.session", anyOf("store:session")],
   ["api2:truth", anyOf("state:map-actual.read")],
+]);
+
+/**
+ * `mod.engine.registry` is the host an API 1 `register(host, ctx)` is given, so each of its members
+ * needs what the same member of `host` needs.
+ */
+export const GATED_MEMBERS: ReadonlyMap<string, CapabilityNeed> = new Map<string, CapabilityNeed>([
+  ...GATED_BASE,
+  ...[...GATED_BASE].filter(([member]) => member.startsWith("host:")).map(([member, need]) => [`api2:engine.registry.${member.slice(5)}`, need] as const),
 ]);
 
 /** Event subscriptions, whose capability is `event:<first argument>`. */

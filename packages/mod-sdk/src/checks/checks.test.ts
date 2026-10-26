@@ -464,6 +464,7 @@ describe("the named cases", () => {
       ["manage.keys.list", "keymap:edit"], ["manage.mods.browse", "mod:install"], ["manage.authoring", "mod:authoring"],
       ["manage.wizard", "debug:wizard"], ["manage.loadForSession", "mod:session"], ["manage.reloadGame", "mod:session"],
       ["store.kv.keys", "store:kv"], ["store.session.keys", "store:session"],
+      ["engine.registry.effects.register", "registry:effect"], ["engine.registry.commands.register", "registry:command"],
     ] as const;
     for (const [member, capability] of cases) {
       const files = (capabilities: readonly string[]) => ({

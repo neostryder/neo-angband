@@ -574,9 +574,9 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
   }
   if (definition.start || definition.actions?.length || definition.titleActions?.length) {
     const start = definition.start?.bind(definition);
-    plugin.register = (_host, ctx) => {
+    plugin.register = (host, ctx) => {
       stopped = false;
-      const mod = build(ctx);
+      const mod = build(ctx, { registry: host });
 
       for (const row of definition.titleActions ?? []) {
         if (!mod.ui.title || !mod.meta.granted("profiles:manage") || !mod.meta.granted("saves:manage")) {
