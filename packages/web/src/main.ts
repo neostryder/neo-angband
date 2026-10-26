@@ -398,7 +398,9 @@ import { createIntentGate } from "./intent-gate";
 import { publicModList } from "./mod-list";
 import { applyMapMargin } from "./map-margin";
 import { createModSaves } from "./saves-facade";
-import { frozenDriver, type InputDriver, type InputSnapshotSource } from "./input-snapshot";
+import { buildInputSnapshot, frozenDriver, type InputDriver, type InputSnapshotSource } from "./input-snapshot";
+import { createLabHook } from "./lab-hook";
+import { createModWizard } from "./wizard-runtime";
 import type { ControllerKeyAnswer, ControllerKeyPress, ModControllerInstall, ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
 import { createModNet, netRelayBridge } from "./mod-net";
 import { playerCommandEvent } from "./player-command-event";
@@ -16830,15 +16832,22 @@ setAutoplayerInterruptOwner({
 
 /* A lab build lets a harness read the screen as text, so a check that asks "is
  * this menu showing" costs a few hundred characters instead of an image. It is
- * read-only and compiled in only for `NEO_ANGBAND_LAB_BUILD=1`, so a release
- * build never carries it (lab-trust.ts). */
+ * read-only except for `wizard`, and compiled in only for `NEO_ANGBAND_LAB_BUILD=1`,
+ * so a release build never carries it (lab-trust.ts, lab-hook.ts). `view()` is the
+ * input snapshot with every domain granted, `messages(n)` the log tail, `seed()`
+ * the master seed this page started from (set one with the shell's `--lab-seed`),
+ * and `wizard` the typed debug facade, which refuses until `sandbox()` is called. */
 if (labBuild()) {
-  (window as unknown as { __neoLab?: unknown }).__neoLab = {
+  (window as unknown as { __neoLab?: unknown }).__neoLab = createLabHook({
     screen: () => term.snapshot(),
     size: () => term.size(),
     modal: () => modalDepth > 0,
     turn: () => state.turn,
-  };
+    seed: () => seed,
+    snapshot: () => buildInputSnapshot(modSnapshotSource, undefined),
+    log: msglog,
+    wizard: createModWizard("lab", { wizard: wizardCtx }),
+  });
 }
 
 // Dev-only diagnostic hook for automated verification; Vite strips this whole

@@ -22,6 +22,16 @@ describe("rendererQuery", () => {
     expect(rendererQuery(["--safe-mode=0", "--safemode", "-safe-mode"], {})).toBe("");
   });
 
+  it("passes --lab-seed to a lab shell only, and only a whole 32-bit number", () => {
+    expect(rendererQuery(["--lab-seed=1234"], {}, true)).toBe("?seed=1234");
+    expect(rendererQuery(["--lab-seed=1234"], {}, false)).toBe("");
+    expect(rendererQuery(["--lab-seed=4294967295"], {}, true)).toBe("?seed=4294967295");
+    for (const bad of ["--lab-seed=", "--lab-seed=-1", "--lab-seed=1.5", "--lab-seed=abc", "--lab-seed=4294967296"]) {
+      expect(rendererQuery([bad], {}, true)).toBe("");
+    }
+    expect(rendererQuery(["--lab-seed=7", "--lab-trust=qol"], {}, true)).toBe("?labtrust=qol&seed=7");
+  });
+
   it("passes --lab-trust to a lab shell only", () => {
     expect(rendererQuery(["--lab-trust=anybandui,squire"], {}, true)).toBe("?labtrust=anybandui%2Csquire");
     expect(rendererQuery(["--lab-trust=anybandui,squire"], {}, false)).toBe("");
