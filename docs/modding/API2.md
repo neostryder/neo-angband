@@ -77,7 +77,9 @@ A monster's `visible` means eyesight: blindness, darkness and invisibility can l
 Shop visits and shop knowledge screens record stock and owner observations, and known-world reads at a shop's entrance refresh that shop. Other shops retain their last observations for the session, or return empty stock and an unnamed owner if they have not been inspected. Loading a game starts with unknown shop observations. A host that draws a shop screen calls `observeKnownStore(state, store)` to record the stock it shows.
 ### The controller
 
-`act.controller` has `owns()`, `setStatus(status)`, `markNondeterministic()` and `release(reason)`. Every call but `owns()` answers `refused` with the code `not-owner` unless the mod holds the keyboard. An API 2 definition has no member that takes the keyboard; in API 1 that is the plugin's `controller`.
+`act.controller` has `owns()`, `setStatus(status)`, `markNondeterministic()` and `release(reason)`. Every call but `owns()` answers `refused` with the code `not-owner` unless the mod holds the keyboard. An API 2 definition takes the keyboard with its `controller` member, which needs `state:interaction.read`, `input:intent` and `input:prompt.reply` in the manifest. `onKey` hears each key the player presses while the mod holds the keyboard and answers `{ kind: "keep" }` or `{ kind: "release" }`. `onDeath: "end"` lets an ordinary death end the run instead of starting the next character.
+
+A controller can act in an open store. The host asks it for a decision at phase `store` and passes the `shop-buy`, `shop-sell` or `shop-exit` intent it returns to the shop screen.
 
 ### Panels
 
@@ -123,6 +125,8 @@ These API 1 hooks have no API 2 form:
 | `artifactCommit` | It runs when an artifact is generated, before the player has seen it. | `engineHooks`, or `artifactIdentified` for what the player learns. |
 
 `engineHooks(context)` is the way to reach those. It returns the game's own hook members by name, and the game calls them with the live arguments it always passed. It is asked only when the mod has the `engine` domain, which is every first-party mod and any other mod the player gave `engine:access`, and never in a Worker. A name that already has an API 2 form is refused, so each hook is declared one way.
+
+`engineTiles(context)` is the same door for a tile set. It returns a `filler` that supplies tiles for monsters and objects the pack does not draw, and a `player` provider that picks the player's tile from the character's shape, class, race and level. It needs `registry:tiles` and the `engine` domain, and a mod that also declares a `tileMap` table declares its filler in only one of the two.
 
 ## Policy tables
 

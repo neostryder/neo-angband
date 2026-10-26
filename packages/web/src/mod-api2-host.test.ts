@@ -1037,6 +1037,38 @@ describe("API 2 controller decisions", () => {
     plugin.uninstall?.();
   });
 
+  it("hands onKey and onDeath to the controller install, and a bare controller stays a function", () => {
+    const base = { api: ">=2.0.0 <3.0.0", controller: () => undefined } as const;
+    const plain = controller(base);
+    expect(typeof plain.plugin.controller!({ ...modPluginContext("probe", {}, plain.game.state, {}, { capabilities: plain.caps }) })).toBe("function");
+    plain.plugin.uninstall?.();
+    const onKey = vi.fn((press: { key: string }) => press.key === "&" ? { kind: "keep" as const, message: "errands" } : { kind: "release" as const });
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const caps = capabilities("probe", ["command:add", "input:intent", "state:*.read"]);
+    const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: caps });
+    const plugin = api2Plugin({ ...base, onKey, onDeath: "end" }, () => ({ grants: caps, tier: "first-party" }));
+    const offered = plugin.controller!(ctx);
+    expect(offered).toMatchObject({ onDeath: "end" });
+    const press = { key: "&", ctrl: false, alt: false, shift: false, meta: false, repeat: false };
+    const install = offered as { onKey: (p: typeof press) => unknown };
+    expect(install.onKey(press)).toEqual({ kind: "keep", message: "errands" });
+    expect(install.onKey({ ...press, key: "x" })).toEqual({ kind: "release" });
+    expect(onKey).toHaveBeenCalledTimes(2);
+    plugin.uninstall?.();
+  });
+
+  it("logs which grant a controller lacks instead of staying silent", () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const caps = capabilities("probe", ["command:add"]);
+    const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: caps });
+    const lines: string[] = [];
+    const plugin = api2Plugin({ api: ">=2.0.0 <3.0.0", controller: () => undefined }, () => ({ grants: caps, tier: "first-party" }));
+    plugin.controller!({ ...ctx, log: (line: string) => { lines.push(line); } });
+    expect(lines).toHaveLength(1);
+    for (const grant of ["state:interaction.read", "input:intent", "input:prompt.reply"]) expect(lines[0]).toContain(grant);
+    plugin.uninstall?.();
+  });
+
   it("subscribes before play, drains messages per decision, and cleans up without a stop callback", () => {
     const messages: string[] = [];
     const heard: string[][] = [];

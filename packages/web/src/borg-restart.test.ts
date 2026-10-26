@@ -233,7 +233,9 @@ describe("a mod's controller has a clock of its own", () => {
     const timerBody = body.slice(timerAt, body.indexOf("}, MOD_AUTOPLAYER_TICK_MS)"));
     expect(timerBody).toMatch(/if \(scoresOpen\) return;/u);
     expect(timerBody).toMatch(/if \(modalDepth > 0\) \{/u);
-    expect(timerBody).toMatch(/if \(gameScreenLive\) answerBlockingPrompt\(/u);
+    expect(timerBody).toMatch(/if \(!gameScreenLive\) return;/u);
+    expect(timerBody).toMatch(/answerBlockingPrompt\(/u);
+    expect(timerBody.indexOf("if (!gameScreenLive) return;")).toBeLessThan(timerBody.indexOf("answerBlockingPrompt("));
   });
 
   it("answers with a key through the one input door, not with its own listener", () => {

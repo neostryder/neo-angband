@@ -14,7 +14,7 @@
  * job lives in API 2, or why it has no API 2 form.
  */
 
-import type { DiscountRollHandler, GameObject, ModHooks, ModPluginContext, TvalValueAdjustContext, TvalValueAdjustHandler } from "@rpgm-tools/neo-angband-core";
+import type { ControllerKeyPress, DiscountRollHandler, GameObject, ModHooks, PlayerTileProvider, ModPluginContext, TvalValueAdjustContext, TvalValueAdjustHandler } from "@rpgm-tools/neo-angband-core";
 import { MOD_HOOK_FOLDS, inputToken, movementTunnelTest, objectValueReal, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, TV, type CaveCmdDeps, type GameState, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
 import {
   api2PolicyEffects,
@@ -29,7 +29,9 @@ import {
   type Api2DisplayOptionsPolicy,
   type Api2PurgeInputPolicy,
   type Api2StartingOptionsPolicy,
+  type Api2PlayerTileProvider,
   type Api2TileFill,
+  type Api2TileFiller,
   type JsonValue,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { bootPhase } from "./presentation-phase";
@@ -50,8 +52,11 @@ export function checkApi2Definition(candidate: unknown): string | null {
   if (typeof d.api !== "string") return `an API 2 mod declares its "api" range as a string, such as ">=2.0.0 <3.0.0"`;
   const verdict = apiRangeVerdict(d.api);
   if (!verdict.ok) return `"api": "${d.api}" ${verdict.why}`;
-  for (const member of ["hooks", "policies", "start", "stop", "migrateBag", "controller", "armed", "birth"] as const) {
+  for (const member of ["hooks", "policies", "start", "stop", "migrateBag", "controller", "armed", "birth", "onKey", "engineTiles"] as const) {
     if (d[member] !== undefined && typeof d[member] !== "function") return `${member} is not a function`;
+  }
+  if (d.onDeath !== undefined && d.onDeath !== "reincarnate" && d.onDeath !== "end") {
+    return `onDeath is "reincarnate" or "end"`;
   }
   for (const slot of ["prefs", "install"] as const) if (d[slot] !== undefined) {
     const p = d[slot] as Partial<NonNullable<Api2ModDefinition["prefs"]>>;
@@ -209,7 +214,7 @@ export interface Api2PolicyTargets {
     registerDiscountRoll(handler: DiscountRollHandler): void;
     discountRollHandler?(): DiscountRollHandler | null;
   } | null;
-  readonly tiles: { register(filler: (fill: Api2TileFill) => void): void } | null;
+  readonly tiles: { register(filler: (fill: Api2TileFill) => void): void; player?(provider: PlayerTileProvider): void } | null;
   readonly valueAdjust?: {
     handlerFor(tval: number): TvalValueAdjustHandler | null;
     set(tval: number, handler: TvalValueAdjustHandler): void;
@@ -350,6 +355,24 @@ function nativeHooks(declared: unknown, taken: ModHooks): ModHooks {
   return out as ModHooks;
 }
 
+/**
+ * A first-party mod's own tile seams, checked: an object whose `filler` and
+ * `player` are functions when present, and no second filler beside a `tileMap`
+ * table's, because the host keeps one filler per mod.
+ */
+function nativeTiles(declared: unknown, taken: Api2PolicyRegistrations): Pick<Api2PolicyRegistrations, "tileFiller" | "playerTile"> {
+  if (declared === undefined || declared === null) return {};
+  if (typeof declared !== "object") throw new Error("its engineTiles is not an object");
+  const { filler, player } = declared as { filler?: unknown; player?: unknown };
+  if (filler !== undefined && typeof filler !== "function") throw new Error("its engineTiles filler is not a function");
+  if (player !== undefined && typeof player !== "function") throw new Error("its engineTiles player is not a function");
+  if (filler !== undefined && taken.tileFiller) throw new Error("its engineTiles filler repeats the one its tileMap table installs");
+  return {
+    ...(filler ? { tileFiller: (filler as Api2TileFiller).bind(declared) } : {}),
+    ...(player ? { playerTile: (player as Api2PlayerTileProvider).bind(declared) } : {}),
+  };
+}
+
 /** Preceding registrations remain available when a contributing mod stops. */
 export function installApi2PolicyRegistrations(
   registrations: Api2PolicyRegistrations,
@@ -382,6 +405,10 @@ export function installApi2PolicyRegistrations(
     targets.tiles.register((fill) => {
       if (active()) filler(fill);
     });
+  }
+  const playerTile = registrations.playerTile;
+  if (playerTile && targets.tiles?.player) {
+    targets.tiles.player((view) => (active() ? (playerTile(view) as ReturnType<PlayerTileProvider>) : null));
   }
 }
 
@@ -500,10 +527,11 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
       ? (ctx: ModPluginContext) => birth.call(definition.birth ? definition : definition.presentation, hostFor(ctx))
       : undefined,
   });
-  if (definition.hooks || definition.policies || definition.engineHooks) {
+  if (definition.hooks || definition.policies || definition.engineHooks || definition.engineTiles) {
     const hooksOf = definition.hooks?.bind(definition);
     const policiesOf = definition.policies?.bind(definition);
     const engineHooksOf = definition.engineHooks?.bind(definition);
+    const engineTilesOf = definition.engineTiles?.bind(definition);
     plugin.hooks = (ctx: ModPluginContext): ModHooks | undefined => {
       stopped = false;
       const installedGeneration = generation;
@@ -522,6 +550,11 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
         fromTables = effects.hooks;
         pluginPolicies.set(plugin as ModPlugin, { ...context, registrations: effects.registrations });
         releasePrefErrors = contributeApi2PrefErrors(ctx.id, effects.registrations);
+      }
+      const nativeTileSeams = engine && engineTilesOf ? nativeTiles(engineTilesOf({ ...context, engine }), pluginPolicies.get(plugin as ModPlugin)?.registrations ?? {}) : {};
+      if (Object.keys(nativeTileSeams).length > 0) {
+        const cached = pluginPolicies.get(plugin as ModPlugin);
+        pluginPolicies.set(plugin as ModPlugin, { ...context, registrations: { ...(cached?.registrations ?? {}), ...nativeTileSeams } });
       }
       const merged = fromTables === undefined ? declared : { ...fromTables };
       if (fromTables && merged) {
@@ -574,6 +607,12 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
       if (opts.tier !== "first-party" || opts.execution === "worker" || !ctx.state) return undefined;
       const engine = api2Engine(ctx, opts);
       if (definition.armed && !definition.armed({ id: ctx.id, flags: plain({ ...ctx.flags }), armed: ctx.controllerArmed === true, ...(engine ? { engine } : {}) })) return undefined;
+      const lacking = [
+        ...(opts.grants.has("state:interaction.read") || opts.grants.has("state:*.read") ? [] : ["state:interaction.read"]),
+        ...(opts.grants.has("input:intent") ? [] : ["input:intent"]),
+        ...(opts.grants.has("input:prompt.reply") ? [] : ["input:prompt.reply"]),
+      ];
+      if (lacking.length > 0) ctx.log(`controller cannot drive the game without ${lacking.join(", ")}; add ${lacking.length === 1 ? "it" : "them"} to the manifest's capabilities`);
       stopped = false;
       const state = ctx.state;
       const installedGeneration = generation;
@@ -601,7 +640,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
         if (driver && (driver.kind !== "controller" || driver.owner !== ctx.id)) return { accepted: false, code: "controller-owned", reason: "this mod does not hold the keyboard" };
         return gate.submit(token, intent);
       } } });
-      return () => {
+      const drive = (): PlayerCommand | null => {
         if (stopped || installedGeneration !== generation) return null;
         if (queued) {
           return takeAnswer();
@@ -632,6 +671,14 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
           throw error;
         }
         return takeAnswer();
+      };
+      const onKey = definition.onKey?.bind(definition);
+      const onDeath = definition.onDeath;
+      if (onKey === undefined && onDeath === undefined) return drive;
+      return {
+        controller: drive,
+        ...(onKey ? { onKey: (press: ControllerKeyPress) => onKey(plain(press)) } : {}),
+        ...(onDeath ? { onDeath } : {}),
       };
     };
   }

@@ -126,12 +126,20 @@ function readLinoleumTilesheet(value: unknown): LinoleumTilesheetSource | undefi
     typeof source["packId"] !== "string" ||
     typeof source["cacheKey"] !== "string" ||
     typeof source["image"] !== "string" ||
-    !Array.isArray(source["prefFiles"]) ||
-    source["prefFiles"].some((file) => typeof file !== "string") ||
     typeof source["resolution"] !== "number"
   ) {
     return undefined;
   }
+  // The SDK type gives a source either a `tileMap` document or the older
+  // `prefFiles` list, and the converter reads whichever is present. Requiring
+  // `prefFiles` alone dropped every tileMap-only source, so its Graphics row drew
+  // plain text.
+  const { tileMap, prefFiles } = source;
+  if (tileMap !== undefined && (typeof tileMap !== "string" || tileMap === "")) return undefined;
+  if (prefFiles !== undefined && (!Array.isArray(prefFiles) || prefFiles.some((file) => typeof file !== "string"))) {
+    return undefined;
+  }
+  if (tileMap === undefined && prefFiles === undefined) return undefined;
   const optional = ["tileWidth", "tileHeight", "overdrawRow", "overdrawMax"] as const;
   if (optional.some((key) => source[key] !== undefined && typeof source[key] !== "number")) return undefined;
   return source as unknown as LinoleumTilesheetSource;

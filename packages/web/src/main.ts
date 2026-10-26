@@ -462,6 +462,7 @@ import {
   type ModSwitchOff,
 } from "./mod-health";
 import { teardownModPlugins } from "./mod-teardown";
+import { modalPumpAction } from "./mod-pump";
 import { releaseModKeymaps } from "./macro-runtime";
 import {
   closeAllModPanels,
@@ -16620,6 +16621,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
    * rate at once - no reload, the same bar the rule toggles above already
    * clear. */
   let modTimer: ReturnType<typeof setInterval> | undefined;
+  const modHoldsIntent = CapabilitySet.fromManifest(loaded.manifest).has("input:intent");
   const startModTimer = (): void => {
     modTimer = setInterval(() => {
       if (dead) {
@@ -16639,7 +16641,24 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
          *
          * Before gameScreenLive the birth flow owns the terminal, and a mod's
          * clock must not answer for the player who is rolling a character. */
-        if (gameScreenLive) answerBlockingPrompt(`mod:${loaded.id}`);
+        if (!gameScreenLive) return;
+        /* THE STORE IS A MODAL A CONTROLLER ACTS IN. A controller that holds
+         * input:intent is asked for a decision here, at phase `store`, and the
+         * shop-* intent it returns goes to the open store screen; Escape would
+         * close the shop before the controller's next wait (API2-GAPS SQ-1). */
+        if (modalPumpAction({ storeOpen: storeModalActive && storeIntentReceiver !== null, holdsIntent: modHoldsIntent,
+          switchedOff: modHealth().isOff(loaded.id) }) === "drive-store") {
+          modArmed = true;
+          try {
+            const command = state.nextCommand?.() ?? null;
+            if (command !== null) storeIntentReceiver?.(command);
+          } catch (err) {
+            log.error(`mod:${loaded.id}`, `autoplayer pump failed:`, err);
+            clearInterval(modTimer);
+          }
+          return;
+        }
+        answerBlockingPrompt(`mod:${loaded.id}`);
         return;
       }
       modArmed = true;

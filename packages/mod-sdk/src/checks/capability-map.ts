@@ -158,6 +158,18 @@ export const FACET_METHODS: ReadonlyMap<string, CapabilityNeed> = new Map([
   ["regions", anyOf("ui:region.create")],
 ]);
 
+/**
+ * What an API 2 `controller` member needs before it can drive anything: the
+ * game's state to decide from, the right to submit intents, and the right to
+ * answer prompts. Without any one of the three the host skips the controller
+ * and says nothing, so the mod holds the keyboard and never moves.
+ */
+export const CONTROLLER_NEEDS: readonly CapabilityNeed[] = [
+  anyOf("state:interaction.read", "state:*.read"),
+  anyOf("input:intent"),
+  anyOf("input:prompt.reply"),
+];
+
 const key = (root: HandleRoot, path: readonly string[]): string => `${root}:${path.join(".")}`;
 
 /** What the member at `path` under `root` needs, or undefined when it is given to every mod. */

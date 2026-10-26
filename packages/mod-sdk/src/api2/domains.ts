@@ -17,7 +17,7 @@ import type { JsonRecord, JsonValue } from "../compose.js";
 import type { NetMethod, NetProblemCode } from "../net-request.js";
 import type { Api2EventMap, Api2EventName } from "./events.js";
 import type { Api2HookName, Api2Hooks } from "./hooks.js";
-import type { Api2Policies } from "./policies.js";
+import type { Api2PlayerTileProvider, Api2Policies, Api2TileFiller } from "./policies.js";
 import type { Api2BirthPresenter, Api2DomPanel, Api2PanelSpec, Api2Presentation, Api2Presenters, Api2Title, Api2TitleAction } from "./presentation.js";
 import type {
   KnownGrid,
@@ -649,12 +649,39 @@ export interface Api2ControllerContext extends Api2HookContext {
   readonly armed: boolean;
 }
 
+/** A key the player pressed while this mod's controller holds the keyboard. */
+export interface Api2ControllerKey {
+  /** The key's DOM name, as `KeyboardEvent.key` gives it: "a", "Enter", "F1". */
+  readonly key: string;
+  readonly ctrl: boolean;
+  readonly alt: boolean;
+  readonly shift: boolean;
+  readonly meta: boolean;
+  /** True when a held key is repeating. */
+  readonly repeat: boolean;
+}
+
+/**
+ * `keep`: the controller goes on driving, and the host shows `message` on the
+ * message line when one is given. `release`: the keyboard goes back to the
+ * player, with `reason` shown in place of the usual line.
+ */
+export type Api2ControllerKeyAnswer =
+  | { readonly kind: "keep"; readonly message?: string }
+  | { readonly kind: "release"; readonly reason?: string };
+
 /** How a mod brings its stored preferences forward when their shape changes. */
 export interface Api2PrefsMigration {
   /** The version of the shape `store.prefs` holds now. Starts at 1; data stored before any version is 0. */
   readonly version: number;
   /** Bring a value stored under `fromVersion` up to `version`. */
   migrate(value: JsonValue, fromVersion: number): JsonValue;
+}
+
+/** What `engineTiles` hands the game's tile seams. */
+export interface Api2EngineTiles {
+  readonly filler?: Api2TileFiller;
+  readonly player?: Api2PlayerTileProvider;
 }
 
 /** An API 2 mod's code: its default export. */
@@ -665,6 +692,24 @@ export interface Api2ModDefinition {
   controller?(mod: ModApi2, input: Api2InputState): void | Promise<void>;
   /** Birth consent is independent of current keyboard ownership. Core still confirms takeover. */
   armed?(context: Api2ControllerContext): boolean;
+  /**
+   * Called for each key the player presses while this mod's controller has the
+   * keyboard and the game window has focus. Return `keep` to go on driving or
+   * `release` to hand the keyboard back. Escape and Ctrl-Z always hand back
+   * without reaching this handler; without a handler every other key hands back.
+   * Answer synchronously, so do the key's work before returning; a promise, a
+   * throw or any other answer hands the keyboard back and counts as a fault in
+   * the mod. The key itself never reaches the game. Needs `controller`.
+   */
+  onKey?(press: Api2ControllerKey): Api2ControllerKeyAnswer;
+  /**
+   * What the character's death does while this mod's controller holds the
+   * keyboard. `reincarnate`, the default, starts the next character in place.
+   * `end` runs the ordinary death (the tombstone, the score table and the run
+   * report); the controller stays installed until the page reloads. Needs
+   * `controller`.
+   */
+  readonly onDeath?: "reincarnate" | "end";
   readonly presentation?: Api2Presenters;
   readonly actions?: readonly Api2MenuAction[];
   readonly titleActions?: readonly Api2TitleAction[];
@@ -686,6 +731,18 @@ export interface Api2ModDefinition {
    * way.
    */
   engineHooks?(context: Api2HookContext & { readonly engine: Api2Engine }): Readonly<Record<string, (...args: never[]) => unknown>> | undefined;
+  /**
+   * The game's two tile seams, for a tile set that draws what its art was never
+   * made for: a `filler` that supplies tiles for monsters and objects the pack
+   * has none for (a mod's additions, drawn as their kin), and a `player`
+   * provider that picks the player's tile from who the character is (a
+   * shapechange). Both take the engine's tiles, which come from `fill.derive`.
+   * Needs the `registry:tiles` grant and the `engine` domain: it is asked only
+   * for a first-party mod or one the player gave `engine:access`, and never in
+   * a Worker. A mod that also declares a `tileMap` table keeps the table's
+   * filler, so declare the filler here or in the table, not both.
+   */
+  engineTiles?(context: Api2HookContext & { readonly engine: Api2Engine }): Api2EngineTiles | undefined;
   /**
    * Changes as policy tables the host applies itself, synchronously, given
    * the mod's flags: hook answers, and the registrations the kinds in

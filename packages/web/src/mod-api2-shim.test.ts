@@ -143,6 +143,60 @@ describe("engine hooks", () => {
   });
 });
 
+describe("engine tiles", () => {
+  const filler = (): void => undefined;
+  const player = (): null => null;
+  const build = (tier: "first-party" | "public", grants: readonly string[], engineTiles: () => unknown, extra: object = {}) =>
+    api2Plugin({ api: "^2.0.0", engineTiles, ...extra } as never, () => ({ grants: capabilities("et", [...grants]), tier }));
+  const registrationsOf = (plugin: ReturnType<typeof build>) => {
+    load("et", plugin);
+    return api2PluginRegistrations(plugin, "et", { loud: true });
+  };
+
+  it("hands a first-party mod's tile filler and player provider to the game's tile seams", () => {
+    const registrations = registrationsOf(build("first-party", [], () => ({ filler, player })));
+    expect(Object.keys(registrations ?? {}).sort()).toEqual(["playerTile", "tileFiller"]);
+    const seen: string[] = [];
+    let provider: ((view: never) => unknown) | undefined;
+    installApi2PolicyRegistrations(registrations ?? {}, {
+      stores: null,
+      tiles: { register: () => { seen.push("filler"); }, player: (p) => { provider = p as never; seen.push("player"); } },
+    }, () => true);
+    expect(seen).toEqual(["filler", "player"]);
+    expect(provider?.({ shape: "fox", level: 1, cls: "Druid", race: "Human" } as never)).toBeNull();
+  });
+
+  it("answers null for the player once the mod is no longer active", () => {
+    let live = true;
+    let provider: ((view: never) => unknown) | undefined;
+    installApi2PolicyRegistrations({ playerTile: () => "fox-tile" as never }, {
+      stores: null, tiles: { register: () => undefined, player: (p) => { provider = p as never; } },
+    }, () => live);
+    expect(provider?.({ shape: "fox" } as never)).toBe("fox-tile");
+    live = false;
+    expect(provider?.({ shape: "fox" } as never)).toBeNull();
+  });
+
+  it("asks a mod with no engine access for nothing, and serves one the player gave engine access", () => {
+    let asked = false;
+    expect(registrationsOf(build("public", [], () => { asked = true; return { filler }; }))).toBeUndefined();
+    expect(asked).toBe(false);
+    expect(Object.keys(registrationsOf(build("public", ["engine:access"], () => ({ filler }))) ?? {})).toEqual(["tileFiller"]);
+  });
+
+  it("refuses values that are not functions, and a filler beside a tileMap table's", () => {
+    const refuse = (declared: unknown, pattern: RegExp, extra: object = {}) => {
+      const plugin = api2Plugin({ api: "^2.0.0", engineTiles: () => declared, ...extra } as never,
+        () => ({ grants: capabilities("et", ["registry:tiles"]), tier: "first-party" }));
+      expect(() => plugin.hooks?.(modPluginContext("et", {}, undefined, {}, { capabilities: capabilities("et", ["registry:tiles"]) }))).toThrow(pattern);
+    };
+    refuse({ filler: 3 }, /filler is not a function/u);
+    refuse({ player: "x" }, /player is not a function/u);
+    refuse({ filler }, /repeats the one its tileMap table installs/u,
+      { policies: () => ({ tileMap: [{ monster: 5, like: 1 }] }) });
+  });
+});
+
 describe("projection radius clamp policy", () => {
   it("holds a radius above the maximum range at it and leaves the rest alone", () => {
     const hooks = api2PolicyModHooks({ projectionRadiusClamp: true }, () => true);

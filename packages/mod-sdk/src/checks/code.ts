@@ -31,6 +31,7 @@ import { checkSecretHosts, isSecretName } from "../net-request.js";
 import { satisfies } from "../semver.js";
 import {
   EVENT_SUBSCRIBE,
+  CONTROLLER_NEEDS,
   FACET_METHODS,
   NET_REQUEST,
   SECRET_BIND,
@@ -1669,6 +1670,14 @@ export function checkCode(subject: CheckSubject, options: CodeCheckOptions): Mod
           out.push(finding("api-mismatch", !verdict.ok ? `${entry} ${verdict.why}.` : `${entry} is written for API ${literal}, and the manifest's api "${api ?? "none"}" does not admit ${MOD_API2_VERSION}.`, {
             evidence: [where(mod, apiProp)],
           }));
+        }
+      }
+      if (isApi2 && caps !== null) {
+        for (const p of props) {
+          if (staticKey(p.key) !== "controller") continue;
+          for (const need of CONTROLLER_NEEDS) {
+            if (!need.covered(caps)) analysis.reaches.push({ key: "facet:controller", need, what: "the controller() member", evidence: where(mod, p) });
+          }
         }
       }
       if (!isApi2 && caps !== null) {

@@ -90,6 +90,46 @@ describe("enabledTileModes: a contested grafID goes to the last claimant", () =>
   });
 });
 
+describe("enabledTileModes: a Linoleum tilesheet source", () => {
+  const sheet = {
+    key: "shb",
+    packId: "shb",
+    displayName: "Shock",
+    cacheKey: "1",
+    image: "shb.png",
+    resolution: 32,
+  };
+  const withSheet = (tilesheet: unknown): unknown => ({
+    id: "linoleum",
+    name: "Linoleum",
+    shape: "tiles",
+    tilePacks: [
+      { grafID: 101, engine: "linoleum", menuname: "Shock", path: "pack", tilesheet },
+    ],
+  });
+  const sheetOf = (tilesheet: unknown) =>
+    enabledTileModes({
+      manifests: manifests(["linoleum", withSheet(tilesheet)]),
+      enabledIds: ["linoleum"],
+    })[0]?.tilesheet;
+
+  it("keeps a source that names its map with tileMap and no prefFiles", () => {
+    expect(sheetOf({ ...sheet, tileMap: "tile-map.json" })).toMatchObject({ tileMap: "tile-map.json" });
+  });
+
+  it("keeps an older source that lists prefFiles and no tileMap", () => {
+    expect(sheetOf({ ...sheet, prefFiles: ["graf-shb.prf"] })).toMatchObject({ prefFiles: ["graf-shb.prf"] });
+  });
+
+  it("drops a source with neither, or with a malformed map or list", () => {
+    expect(sheetOf(sheet)).toBeUndefined();
+    expect(sheetOf({ ...sheet, tileMap: 7 })).toBeUndefined();
+    expect(sheetOf({ ...sheet, tileMap: "" })).toBeUndefined();
+    expect(sheetOf({ ...sheet, prefFiles: "graf-shb.prf" })).toBeUndefined();
+    expect(sheetOf({ ...sheet, prefFiles: [1] })).toBeUndefined();
+  });
+});
+
 describe("enabledTileModes", () => {
   it("surfaces an enabled tiles mod's packs, named from the core catalog", () => {
     const modes = enabledTileModes({

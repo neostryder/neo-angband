@@ -227,6 +227,26 @@ export interface Api2TileFill<T = unknown> {
 /** A tile filler built from tile rules. */
 export type Api2TileFiller = (fill: Api2TileFill) => void;
 
+/** Who the character is right now, as a player-tile provider is told it. */
+export interface Api2PlayerTileView {
+  /** The current shape's name ("fox", "werewolf", ...), or null in the normal shape. */
+  readonly shape: string | null;
+  /** The character's level, 1 to 50. */
+  readonly level: number;
+  /** The character's class name. */
+  readonly cls: string;
+  /** The character's race name. */
+  readonly race: string;
+}
+
+/**
+ * Which tile the player's own cell draws, asked once per frame. Answer from a
+ * table built while filling (`fill.derive` makes the tiles), not by computing:
+ * it runs in the render path. Null leaves the pack's own player tile, and the
+ * first non-null answer in load order wins. `T` is the engine's tile.
+ */
+export type Api2PlayerTileProvider<T = unknown> = (view: Api2PlayerTileView) => T | null;
+
 /** The game registrations a table can install, beside the hooks. */
 export interface Api2PolicyRegistrations {
   prefErrors?: Api2PrefErrorsPolicy;
@@ -244,6 +264,8 @@ export interface Api2PolicyRegistrations {
   levelRevisitTracking?: true;
   /** Installed as the mod's tile filler. */
   tileFiller?: Api2TileFiller;
+  /** Installed as the mod's player-tile provider. */
+  playerTile?: Api2PlayerTileProvider;
 }
 
 /** What a mod's tables stand for: hooks the game folds in, and registrations the host installs. */
