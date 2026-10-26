@@ -1023,6 +1023,7 @@ In the table, "any code mod" means first-party, reviewed, sideloaded and Worker 
 | `input:prompt.reply` | Answer the game's current question through its input handler | The mod cannot answer the game's questions for you, so you answer them yourself. | yes | in-process |
 | `saves:manage` | List, load, rename and delete your characters; deletion asks you first | The mod's own character list does not appear; the game's list still works. | yes | in-process |
 | `ui:title` | Add title screen actions | The mod's entries on the title screen do not appear. | no | in-process |
+| `ui:menu.row` | Add a row to the game menu | The mod's row in the game menu does not appear. | no | in-process |
 | `shared:read` | Read data other mods share | The mod cannot see what other mods share with it. | no | in-process |
 | `shared:publish` | Share data with other mods | Other mods cannot see what this mod shares. | no | in-process |
 | `display:replace` | Draw the dungeon itself - everything you see of the map comes from this mod instead of the game | The game draws the map itself and this mod's view is not used. | yes | in-process |

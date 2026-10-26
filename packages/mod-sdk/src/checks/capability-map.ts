@@ -105,7 +105,7 @@ const GATED_BASE: ReadonlyMap<string, CapabilityNeed> = new Map<string, Capabili
   ["api2:ui.overlay", anyOf("ui:panel.mount")],
   ["api2:ui.title", anyOf("ui:title")],
   ["api2:ui.commands.register", anyOf("command:add", "registry:command", "registry:*")],
-  ["api2:ui.gameMenu.register", anyOf("registry:menu", "registry:*")],
+  ["api2:ui.gameMenu.register", anyOf("ui:menu.row", "registry:menu", "registry:*")],
   ["api2:ui.keys.bind", anyOf("keymap:write")],
   ["api2:ui.keys.isBindableTriggerKey", anyOf("keymap:write")],
   ["api2:backupFolder", anyOf("backup:folder")],

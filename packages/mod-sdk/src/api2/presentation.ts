@@ -170,6 +170,8 @@ export interface Api2PanelSpec {
   readonly id: string;
   readonly modal?: boolean;
   readonly label?: string;
+  /** The corner the host's close control sits in on a modal panel; the top right when absent. The control is always drawn. */
+  readonly closeAt?: "top-right" | "top-left" | "bottom-right" | "bottom-left";
 }
 
 export interface Api2DomPanel {

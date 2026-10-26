@@ -879,7 +879,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       }),
       gameMenu: frozen({
         register: (action, label, run) => guarded(() => {
-          if (!granted("registry:menu")) return api2NotGranted("registry:menu");
+          if (!granted("ui:menu.row") && !granted("registry:menu")) return api2NotGranted("ui:menu.row");
           if (!/^[a-z][a-z0-9-]{0,63}$/.test(action) || !label.trim() || /[\r\n]/.test(label) || typeof run !== "function") {
             return api2Refused("bad-action", "a menu action needs an id, a label and a handler");
           }

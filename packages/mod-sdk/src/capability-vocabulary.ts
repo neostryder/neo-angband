@@ -56,6 +56,7 @@ export type ParsedCapability =
   | { kind: "asset"; action: "read" }
   | { kind: "saves"; action: "manage" }
   | { kind: "title"; action: "add" }
+  | { kind: "menu-row"; action: "add" }
   | { kind: "profiles"; action: "manage" }
   | { kind: "session"; action: "control" }
   | { kind: "screens"; action: "manage" }
@@ -216,6 +217,8 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The mod's own character list does not appear; the game's list still works.", { powerful: true }),
   fixed("ui:title", { kind: "title", action: "add" }, "Add title screen actions",
     "The mod's entries on the title screen do not appear.", { powerful: false }),
+  fixed("ui:menu.row", { kind: "menu-row", action: "add" }, "Add a row to the game menu",
+    "The mod's row in the game menu does not appear.", { powerful: false }),
   fixed("shared:read", { kind: "shared", action: "read" }, "Read data other mods share",
     "The mod cannot see what other mods share with it.", { powerful: false }),
   fixed("shared:publish", { kind: "shared", action: "publish" }, "Share data with other mods",

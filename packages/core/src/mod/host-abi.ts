@@ -965,7 +965,17 @@ export interface ModPanelSpec {
    * read, because everything else is pixels on a canvas.
    */
   readonly label?: string;
+  /**
+   * Which corner the host's close control sits in on a modal panel; the top right
+   * when absent. The control is always drawn, because a phone has no Escape key,
+   * so a panel whose own header buttons sit in that corner moves the control
+   * rather than removing it.
+   */
+  readonly closeAt?: ModPanelCorner;
 }
+
+/** A corner of a modal panel. */
+export type ModPanelCorner = "top-right" | "top-left" | "bottom-right" | "bottom-left";
 
 /** A mounted panel: where to build, and how to take it down. */
 export interface ModPanel {

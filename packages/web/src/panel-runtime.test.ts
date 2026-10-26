@@ -304,6 +304,21 @@ describe("openPanel", () => {
     expect(yours.openPanels).toEqual(["yours:b"]);
   });
 
+  it("puts the close control in the corner a modal panel asks for, and keeps it there", () => {
+    installDom();
+    const ui = createModUi("builder");
+    ui.openPanel({ id: "plain-corner", modal: true });
+    ui.openPanel({ id: "low-left", modal: true, closeAt: "bottom-left" });
+    const control = (id: string) => containerOf(id)?.children.find((c) => c.tagName === "button");
+    expect(control("builder:plain-corner")?.style["top"]).toContain("safe-area-inset-top");
+    expect(control("builder:plain-corner")?.style["right"]).toContain("safe-area-inset-right");
+    expect(control("builder:low-left")?.style["bottom"]).toContain("safe-area-inset-bottom");
+    expect(control("builder:low-left")?.style["left"]).toContain("safe-area-inset-left");
+    expect(control("builder:low-left")?.style["top"]).toBeUndefined();
+    expect(panelSpecFault({ id: "ok", closeAt: "middle" })).toContain("closeAt");
+    expect(panelSpecFault({ id: "ok", closeAt: "top-left" })).toBeUndefined();
+  });
+
   it("refuses a spec an author can act on the refusal of", () => {
     expect(panelSpecFault(null)).toContain("not a panel spec");
     expect(panelSpecFault({})).toContain("no id");

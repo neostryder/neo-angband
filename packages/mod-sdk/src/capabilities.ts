@@ -98,6 +98,8 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
       return grant.kind === "saves";
     case "title":
       return grant.kind === "title";
+    case "menu-row":
+      return grant.kind === "menu-row";
     case "profiles":
       return grant.kind === "profiles";
     case "session":

@@ -514,6 +514,17 @@ function trackPanelViewport(container: HTMLElement, doc: Document): () => void {
   };
 }
 
+const CLOSE_CORNERS: readonly string[] = ["top-right", "top-left", "bottom-right", "bottom-left"];
+
+/** Where the host's close control sits: the top right, or the corner a panel asked for. */
+function closePlacement(corner: ModPanelSpec["closeAt"]): Partial<CSSStyleDeclaration> {
+  const [vertical, horizontal] = (corner ?? "top-right").split("-") as ["top" | "bottom", "left" | "right"];
+  return {
+    [vertical]: `max(8px, env(safe-area-inset-${vertical}))`,
+    [horizontal]: `max(8px, env(safe-area-inset-${horizontal}))`,
+  };
+}
+
 /**
  * Why this spec cannot be mounted, or undefined when it can.
  *
@@ -537,6 +548,9 @@ export function panelSpecFault(spec: unknown): string | undefined {
   }
   if (s.label !== undefined && typeof s.label !== "string") {
     return `panel "${s.id}" has a label that is not a string`;
+  }
+  if (s.closeAt !== undefined && !(typeof s.closeAt === "string" && CLOSE_CORNERS.includes(s.closeAt as never))) {
+    return `panel "${s.id}" has a closeAt that is not one of ${CLOSE_CORNERS.join(", ")}`;
   }
   return undefined;
 }
@@ -691,8 +705,7 @@ function mountPanel(
     close.setAttribute("aria-label", `Close ${spec.label ?? id}`);
     Object.assign(close.style, {
       position: "absolute",
-      top: "max(8px, env(safe-area-inset-top))",
-      right: "max(8px, env(safe-area-inset-right))",
+      ...closePlacement(spec.closeAt),
       zIndex: "1",
       font: "13px ui-monospace, monospace",
       padding: "6px 10px",
