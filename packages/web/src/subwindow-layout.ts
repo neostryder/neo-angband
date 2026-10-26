@@ -114,6 +114,16 @@ export const MIN_TILE_PX = 96;
  */
 export const COMFORTABLE_MIN_PX = 140;
 
+/**
+ * The smallest the group holding the main view is laid out at, in either
+ * direction. Panels ask for room through their minimum-size hints, and a row
+ * of them can ask for nearly the whole window; without a floor of its own the
+ * main view took what was left, which was `MIN_TILE_PX`, so a window that
+ * grew back to full size could show the map as a thin column (a window big
+ * enough for the hints but not for the map beside them).
+ */
+export const MAIN_MIN_PX = 240;
+
 export function isSplit(node: LayoutNode): node is SplitNode {
   return node.kind === "split";
 }
@@ -281,7 +291,10 @@ function walk(
 
 function minimum(node: LayoutNode, axis: "width" | "height", floor: number, splitter: number,
   hints: ReadonlyMap<TileId, Readonly<{ width: number; height: number }>> | undefined): number {
-  if (node.kind === "leaf") return Math.max(floor, ...groupTabs(node).map((id) => hints?.get(id)?.[axis] ?? floor));
+  if (node.kind === "leaf") {
+    const tabs = groupTabs(node);
+    return Math.max(floor, tabs.includes(MAIN_TILE_ID) ? MAIN_MIN_PX : 0, ...tabs.map((id) => hints?.get(id)?.[axis] ?? floor));
+  }
   const first = minimum(node.first, axis, floor, splitter, hints);
   const second = minimum(node.second, axis, floor, splitter, hints);
   return (axis === "width" && node.axis === "v") || (axis === "height" && node.axis === "h")

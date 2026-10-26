@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COMFORTABLE_MIN_PX,
+  MAIN_MIN_PX,
   MAIN_TILE_ID,
   SPLITTER_PX,
   allDropZones,
@@ -82,6 +83,20 @@ describe("computeLayout", () => {
     expect(messages.w).toBe(main.w);
     expect(main.y + main.h + SPLITTER_PX).toBe(messages.y);
     expect(messages.y + messages.h).toBe(VIEW.h);
+  });
+
+  it("keeps the main view at its floor when panels ask for almost the whole width", () => {
+    const leaf = (id: string): LayoutNode => ({ kind: "leaf", id });
+    const row = (first: LayoutNode, second: LayoutNode, ratio = 0.5): LayoutNode => ({ kind: "split", axis: "v", ratio, first, second });
+    const tree = row(leaf(MAIN_TILE_ID), row(leaf("a:one"), row(leaf("a:two"), leaf("a:three"))), 0.7);
+    const hints = new Map(["a:one", "a:two", "a:three"].map((id) => [id, { width: 440, height: 300 }] as const));
+    const big: Rect = { x: 0, y: 0, w: 1500, h: 1000 };
+    const small: Rect = { x: 0, y: 0, w: 900, h: 600 };
+    for (const view of [big, small]) {
+      const { tiles, splitters } = computeLayout(tree, view, { minSizes: hints });
+      tiled(tiles, splitters, view);
+      expect(tiles.find((tile) => tile.id === MAIN_TILE_ID)!.rect.w).toBeGreaterThanOrEqual(MAIN_MIN_PX);
+    }
   });
 });
 

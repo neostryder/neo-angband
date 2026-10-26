@@ -274,6 +274,11 @@ describe("player intent gate", () => {
       expect(modPrompt.reply(sellConfirm!.promptId, true).accepted).toBe(true);
       await tick();
       expect(game.state.gear.store.get(handle)?.number).toBe(1);
+      await tick();
+      const leave = { kind: "command", command: { code: "shop-exit" } } as const;
+      expect(gate.submit(inputToken(game.state), leave).accepted).toBe(true);
+      await screen;
+      expect(receiver).toBeNull();
     } finally {
       dispatchUiInput({ key: { key: "Escape", modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false } });
       await screen;
@@ -350,8 +355,9 @@ describe("player intent gate", () => {
     const before = fingerprint(game);
     expect(h.gate.submit(token, { kind: "command", command: { code: "hold" } }).accepted).toBe(false);
     expect(fingerprint(game)).toBe(before);
-    expect(h.gate.submit(token, { kind: "command", command: { code: "shop-exit" } }).accepted).toBe(true);
-    expect(h.advances()).toBe(1);
+    /* Leaving goes to the open store screen, never to the world: with no screen listening it is refused, and no turn passes either way. */
+    expect(h.gate.submit(token, { kind: "command", command: { code: "shop-exit" } }).accepted).toBe(false);
+    expect(h.advances()).toBe(0);
   });
 
   it("matches a keypress-buffer walk and keeps NOSCORE.BORG clear", () => {

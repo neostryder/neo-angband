@@ -252,7 +252,7 @@ export function createIntentGate(deps: IntentGateDeps): ModIntent {
         const ref = typeof args.floor === "number" ? { floor: args.floor } : { handle: args.handle as number };
         return deps.useItem(command.code, ref) ? { accepted: true } : reject("cannot use that item right now");
       }
-      if (command.code === "shop-buy" || command.code === "shop-sell") {
+      if (STORE_CODES.has(command.code)) {
         return deps.storeCommand?.(command)
           ? { accepted: true }
           : reject("store is not ready");

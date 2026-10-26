@@ -94,6 +94,9 @@ still calls itself.
 - [Visible] [Modding-API] **A mod's event handler that throws no longer keeps the event from the mods after it.** Each `ctx.events` handler now runs separately, and an error or a rejected promise from one is logged against its mod and listed on the Mods screen while the other handlers still receive the event (#371).
 - [Visible] [UI] **"Restore my mods" now reinstalls a recommended mod without asking for the third-party switch.** Restoring a saved mod list treated every mod as third-party, so a list holding Quality of Life stopped with "Third-party mods are not enabled" until the switch was turned on. A mod on the recommended list now restores as recommended, and a community mod still needs the switch. The message on that screen also wraps instead of running off the edge, and the confirmation says how many saved files it checks the mod against instead of printing every file hash.
 - [Visible] [UI] **The mod list says "safe mode is on for this session" for a mod that safe mode switched off.** It used to say "not enabled", which read as if the mod had been turned off by hand.
+- [Visible] [Modding-API] **A mod can now leave a shop.** The `shop-exit` command went to the game's command queue instead of the open shop screen, so the shop stayed open and a game turn passed. It now closes the shop and spends no turn.
+- [Visible] [Modding-API] **The `enter-store` and `leave-store` events now fire.** API 2 documented them but nothing in the game sent them. They now fire when the shop screen opens and after it closes.
+- [Visible] [UI] **The map no longer shrinks to a thin column beside wide panels.** The main view keeps at least 240 pixels in each direction, so panels that ask for nearly the whole window can no longer squeeze it to the 96-pixel tile minimum.
 
 ## [1.22.0] - 2026-10-03
 

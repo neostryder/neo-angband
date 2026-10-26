@@ -11164,6 +11164,7 @@ async function enterStoreModal(store: Store): Promise<void> {
   const feat = features.get(store.feat);
   observeKnownStore(state, store);
   storeModalActive = true;
+  state.events?.signal("enter-store");
   try {
     await openModal(() =>
       runStore(term, game, store, say, constants, {
@@ -11252,6 +11253,7 @@ async function enterStoreModal(store: Store): Promise<void> {
   } finally {
     storeModalActive = false;
     observeKnownStore(state, store);
+    state.events?.signal("leave-store");
   }
   /* leave_store's "Disable repeats" (ui-store.c:1315-1317). A store visit
    * rearranges the pack wholesale, so the remembered command's handle or floor

@@ -1292,6 +1292,8 @@ export async function runStore(
         if (stock) await purchase(displayStock.indexOf(stock), false);
       } else if (ev.command.code === "shop-sell" && typeof args?.handle === "number") {
         await sellFlow(args.handle);
+      } else if (ev.command.code === "shop-exit") {
+        return;
       }
       continue;
     }
