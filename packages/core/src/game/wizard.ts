@@ -127,7 +127,7 @@ import { placeTrap, squareIsTrap, squareIsWebbed } from "./trap.js";
 import type { TrapDeps } from "./trap.js";
 import { pushObject } from "./project-feat.js";
 import { wizLightLevel } from "./effect-terrain.js";
-import { squareIsKnown, updatePlayerObjectKnowledge } from "./known.js";
+import { squareIsKnown, updateMonsters, updatePlayerObjectKnowledge } from "./known.js";
 import { buildEffectContext } from "./effect-env.js";
 import type { EffectEnvDeps } from "./effect-env.js";
 import { attachGameEnv } from "./effect-game-env.js";
@@ -1176,6 +1176,11 @@ export function wizSummonNamed(
         ORIGIN.DROP_WIZARD,
       )
     ) {
+      /* place_new_monster ends in update_mon (mon-make.c), so a creature put
+       * beside the player is seen at once. The port leaves visibility to the next
+       * monster pass, which a summon between turns never reaches: the creature
+       * stood there unseen, and unlisted, until the player moved. */
+      updateMonsters(state, false);
       return true;
     }
   }

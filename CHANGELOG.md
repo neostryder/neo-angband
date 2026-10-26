@@ -93,6 +93,7 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] **A monster summoned by name with the wizard command now shows at once.** It was placed beside you but stayed unseen, and missing from the monster list, until your next move, so a summon between turns looked like it had failed.
 - [Visible] [Modding-API] **A Linoleum tile pack that names its map with `tileMap` now draws.** The manifest reader required the older `prefFiles` list, so a pack that used `tileMap` alone was dropped and its Graphics rows drew plain text.
 - [Visible] [Modding-API] **A mod can no longer remove a record that something else in the game still names.** Taking away a monster's base, a monster another monster brings along as an escort, or every phrase of a history chart another chart leads to used to break the game somewhere far from the mod, such as an error while making a character. A removal like that is now refused and listed against the mod on the Mods screen, the record stays, and the rest of the mod loads. Removing a record together with everything that names it still works. A history chart also keeps its roll-100 phrase, since a high roll has nowhere else to land.
 - [Visible] [Modding-API] **A mod's event handler that throws no longer keeps the event from the mods after it.** Each `ctx.events` handler now runs separately, and an error or a rejected promise from one is logged against its mod and listed on the Mods screen while the other handlers still receive the event (#371).

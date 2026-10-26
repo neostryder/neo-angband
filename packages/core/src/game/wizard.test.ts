@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants.js";
-import { KF, SQUARE, TMD, TV } from "../generated/index.js";
+import { KF, MFLAG, SQUARE, TMD, TV } from "../generated/index.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { gearTotalWeight } from "./gear.js";
 import { loc } from "../loc.js";
@@ -496,6 +496,20 @@ describe("do_cmd_wiz_summon_named (L2569)", () => {
     expect(ran).toBe(true);
     const after = state.monsters.filter((m) => m !== null).length;
     expect(after).toBe(before + 1);
+  });
+
+  it("evaluates the new monster's visibility at once, as place_new_monster's update_mon does", () => {
+    const state = makeState({ playerGrid: loc(15, 12), w: 40 });
+    const race = { ...makeRace(), friends: [] };
+    for (let y = 0; y < state.chunk.height; y++) {
+      for (let x = 0; x < state.chunk.width; x++) {
+        state.chunk.sqinfoOn(loc(x, y), SQUARE.VIEW);
+        state.chunk.sqinfoOn(loc(x, y), SQUARE.SEEN);
+      }
+    }
+    wizSummonNamed(state, { race }, wizDeps(state, true));
+    const mon = state.monsters.find((m) => m !== null && m !== undefined)!;
+    expect(mon.mflag.has(MFLAG.VISIBLE)).toBe(true);
   });
 });
 
