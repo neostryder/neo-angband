@@ -211,12 +211,16 @@ export function statNameToIdx(name: string): number {
  * - shapeNameToIdx: upstream shape_name_to_idx (player-util.c) walks the
  *   parsed shapes list; supply it once player shapes land. Absent,
  *   EF_SHAPECHANGE subtypes resolve to -1.
+ * - projectionNameToIdx: a projection the bound table carries that the compiled
+ *   PROJ enum does not, which is a mod's. Consulted after the compiled names, so
+ *   core's own names resolve exactly as before. Absent, an unknown name is -1.
  * - custom: consulted for string (mod) effect codes before the default
  *   branch, so mods can define their own subtype vocabularies.
  */
 export interface SubtypeInjections {
   summonNameToIdx?: (name: string) => number;
   shapeNameToIdx?: (name: string) => number;
+  projectionNameToIdx?: (name: string) => number;
   custom?: (index: EffectCode, type: string) => number;
 }
 
@@ -335,7 +339,10 @@ seedEffectInfo((reg) => {
   /* The three name families upstream tests before its switch. Registered per
    * effect rather than as a set membership test, so a mod can replace or wrap
    * the resolver for ONE of them without touching the rest. */
-  family(PROJECTION_SUBTYPE_EFFECTS, (type) => projNameToIdx(type));
+  family(PROJECTION_SUBTYPE_EFFECTS, (type, inject) => {
+    const index = projNameToIdx(type);
+    return index >= 0 ? index : (inject.projectionNameToIdx?.(type) ?? -1);
+  });
   family(TIMED_SUBTYPE_EFFECTS, (type) => timedNameToIdx(type));
   family(STAT_SUBTYPE_EFFECTS, (type) => statNameToIdx(type));
 

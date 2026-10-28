@@ -449,7 +449,7 @@ import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION } from "./mod-worker/protocol";
-import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2DirectionPrompt, setApi2ManagementHost } from "./mod-api2-host";
+import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2CommandPusher, setApi2DirectionPrompt, setApi2ManagementHost } from "./mod-api2-host";
 import { classicManager } from "./mod-manager/classic-service";
 import { drawPendingManagementConfirmation } from "./mod-manager/classic-confirmation";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
@@ -2077,6 +2077,11 @@ const { state, registry, booted, players } = game;
 setApi2CommandHost({ registry, ...(state.commandVerbs ? { verbs: state.commandVerbs } : {}) });
 /* A mod command registered with `direction: true` asks with the same prompt open, close and tunnel use. */
 setApi2DirectionPrompt(() => getRepDir(term));
+/* A `turn: true` mod command runs from a bound key through the turn loop, so its energy is spent like any command's. */
+setApi2CommandPusher((code, dir) => {
+  commandBuffer.push({ code, ...(dir === undefined ? {} : { dir }) });
+  advance();
+});
 /* Every plugin context built from here on reports these as `ctx.registries`.
  *
  * HERE, not at each of the seven places that build a context: the note below

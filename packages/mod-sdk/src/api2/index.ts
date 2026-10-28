@@ -190,6 +190,7 @@ export type {
   Api2Ui,
   Api2View,
   Api2CommandArgs,
+  Api2CommandResult,
   Api2CommandOptions,
   ModApi2,
 } from "./domains.js";

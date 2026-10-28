@@ -50,6 +50,8 @@ still calls itself.
 
 ### Added
 
+- [Visible] [Modding-API] **A key-bound mod command can spend a turn.** `ui.commands.register` takes `{ turn: true }`, and a key bound to the command runs it inside the turn and spends the `{ energy }` that `run` returns, so a command like spiking a door lets the monsters answer. Before, the command ran outside the turn and cost nothing.
+- [Visible] [Modding-API] **A mod projection works in projection-based effects.** A projection a mod adds can now be named as the subtype of an effect such as a ball, bolt, or breath. Before, only the projections compiled into the game resolved by name there.
 - [Visible] [Modding-API] **A mod command can ask for a direction.** `ui.commands.register` takes `{ direction: true }`, and a key bound to the command asks with the game's own direction prompt and hands `run` the digit as `args.dir`. Before, a key could only run a command that needs no direction, so a command like spiking a door had no key.
 - [Visible] [Modding-API] **A mod can move the close button of a panel it mounts.** A panel spec takes `closeAt`, naming one of the four corners, and the close control sits there, so a panel that draws its own header no longer has the control on top of it. The control is still there on every panel, which keeps a touch screen able to dismiss one.
 - [Visible] [Modding-API] **A mod can add a row to the game menu with the `ui:menu.row` permission.** Before, `ui.gameMenu.register` needed `registry:menu`, which also lets a mod replace menu behavior. The narrow permission adds one row and nothing else, and a mod that holds `registry:menu` keeps working.

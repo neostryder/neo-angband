@@ -156,10 +156,18 @@ export function setApi2ManagementHost(host: Api2HostOptions["management"]): void
 let commandHost: Api2HostOptions["commands"];
 interface KeymapCommand {
   readonly direction: boolean;
-  invoke(dir?: number): void;
+  readonly turn: boolean;
+  /** Runs the handler and answers the energy it spent. */
+  invoke(dir?: number): number;
 }
 const keymapCommands = new Map<string, KeymapCommand>();
 let directionPrompt: (() => Promise<number | null>) | undefined;
+let commandPusher: ((code: string, dir?: number) => void) | undefined;
+
+/** Queues a command code into the game's turn, which is where a `turn: true` command runs from a bound key. */
+export function setApi2CommandPusher(push: (code: string, dir?: number) => void): void {
+  commandPusher = push;
+}
 
 /** The game's direction prompt, which a command registered with `direction: true` asks before it runs. */
 export function setApi2DirectionPrompt(prompt: () => Promise<number | null>): void {
@@ -169,11 +177,12 @@ export function setApi2DirectionPrompt(prompt: () => Promise<number | null>): vo
 export function runApi2KeymapCommand(action: string): boolean {
   const command = keymapCommands.get(action);
   if (!command) return false;
-  if (!command.direction) {
-    command.invoke();
-  } else if (directionPrompt) {
-    void directionPrompt().then((dir) => { if (dir !== null) command.invoke(dir); });
-  }
+  const go = (dir?: number): void => {
+    if (command.turn && commandPusher) commandPusher(action, dir);
+    else command.invoke(dir);
+  };
+  if (!command.direction) go();
+  else if (directionPrompt) void directionPrompt().then((dir) => { if (dir !== null) go(dir); });
   return true;
 }
 
@@ -875,21 +884,24 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           if (!commands) return api2Unavailable("this front end installs no mod commands");
           if (commands.registry.has(id)) return api2Refused("command-taken", `command "${id}" is already registered`);
           const direction = commandOptions?.direction === true;
-          const invoke = (dir?: number) => {
+          const turn = commandOptions?.turn === true;
+          const invoke = (dir?: number): number => {
             try {
               const result = run(dir === undefined ? {} : { dir });
-              if (result) void result.catch((error: unknown) => ctx.log(`command failed: ${String(error)}`));
+              if (result instanceof Promise) {
+                void result.catch((error: unknown) => ctx.log(`command failed: ${String(error)}`));
+                return 0;
+              }
+              const energy = turn && result && typeof result === "object" ? (result as { energy?: unknown }).energy : undefined;
+              return typeof energy === "number" && Number.isFinite(energy) ? Math.min(1000, Math.max(0, Math.trunc(energy))) : 0;
             } catch (error) {
               ctx.log(`command failed: ${String(error)}`);
+              return 0;
             }
           };
-          const entry: KeymapCommand = { direction, invoke };
+          const entry: KeymapCommand = { direction, turn, invoke };
           keymapCommands.set(id, entry);
-          commands.registry.register(id, (_state, cmd) => {
-            const arg = (cmd?.args as ReadonlyMap<string, { type: string; value?: unknown }> | undefined)?.get("direction");
-            invoke(arg?.type === "direction" && typeof arg.value === "number" ? arg.value : undefined);
-            return 0;
-          });
+          commands.registry.register(id, (_state, cmd) => invoke(cmd?.dir));
           commands.verbs?.set(id, verb);
           cleanups.add(() => {
             commands.registry.unregister(id);

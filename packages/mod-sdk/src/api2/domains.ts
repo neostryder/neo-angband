@@ -73,6 +73,18 @@ export interface Api2CommandArgs {
 export interface Api2CommandOptions {
   /** Ask the player for a direction first. */
   readonly direction?: boolean;
+  /**
+   * Run inside the game's turn, so `run` can spend game time by returning `{ energy }`.
+   * Without it a bound key calls `run` outside the turn and no energy is spent. In-process
+   * mods only; a Worker mod's command spends none.
+   */
+  readonly turn?: boolean;
+}
+
+/** What a command registered with `turn: true` returns to spend game time. */
+export interface Api2CommandResult {
+  /** Game energy spent: 100 is one turn at normal speed, clamped to 0 through 1000. Omitted spends none. */
+  readonly energy?: number;
 }
 
 export interface Api2ModSummary {
@@ -436,7 +448,7 @@ export interface Api2Ui {
      * the game asks the player for a direction first and `run` hears it as `args.dir`
      * (keypad digits 1 to 9); Escape runs nothing.
      */
-    register(id: string, verb: string, run: (args: Api2CommandArgs) => void | Promise<void>, options?: Api2CommandOptions): Api2Call<null>;
+    register(id: string, verb: string, run: (args: Api2CommandArgs) => void | Promise<void> | Api2CommandResult, options?: Api2CommandOptions): Api2Call<null>;
   };
   readonly gameMenu: {
     register(action: string, label: string, run: () => void | Promise<void>): Api2Call<null>;

@@ -33,7 +33,7 @@ import {
 import { CapabilitySet, type Api2ModDefinition, type JsonValue, type ModApi2, type RunReport } from "@rpgm-tools/neo-angband-mod-sdk";
 import { createRunReports } from "./run-report";
 import { createModKnowledge } from "./knowledge-read";
-import { api2EventPayload, createApi2Host, disposeApi2Host, runApi2KeymapCommand, setApi2DirectionPrompt, stopApi2Host, type Api2HostOptions } from "./mod-api2-host";
+import { api2EventPayload, createApi2Host, disposeApi2Host, runApi2KeymapCommand, setApi2CommandPusher, setApi2DirectionPrompt, stopApi2Host, type Api2HostOptions } from "./mod-api2-host";
 import { menuRegistry } from "./menu-registry";
 import { TitleRuntime } from "./title-runtime";
 import { clearBackupSinks, createBackupFolder, notifyBackupSinks } from "./mod-backup";
@@ -417,6 +417,34 @@ describe("the API 2 host's commands", () => {
       /* A command without the option never prompts and hears no direction. */
       expect(runApi2KeymapCommand("probe:plain")).toBe(true);
       expect(heard).toEqual([4, undefined]);
+    } finally {
+      disposeApi2Host(api);
+    }
+  });
+
+  it("runs a `turn: true` command inside the turn and spends the energy it returns", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const registry = new ActionRegistry();
+    const api = host(game, ["registry:command"], { commands: { registry, verbs: new CommandVerbTable() } });
+    const pushed: Array<{ code: string; dir?: number }> = [];
+    setApi2CommandPusher((code, dir) => { pushed.push({ code, ...(dir === undefined ? {} : { dir }) }); });
+    setApi2DirectionPrompt(async () => 6);
+    try {
+      expect(await api.ui.commands.register("probe:spike", "spike", ({ dir }) => ({ energy: dir === 6 ? 100 : 7 }), { direction: true, turn: true })).toEqual({ ok: true, value: null });
+      expect(await api.ui.commands.register("probe:free", "free", () => ({ energy: 100 }), { turn: true })).toEqual({ ok: true, value: null });
+      expect(await api.ui.commands.register("probe:late", "late", () => ({ energy: 100 }))).toEqual({ ok: true, value: null });
+      /* A bound key queues the command into the turn instead of running it outside. */
+      expect(runApi2KeymapCommand("probe:spike")).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(pushed).toEqual([{ code: "probe:spike", dir: 6 }]);
+      /* The turn loop then runs the registered action, which answers the energy. */
+      expect(registry.get("probe:spike")?.(game.state, { code: "probe:spike", dir: 6 })).toBe(100);
+      expect(registry.get("probe:spike")?.(game.state, { code: "probe:spike", dir: 2 })).toBe(7);
+      expect(registry.get("probe:free")?.(game.state, { code: "probe:free" })).toBe(100);
+      /* Without `turn` an energy result is ignored, as before. */
+      expect(registry.get("probe:late")?.(game.state, { code: "probe:late" })).toBe(0);
+      expect(runApi2KeymapCommand("probe:late")).toBe(true);
+      expect(pushed).toHaveLength(1);
     } finally {
       disposeApi2Host(api);
     }

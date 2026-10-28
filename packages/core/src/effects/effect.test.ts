@@ -87,6 +87,16 @@ describe("effectSubtype", () => {
     expect(effectSubtype(EF.BALL, "2147483646")).toBe(2147483646);
   });
 
+  it("resolves a mod's projection for every projection-family effect, after the compiled names", () => {
+    const inject = { projectionNameToIdx: (name: string) => (name === "MOD_CONF" ? 77 : -1) };
+    for (const code of [EF.BREATH, EF.BALL, EF.BOLT, EF.ARC, EF.PROJECT_LOS]) {
+      expect(effectSubtype(code, "MOD_CONF", inject)).toBe(77);
+      expect(effectSubtype(code, "FIRE", inject)).toBe(PROJ.FIRE);
+      expect(effectSubtype(code, "NOT_A_PROJECTION", inject)).toBe(-1);
+      expect(effectSubtype(code, "MOD_CONF")).toBe(-1);
+    }
+  });
+
   it("resolves projection names for the projection family", () => {
     expect(effectSubtype(EF.BALL, "FIRE")).toBe(PROJ.FIRE);
     expect(effectSubtype(EF.BOLT, "COLD")).toBe(PROJ.COLD);

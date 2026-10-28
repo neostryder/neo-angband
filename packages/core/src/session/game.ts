@@ -1557,6 +1557,10 @@ function wireGame(
     };
     const inject: EffectBuilderInjections = {
       summonNameToIdx: (name) => summons.nameToIdx(name),
+      /* A mod's projection sits past the compiled enum in the bound table
+       * (bindProjections appends it), so a BREATH or BALL naming it resolves here. */
+      projectionNameToIdx: (name) =>
+        reg.projections?.find((p) => p.code.toLowerCase() === name.toLowerCase())?.index ?? -1,
       /* shape_name_to_idx (player-util.c L987) over lookup_player_shape (L971).
        * NOTE: upstream matches with streq (z-util.h:157 = strcmp), i.e. CASE
        * SENSITIVELY, unlike the my_stricmp used by stat_name_to_idx /
