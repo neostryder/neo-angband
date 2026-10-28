@@ -30,7 +30,7 @@ import { ELEM, MON_SPELL_ENTRIES, MON_TMD, OF, PF, RSF } from "../generated/inde
 import type { RandomValue, Rng } from "../rng.js";
 import { ELEM_MAX } from "../obj/types.js";
 import type { TimedFailLike } from "../obj/object.js";
-import { rsfSize } from "./spell-registry.js";
+import { monSpells, rsfMax, rsfSize } from "./spell-registry.js";
 import type { MonsterRace, MonsterSpell, MonsterSpellEffect } from "./types.js";
 import type { Monster } from "./monster.js";
 import { monsterEffectLevel } from "./timed.js";
@@ -85,38 +85,53 @@ export const MON_SPELL_TYPES: readonly number[] = MON_SPELL_ENTRIES.map((e) =>
   evalTypeExpr(e.type),
 );
 
-/** mon_spell_is_valid: a real RSF_ spell index. */
+/**
+ * The RST_ bitmask of the spell at `index`: the compiled table for upstream's
+ * spells, the registry's type expression for a mod's. A mod spell's index is at
+ * or above RSF.MAX, which MON_SPELL_TYPES does not cover. An unknown token in a
+ * mod's expression adds nothing rather than throwing mid-turn.
+ */
+export function monSpellTypeMask(index: number): number {
+  if (index < RSF.MAX) return MON_SPELL_TYPES[index] ?? 0;
+  let mask = 0;
+  for (const tok of monSpells.typeAt(index).split("|")) {
+    mask |= (RST as Record<string, number>)[tok.trim().replace(/^RST_/, "")] ?? 0;
+  }
+  return mask;
+}
+
+/** mon_spell_is_valid: a real RSF_ spell index, a mod's included. */
 export function monSpellIsValid(index: number): boolean {
-  return index > RSF.NONE && index < RSF.MAX;
+  return index > RSF.NONE && index < rsfMax();
 }
 
 /** monster_spell_is_breath. */
 export function monSpellIsBreath(index: number): boolean {
-  return (MON_SPELL_TYPES[index]! & RST.BREATH) !== 0;
+  return (monSpellTypeMask(index) & RST.BREATH) !== 0;
 }
 
 /** mon_spell_has_damage. */
 export function monSpellHasDamage(index: number): boolean {
-  return (MON_SPELL_TYPES[index]! & RST_DAMAGE) !== 0;
+  return (monSpellTypeMask(index) & RST_DAMAGE) !== 0;
 }
 
 /** mon_spell_is_innate. */
 export function monSpellIsInnate(index: number): boolean {
-  return (MON_SPELL_TYPES[index]! & RST.INNATE) !== 0;
+  return (monSpellTypeMask(index) & RST.INNATE) !== 0;
 }
 
 /** test_spells: whether any spell of a wanted type is set in the flagset. */
 export function testSpells(f: FlagSet, types: number): boolean {
-  for (let index = RSF.NONE + 1; index < RSF.MAX; index++) {
-    if (f.has(index) && (MON_SPELL_TYPES[index]! & types) !== 0) return true;
+  for (let index = RSF.NONE + 1; index < rsfMax(); index++) {
+    if (f.has(index) && (monSpellTypeMask(index) & types) !== 0) return true;
   }
   return false;
 }
 
 /** ignore_spells: clear every spell of the given type(s) from the flagset. */
 export function ignoreSpells(f: FlagSet, types: number): void {
-  for (let index = RSF.NONE + 1; index < RSF.MAX; index++) {
-    if (f.has(index) && (MON_SPELL_TYPES[index]! & types) !== 0) f.off(index);
+  for (let index = RSF.NONE + 1; index < rsfMax(); index++) {
+    if (f.has(index) && (monSpellTypeMask(index) & types) !== 0) f.off(index);
   }
 }
 
@@ -124,8 +139,8 @@ export function ignoreSpells(f: FlagSet, types: number): void {
 export function createMonSpellMask(...types: number[]): FlagSet {
   const f = new FlagSet(rsfSize());
   const wanted = types.reduce((a, b) => a | b, 0);
-  for (let index = RSF.NONE + 1; index < RSF.MAX; index++) {
-    if ((MON_SPELL_TYPES[index]! & wanted) !== 0) f.on(index);
+  for (let index = RSF.NONE + 1; index < rsfMax(); index++) {
+    if ((monSpellTypeMask(index) & wanted) !== 0) f.on(index);
   }
   return f;
 }
@@ -206,12 +221,12 @@ export function unsetSpells(
 ): void {
   const smart = monsterIsSmart(mon);
 
-  for (let index = RSF.NONE + 1; index < RSF.MAX; index++) {
+  for (let index = RSF.NONE + 1; index < rsfMax(); index++) {
     const spell = spellTable.get(index);
     if (!spell) continue;
     if (!spells.has(index)) continue;
 
-    const types = MON_SPELL_TYPES[index]!;
+    const types = monSpellTypeMask(index);
 
     if (types & (RST.BOLT | RST.BALL | RST.BREATH)) {
       /* First we test the elemental spells. */

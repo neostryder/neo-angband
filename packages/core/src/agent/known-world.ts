@@ -42,6 +42,7 @@
  */
 
 import { createMonFlagMask } from "../mon/lore.js";
+import { monSpells } from "../mon/spell-registry.js";
 import { monsterIsDestroyed, monsterIsInvisible, monsterIsObvious } from "../mon/predicate.js";
 import type { Monster } from "../mon/monster.js";
 import type { MonsterRace } from "../mon/types.js";
@@ -54,7 +55,7 @@ import { NOSCORE } from "../game/wizard.js";
 import { numberCharging } from "../game/obj-cmd.js";
 import { describeObject, knownDescOf } from "../game/describe.js";
 import { objectDesc, ODESC } from "../obj/desc.js";
-import { MON_RACE_FLAG_ENTRIES, MON_SPELL_ENTRIES, MON_TMD, OF, PLAYER_TIMED_ENTRIES, RF, TMD } from "../generated/index.js";
+import { MON_RACE_FLAG_ENTRIES, MON_TMD, OF, PLAYER_TIMED_ENTRIES, RF, TMD } from "../generated/index.js";
 import { squareIsSeen, squareIsView } from "../world/view.js";
 import type { Store } from "../store/store.js";
 import type { FlagSet } from "../bitflag.js";
@@ -301,6 +302,16 @@ function knownRaceFlags(state: GameState, race: MonsterRace): FlagSet {
   return flags;
 }
 
+/** The RSF_ names of the set spell flags, a mod's included. */
+function spellCodes(flags: FlagSet): string[] {
+  const out: string[] = [];
+  for (const f of flags) {
+    const name = monSpells.nameAt(f);
+    if (name) out.push(name);
+  }
+  return out;
+}
+
 function knownRaceSpells(state: GameState, race: MonsterRace): FlagSet {
   const spells = race.spellFlags.clone();
   const lore = state.lore.get(race.ridx);
@@ -471,7 +482,7 @@ export function knownMonster(state: GameState, mon: Monster, deps: AgentViewDeps
     raceLevel: mon.race.level,
     raceSpeed: mon.race.speed,
     knownFlags: flags,
-    knownSpells: codes(knownRaceSpells(state, mon.race), MON_SPELL_ENTRIES),
+    knownSpells: spellCodes(knownRaceSpells(state, mon.race)),
     unique: flags.includes("UNIQUE"),
     questGuardian: quests.some((q) => q.race === mon.race.ridx),
     finalGuardian: mon.race.ridx === finalRace,

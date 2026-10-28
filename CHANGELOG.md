@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Visible] [Modding-API] **A mod command can ask for a direction.** `ui.commands.register` takes `{ direction: true }`, and a key bound to the command asks with the game's own direction prompt and hands `run` the digit as `args.dir`. Before, a key could only run a command that needs no direction, so a command like spiking a door had no key.
 - [Visible] [Modding-API] **A mod can move the close button of a panel it mounts.** A panel spec takes `closeAt`, naming one of the four corners, and the close control sits there, so a panel that draws its own header no longer has the control on top of it. The control is still there on every panel, which keeps a touch screen able to dismiss one.
 - [Visible] [Modding-API] **A mod can add a row to the game menu with the `ui:menu.row` permission.** Before, `ui.gameMenu.register` needed `registry:menu`, which also lets a mod replace menu behavior. The narrow permission adds one row and nothing else, and a mod that holds `registry:menu` keeps working.
 - [Visible] [Modding-API] **A first-party API 2 mod can register effects, projections and commands with the game through `engine.registry`.** The same host an API 1 `register` was given is now handed to `start` as `mod.engine.registry` for first-party mods and for a mod the player gave `engine:access`, with each member needing the same `registry:` permission, and `neo-angband-mod-check` reports a missing one. A restoration that adds a spell effect, a projection or a command no longer has to stay on API 1.
@@ -98,6 +99,7 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [Modding-API] **A monster casts a spell that a mod adds.** The spell-choice and spell-filter loops stopped at the game's own spell count, so a mod's breath or bolt was never a candidate and monsters with it only clawed and bit. They now run to the live count, and a mod spell's type decides whether it is innate, a breath, or a bolt.
 - [Visible] **A monster summoned by name with the wizard command now shows at once.** It was placed beside you but stayed unseen, and missing from the monster list, until your next move, so a summon between turns looked like it had failed.
 - [Visible] [Modding-API] **A Linoleum tile pack that names its map with `tileMap` now draws.** The manifest reader required the older `prefFiles` list, so a pack that used `tileMap` alone was dropped and its Graphics rows drew plain text.
 - [Visible] [Modding-API] **A mod can no longer remove a record that something else in the game still names.** Taking away a monster's base, a monster another monster brings along as an escort, or every phrase of a history chart another chart leads to used to break the game somewhere far from the mod, such as an error while making a character. A removal like that is now refused and listed against the mod on the Mods screen, the record stays, and the rest of the mod loads. Removing a record together with everything that names it still works. A history chart also keeps its roll-100 phrase, since a high roll has nowhere else to land.

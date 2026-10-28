@@ -87,6 +87,8 @@ export default {
 };
 ```
 
+A registered effect's name must not contain a colon if a record names it: a record's effect line reads `name:type:radius:other`, so a colon inside the name splits it and the record fails to load.
+
 Every member is optional, and the two above are only the two most common. The
 full set is `hooks`, `register`, `controller`, `frontend`, `hud`, `menu`,
 `screen` and `regions`, plus `migrateBag` and `uninstall`. A plugin is refused

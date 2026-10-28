@@ -28,6 +28,7 @@ import {
   monsterIsObvious,
   MON_RACE_FLAG_ENTRIES,
   MON_SPELL_ENTRIES,
+  RSF,
   storeKnowledge,
   knownLoadoutSimulation,
   squareIsSeen,
@@ -153,12 +154,26 @@ export function setApi2ManagementHost(host: Api2HostOptions["management"]): void
   managementHost = host;
 }
 let commandHost: Api2HostOptions["commands"];
-const keymapCommands = new Map<string, () => void>();
+interface KeymapCommand {
+  readonly direction: boolean;
+  invoke(dir?: number): void;
+}
+const keymapCommands = new Map<string, KeymapCommand>();
+let directionPrompt: (() => Promise<number | null>) | undefined;
+
+/** The game's direction prompt, which a command registered with `direction: true` asks before it runs. */
+export function setApi2DirectionPrompt(prompt: () => Promise<number | null>): void {
+  directionPrompt = prompt;
+}
 
 export function runApi2KeymapCommand(action: string): boolean {
-  const run = keymapCommands.get(action);
-  if (!run) return false;
-  run();
+  const command = keymapCommands.get(action);
+  if (!command) return false;
+  if (!command.direction) {
+    command.invoke();
+  } else if (directionPrompt) {
+    void directionPrompt().then((dir) => { if (dir !== null) command.invoke(dir); });
+  }
   return true;
 }
 
@@ -851,7 +866,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         },
       } : {}),
       commands: frozen({
-        register: (id, verb, run) => guarded(() => {
+        register: (id, verb, run, commandOptions) => guarded(() => {
           if (!granted("registry:command") && !granted("command:add")) return api2NotGranted("command:add");
           if (!id.startsWith(`${ctx.id}:`) || !/^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/.test(id) || !verb.trim() || typeof run !== "function") {
             return api2Refused("bad-command", "a command needs an owned id, a verb and a handler");
@@ -859,20 +874,26 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           const commands = options.commands ?? commandHost;
           if (!commands) return api2Unavailable("this front end installs no mod commands");
           if (commands.registry.has(id)) return api2Refused("command-taken", `command "${id}" is already registered`);
-          const invoke = () => {
+          const direction = commandOptions?.direction === true;
+          const invoke = (dir?: number) => {
             try {
-              const result = run();
+              const result = run(dir === undefined ? {} : { dir });
               if (result) void result.catch((error: unknown) => ctx.log(`command failed: ${String(error)}`));
             } catch (error) {
               ctx.log(`command failed: ${String(error)}`);
             }
           };
-          keymapCommands.set(id, invoke);
-          commands.registry.register(id, () => { invoke(); return 0; });
+          const entry: KeymapCommand = { direction, invoke };
+          keymapCommands.set(id, entry);
+          commands.registry.register(id, (_state, cmd) => {
+            const arg = (cmd?.args as ReadonlyMap<string, { type: string; value?: unknown }> | undefined)?.get("direction");
+            invoke(arg?.type === "direction" && typeof arg.value === "number" ? arg.value : undefined);
+            return 0;
+          });
           commands.verbs?.set(id, verb);
           cleanups.add(() => {
             commands.registry.unregister(id);
-            if (keymapCommands.get(id) === invoke) keymapCommands.delete(id);
+            if (keymapCommands.get(id) === entry) keymapCommands.delete(id);
           });
           return api2Ok(null);
         }),
@@ -1280,7 +1301,7 @@ function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps): Api2Truth {
       return api2Ok(data({
         ridx: race.ridx,
         flags: [...race.flags].flatMap((flag) => MON_RACE_FLAG_ENTRIES[flag] ? [MON_RACE_FLAG_ENTRIES[flag]!.name] : []),
-        spells: [...race.spellFlags].filter((flag) => !!MON_SPELL_ENTRIES[flag]).sort((a, b) => a - b),
+        spells: [...race.spellFlags].filter((flag) => flag >= RSF.MAX || !!MON_SPELL_ENTRIES[flag]).sort((a, b) => a - b),
         blows: race.blows.map((blow) => {
           const dice = blow.dice?.randomValue();
           return { dice: dice?.dice ?? 0, sides: dice?.sides ?? 0, effect: blow.effect.name };

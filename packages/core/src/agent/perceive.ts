@@ -17,7 +17,6 @@
 import {
   FEAT,
   MON_RACE_FLAG_ENTRIES,
-  MON_SPELL_ENTRIES,
   MON_TMD,
   RF,
   SQUARE,
@@ -30,6 +29,7 @@ import type { GameState } from "../game/context.js";
 import { gearGet } from "../game/gear.js";
 import { LIGHTING } from "../visuals/tile-prefs.js";
 import { monsterIsObvious, monsterIsVisible } from "../mon/predicate.js";
+import { monSpells } from "../mon/spell-registry.js";
 import { PY_SPELL, spellChance, spellOkayToStudy } from "../player/spell.js";
 import { makeSpellChanceEnv } from "../game/spell-cmd.js";
 import { buildObjectEffectChain } from "../game/obj-cmd.js";
@@ -88,8 +88,8 @@ function raceFlagCodes(flags: FlagSet): string[] {
 function spellFlagCodes(flags: FlagSet): string[] {
   const out: string[] = [];
   for (const f of flags) {
-    const entry = MON_SPELL_ENTRIES[f];
-    if (entry) out.push(entry.name);
+    const name = monSpells.nameAt(f);
+    if (name) out.push(name);
   }
   return out;
 }

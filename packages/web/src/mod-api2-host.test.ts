@@ -33,7 +33,7 @@ import {
 import { CapabilitySet, type Api2ModDefinition, type JsonValue, type ModApi2, type RunReport } from "@rpgm-tools/neo-angband-mod-sdk";
 import { createRunReports } from "./run-report";
 import { createModKnowledge } from "./knowledge-read";
-import { api2EventPayload, createApi2Host, disposeApi2Host, stopApi2Host, type Api2HostOptions } from "./mod-api2-host";
+import { api2EventPayload, createApi2Host, disposeApi2Host, runApi2KeymapCommand, setApi2DirectionPrompt, stopApi2Host, type Api2HostOptions } from "./mod-api2-host";
 import { menuRegistry } from "./menu-registry";
 import { TitleRuntime } from "./title-runtime";
 import { clearBackupSinks, createBackupFolder, notifyBackupSinks } from "./mod-backup";
@@ -395,6 +395,31 @@ describe("the API 2 host's commands", () => {
     expect(await api.ui.commands.register("other:order", "order", () => undefined)).toMatchObject({ code: "bad-command" });
     disposeApi2Host(api);
     expect(registry.has("probe:order")).toBe(false);
+  });
+
+  it("asks for a direction before a bound command with `direction: true` runs", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const registry = new ActionRegistry();
+    const api = host(game, ["registry:command"], { commands: { registry, verbs: new CommandVerbTable() } });
+    const heard: Array<number | undefined> = [];
+    const answers: Array<number | null> = [4, null];
+    setApi2DirectionPrompt(async () => answers.shift() ?? null);
+    try {
+      expect(await api.ui.commands.register("probe:spike", "spike", (args) => { heard.push(args.dir); }, { direction: true })).toEqual({ ok: true, value: null });
+      expect(await api.ui.commands.register("probe:plain", "plain", (args) => { heard.push(args.dir); })).toEqual({ ok: true, value: null });
+      expect(runApi2KeymapCommand("probe:spike")).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(heard).toEqual([4]);
+      /* Escape at the prompt runs nothing. */
+      expect(runApi2KeymapCommand("probe:spike")).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(heard).toEqual([4]);
+      /* A command without the option never prompts and hears no direction. */
+      expect(runApi2KeymapCommand("probe:plain")).toBe(true);
+      expect(heard).toEqual([4, undefined]);
+    } finally {
+      disposeApi2Host(api);
+    }
   });
 
   it("checks key availability without claiming it", async () => {

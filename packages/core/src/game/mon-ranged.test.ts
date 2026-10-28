@@ -9,7 +9,8 @@ import { loc, locEq } from "../loc.js";
 import { OptionState } from "../player/options.js";
 import { OF_SIZE, PF_SIZE } from "../player/types.js";
 import { ELEM_MAX } from "../obj/types.js";
-import { updateSmartLearn } from "../mon/spell.js";
+import { monSpellIsBreath, monSpellIsValid, updateSmartLearn } from "../mon/spell.js";
+import { monSpells, rsfSize } from "../mon/spell-registry.js";
 import { bindProjections } from "../world/projection.js";
 import type { ProjectionRecordJson } from "../world/projection.js";
 import { RSF_SIZE } from "../mon/types.js";
@@ -231,6 +232,21 @@ describe("chooseAttackSpell", () => {
     expect(chooseAttackSpell(state, f, true, false)).toBe(RSF.BR_FIRE);
     expect(chooseAttackSpell(state, f, false, true)).toBe(RSF.BA_FIRE);
     expect(chooseAttackSpell(state, new FlagSet(RSF_SIZE), true, true)).toBe(RSF.NONE);
+  });
+
+  it("picks a spell a mod added, by that spell's own type", () => {
+    const state = makeState();
+    try {
+      const mod = monSpells.add("MOD_BREATH", "RST_BREATH | RST_INNATE", "testmod").index;
+      const f = new FlagSet(rsfSize());
+      f.on(mod);
+      expect(chooseAttackSpell(state, f, true, false)).toBe(mod);
+      expect(chooseAttackSpell(state, f, false, true)).toBe(RSF.NONE);
+      expect(monSpellIsBreath(mod)).toBe(true);
+      expect(monSpellIsValid(mod)).toBe(true);
+    } finally {
+      monSpells.clear();
+    }
   });
 });
 

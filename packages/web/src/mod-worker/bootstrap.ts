@@ -199,10 +199,10 @@ export function installModWorkerBootstrap(
           return call("ui.mount", [panel, callbackId, dismissId]);
         },
         patch: method("ui.patch"),
-        commands: { register: (id: string, verb: string, run: () => void) => {
+        commands: { register: (id: string, verb: string, run: (args: { dir?: number }) => void, options?: { direction?: boolean }) => {
           const callbackId = ++nextCallback;
-          callbacks.set(callbackId, run);
-          return call("ui.commands.register", [id, verb, callbackId]);
+          callbacks.set(callbackId, (_action: string, value?: string | boolean) => run(typeof value === "string" && /^[1-9]$/.test(value) ? { dir: Number(value) } : {}));
+          return call("ui.commands.register", [id, verb, callbackId, options?.direction === true ? { direction: true } : null]);
         } },
         gameMenu: { register: (action: string, label: string, run: () => void) => {
           const callbackId = ++nextCallback;

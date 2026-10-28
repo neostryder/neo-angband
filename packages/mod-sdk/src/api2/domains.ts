@@ -63,6 +63,18 @@ export interface Api2Engine {
 export type Api2Tier = "first-party" | "public";
 
 /** One enabled mod, as any mod may see it. */
+/** What a registered command hears when it runs. */
+export interface Api2CommandArgs {
+  /** The direction the player chose (1 to 9), for a command registered with `direction: true`. */
+  readonly dir?: number;
+}
+
+/** How a command asks for input before it runs. */
+export interface Api2CommandOptions {
+  /** Ask the player for a direction first. */
+  readonly direction?: boolean;
+}
+
 export interface Api2ModSummary {
   readonly id: string;
   readonly name: string;
@@ -419,7 +431,12 @@ export interface Api2Ui {
   readonly overlay?: (spec?: Api2PanelSpec) => Api2Call<Api2DomPanel>;
   readonly title?: Api2Title;
   readonly commands: {
-    register(id: string, verb: string, run: () => void | Promise<void>): Api2Call<null>;
+    /**
+     * Register a command a key or the command menu can run. With `{ direction: true }`
+     * the game asks the player for a direction first and `run` hears it as `args.dir`
+     * (keypad digits 1 to 9); Escape runs nothing.
+     */
+    register(id: string, verb: string, run: (args: Api2CommandArgs) => void | Promise<void>, options?: Api2CommandOptions): Api2Call<null>;
   };
   readonly gameMenu: {
     register(action: string, label: string, run: () => void | Promise<void>): Api2Call<null>;

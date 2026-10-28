@@ -1224,6 +1224,7 @@
     "monSpellLoreDamage",
     "monSpellLoreDescription",
     "monSpellNonhpDamage",
+    "monSpellTypeMask",
     "monSpellsOfTypes",
     "monTakeHit",
     "monTimedNameToIdx",

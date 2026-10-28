@@ -30,6 +30,7 @@ import {
   testSpells,
   unsetSpells,
 } from "../mon/spell.js";
+import { rsfMax } from "../mon/spell-registry.js";
 import type { TimedFailLike } from "../obj/object.js";
 import { ELEM_MAX } from "../obj/types.js";
 import type { FlagSet } from "../bitflag.js";
@@ -252,7 +253,7 @@ export function chooseAttackSpell(
   nonInnate: boolean,
 ): number {
   const spells: number[] = [];
-  for (let i = RSF.NONE + 1; i < RSF.MAX; i++) {
+  for (let i = RSF.NONE + 1; i < rsfMax(); i++) {
     if (!innate && monSpellIsInnate(i)) continue;
     if (!nonInnate && !monSpellIsInnate(i)) continue;
     if (f.has(i)) spells.push(i);
