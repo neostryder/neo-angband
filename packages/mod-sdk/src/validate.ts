@@ -178,6 +178,34 @@ export interface CheckPacksOptions {
    * core is passed in purely so its records exist to resolve against.
    */
   readonly baseId?: string;
+  /**
+   * The base game's own contribution. A finding on a record the base game already
+   * gets, word for word, is the base game's and not the mod's: a mod that patches
+   * an upstream record with a wart in it would otherwise answer for the wart, and
+   * so would a mod whose own switched-off section is what mends it. Absent means
+   * nothing is left out, which is what a mod's own build wants.
+   */
+  readonly baseFiles?: Readonly<Record<string, FileContribution>>;
+}
+
+/** The messages the base game's own copy of these records already raises. */
+function baseMessages(
+  subject: Record<string, readonly JsonRecord[]>,
+  baseFiles: Readonly<Record<string, FileContribution>>,
+  floor: { minLevel?: FindingLevel },
+): Set<string> {
+  const base: Record<string, readonly JsonRecord[]> = {};
+  for (const [file, contrib] of Object.entries(baseFiles)) {
+    base[file] = composedObjects({ [file]: contrib.records ?? [] })[file] ?? [];
+  }
+  const same: Record<string, readonly JsonRecord[]> = {};
+  for (const [file, records] of Object.entries(subject)) {
+    const keys = new Set(records.flatMap((r) => recordRefKeys(file, r)));
+    const matched = (base[file] ?? []).filter((r) => recordRefKeys(file, r).some((k) => keys.has(k)));
+    if (matched.length > 0) same[file] = matched;
+  }
+  if (Object.keys(same).length === 0) return new Set();
+  return new Set(checkRecords(same, base, floor).map((f) => f.message));
 }
 
 /**
@@ -199,7 +227,13 @@ export function checkPacks(
     const subject = packSubject(pack.files, all);
     if (Object.keys(subject).length === 0) continue;
     const floor = options.minLevel === undefined ? {} : { minLevel: options.minLevel };
-    for (const finding of checkRecords(subject, all, floor)) {
+    const found = checkRecords(subject, all, floor);
+    const theirs =
+      options.baseFiles === undefined || found.length === 0
+        ? new Set<string>()
+        : baseMessages(subject, options.baseFiles, floor);
+    for (const finding of found) {
+      if (theirs.has(finding.message)) continue;
       out.push({ ...finding, packId });
     }
   }

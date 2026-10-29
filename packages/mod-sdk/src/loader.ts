@@ -816,7 +816,7 @@ function composeKeeping(
   const base = packs[0];
   const findings = checkPacks(packs, composedObjects(out), {
     minLevel: "warn",
-    ...(base === undefined ? {} : { baseId: base.manifest.id }),
+    ...(base === undefined ? {} : { baseId: base.manifest.id, baseFiles: base.files }),
   });
 
   return {

@@ -212,6 +212,49 @@ describe("what the load-time check does NOT say", () => {
   });
 });
 
+describe("a wart the base game already carries is not the mod's", () => {
+  /* A mod that patches an upstream record answers for the record it produced,
+   * and the record it produced still carries upstream's mistake. The row must not
+   * read "NOT WORKING" over a defect the mod neither wrote nor can mend. */
+  const warty = (): LoadedPack => {
+    const core = corePack();
+    const files = core.files as unknown as Record<string, { records: JsonRecord[] }>;
+    files["monster"] = {
+      records: (files["monster"]?.records ?? []).map((r) =>
+        r["name"] === "scrawny cat" ? { ...r, speed: "fast" } : r,
+      ),
+    };
+    return core;
+  };
+  const patch = (body: JsonRecord): LoadedPack =>
+    ({
+      manifest: {
+        id: "sludge",
+        name: "sludge",
+        version: "1.0.0",
+        shape: "content",
+        dependencies: { core: "1.0.0" },
+      },
+      files: { monster: { patches: { "core:scrawny-cat": body } } },
+    }) as unknown as LoadedPack;
+
+  it("leaves out the base game's finding on a record the mod patched", () => {
+    const composed = composeContentPacks([warty(), patch({ "hit-points": 9 })]);
+    expect(composed.problems).toEqual([]);
+    expect(composed.findings).toEqual([]);
+  });
+
+  it("still reports what the mod itself broke on that record", () => {
+    const composed = composeContentPacks([warty(), patch({ "hit-points": "lots" })]);
+    expect(composed.findings.map((f) => f.field)).toEqual(["hit-points"]);
+  });
+
+  it("and keeps reporting a defect no base record carries (the control)", () => {
+    const composed = composeContentPacks([corePack(), patch({ speed: "fast" })]);
+    expect(composed.findings.map((f) => f.field)).toEqual(["speed"]);
+  });
+});
+
 describe("a section the player switched off is not reported on", () => {
   const sectioned = (): LoadedPack =>
     ({

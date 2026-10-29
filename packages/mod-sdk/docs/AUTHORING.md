@@ -143,10 +143,11 @@ Findings are graded, and `checkRecords` never refuses anything. Refusals happen 
 
 ### It also runs when the GAME loads your mod
 
-Since 2026-08-09 the check also runs at load time. `composeContentPacks`, the function every host composes through, runs it over every pack it loads and puts the findings on that mod's own row in the mod manager, so a player who installs your mod from a zip sees the same sentences you do. It differs from `build()` in three ways:
+Since 2026-08-09 the check also runs at load time. `composeContentPacks`, the function every host composes through, runs it over every pack it loads and puts the findings on that mod's own row in the mod manager, so a player who installs your mod from a zip sees the same sentences you do. It differs from `build()` in four ways:
 
 - Only `warn` and above are shown. A `hint` is drafting advice for when you are looking at the draft, and dozens of them on a player's screen would bury the one line that matters.
 - The base game is not reported on. Core's own data raises warnings against core's own blueprint, and those are upstream warts the port keeps.
+- A finding the base game already raises on a record is not repeated on the mod that patches that record. A mod that edits an upstream record with a wart in it, or whose own switched-off section would mend the wart, no longer reads as broken for it. The mod's own mistakes on that record are still reported.
 - A patch is checked as the record it produced rather than as you wrote it, so `{"speed": 120}` is not reported as a record missing twenty fields.
 
 In practice, your users see what your `build()` output shows. If it is clean at `warn`, their mod manager stays quiet, and there is nothing extra to run or opt into.
