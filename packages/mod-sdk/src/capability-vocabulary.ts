@@ -284,6 +284,8 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The mod cannot read the game state it uses.", { powerful: true, tiers: ALL_TIERS, wildcard: true }),
   fixed("state:map-actual.read", { kind: "state", domain: "map-actual", access: "read" }, "See what the map really holds, including traps, items, terrain and creatures your character has not found",
     "The mod sees only what your character has found.", { powerful: true, tiers: FIRST_PARTY, namespace: "truth" }),
+  fixed("state:monsters-actual.read", { kind: "state", domain: "monsters-actual", access: "read" }, "See exact numbers for the creatures your character perceives, such as hit points and speed, and what each kind of creature really does",
+    "The mod sees only what your character has learned about creatures.", { powerful: true, tiers: FIRST_PARTY, namespace: "truth" }),
   fixed("network:*", { kind: "network", host: "*" }, "Send network requests to ANY host (your data could leave this device)",
     "The mod cannot reach the internet.", { powerful: true, tiers: ALL_TIERS, wildcard: true }),
   fixed("network:local", { kind: "network", host: "local" }, "Send network requests to servers on this computer or your local network",

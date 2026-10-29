@@ -90,7 +90,7 @@ export function installModWorkerBootstrap(
     const list = meta?.granted ?? [];
     if (list.includes(capability)) return true;
     const state = /^state:([a-z0-9-]+)\.read$/u.exec(capability);
-    if (state && state[1] !== "map-actual" && list.includes("state:*.read")) return true;
+    if (state && state[1] !== "map-actual" && state[1] !== "monsters-actual" && list.includes("state:*.read")) return true;
     return capability.startsWith("network:") && list.includes("network:*");
   };
 

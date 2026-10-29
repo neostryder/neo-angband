@@ -59,8 +59,10 @@ export interface FirstPartyOrigin {
   readonly marksSave?: readonly string[];
 }
 
-/** The hidden-map capability: the only one in the `truth` namespace. */
+/** The hidden-map capability, in the `truth` namespace. */
 export const TRUTH_MAP = "state:map-actual.read";
+/** Exact monsters and race records, without the real map; the other capability in the `truth` namespace. */
+export const TRUTH_MONSTERS = "state:monsters-actual.read";
 
 /**
  * The game's own mods. A repository here counts as first-party only when the
@@ -73,7 +75,7 @@ export const FIRST_PARTY_ORIGINS: readonly FirstPartyOrigin[] = Object.freeze([
     seams: ["screens:manage", "session:control", "profiles:manage", "mod:install", "options:manage", TRUTH_MAP],
     marksSave: [TRUTH_MAP],
   },
-  { id: "borg", repo: "neostryder/neo-angband-mod-borg", seams: [TRUTH_MAP, "profiles:manage"] },
+  { id: "borg", repo: "neostryder/neo-angband-mod-borg", seams: [TRUTH_MAP, TRUTH_MONSTERS, "profiles:manage"] },
   { id: "squire", repo: "neostryder/neo-angband-mod-squire", seams: ["profiles:manage"] },
   { id: "forge", repo: "neostryder/neo-angband-mod-forge", seams: ["mod:session", "mod:install", "mod:authoring"] },
   { id: "qol", repo: "neostryder/neo-angband-mod-qol", seams: [] },
@@ -508,7 +510,7 @@ export function modStartGrants(id: string): ModStartGrants {
   const granted = grants.get(id)?.granted ?? [];
   /* The loader granted only what SEAM_POLICY allows this tier, so holding the
    * capability is the whole test; `manage` is first-party only by that policy. */
-  const truth = granted.includes(TRUTH_MAP);
+  const truth = granted.includes(TRUTH_MAP) || granted.includes(TRUTH_MONSTERS);
   const manage = tier.trust === "first-party" && tier.execution === "in-process" && granted.some((cap) => tier.seams.includes(cap) && entryOf(cap)?.namespace === "manage");
   const presentation = tier.trust === "first-party" && tier.execution === "in-process";
   if (!truth && !manage && !presentation) return Object.freeze({ tier, granted });

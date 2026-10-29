@@ -1057,6 +1057,7 @@ In the table, "any code mod" means first-party, reviewed, sideloaded and Worker 
 | `asset:read` | Read files that came with this mod | The mod cannot open the images and data files it ships with. | no | any code mod |
 | `state:*.read` | Read ALL game state, except the parts of the map your character has not found | The mod cannot read the game state it uses. | yes | any code mod |
 | `state:map-actual.read` | See what the map really holds, including traps, items, terrain and creatures your character has not found | The mod sees only what your character has found. | yes | first-party only |
+| `state:monsters-actual.read` | See exact numbers for the creatures your character perceives, such as hit points and speed, and what each kind of creature really does | The mod sees only what your character has learned about creatures. | yes | first-party only |
 | `network:*` | Send network requests to ANY host (your data could leave this device) | The mod cannot reach the internet. | yes | any code mod |
 | `network:local` | Send network requests to servers on this computer or your local network | The mod cannot reach servers on this computer or your local network. | yes | any code mod |
 | `registry:*` | Override ANY game system - effects, level and dungeon generation, monster attacks, shops, commands, monster AI, what spells and breaths do, what a vault symbol means, and vocabulary (full trusted, in-process access) | None of the game systems this mod changes are changed, and the mod does not start. | yes | in-process |

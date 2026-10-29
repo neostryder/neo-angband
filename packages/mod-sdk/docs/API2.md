@@ -64,7 +64,7 @@ A call never throws for a missing permission. `isNotGranted(result)` tells a mis
 | `store` | `prefs`, kept apart from any character, and `character`, kept in the current character's save. | None |
 | `net` | Requests to the hosts the manifest names, with credentials passed by reference. Present only when the manifest asks for a `network:` permission. | `network:<host>` |
 | `manage` | Profiles and session control. First-party mods only. | `profiles:manage`, `session:control` |
-| `truth` | Every monster and the real map. Any in-process mod the player allows it. | `state:map-actual.read` |
+| `truth` | Every monster and the real map. Any in-process mod the player allows it. | `state:map-actual.read`, or `state:monsters-actual.read` for monsters and races only |
 
 ### What `view` shows
 
@@ -227,7 +227,7 @@ The preview Worker ABI (`modApi: 2` with `workerEntry`) is retired. Its manifest
 
 ## Seams outside the public API
 
-`manage` and `truth` are absent from a mod's API unless it holds them, so test `if (mod.truth)` before using it. `truth.monsters()` lists every monster with exact hit points and speed, and `truth.level()` gives the real map. An autoplayer plans from the known-world `view` and acts through `act`, using only what the player knows. Consent to `truth` does not allow hidden information to influence its decisions.
+`manage` and `truth` are absent from a mod's API unless it holds them, so test `if (mod.truth)` before using it. `truth.monsters()` lists every monster with exact hit points and speed, and `truth.level()` gives the real map. `state:monsters-actual.read` opens only `monsters()` and `race()`, so a mod that needs exact monsters does not have to ask for the real map; `level()` and `storeKnowledge()` need `state:map-actual.read`, and `state:*.read` covers neither. An autoplayer plans from the known-world `view` and acts through `act`, using only what the player knows. Consent to `truth` does not allow hidden information to influence its decisions.
 
 A first-party in-process mod that the game lets see the real map can ask for it while it runs, rather than declaring it in the manifest. Call `permissions.requestTruth(reason)` and the game shows its own question with your reason in it. On a yes you get the `truth` domain, the choice is remembered like one made in the Mods screen, and every character played while the mod holds it is marked the way debug mode marks it. On a no you get `{ ok: false, code: "declined" }`, and the next call asks again. `permissions.truthHeld()` tells you whether the mod already has it, and a mod that does is never asked. Other mods have no `permissions`, so check `if (mod.permissions)` first.
 

@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Visible] [Modding-API] **Exact monsters no longer need the real map.** A new permission, `state:monsters-actual.read`, lets a first-party mod read exact monster numbers and race records without also seeing the hidden map. It has its own consent sentence. The real map and shop stock still need `state:map-actual.read`.
 - [Visible] [Modding-API] **The consent text for monster and projection access names the narrow uses.** The projection permission now says it can stop a blast growing past the longest spell range, and the monster permission says it can clear noise and age scent on a level you come back to. Before, a mod that only turned one of those on showed a sentence that read as far more than it did.
 - [Visible] [Docs] **`world().turn` is documented.** It is the game turn counter, filled only with `state:turn.read` (or `state:*.read`), and it moves only when game time passes, so a mod can tell whether a command it sent spent a turn.
 - [Visible] [Modding-API] **A first-party mod can ask for the real map mid-game.** `permissions.requestTruth(reason)` shows the game's own yes/no question, so a mod no longer has to hold the real map from the first turn just in case. A yes is remembered, and it marks your characters the way debug mode does.

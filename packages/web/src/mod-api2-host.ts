@@ -999,9 +999,9 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
     ...(backupFolder ? { backupFolder } : {}),
     ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && options.firstParty?.manage ? { manage: manageDomain(ctx, options, cleanups, () => stopped) } : {}),
-    ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}) } : {}),
+    ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}, granted) } : {}),
     ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && truthConsentAsk
-      ? { permissions: permissionsDomain(ctx, options, truthConsentAsk, () => stopped) } : {}),
+      ? { permissions: permissionsDomain(ctx, options, granted, truthConsentAsk, () => stopped) } : {}),
     ...(options.tier === "first-party" && options.firstParty?.presentation ? {
       presentation: frozen({
         cancelInput: (escapeCount: number = 3) => guarded(() => {
@@ -1302,8 +1302,11 @@ function managedMods(id: string, options: Api2HostOptions, cleanups: Set<() => v
   });
 }
 
-function permissionsDomain(ctx: ModPluginContext, options: Api2HostOptions, ask: TruthConsentAsk, stopped: () => boolean): Api2Permissions {
-  let truth: Api2Truth | undefined = options.firstParty?.truth ? truthDomain(ctx, options.viewDeps ?? {}) : undefined;
+function permissionsDomain(ctx: ModPluginContext, options: Api2HostOptions, held: (capability: string) => boolean, ask: TruthConsentAsk, stopped: () => boolean): Api2Permissions {
+  /* A yes to the question holds the real map from then on, though the capability set the mod started with does not name it. */
+  let allowed = false;
+  const granted = (capability: string): boolean => held(capability) || (allowed && capability === "state:map-actual.read");
+  let truth: Api2Truth | undefined = options.firstParty?.truth ? truthDomain(ctx, options.viewDeps ?? {}, granted) : undefined;
   return frozen({
     truthHeld: () => truth !== undefined,
     requestTruth: async (reason: string): Api2Call<Api2Truth> => {
@@ -1313,19 +1316,24 @@ function permissionsDomain(ctx: ModPluginContext, options: Api2HostOptions, ask:
       const answer = await ask(ctx.id, reason);
       if (answer === "unavailable") return api2Refused("unavailable", "this mod may not ask for the real map");
       if (answer === "declined") return api2Refused("declined", "the player did not allow it");
-      truth = truthDomain(ctx, options.viewDeps ?? {});
+      allowed = true;
+      truth = truthDomain(ctx, options.viewDeps ?? {}, granted);
       return api2Ok(truth);
     },
   });
 }
 
-function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps): Api2Truth {
+function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps, granted: (capability: string) => boolean): Api2Truth {
   /* A trusted view (no capability set) reads the real map, and
    * trueMonsterViews lists every monster, perceived or not. Only an
    * allowlisted mod reaches this. */
   const view = (state: GameState) => createAgentView(state, undefined, deps);
+  /* Exact monsters and race records have a narrower permission of their own; the level and the shops need the real map. */
+  const monstersOpen = () => granted("state:monsters-actual.read") || granted("state:map-actual.read");
+  const mapOpen = () => granted("state:map-actual.read");
   return frozen({
     monsters: () => guarded(() => {
+      if (!monstersOpen()) return api2NotGranted("state:monsters-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       return api2Ok(data(trueMonsterViews(ctx.state, deps).map((mon) => ({
         ...mon,
@@ -1333,6 +1341,7 @@ function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps): Api2Truth {
       }))) as readonly Api2TrueMonster[]);
     }),
     race: (index: number) => guarded(() => {
+      if (!monstersOpen()) return api2NotGranted("state:monsters-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       if (!ctx.registries) return api2Unavailable("there are no monster races yet");
       const race = ctx.registries.monsters.races.find((race) => race.ridx === index);
@@ -1354,10 +1363,12 @@ function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps): Api2Truth {
       }));
     }),
     storeKnowledge: () => guarded(() => {
+      if (!mapOpen()) return api2NotGranted("state:map-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       return api2Ok(data(storeKnowledge(ctx.state)));
     }),
     level: () => guarded(() => {
+      if (!mapOpen()) return api2NotGranted("state:map-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       const level = view(ctx.state).knownLevel?.() ?? null;
       if (!level) return api2Unavailable("there is no level yet");

@@ -501,6 +501,23 @@ describe("the API 2 host's commands", () => {
     expect(wildcard.ok && wildcard.value.turn).toBe(game.state.turn);
   });
 
+  it("splits the real map from exact monsters: `state:monsters-actual.read` opens only monsters and races", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const narrow = host(game, [...READS, "state:monsters-actual.read"], { tier: "first-party", firstParty: { truth: true } }).truth!;
+    expect((await narrow.monsters()).ok).toBe(true);
+    expect((await narrow.race(0)).ok).toBe(true);
+    expect(await narrow.level()).toMatchObject({ ok: false, reason: "not-granted" });
+    expect(await narrow.storeKnowledge()).toMatchObject({ ok: false, reason: "not-granted" });
+    const wide = host(game, [...READS, "state:map-actual.read"], { tier: "first-party", firstParty: { truth: true } }).truth!;
+    expect((await wide.monsters()).ok).toBe(true);
+    expect((await wide.level()).ok).toBe(true);
+    expect((await wide.storeKnowledge()).ok).toBe(true);
+    /* The wildcard never covers either truth capability. */
+    const wildcard = host(game, [...READS, "state:*.read"], { tier: "first-party", firstParty: { truth: true } }).truth!;
+    expect(await wildcard.monsters()).toMatchObject({ ok: false, reason: "not-granted" });
+    expect(await wildcard.level()).toMatchObject({ ok: false, reason: "not-granted" });
+  });
+
   it("checks key availability without claiming it", async () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const api = host(game, ["keymap:write"]);
@@ -564,7 +581,7 @@ describe("the first-party seams", () => {
   it("reports perception independently of eye visibility, including detected monsters and mimics", async () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const mon = liveMonsters(game.state).find((mon) => !monsterIsObvious(mon))!;
-    const api = host(game, READS, { firstParty: { truth: true } });
+    const api = host(game, [...READS, "state:map-actual.read"], { firstParty: { truth: true } });
     const read = async () => {
       const result = await api.truth!.monsters();
       if (!result.ok) throw new Error("refused");
@@ -582,7 +599,7 @@ describe("the first-party seams", () => {
 
   it("returns full race facts as frozen data without creating lore", async () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const api = host(game, READS, { firstParty: { truth: true } });
+    const api = host(game, [...READS, "state:map-actual.read"], { firstParty: { truth: true } });
     const race = game.booted.registries.monsters.races.find((race) => race.blows.length > 0 && !race.spellFlags.isEmpty())!;
     const before = game.state.lore.size;
     const result = await api.truth!.race(race.ridx);
@@ -606,8 +623,8 @@ describe("the first-party seams", () => {
       game.state.turn = 20;
     }
     games[1]!.state.stores![0]!.stock = [];
-    const a = host(games[0]!, READS, { firstParty: { truth: true } });
-    const b = host(games[1]!, READS, { firstParty: { truth: true } });
+    const a = host(games[0]!, [...READS, "state:map-actual.read"], { firstParty: { truth: true } });
+    const b = host(games[1]!, [...READS, "state:map-actual.read"], { firstParty: { truth: true } });
     const worldA = await a.view.world();
     const worldB = await b.view.world();
     if (!worldA.ok || !worldB.ok) throw new Error("refused");
@@ -677,7 +694,7 @@ describe("the first-party seams", () => {
 
   it("are present only for the seams the allowlist names", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const truthOnly = host(game, READS, { tier: "first-party", firstParty: { truth: true } });
+    const truthOnly = host(game, [...READS, "state:map-actual.read"], { tier: "first-party", firstParty: { truth: true } });
     expect(truthOnly.truth).toBeDefined();
     expect(truthOnly.manage).toBeUndefined();
     expect(truthOnly.meta.tier).toBe("first-party");
@@ -690,7 +707,7 @@ describe("the first-party seams", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const hidden = liveMonsters(game.state).find((m) => !monsterIsObvious(m));
     if (!hidden) throw new Error("no unseen monster at this seed");
-    const api = host(game, READS, { tier: "first-party", firstParty: { truth: true } });
+    const api = host(game, [...READS, "state:map-actual.read"], { tier: "first-party", firstParty: { truth: true } });
     const seen = await api.view.monsters();
     const real = await api.truth!.monsters();
     if (!seen.ok || !real.ok) throw new Error("refused");

@@ -123,7 +123,11 @@ const GATED_BASE: ReadonlyMap<string, CapabilityNeed> = new Map<string, Capabili
   ["api2:manage.reloadGame", anyOf("mod:install", "mod:session")],
   ["api2:store.kv", anyOf("store:kv")],
   ["api2:store.session", anyOf("store:session")],
-  ["api2:truth", anyOf("state:map-actual.read")],
+  ["api2:truth", anyOf("state:map-actual.read", "state:monsters-actual.read")],
+  ["api2:truth.monsters", anyOf("state:map-actual.read", "state:monsters-actual.read")],
+  ["api2:truth.race", anyOf("state:map-actual.read", "state:monsters-actual.read")],
+  ["api2:truth.level", anyOf("state:map-actual.read")],
+  ["api2:truth.storeKnowledge", anyOf("state:map-actual.read")],
 ]);
 
 /**
