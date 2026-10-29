@@ -90,7 +90,8 @@ import { modInstallPrefs, modKeyValueStore, type ModPrefs, type PrefsStorage } f
 import { createManageAdapter, type ManageAdapter } from "./mod-manager/manage-adapter";
 import type { ModManagerService } from "./mod-manager/service";
 import type { ManagerResult } from "./mod-manager/types";
-import type { Api2ManagedMods, Api2ManagerConfirmation } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { Api2ManagedMods, Api2ManagerConfirmation, Api2ScreenKey } from "@rpgm-tools/neo-angband-mod-sdk";
+import { isScreenKey, screenHeldByOther, takeScreens } from "./mod-screens";
 import { modRegistries } from "./mod-context";
 import { OPTION_ENTRIES } from "@rpgm-tools/neo-angband-core";
 import { bootPhase, onBootPhaseChanged } from "./presentation-phase";
@@ -1189,6 +1190,20 @@ function manageDomain(ctx: ModPluginContext, options: Api2HostOptions, cleanups:
         if (!ctx.look) return api2Unavailable("The look is unavailable.");
         if (look !== "Vanilla" && look !== "Neo") return api2Refused("look", "The look must be Vanilla or Neo.");
         return api2Ok(data(ctx.look.choose(look)));
+      }),
+    }),
+    screens: frozen({
+      take: (handlers) => guarded(() => {
+        if (!options.grants.has("screens:manage")) return api2NotGranted("screens:manage");
+        if (stopped()) return api2Unavailable("this mod has stopped");
+        const named = Object.keys(handlers ?? {}).filter((key) => typeof (handlers as Record<string, unknown>)[key] === "function");
+        if (named.length === 0) return api2Refused("no-screens", "name at least one screen to draw");
+        const unknown = named.find((key) => !isScreenKey(key));
+        if (unknown !== undefined) return api2Refused("unknown-screen", `the game has no screen named ${unknown} to take`);
+        const held = screenHeldByOther(ctx.id, named as Api2ScreenKey[]);
+        if (held !== null) return api2Refused("taken", `another mod already draws the ${held} screen`);
+        cleanups.add(takeScreens(ctx.id, handlers));
+        return api2Ok(null);
       }),
     }),
     mods: managedMods(ctx.id, options, cleanups, stopped),

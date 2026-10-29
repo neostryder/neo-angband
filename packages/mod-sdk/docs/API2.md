@@ -237,6 +237,8 @@ A first-party in-process mod that the game lets see the real map can ask for it 
 
 `manage.profiles` lists and creates player profiles, sets which mods a profile enables, and switches profile, under `profiles:manage`. `manage.session` saves, exits to the title screen or quits under `session:control`, without asking the player to confirm, so a mod asks first in its own panel.
 
+`manage.screens.take({ mods })` draws the mod manager instead of the game's own, under `screens:manage`. Each handler is a function that returns when the player closes the screen, and the game opens it from both the game menu and the title screen. If the handler throws or rejects, the game's own Mods screen opens instead. Name only the screens the mod draws; today the mod manager is the only one a mod can take, and a call that names another is refused. A second mod cannot take a screen that is already held, and the hold ends when the mod stops.
+
 
 ## Moving from API 1
 

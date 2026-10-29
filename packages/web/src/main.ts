@@ -449,6 +449,7 @@ import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION } from "./mod-worker/protocol";
+import { openTakenScreen } from "./mod-screens";
 import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2CommandPusher, setApi2DirectionPrompt, setApi2ManagementHost, setApi2TruthConsent } from "./mod-api2-host";
 import { classicManager } from "./mod-manager/classic-service";
 import { C_FG, C_WARN } from "./mod-manager/classic-colors";
@@ -8025,6 +8026,8 @@ async function buildModManagerDeps(): Promise<ModManagerDeps> {
 }
 
 async function openModManager(opts?: { resume?: boolean }): Promise<void> {
+  /* A first-party mod that draws the mod manager gets the entry; it falls back to ours if it will not open. */
+  if (await openTakenScreen("mods")) return;
   const deps = await modManagerDeps();
   if (opts?.resume === false) {
     /* Every apply route in the manager uses this callback. A title visit must

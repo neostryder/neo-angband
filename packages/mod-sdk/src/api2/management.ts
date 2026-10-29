@@ -65,6 +65,21 @@ export interface Api2ManagedLook {
   choose(look: Api2LookName): Api2Call<Api2LookView>;
 }
 
+/** The screens a mod can draw in place of the game's own. Only the mod manager can be taken today. */
+export type Api2ScreenKey = "mods";
+
+/** Draws one screen. It resolves when the player closes it; a rejection hands the screen back to the game's own. */
+export type Api2ScreenHandler = () => void | Promise<void>;
+
+/** Taking over the game's own screens, under `screens:manage`. */
+export interface Api2ManagedScreens {
+  /**
+   * Draw the named screens instead of the game's. Name only the ones this mod draws; the rest stay the
+   * game's. Refuses a screen another mod already holds, and the hold ends when this mod stops.
+   */
+  take(handlers: Partial<Record<Api2ScreenKey, Api2ScreenHandler>>): Api2Call<null>;
+}
+
 export interface Api2OptionsView {
   readonly entries: readonly {
     readonly name: string;

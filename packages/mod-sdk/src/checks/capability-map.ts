@@ -116,6 +116,7 @@ const GATED_BASE: ReadonlyMap<string, CapabilityNeed> = new Map<string, Capabili
   ["api2:manage.options.get", anyOf("state:options.read", "state:*.read", "options:manage")],
   ["api2:manage.options.set", anyOf("options:write", "options:manage")],
   ["api2:manage.keys", anyOf("keymap:edit")],
+  ["api2:manage.screens", anyOf("screens:manage")],
   ["api2:manage.mods", anyOf("mod:install")],
   ["api2:manage.authoring", anyOf("mod:authoring")],
   ["api2:manage.wizard", anyOf("debug:wizard")],

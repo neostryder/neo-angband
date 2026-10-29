@@ -33,6 +33,7 @@ import {
 import { CapabilitySet, type Api2ModDefinition, type JsonValue, type ModApi2, type RunReport } from "@rpgm-tools/neo-angband-mod-sdk";
 import { createRunReports } from "./run-report";
 import { createModKnowledge } from "./knowledge-read";
+import { openTakenScreen, resetTakenScreens } from "./mod-screens";
 import { api2EventPayload, createApi2Host, disposeApi2Host, runApi2KeymapCommand, setApi2CommandPusher, setApi2DirectionPrompt, setApi2TruthConsent, stopApi2Host, type Api2HostOptions } from "./mod-api2-host";
 import { menuRegistry } from "./menu-registry";
 import { TitleRuntime } from "./title-runtime";
@@ -1215,6 +1216,38 @@ describe("API 2 management", () => {
     const ctx = { ...modPluginContext("probe", {}, undefined, {}, { capabilities: caps }), ...context };
     return createApi2Host(ctx, { grants: caps, tier: "first-party", firstParty: { manage: true }, ...extra });
   }
+
+  it("lets a mod with screens:manage draw the mod manager, and lets the screen go when it stops", async () => {
+    resetTakenScreens();
+    const api = management(["screens:manage"]);
+    let opened = 0;
+    expect(await api.manage!.screens.take({ mods: () => { opened += 1; } })).toEqual({ ok: true, value: null });
+    expect(await openTakenScreen("mods")).toBe(true);
+    expect(opened).toBe(1);
+    disposeApi2Host(api);
+    expect(await openTakenScreen("mods")).toBe(false);
+  });
+
+  it("falls back to the game's own screen when the mod's screen will not open", async () => {
+    resetTakenScreens();
+    const api = management(["screens:manage"]);
+    await api.manage!.screens.take({ mods: () => Promise.reject(new Error("no panel")) });
+    expect(await openTakenScreen("mods")).toBe(false);
+    resetTakenScreens();
+  });
+
+  it("refuses screens without the permission, with no screen named, or one another mod holds", async () => {
+    resetTakenScreens();
+    expect(await management([]).manage!.screens.take({ mods: () => {} })).toMatchObject({ ok: false, reason: "not-granted" });
+    const first = management(["screens:manage"]);
+    expect(await first.manage!.screens.take({})).toMatchObject({ ok: false, code: "no-screens" });
+    expect(await first.manage!.screens.take({ profiles: () => {} } as never)).toMatchObject({ ok: false, code: "unknown-screen" });
+    await first.manage!.screens.take({ mods: () => {} });
+    const ctx = modPluginContext("other", {}, undefined, {}, { capabilities: capabilities("other", ["screens:manage"]) });
+    const other = createApi2Host(ctx, { grants: capabilities("other", ["screens:manage"]), tier: "first-party", firstParty: { manage: true } });
+    expect(await other.manage!.screens.take({ mods: () => {} })).toMatchObject({ ok: false, code: "taken" });
+    resetTakenScreens();
+  });
 
   it("requires both the first-party tier and the allowlist and refuses Worker and data execution", () => {
     expect(management([], {}, { tier: "public" }).manage).toBeUndefined();

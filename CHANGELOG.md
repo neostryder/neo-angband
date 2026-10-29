@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Visible] [Modding-API] **A mod can draw the mod manager.** A first-party mod with the screen permission can open its own manager from the game menu and the title screen instead of the game's Mods screen. If it fails to open, the game's own screen opens.
 - [Visible] [Modding-API] **Exact monsters no longer need the real map.** A new permission, `state:monsters-actual.read`, lets a first-party mod read exact monster numbers and race records without also seeing the hidden map. It has its own consent sentence. The real map and shop stock still need `state:map-actual.read`.
 - [Visible] [Modding-API] **The consent text for monster and projection access names the narrow uses.** The projection permission now says it can stop a blast growing past the longest spell range, and the monster permission says it can clear noise and age scent on a level you come back to. Before, a mod that only turned one of those on showed a sentence that read as far more than it did.
 - [Visible] [Docs] **`world().turn` is documented.** It is the game turn counter, filled only with `state:turn.read` (or `state:*.read`), and it moves only when game time passes, so a mod can tell whether a command it sent spent a turn.
