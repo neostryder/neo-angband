@@ -447,6 +447,26 @@ export function setModGrants(next: ReadonlyMap<string, ModGrants>): void {
   grants = next;
 }
 
+/** Record a capability the player allowed while the game was running, so the mod holds it from now on. */
+export function grantRuntime(id: string, capability: string): void {
+  const held = grants.get(id);
+  if (held?.granted.includes(capability)) return;
+  const next = new Map(grants);
+  next.set(id, {
+    granted: [...(held?.granted ?? []), capability],
+    refusedByTier: held?.refusedByTier ?? [],
+    refusedByPlayer: (held?.refusedByPlayer ?? []).filter((cap) => cap !== capability),
+    undecided: (held?.undecided ?? []).filter((cap) => cap !== capability),
+    blocking: (held?.blocking ?? []).filter((cap) => cap !== capability),
+  });
+  grants = next;
+}
+
+/** Whether `id` holds `capability` right now. */
+export function modHolds(id: string, capability: string): boolean {
+  return grants.get(id)?.granted.includes(capability) === true;
+}
+
 /** Forget every tier and grant (tests). */
 export function resetModTiers(): void {
   tiers = new Map();

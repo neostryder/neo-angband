@@ -76,6 +76,7 @@ import {
   type Api2TrueLevel,
   type Api2TrueMonster,
   type Api2Truth,
+  type Api2Permissions,
   type Api2Title,
   type JsonRecord,
   type JsonValue,
@@ -97,6 +98,13 @@ import { menuRegistry } from "./menu-registry";
 import { clearQueuedUiInputs, enqueueUiInputs, inputEvents } from "./input-door";
 import { closeTopModPanel, modPanelsSuspended, topModPanelId } from "./panel-runtime";
 import { removeBackupSink } from "./mod-backup";
+
+/** Asks the player for the real map on behalf of a mod; the game wires it at boot (main.ts). */
+type TruthConsentAsk = (modId: string, reason: string) => Promise<"granted" | "declined" | "unavailable">;
+let truthConsentAsk: TruthConsentAsk | undefined;
+export function setApi2TruthConsent(ask: TruthConsentAsk | undefined): void {
+  truthConsentAsk = ask;
+}
 
 /** The loader must authorize namespaces before the host can expose them. */
 export interface Api2Allowlist {
@@ -992,6 +1000,8 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ...(backupFolder ? { backupFolder } : {}),
     ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && options.firstParty?.manage ? { manage: manageDomain(ctx, options, cleanups, () => stopped) } : {}),
     ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}) } : {}),
+    ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && truthConsentAsk
+      ? { permissions: permissionsDomain(ctx, options, truthConsentAsk, () => stopped) } : {}),
     ...(options.tier === "first-party" && options.firstParty?.presentation ? {
       presentation: frozen({
         cancelInput: (escapeCount: number = 3) => guarded(() => {
@@ -1289,6 +1299,23 @@ function managedMods(id: string, options: Api2HostOptions, cleanups: Set<() => v
     setSectionChoice: (modId, section, on) => read((adapter) => command(adapter.setSectionChoice(modId, section, on))),
     setSettingValue: (modId, setting, value) => read((adapter) => command(adapter.setSettingValue(modId, setting, value))),
     setThirdPartyConsent: (allow) => read((adapter) => command(adapter.setThirdPartyConsent(allow))),
+  });
+}
+
+function permissionsDomain(ctx: ModPluginContext, options: Api2HostOptions, ask: TruthConsentAsk, stopped: () => boolean): Api2Permissions {
+  let truth: Api2Truth | undefined = options.firstParty?.truth ? truthDomain(ctx, options.viewDeps ?? {}) : undefined;
+  return frozen({
+    truthHeld: () => truth !== undefined,
+    requestTruth: async (reason: string): Api2Call<Api2Truth> => {
+      if (stopped()) return api2Unavailable("this mod has stopped");
+      if (truth) return api2Ok(truth);
+      if (typeof reason !== "string" || reason.trim() === "") return api2Refused("bad-reason", "the question needs a reason to show the player");
+      const answer = await ask(ctx.id, reason);
+      if (answer === "unavailable") return api2Refused("unavailable", "this mod may not ask for the real map");
+      if (answer === "declined") return api2Refused("declined", "the player did not allow it");
+      truth = truthDomain(ctx, options.viewDeps ?? {});
+      return api2Ok(truth);
+    },
   });
 }
 

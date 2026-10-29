@@ -962,6 +962,16 @@ export class ModStore {
     }
   }
 
+  /** Record that the player allowed one more capability while the game was running, and drop any earlier refusal of it. */
+  grantCapability(id: string, capability: string): void {
+    this.setConsent(id, [...new Set([...this.getConsent(id), capability])]);
+    const refusals = this.getRefusals();
+    const left = (refusals[id] ?? []).filter((cap) => cap !== capability);
+    if (left.length > 0) refusals[id] = left;
+    else delete refusals[id];
+    writeField(this.storage, "refusals", refusals);
+  }
+
   /** Every mod's refused capabilities. */
   getRefusals(): Record<string, string[]> {
     const obj = readField(this.storage, "refusals", {});

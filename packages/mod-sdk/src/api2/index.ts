@@ -187,6 +187,7 @@ export type {
   Api2TrueRace,
   Api2StoreKnowledge,
   Api2Truth,
+  Api2Permissions,
   Api2Ui,
   Api2View,
   Api2CommandArgs,

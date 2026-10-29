@@ -229,6 +229,8 @@ The preview Worker ABI (`modApi: 2` with `workerEntry`) is retired. Its manifest
 
 `manage` and `truth` are absent from a mod's API unless it holds them, so test `if (mod.truth)` before using it. `truth.monsters()` lists every monster with exact hit points and speed, and `truth.level()` gives the real map. An autoplayer plans from the known-world `view` and acts through `act`, using only what the player knows. Consent to `truth` does not allow hidden information to influence its decisions.
 
+A first-party in-process mod that the game lets see the real map can ask for it while it runs, rather than declaring it in the manifest. Call `permissions.requestTruth(reason)` and the game shows its own question with your reason in it. On a yes you get the `truth` domain, the choice is remembered like one made in the Mods screen, and every character played while the mod holds it is marked the way debug mode marks it. On a no you get `{ ok: false, code: "declined" }`, and the next call asks again. `permissions.truthHeld()` tells you whether the mod already has it, and a mod that does is never asked. Other mods have no `permissions`, so check `if (mod.permissions)` first.
+
 `meta.tier` reports measured identity separately from these permissions. A public mod with consent to `truth` still reports `"public"`.
 
 `truth` is built for any in-process mod the player has allowed `state:map-actual.read`. `manage` is built only for a first-party mod whose `FIRST_PARTY_ORIGINS` entry names the capability (see section 4 of `MOD_LIFECYCLE.md`). A mod that declares one it may not hold loads without it, and the Mods screen says why.

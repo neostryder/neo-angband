@@ -654,6 +654,23 @@ export interface Api2Truth {
   level(): Api2Call<Api2TrueLevel>;
 }
 
+/**
+ * Asking the player for the hidden map at the moment a mod needs it. Present
+ * only for a first-party in-process mod the game lets hold the real map; the
+ * game draws its own question, so the mod never shows a consent screen itself.
+ */
+export interface Api2Permissions {
+  /** True while the mod already holds the real map, from the manager or an earlier answer. */
+  truthHeld(): boolean;
+  /**
+   * Ask the player to let the mod see what the character has not found. A yes
+   * answers with the `truth` domain and keeps the choice for later sessions; every
+   * character played while it is allowed is marked the way debug mode marks it.
+   * A no answers `declined`, and asking again asks again.
+   */
+  requestTruth(reason: string): Api2Call<Api2Truth>;
+}
+
 /** Everything API 2 hands a running mod. */
 export interface ModApi2 {
   readonly engine?: Api2Engine;
@@ -671,6 +688,8 @@ export interface ModApi2 {
   readonly manage?: Api2Manage;
   /** The first-party autoplayer only. */
   readonly truth?: Api2Truth;
+  /** First-party in-process mods that may ask for the real map while running. */
+  readonly permissions?: Api2Permissions;
   readonly presentation?: Api2Presentation;
   readonly backupFolder?: Api2BackupFolder;
 }

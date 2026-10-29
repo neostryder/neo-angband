@@ -449,8 +449,10 @@ import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION } from "./mod-worker/protocol";
-import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2CommandPusher, setApi2DirectionPrompt, setApi2ManagementHost } from "./mod-api2-host";
+import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2CommandPusher, setApi2DirectionPrompt, setApi2ManagementHost, setApi2TruthConsent } from "./mod-api2-host";
 import { classicManager } from "./mod-manager/classic-service";
+import { C_FG, C_WARN } from "./mod-manager/classic-colors";
+import { markPlayerForTruth, requestTruthConsent } from "./mod-truth-consent";
 import { drawPendingManagementConfirmation } from "./mod-manager/classic-confirmation";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, modDisplayName, reportModFault, setModNameLookup } from "./mod-problems";
@@ -2082,6 +2084,35 @@ setApi2CommandPusher((code, dir) => {
   commandBuffer.push({ code, ...(dir === undefined ? {} : { dir }) });
   advance();
 });
+/* A first-party mod asks for the real map here, with the game's own question. A yes is stored like a manager decision and marks the character. */
+setApi2TruthConsent((id, reason) => requestTruthConsent(id, reason, {
+  store: defaultModStore(),
+  ask: async (modId, why, marksSave) => {
+    const name = modDisplayName(modId) ?? "This mod";
+    const pick = await selectFromMenu(
+      term,
+      "core:mod-truth-confirm",
+      t("modsScreen.truth.title", "{name} asks to see the real map.", { name }),
+      [
+        {
+          label: t("modsScreen.truth.yes", "Allow it"),
+          color: C_WARN,
+          hint: marksSave
+            ? t("modsScreen.truth.yesHintMarks", "{reason} It shows things your character has not found. Every character you play while it is allowed is marked the way debug mode marks it, and the mark never comes off.", { reason: why })
+            : t("modsScreen.truth.yesHint", "{reason} It shows things your character has not found.", { reason: why }),
+        },
+        {
+          label: t("modsScreen.truth.no", "Not now"),
+          color: C_FG,
+          hint: t("modsScreen.truth.noHint", "The feature stays off and the mod asks again if you turn it on again."),
+        },
+      ],
+      t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC cancels ]"),
+    );
+    return pick === 0;
+  },
+  markSave: () => markPlayerForTruth(game.state.actor.player),
+}));
 /* Every plugin context built from here on reports these as `ctx.registries`.
  *
  * HERE, not at each of the seven places that build a context: the note below

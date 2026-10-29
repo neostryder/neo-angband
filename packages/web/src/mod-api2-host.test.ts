@@ -33,7 +33,7 @@ import {
 import { CapabilitySet, type Api2ModDefinition, type JsonValue, type ModApi2, type RunReport } from "@rpgm-tools/neo-angband-mod-sdk";
 import { createRunReports } from "./run-report";
 import { createModKnowledge } from "./knowledge-read";
-import { api2EventPayload, createApi2Host, disposeApi2Host, runApi2KeymapCommand, setApi2CommandPusher, setApi2DirectionPrompt, stopApi2Host, type Api2HostOptions } from "./mod-api2-host";
+import { api2EventPayload, createApi2Host, disposeApi2Host, runApi2KeymapCommand, setApi2CommandPusher, setApi2DirectionPrompt, setApi2TruthConsent, stopApi2Host, type Api2HostOptions } from "./mod-api2-host";
 import { menuRegistry } from "./menu-registry";
 import { TitleRuntime } from "./title-runtime";
 import { clearBackupSinks, createBackupFolder, notifyBackupSinks } from "./mod-backup";
@@ -447,6 +447,43 @@ describe("the API 2 host's commands", () => {
       expect(pushed).toHaveLength(1);
     } finally {
       disposeApi2Host(api);
+    }
+  });
+
+  it("offers `permissions` to a first-party in-process mod and hands back `truth` after a yes", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const asked: string[] = [];
+    let answer: "granted" | "declined" | "unavailable" = "declined";
+    setApi2TruthConsent(async (id, reason) => { asked.push(`${id}:${reason}`); return answer; });
+    try {
+      expect(host(game, READS).permissions).toBeUndefined();
+      expect(host(game, READS, { tier: "public" }).permissions).toBeUndefined();
+      expect(host(game, READS, { tier: "first-party", execution: "worker" }).permissions).toBeUndefined();
+      const api = host(game, READS, { tier: "first-party", execution: "in-process" });
+      const permissions = api.permissions!;
+      expect(api.truth).toBeUndefined();
+      expect(permissions.truthHeld()).toBe(false);
+      expect(await permissions.requestTruth(" ")).toMatchObject({ ok: false, code: "bad-reason" });
+      expect(await permissions.requestTruth("Shows hidden magic.")).toMatchObject({ ok: false, code: "declined" });
+      answer = "unavailable";
+      expect(await permissions.requestTruth("Shows hidden magic.")).toMatchObject({ ok: false, code: "unavailable" });
+      answer = "granted";
+      const granted = await permissions.requestTruth("Shows hidden magic.");
+      expect(granted.ok).toBe(true);
+      expect(permissions.truthHeld()).toBe(true);
+      if (granted.ok) expect(await granted.value.level()).toMatchObject({ ok: true });
+      /* Once held, asking again does not draw the question again. */
+      const before = asked.length;
+      expect((await permissions.requestTruth("Again.")).ok).toBe(true);
+      expect(asked).toHaveLength(before);
+      expect(asked[0]).toBe("probe:Shows hidden magic.");
+      /* A mod that already holds the real map is not asked at all. */
+      const held = host(game, READS, { tier: "first-party", execution: "in-process", firstParty: { truth: true } });
+      expect(held.permissions!.truthHeld()).toBe(true);
+      expect((await held.permissions!.requestTruth("Held.")).ok).toBe(true);
+      expect(asked).toHaveLength(before);
+    } finally {
+      setApi2TruthConsent(undefined);
     }
   });
 

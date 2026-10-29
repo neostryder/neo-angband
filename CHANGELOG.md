@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Visible] [Modding-API] **A first-party mod can ask for the real map mid-game.** `permissions.requestTruth(reason)` shows the game's own yes/no question, so a mod no longer has to hold the real map from the first turn just in case. A yes is remembered, and it marks your characters the way debug mode does.
 - [Visible] [Modding-API] **A key-bound mod command can spend a turn.** `ui.commands.register` takes `{ turn: true }`, and a key bound to the command runs it inside the turn and spends the `{ energy }` that `run` returns, so a command like spiking a door lets the monsters answer. Before, the command ran outside the turn and cost nothing.
 - [Visible] [Modding-API] **A mod projection works in projection-based effects.** A projection a mod adds can now be named as the subtype of an effect such as a ball, bolt, or breath. Before, only the projections compiled into the game resolved by name there.
 - [Visible] [Modding-API] **A mod command can ask for a direction.** `ui.commands.register` takes `{ direction: true }`, and a key bound to the command asks with the game's own direction prompt and hands `run` the digit as `args.dir`. Before, a key could only run a command that needs no direction, so a command like spiking a door had no key.
