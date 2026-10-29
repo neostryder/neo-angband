@@ -2109,6 +2109,8 @@ setApi2TruthConsent((id, reason) => requestTruthConsent(id, reason, {
       ],
       t("modsScreen.common.footer.abTapEsc", "[ a/b or tap; ESC cancels ]"),
     );
+    /* The question sits over a map that nothing repaints until the next key, so clear it now. */
+    repaintEverything();
     return pick === 0;
   },
   markSave: () => markPlayerForTruth(game.state.actor.player),
