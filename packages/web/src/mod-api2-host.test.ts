@@ -487,6 +487,20 @@ describe("the API 2 host's commands", () => {
     }
   });
 
+  it("fills `world().turn` only with `state:turn.read`, and it follows game time", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const without = await host(game, ["state:player.read"]).view.world();
+    expect(without.ok && without.value.turn).toBeNull();
+    const api = host(game, ["state:turn.read"]);
+    const first = await api.view.world();
+    expect(first.ok && first.value.turn).toBe(game.state.turn);
+    game.state.turn += 10;
+    const later = await api.view.world();
+    expect(later.ok && later.value.turn).toBe(game.state.turn);
+    const wildcard = await host(game, ["state:*.read"]).view.world();
+    expect(wildcard.ok && wildcard.value.turn).toBe(game.state.turn);
+  });
+
   it("checks key availability without claiming it", async () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const api = host(game, ["keymap:write"]);

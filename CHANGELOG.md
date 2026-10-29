@@ -50,6 +50,8 @@ still calls itself.
 
 ### Added
 
+- [Visible] [Modding-API] **The consent text for monster and projection access names the narrow uses.** The projection permission now says it can stop a blast growing past the longest spell range, and the monster permission says it can clear noise and age scent on a level you come back to. Before, a mod that only turned one of those on showed a sentence that read as far more than it did.
+- [Visible] [Docs] **`world().turn` is documented.** It is the game turn counter, filled only with `state:turn.read` (or `state:*.read`), and it moves only when game time passes, so a mod can tell whether a command it sent spent a turn.
 - [Visible] [Modding-API] **A first-party mod can ask for the real map mid-game.** `permissions.requestTruth(reason)` shows the game's own yes/no question, so a mod no longer has to hold the real map from the first turn just in case. A yes is remembered, and it marks your characters the way debug mode does.
 - [Visible] [Modding-API] **A key-bound mod command can spend a turn.** `ui.commands.register` takes `{ turn: true }`, and a key bound to the command runs it inside the turn and spends the `{ energy }` that `run` returns, so a command like spiking a door lets the monsters answer. Before, the command ran outside the turn and cost nothing.
 - [Visible] [Modding-API] **A mod projection works in projection-based effects.** A projection a mod adds can now be named as the subtype of an effect such as a ball, bolt, or breath. Before, only the projections compiled into the game resolved by name there.
