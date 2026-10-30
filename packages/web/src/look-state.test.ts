@@ -136,4 +136,11 @@ describe("look state", () => {
     const rows = titleRows({ look: "Vanilla", canLoad: false, canOpen: false, canQuit: false, canInstall: false, canUpdate: false, updateReady: false });
     expect(titleKeyChoice("l", rows, false)).toBe("look");
   });
+
+  it("never shows the bare name Neo on the title row", () => {
+    const options = { canLoad: false, canOpen: false, canQuit: false, canInstall: false, canUpdate: false, updateReady: false };
+    const label = (look: "Vanilla" | "Neo") => titleRows({ ...options, look }).find((row) => row.choice === "look")?.label;
+    expect(label("Neo")).toBe("(L)ook: Neo Angband");
+    expect(label("Vanilla")).toBe("(L)ook: Vanilla");
+  });
 });

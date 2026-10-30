@@ -377,7 +377,7 @@ export function titleRows(opts: TitleOptions): TitleRow[] {
     },
     { choice: "mods", key: "m", label: t("news.title.mods", "(M)ods"), enabled: true },
   ];
-  if (opts.look) rows.push({ choice: "look", key: "l", label: `(L)ook: ${opts.look}`, enabled: true });
+  if (opts.look) rows.push({ choice: "look", key: "l", label: `(L)ook: ${opts.look === "Neo" ? "Neo Angband" : opts.look}`, enabled: true });
   /* Before Quit, because Quit is last in the File menu and this is not a File
    * menu item at all - putting it after Quit would read as though upstream had
    * one there. */

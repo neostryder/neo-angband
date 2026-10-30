@@ -106,6 +106,7 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [UI] **The title screen's look row says "Neo Angband" instead of "Neo".** With the Neo Angband look on, the row read "(L)ook: Neo", the one place the game still used the short name.
 - [Visible] [Modding-API] **A mod that plays the game by itself can now buy things.** Every purchase raises a quantity question and then a confirm question in the store, and the mod's pump answered both with Escape, so nothing was ever bought and a mod like Squire could not stock potions, Phase Door, torches, or food. The pump now lets a mod that is allowed to answer prompts do so while the store is open. If the mod leaves a question unanswered for eight turns, it gets the old Escape.
 - [Visible] [UI] **The "Allow these" hint now says which mod requests it leaves off.** The line under "Allow these" in a mod's permission screen said it kept only the real map off, but it also leaves off exact monster numbers and the other requests that read the game's real state. It now names both and says they stay off unless you pick them one by one.
 - [Visible] **The real-map question clears as soon as you answer it.** When a mod asks to see the real map, the question stayed on screen until your next key; it now repaints the game at once.
