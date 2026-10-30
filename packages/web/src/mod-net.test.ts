@@ -90,6 +90,20 @@ describe("ctx.net in a browser tab", () => {
     expect(storage.data.size).toBe(0);
   });
 
+  it("sends a secret over http only to a private host", async () => {
+    const { fetch, sent } = fakeFetch(() => new Response("ok"));
+    const grants = ["api.example.com", "192.168.2.154:8010", "localhost:8010"];
+    const net = createModNet({ modId: "squire", modName: "Squire", grants, relay: null, fetch, storage: memoryStorage() });
+    expect(await net.secrets.set("jev", "sk-1", { hosts: ["api.example.com", "192.168.2.154:8010", "localhost:8010"] })).toMatchObject({ ok: true });
+    const headers = { Authorization: "Bearer {secret:jev}" };
+    expect(await net.request({ url: "http://api.example.com/", headers })).toMatchObject({ ok: false, code: "secret-host" });
+    expect(sent).toHaveLength(0);
+    expect(await net.request({ url: "http://192.168.2.154:8010/", headers })).toMatchObject({ ok: true });
+    expect(await net.request({ url: "http://localhost:8010/", headers })).toMatchObject({ ok: true });
+    expect(await net.request({ url: "http://api.example.com/" })).toMatchObject({ ok: true });
+    expect(sent).toHaveLength(3);
+  });
+
   it("reports a CORS refusal and a redirect as problems", async () => {
     const blocked = createModNet({
       modId: "squire", modName: "Squire", grants: ["local"], relay: null, storage: null,

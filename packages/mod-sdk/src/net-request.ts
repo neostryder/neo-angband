@@ -129,6 +129,27 @@ export function checkNetRequest(
   return { ok: true, value: { url, method, headers, ...(body !== undefined ? { body } : {}), timeoutMs } };
 }
 
+/** True for a host that stays on this machine or its own network: loopback, a private IPv4 range, or a .local name. */
+function isPrivateHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host === "::1") return true;
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(host);
+  if (!v4) return false;
+  const a = Number(v4[1]);
+  const b = Number(v4[2]);
+  return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+}
+
+/** A secret never travels in the clear across the internet: https anywhere, http only to a private host. */
+function secretMaySendOver(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || (parsed.protocol === "http:" && isPrivateHost(parsed.hostname));
+  } catch {
+    return false;
+  }
+}
+
 /** The distinct secret names the header templates use, in order of first use. */
 export function secretNamesIn(headers: Readonly<Record<string, string>>): string[] {
   const names: string[] = [];
@@ -159,7 +180,11 @@ export function fillSecretTemplates(
 ): { readonly ok: true; readonly headers: Record<string, string> } | NetProblem {
   const cap = networkRequestCapability(url);
   const values = new Map<string, string>();
-  for (const name of secretNamesIn(headers)) {
+  const names = secretNamesIn(headers);
+  if (names.length > 0 && !secretMaySendOver(url)) {
+    return problem("secret-host", "A secret is only sent over https, or over http to this machine or a private network address.");
+  }
+  for (const name of names) {
     const found = lookup(name);
     if ("missing" in found) return problem("secret-missing", found.missing);
     if (cap === null || !networkGrantCovers(found.hosts, cap)) {

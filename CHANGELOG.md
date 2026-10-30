@@ -106,6 +106,7 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [Security] **A mod's stored secret is no longer sent over plain http to an outside host.** A request that uses a secret now goes only over https, or over http to this machine or a private network address, so a key a player stored for a mod cannot cross the internet in the clear.
 - [Visible] [UI] **Choosing the Neo Angband look restarts the game once AnybandUI is downloaded.** A downloaded mod only applies when the game starts again, so the title kept saying it was waiting for AnybandUI until the player restarted by hand. The game now restarts itself, and AnybandUI comes up enabled.
 - [Visible] [UI] **The title screen's look row says "Neo Angband" instead of "Neo".** With the Neo Angband look on, the row read "(L)ook: Neo", the one place the game still used the short name.
 - [Visible] [Modding-API] **A mod that plays the game by itself can now buy things.** Every purchase raises a quantity question and then a confirm question in the store, and the mod's pump answered both with Escape, so nothing was ever bought and a mod like Squire could not stock potions, Phase Door, torches, or food. The pump now lets a mod that is allowed to answer prompts do so while the store is open. If the mod leaves a question unanswered for eight turns, it gets the old Escape.
