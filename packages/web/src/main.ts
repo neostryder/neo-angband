@@ -16667,6 +16667,9 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
    * clear. */
   let modTimer: ReturnType<typeof setInterval> | undefined;
   const modHoldsIntent = CapabilitySet.fromManifest(loaded.manifest).has("input:intent");
+  const modHoldsReply = CapabilitySet.fromManifest(loaded.manifest).has("input:prompt.reply");
+  let promptAskedId: number | null = null;
+  let promptAsks = 0;
   const startModTimer = (): void => {
     modTimer = setInterval(() => {
       if (dead) {
@@ -16691,9 +16694,20 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
          * input:intent is asked for a decision here, at phase `store`, and the
          * shop-* intent it returns goes to the open store screen; Escape would
          * close the shop before the controller's next wait (API2-GAPS SQ-1). */
-        if (modalPumpAction({ storeOpen: storeModalActive && storeIntentReceiver !== null, holdsIntent: modHoldsIntent,
-          switchedOff: modHealth().isOff(loaded.id) }) === "drive-store") {
+        /* A PURCHASE PROMPT IS PUT TO THE CONTROLLER TOO (API2-GAPS SQ-10). A
+         * `shop-buy` raises the store's own quantity and confirm prompts, and
+         * while one is open the store is not reading input, so Escape here
+         * cancelled every purchase. A controller holding input:prompt.reply
+         * answers it through act.answer; it gets MAX_PROMPT_ASKS ticks per
+         * prompt before the old Escape applies. */
+        const openPrompt = storeModalActive ? currentPrompt() : null;
+        if (openPrompt?.promptId !== promptAskedId) { promptAskedId = openPrompt?.promptId ?? null; promptAsks = 0; }
+        const pumpAction = modalPumpAction({ storeOpen: storeModalActive && storeIntentReceiver !== null, holdsIntent: modHoldsIntent,
+          switchedOff: modHealth().isOff(loaded.id), storeModal: storeModalActive, promptKind: openPrompt?.kind ?? null,
+          holdsReply: modHoldsReply, promptAsks });
+        if (pumpAction === "drive-store" || pumpAction === "drive-prompt") {
           modArmed = true;
+          if (pumpAction === "drive-prompt") promptAsks += 1;
           try {
             const command = state.nextCommand?.() ?? null;
             if (command !== null) storeIntentReceiver?.(command);
