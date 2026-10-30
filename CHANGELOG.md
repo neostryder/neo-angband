@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [2.0.0-beta.1] - 2026-10-30
+
 ### Added
 
 - [Visible] [Modding-API] **A mod can draw the mod manager.** A first-party mod with the screen permission can open its own manager from the game menu and the title screen instead of the game's Mods screen. If it fails to open, the game's own screen opens.

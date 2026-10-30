@@ -87,7 +87,8 @@ describe("buildScore (score.c build_score, L194)", () => {
      * a version the game had not been for a whole release line - and no test
      * noticed, because every other case here passes an explicit buildid. */
     const e = buildScore(stubPlayer({}), { diedFrom: "old age", turn: 1, depth: 0 });
-    expect(e.what).toBe(ENGINE_VERSION);
+    /* `what` is seven characters wide (upstream's what[8]), so a long version is cut. */
+    expect(e.what).toBe(ENGINE_VERSION.slice(0, 7));
   });
 
   it("captures the player fields, truncating who/how, day = TODAY when alive", () => {

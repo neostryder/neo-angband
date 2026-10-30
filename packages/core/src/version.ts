@@ -24,4 +24,4 @@ export const PARITY_BASELINE = "4.2.6";
  * warrants, because a published tag is pinned by digest in a catalogue and
  * must never be moved.
  */
-export const ENGINE_VERSION = "1.22.0";
+export const ENGINE_VERSION = "2.0.0-beta.1";
