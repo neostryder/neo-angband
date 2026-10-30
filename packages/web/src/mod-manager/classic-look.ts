@@ -23,11 +23,15 @@ export async function runLookChoice(term: GridSurface & GridPointerInput, deps: 
         const entry = [...catalog.value.curated, ...catalog.value.community].find((row) => row.ok && row.mod.id === "anybandui");
         if (entry?.ok) {
           const plan = await service.planCatalogInstall([entry.ref]);
-          if (plan.status === "ok" && service.applyPlan(plan.value.id).status === "confirmation") {
+          if (plan.status === "ok" && service.applyPlan(plan.value.id, null, true).status === "confirmation") {
             await drawPendingManagementConfirmation(term, service, core);
           }
         }
       }
+      /* A staged install is not installed yet: it applies when the page starts again, and
+       * so does the look. Restarting here finishes the choice; without it the title waited
+       * on a mod that was already downloaded until the player thought to restart. */
+      if (service.state.staged) { deps.requestReload(); return; }
       service.refreshState();
       mod = service.state.installed.find((row) => row.id === "anybandui");
     }
@@ -35,6 +39,7 @@ export async function runLookChoice(term: GridSurface & GridPointerInput, deps: 
       deps.look.snapshot();
       const result = service.enable(mod.id);
       if (result.status === "confirmation") await drawPendingManagementConfirmation(term, service, core);
+      if (service.state.staged) { deps.requestReload(); return; }
       deps.look.complete(mod.catalogMod.manifest, deps.listCatalog().some((row) => row.id === mod!.id && row.enabled));
     }
   }
