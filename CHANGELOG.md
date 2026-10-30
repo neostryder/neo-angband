@@ -106,6 +106,7 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [UI] **The "Allow these" hint now says which mod requests it leaves off.** The line under "Allow these" in a mod's permission screen said it kept only the real map off, but it also leaves off exact monster numbers and the other requests that read the game's real state. It now names both and says they stay off unless you pick them one by one.
 - [Visible] **The real-map question clears as soon as you answer it.** When a mod asks to see the real map, the question stayed on screen until your next key; it now repaints the game at once.
 - [Visible] [Modding-API] **A mod no longer reads as broken over a flaw the base game already has.** A mod that patches an upstream record, or whose own switched-off section would mend it, used to show "NOT WORKING" for the record's old mistakes. Those are now left out; what the mod itself gets wrong on that record is still listed.
 - [Visible] [Modding-API] **A monster casts a spell that a mod adds.** The spell-choice and spell-filter loops stopped at the game's own spell count, so a mod's breath or bolt was never a candidate and monsters with it only clawed and bit. They now run to the live count, and a mod spell's type decides whether it is innate, a breath, or a bolt.
