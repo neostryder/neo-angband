@@ -13882,7 +13882,11 @@ function modBrowseDeps(): ModUpgradeDeps {
   const net = { fetch: (url: string) => fetch(url) };
   const discoverEnv: DiscoverEnv = {
     engineVersion: ENGINE_VERSION,
-    channel: readChannel(channelStore(), ENGINE_VERSION),
+    /* Read on every use: the Mods screen builds this once at game start, so a value read
+     * here would keep the channel the player had then after they switch it. */
+    get channel() {
+      return readChannel(channelStore(), ENGINE_VERSION);
+    },
     fetch: async (url) => {
       const res = await fetch(url);
       return { ok: res.ok, status: res.status, text: () => res.text() };

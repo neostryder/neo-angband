@@ -161,6 +161,26 @@ describe("the player's game channel is their mod channel", () => {
     expect(r?.newest).toBe("v0.14.0-beta.1");
   });
 
+  it("follows a channel the player switches after the environment was built", async () => {
+    /* The Mods screen builds its environment once at game start. A channel read then
+     * would keep answering for the old setting. */
+    const { fetch } = tagsFetch({ "someone/qol": ["v0.14.0-beta.1", "v0.13.0"] });
+    let chosen: "stable" | "beta" = "stable";
+    const live: DiscoverEnv = {
+      fetch,
+      engineVersion: "0.18.0",
+      get channel() {
+        return chosen;
+      },
+    };
+    const [before] = await refreshInstalledMods([meta("qol", "v0.13.0")], live);
+    expect(before?.standing).toBe("same");
+    chosen = "beta";
+    const [after] = await refreshInstalledMods([meta("qol", "v0.13.0")], live);
+    expect(after?.standing).toBe("behind");
+    expect(after?.newest).toBe("v0.14.0-beta.1");
+  });
+
   it("a reachable repository with nothing for this channel is not 'unavailable'", async () => {
     /* The question WAS answered. Calling this unavailable would send the player
      * looking for a network problem they do not have. */

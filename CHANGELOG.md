@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- [Visible] **Update installed mods follows the update channel you switch to.** Switching to beta or early while the game was running left the Mods screen's update check on the channel the game started with, so it said a mod's newest beta was out of reach. It now reads your channel each time you check.
+
 ## [2.0.0-beta.1] - 2026-10-30
 
 ### Added
