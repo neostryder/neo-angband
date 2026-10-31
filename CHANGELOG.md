@@ -52,13 +52,14 @@ still calls itself.
 
 - [Visible] **Update installed mods follows the update channel you switch to.** Switching to beta or early while the game was running left the Mods screen's update check on the channel the game started with, so it said a mod's newest beta was out of reach. It now reads your channel each time you check.
 
-## [2.0.0-beta.1] - 2026-10-30
+## [1.23.0-beta.1] - 2026-10-30
 
 ### Added
 
 - [Visible] [Modding-API] **A mod can draw the mod manager.** A first-party mod with the screen permission can open its own manager from the game menu and the title screen instead of the game's Mods screen. If it fails to open, the game's own screen opens.
 - [Visible] [Modding-API] **Exact monsters no longer need the real map.** A new permission, `state:monsters-actual.read`, lets a first-party mod read exact monster numbers and race records without also seeing the hidden map. It has its own consent sentence. The real map and shop stock still need `state:map-actual.read`.
 - [Visible] [Modding-API] **The consent text for monster and projection access names the narrow uses.** The projection permission now says it can stop a blast growing past the longest spell range, and the monster permission says it can clear noise and age scent on a level you come back to. Before, a mod that only turned one of those on showed a sentence that read as far more than it did.
+- [Visible] [Docs] **The mod API's version is documented as separate from the game's.** The API 2 page now says the game implements API 2.0.0 and that a mod's `api` range is checked against that number alone, so the game's own version can move without changing it.
 - [Visible] [Docs] **`world().turn` is documented.** It is the game turn counter, filled only with `state:turn.read` (or `state:*.read`), and it moves only when game time passes, so a mod can tell whether a command it sent spent a turn.
 - [Visible] [Modding-API] **A first-party mod can ask for the real map mid-game.** `permissions.requestTruth(reason)` shows the game's own yes/no question, so a mod no longer has to hold the real map from the first turn just in case. A yes is remembered, and it marks your characters the way debug mode does.
 - [Visible] [Modding-API] **A key-bound mod command can spend a turn.** `ui.commands.register` takes `{ turn: true }`, and a key bound to the command runs it inside the turn and spends the `{ energy }` that `run` returns, so a command like spiking a door lets the monsters answer. Before, the command ran outside the turn and cost nothing.
