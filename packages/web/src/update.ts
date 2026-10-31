@@ -136,6 +136,9 @@ export const UPDATE_CHANNELS: readonly UpdateChannel[] = ["stable", "beta", "ear
  */
 export const EDGE_MARKER = "-edge.";
 
+/** The version marker of a beta build, as `-edge.` is of an edge build. */
+const BETA_MARKER = "-beta.";
+
 /** Is this a per-commit build off master rather than a tagged release? */
 export function isEdgeRelease(r: Release): boolean {
   return r.version.includes(EDGE_MARKER);
@@ -185,7 +188,10 @@ export function releasesIn(channel: UpdateChannel, releases: readonly Release[])
  */
 export function defaultChannel(current: string): UpdateChannel {
   const major = /^(\d+)\./u.exec(current)?.[1];
-  return major === "0" ? "beta" : "stable";
+  /* A beta build starts on beta too: the mods a stable channel offers were built for the
+   * mod API before it, so a fresh beta install on stable would find no mod it can run and
+   * no newer beta to move to. */
+  return major === "0" || current.includes(BETA_MARKER) ? "beta" : "stable";
 }
 
 function isChannel(v: unknown): v is UpdateChannel {

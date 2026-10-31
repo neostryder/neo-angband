@@ -56,6 +56,7 @@ export function logLevelAllows(active: LogLevel, of: LogLevel): boolean {
  *
  *   `0.16.1-edge.2`  a per-commit build  -> info
  *   `0.16.0`         a 0.x pre-release   -> info
+ *   `1.23.0-beta.1`  a beta build        -> info
  *   `1.2.3`          a finished release  -> warn
  *
  * DELIBERATELY NOT THE UPDATE CHANNEL. The channel is a preference about which
@@ -70,7 +71,7 @@ export function logLevelAllows(active: LogLevel, of: LogLevel): boolean {
  * mirrors and which `update.test.ts` ties it to.
  */
 export function defaultLogLevel(version: string): LogLevel {
-  if (version.includes("-edge.")) return "info";
+  if (version.includes("-edge.") || version.includes("-beta.")) return "info";
   return /^0\./u.test(version) ? "info" : "warn";
 }
 

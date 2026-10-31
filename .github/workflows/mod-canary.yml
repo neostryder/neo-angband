@@ -55,6 +55,8 @@ jobs:
     env:
       MOD_CANARY: "1"
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      # The anonymous API allows 60 requests an hour per address, which a shared runner can spend.
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6

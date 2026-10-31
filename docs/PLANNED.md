@@ -196,6 +196,8 @@ Game updates can now optionally carry the compatible updates already found for i
 
 An in-game mod browser over `mods/registry.json` is planned: screenshots, descriptions, changelogs, tags and search, with one-click install, update-all and rollback to an earlier version, and each mod's review status and the at-your-own-risk notice on its page. It reads each mod's own repository, as the Recommended mods row does, so it needs no server of its own. Download counts, ratings, and mirroring listings to Nexus Mods or mod.io are not planned.
 
+The scheduled mod canary skips its qol run-through. It drove a mod API 1 plugin through the old hook chain, and the curated mods now ship API 2 definitions, so it needs rewriting against the API 2 host before it can check that a downloaded mod still does something.
+
 ## The tile seams
 
 ### Two mods answering for the player's cell is unreported

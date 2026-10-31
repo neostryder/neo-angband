@@ -51,6 +51,7 @@ describe("how much a build logs", () => {
     expect(defaultLogLevel("0.16.0")).toBe("info");
     expect(defaultLogLevel("0.16.1-edge.2")).toBe("info");
     expect(defaultLogLevel("0.99.0")).toBe("info");
+    expect(defaultLogLevel("1.23.0-beta.1")).toBe("info");
   });
 
   it("is quiet for a released 1.x, and gets there without anyone editing it", () => {

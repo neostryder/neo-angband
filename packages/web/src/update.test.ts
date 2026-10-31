@@ -262,7 +262,15 @@ describe("channels", () => {
      * fresh install of it would default to `stable` AND it is not a per-commit
      * build. An edge build off a 1.x line is the case that separates them.
      */
-    for (const v of ["0.1.0", "0.16.0", "0.16.1-edge.2", "1.0.0", "1.0.1-edge.3", "2.3.4"]) {
+    for (const v of [
+      "0.1.0",
+      "0.16.0",
+      "0.16.1-edge.2",
+      "1.0.0",
+      "1.0.1-edge.3",
+      "1.23.0-beta.1",
+      "2.3.4",
+    ]) {
       const finished = defaultChannel(v) === "stable" && !v.includes(EDGE_MARKER);
       expect(defaultLogLevel(v), v).toBe(finished ? "warn" : "info");
     }
@@ -274,6 +282,11 @@ describe("channels", () => {
     expect(defaultChannel("0.16.0")).toBe("beta");
     expect(defaultChannel("1.0.0")).toBe("stable");
     expect(defaultChannel("2.3.4")).toBe("stable");
+  });
+
+  it("starts a beta build on beta, so it finds the mods and betas built for it", () => {
+    expect(defaultChannel("1.23.0-beta.1")).toBe("beta");
+    expect(defaultChannel("1.23.0")).toBe("stable");
   });
 
   it("leaves someone who dropped off early on the build they already have", () => {

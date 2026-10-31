@@ -50,7 +50,7 @@ still calls itself.
 
 ### Fixed
 
-- [Visible] **Update installed mods follows the update channel you switch to.** Switching to beta or early while the game was running left the Mods screen's update check on the channel the game started with, so it said a mod's newest beta was out of reach. It now reads your channel each time you check.
+- [Visible] **A new install of a beta build now starts on the beta channel.** It used to start on stable, which only offers mods written for the old mod API and never finds a newer beta. Beta builds also keep the fuller log.
 
 ## [1.23.0-beta.1] - 2026-10-30
 
@@ -113,6 +113,7 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] **Update installed mods follows the update channel you switch to.** Switching to beta or early while the game was running left the Mods screen's update check on the channel the game started with, so it said a mod's newest beta was out of reach. It now reads your channel each time you check.
 - [Visible] [Security] **A mod's stored secret is no longer sent over plain http to an outside host.** A request that uses a secret now goes only over https, or over http to this machine or a private network address, so a key a player stored for a mod cannot cross the internet in the clear.
 - [Visible] [UI] **Choosing the Neo Angband look restarts the game once AnybandUI is downloaded.** A downloaded mod only applies when the game starts again, so the title kept saying it was waiting for AnybandUI until the player restarted by hand. The game now restarts itself, and AnybandUI comes up enabled.
 - [Visible] [UI] **The title screen's look row says "Neo Angband" instead of "Neo".** With the Neo Angband look on, the row read "(L)ook: Neo", the one place the game still used the short name.

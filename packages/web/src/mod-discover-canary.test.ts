@@ -24,6 +24,8 @@ import { ENGINE_VERSION } from "@rpgm-tools/neo-angband-core";
 
 import { ALL_PACKS } from "@rpgm-tools/neo-angband-linoleum";
 import { DEFAULT_REGISTRY_URL, fetchRegistry } from "./mod-curated";
+import { rawUrl } from "./mod-registry";
+import { defaultChannel } from "./update";
 import { discoverMod, type DiscoverEnv } from "./mod-discover";
 
 const ON = process.env["MOD_CANARY"] === "1";
@@ -33,8 +35,16 @@ const TIMEOUT = 120_000;
 
 const env: DiscoverEnv = {
   engineVersion: ENGINE_VERSION,
+  channel: defaultChannel(ENGINE_VERSION),
   fetch: async (url) => {
-    const res = await fetch(url);
+    /* The anonymous API allows 60 requests an hour; a token goes to api.github.com only. */
+    const token = process.env["GITHUB_TOKEN"];
+    const res = await fetch(
+      url,
+      token && new URL(url).host === "api.github.com"
+        ? { headers: { Authorization: `Bearer ${token}` } }
+        : {},
+    );
     return { ok: res.ok, status: res.status, text: () => res.text() };
   },
 };
@@ -157,12 +167,26 @@ describe.skipIf(!ON)("the curated registry, live", () => {
       const paths = r.mod.payload.map((p) => p.path);
       expect(paths).toContain("dist/neo-linoleum-mod.zip");
       expect(ALL_PACKS.length, "the converter defines packs to check for").toBeGreaterThan(0);
+
+      /* Two packs can share an archive (Shockbolt's dark and light variants are one set of
+       * sources), so the question is asked of the manifest's tile packs: each converter pack
+       * is declared, and each declared source folder has its archive. */
+      const res = await env.fetch(rawUrl(r.mod.repo, r.mod.tag, "manifest.json"));
+      expect(res.ok, "linoleum's manifest is served at its tag").toBe(true);
+      const parsed = JSON.parse(await res.text()) as { data?: Record<string, unknown> };
+      const packs = (parsed.data?.["tilePacks"] ?? []) as {
+        path: string;
+        tilesheet: { key: string };
+      }[];
+      const declared = new Set(packs.map((p) => p.tilesheet.key));
       for (const key of ALL_PACKS.map((p) => p.key)) {
-        expect(paths, `no archive ships the ${key} pack`).toContain(
-          `dist/neo-linoleum-${key}.zip`,
-        );
+        expect(declared.has(key), `no tile pack declares the ${key} pack`).toBe(true);
       }
-      expect(paths.length).toBe(ALL_PACKS.length + 1);
+      const folders = new Set(packs.map((p) => p.path.split("/").pop() ?? p.path));
+      for (const folder of folders) {
+        expect(paths, `no archive ships ${folder}`).toContain(`dist/neo-linoleum-${folder}.zip`);
+      }
+      expect(paths.length).toBe(folders.size + 1);
     },
     TIMEOUT,
   );
