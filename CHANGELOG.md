@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.23.0-beta.2] - 2026-10-30
+
 ### Fixed
 
 - [Visible] **A new install of a beta build now starts on the beta channel.** It used to start on stable, which only offers mods written for the old mod API and never finds a newer beta. Beta builds also keep the fuller log.
