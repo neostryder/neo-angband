@@ -26,6 +26,7 @@ import { OF, TMD, TRF } from "../generated/index.js";
 import { checkHit } from "../combat/mon-melee.js";
 import { equipLearnFlag } from "../obj/knowledge.js";
 import { featIsTrapHolding } from "../world/chunk.js";
+import { noteSpot } from "./known.js";
 import type { TrapKind } from "../world/trap.js";
 import type { KnownMap } from "./known.js";
 import { lookupTrap } from "../world/trap.js";
@@ -208,11 +209,12 @@ export function squareSetFeatTrapSideEffect(state: GameState, grid: Loc): void {
 
 /**
  * Install the live character_dungeon set_feat hook on the current chunk
- * (cave-square.c:1256-1259). Re-call after every state.chunk reassignment.
+ * (cave-square.c:1256-1262). Re-call after every state.chunk reassignment.
  */
 export function installChunkFeatHook(state: GameState): void {
   state.chunk.onFeatSet = (grid: Loc): void => {
     squareSetFeatTrapSideEffect(state, grid);
+    noteSpot(state, grid);
   };
 }
 
