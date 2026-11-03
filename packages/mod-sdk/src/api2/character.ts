@@ -102,6 +102,8 @@ export interface RunReport {
   
   readonly turn: number;
   
+  readonly seed: number;
+  
   readonly score: number;
   
   readonly scored: boolean;

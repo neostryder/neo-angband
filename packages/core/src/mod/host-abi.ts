@@ -2680,6 +2680,11 @@ export interface RunReport {
   readonly gold: number;
   /** The game turn the run ended on. */
   readonly turn: number;
+  /** The master seed the game runs on: what `?seed=` set, else the
+   * crypto-random draw (main.ts). `?seed=<seed>` replays the run from birth,
+   * so a journal that records this can reproduce the run - the same value the
+   * lab hook's `seed()` hands a harness (lab-hook.ts). */
+  readonly seed: number;
   /** total_points: maximum experience plus 100 per level of maximum depth. */
   readonly score: number;
   /** Whether the score table accepted the entry. */

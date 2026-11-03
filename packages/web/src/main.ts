@@ -11801,6 +11801,7 @@ function continueAdvance(
         view: createAgentView(state, undefined, modSnapshotSource.viewDeps()),
         messages: msglog.all(),
         key: runKey,
+        seed,
         sheet: modSnapshotSource.characterSheet?.() ?? null,
         scored: outcome.entered,
         endedAt: Date.now(),
