@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Fixed
+
+- [Visible] [Modding-API] **Mods now receive the `input-flush` event.** `disturb()` ends by signalling it, as upstream's does (player-util.c:1674), so a mod with `event:input-flush` hears every disturbance - a run stopping, a rest reaching its condition, a hit landing - and can stop a multi-step action on it. The event was declared and grantable before, but nothing ever fired it. A handler that throws is logged and the disturbance still completes (#414).
+
 ## [1.23.0-beta.2] - 2026-10-30
 
 ### Fixed
