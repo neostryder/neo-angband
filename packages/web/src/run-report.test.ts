@@ -94,6 +94,7 @@ describe("buildRunReport", () => {
       view: view(),
       messages: log.all(),
       key: "lineage-1",
+      seed: 99,
       sheet: null,
       scored: true,
       endedAt: 42,
@@ -109,6 +110,7 @@ describe("buildRunReport", () => {
       depth: state.chunk.depth,
       gold: p.au,
       turn: state.turn,
+      seed: 99,
       score: totalPoints(p),
       scored: true,
       endedAt: 42,
@@ -125,10 +127,34 @@ describe("buildRunReport", () => {
     expect(Object.isFrozen(first)).toBe(true);
   });
 
+  it("names the seed the run runs on, so a dead run can be replayed", () => {
+    /* #431: the seed was harness-only (the lab hook's `seed()`); a mod that
+     * journals a watched lineage records it here, at the run's end, and
+     * `?seed=<seed>` re-establishes the run from birth. */
+    const p = state.actor.player;
+    const saved = p.diedFrom;
+    p.diedFrom = "a Cave spider";
+    try {
+      const report = buildRunReport({
+        state,
+        view: view(),
+        messages: [],
+        key: null,
+        seed: 4242,
+        sheet: null,
+        scored: false,
+        endedAt: 0,
+      });
+      expect(report.seed).toBe(4242);
+    } finally {
+      p.diedFrom = saved;
+    }
+  });
+
   it("reads a winner and a retirement from the cause and the winner flag", () => {
     const p = state.actor.player;
     const saved = { winner: p.totalWinner, cause: p.diedFrom };
-    const input = { state, view: view(), messages: [], key: null, sheet: null, scored: false, endedAt: 0 };
+    const input = { state, view: view(), messages: [], key: null, seed: 99, sheet: null, scored: false, endedAt: 0 };
     try {
       p.diedFrom = "Retiring";
       expect(buildRunReport(input).outcome).toBe("retired");

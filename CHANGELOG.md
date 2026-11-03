@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Added
+
+- [Visible] [Modding-API] **The run report names the seed the run ran on.** `RunReport.seed` carries the master seed - what `?seed=` set, else the crypto-random draw - so a mod that journals runs records the one number that replays them: `?seed=<seed>` re-establishes the run from birth. The same value the lab hook's `seed()` hands a harness (#431).
+
 ### Changed
 
 - [Internal] [Docs] **The migration guide for mod API 2 now opens with what to do and what happens if you do nothing, and its tables of the old context and plugin entries show where each one went, including the keyboard controller and presentation entries.** The release guide now says which kind of evidence backs each claim that a game version and a set of mods work together. It also keeps one kind of evidence from standing in for another.
