@@ -6,6 +6,7 @@ import type { TrapRecordJson } from "../world/trap.js";
 import { placeTrap, squareIsVisibleTrap, squareRevealTrap } from "./trap.js";
 import { DDGRID, loc, locEq, locSum } from "../loc.js";
 import type { Loc } from "../loc.js";
+import { GameEvents } from "../events.js";
 import type { GameState, PlayerCommand } from "./context.js";
 import { addMon, makeRace, makeState, FLOOR, GRANITE } from "./harness.js";
 import { squareMemorize } from "./known.js";
@@ -170,6 +171,47 @@ describe("running stops on disturbance", () => {
     disturb(state);
     expect(state.run!.running).toBe(0);
     expect(state.cmdQueue!.length).toBe(0);
+  });
+});
+
+describe("disturb() flushes the input (player-util.c:1674)", () => {
+  it("signals input-flush on the bus, once per disturbance, and needs no bus", () => {
+    const state = makeState({ w: 12, h: 7, playerGrid: loc(1, 3) });
+    /* No bus attached, the worldless harness shape: disturb() must not care,
+     * because hosts and headless cores are free to run without one. */
+    expect(() => disturb(state)).not.toThrow();
+
+    state.events = new GameEvents();
+    let heard = 0;
+    state.events.on("input-flush", () => heard++);
+    disturb(state);
+    disturb(state);
+    expect(heard).toBe(2);
+  });
+
+  it("signals with nothing to cancel, as upstream does", () => {
+    const state = makeState({ w: 12, h: 7, playerGrid: loc(1, 3) });
+    state.events = new GameEvents();
+    let heard = 0;
+    state.events.on("input-flush", () => heard++);
+    /* No run, no rest, no queued command: the signal sits outside every
+     * cancel block upstream, so a plain disturbance still reports. */
+    disturb(state);
+    expect(heard).toBe(1);
+  });
+
+  it("hands a throwing listener to onEventFault instead of its caller", () => {
+    const state = makeState({ w: 12, h: 7, playerGrid: loc(1, 3) });
+    state.events = new GameEvents();
+    const faults: string[] = [];
+    state.onEventFault = (type) => faults.push(type);
+    state.events.on("input-flush", () => {
+      throw new Error("listener failed");
+    });
+    /* disturb() runs deep inside run_step, take_hit and the world loop; a
+     * throwing listener must not cut any of those flows short. */
+    expect(() => disturb(state)).not.toThrow();
+    expect(faults).toEqual(["input-flush"]);
   });
 });
 

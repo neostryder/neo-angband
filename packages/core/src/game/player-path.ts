@@ -105,6 +105,20 @@ export function disturb(state: GameState): void {
    * queue-driven rest must also cancel it. */
   if (state.resting) delete state.resting;
   if (state.cmdQueue) state.cmdQueue.length = 0;
+  /* Flush input (player-util.c:1674): upstream's disturb() ends by signalling
+   * EVENT_INPUT_FLUSH unconditionally - outside every cancel block, so it fires
+   * whether or not anything was actually cancelled - and so does this one, so
+   * a subscriber with the event:input-flush grant hears every disturbance. A
+   * listener that throws is handed to onEventFault instead of escaping into
+   * whichever engine flow called disturb(), the same posture as the
+   * dungeonlevel sender (resolved-events.ts). */
+  if (state.events) {
+    try {
+      state.events.signal("input-flush");
+    } catch (error) {
+      state.onEventFault?.("input-flush", error);
+    }
+  }
 }
 
 /**

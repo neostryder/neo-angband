@@ -56,6 +56,7 @@ still calls itself.
 
 ### Fixed
 
+- [Visible] [Modding-API] **Mods now receive the `input-flush` event.** `disturb()` ends by signalling it, as upstream's does (player-util.c:1674), so a mod with `event:input-flush` hears every disturbance - a run stopping, a rest reaching its condition, a hit landing - and can stop a multi-step action on it. The event was declared and grantable before, but nothing ever fired it. A handler that throws is logged and the disturbance still completes (#414).
 - [Internal] [Security] **A backup folder purpose id in the desktop game must now be 1 to 64 lowercase letters, digits, and hyphens starting with a letter or digit,** since the id becomes part of a file name in the user data folder and an id such as "x/../../sentinel" could point a forget request at a JSON file outside it. A purpose id that does not match is rejected before any file is read, written, or deleted.
 - [Internal] [Security] **The desktop shell now rejects an update download in the installing process when the release is not newer than the installed version or its tag is not a version.** The page already applied this rule when choosing an update, but any script in the page can call the update bridge with any tag, and because the save format only moves forward, an older engine can damage characters it cannot read.
 
