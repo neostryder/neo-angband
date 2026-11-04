@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createAgentView,
+  Rng,
   HIST,
   loadGame,
   saveGame,
@@ -9,6 +10,7 @@ import {
   type GameState,
   type HistoryInfo,
   type ObjectInfoExtras,
+  type RngState,
 } from "@rpgm-tools/neo-angband-core";
 import { loadGamePack } from "./pack";
 import { buildRunReport, characterHistory, createRunReports, RUN_REPORT_MESSAGES } from "./run-report";
@@ -129,6 +131,35 @@ describe("buildRunReport", () => {
   });
 
   describe("seed provenance", () => {
+    it("retains the accepted birth stream so a report can recreate the actual world", () => {
+      const pack = loadGamePack();
+      const rng = new Rng(4242);
+      // The birth presenter consumes draws for history and sometimes a name.
+      for (let i = 0; i < 19; i++) rng.randint0(1000);
+      const accepted = rng.getState();
+      const born = startGame(pack, {
+        seed: 4242, rngState: accepted, raceName: "Human", className: "Warrior",
+        roller: "point", birthStats: [18, 10, 10, 16, 14],
+        optionOverrides: { birth_force_descend: true },
+      });
+      const loaded = loadGame(pack, saveGame(born));
+      const report = buildRunReport({
+        state: loaded.state, view: createAgentView(loaded.state), messages: [],
+        key: null, sheet: null, scored: false, endedAt: 0,
+      }) as ReturnType<typeof buildRunReport> & { birthRngState?: RngState };
+      expect(report.birthRngState).toEqual(accepted);
+      const birth = report.birth;
+      expect(report.birthOptions).toMatchObject({ birth_force_descend: true });
+      const replayed = startGame(pack, {
+        seed: report.seed!, rngState: report.birthRngState!,
+        raceName: birth.race, className: birth.cls, roller: "point", birthStats: birth.stats,
+        optionOverrides: report.birthOptions!,
+      });
+      expect(saveGame(replayed)).toEqual(saveGame(born));
+      expect(Object.isFrozen(report.birthRngState)).toBe(true);
+      expect(Object.isFrozen(loaded.state.birthRngState)).toBe(false);
+    });
+
     it("reports the original game seed after reload, not the new page's random seed", () => {
       const pack = loadGamePack();
       const born = startGame(pack, { seed: 4242, depth: 3 });

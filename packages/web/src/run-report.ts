@@ -129,6 +129,10 @@ export function buildRunReport(input: RunReportInput): RunReport {
     gold: p.au,
     turn: state.turn,
     ...(state.masterSeed === undefined ? {} : { seed: state.masterSeed }),
+    ...(state.birthRngState === undefined ? {} : {
+      birthRngState: { ...state.birthRngState, state: [...state.birthRngState.state] },
+    }),
+    ...(state.options === undefined ? {} : { birthOptions: state.options.snapshot().birth }),
     score: totalPoints(p),
     scored: input.scored,
     endedAt: input.endedAt,

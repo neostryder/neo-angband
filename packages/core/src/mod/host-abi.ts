@@ -7,6 +7,7 @@ import type {
 } from "../agent/index.js";
 import type { KnownLevelView } from "../agent/known-level.js";
 import type { GameState } from "../game/context.js";
+import type { RngState } from "../rng.js";
 import type { CoreRegistries } from "../session/boot.js";
 import type { ModRegistryHost } from "./registry-host.js";
 import type {
@@ -2684,6 +2685,10 @@ export interface RunReport {
    * continuations; a page's fresh random draw is not the restored game's seed.
    * Replay also requires the same birth path, code and controller policy. */
   readonly seed?: number;
+  /** Accepted-birth RNG input for exact reproduction; absent for legacy saves. */
+  readonly birthRngState?: Readonly<Omit<RngState, "state">> & { readonly state: readonly number[] };
+  /** Immutable birth options selected for this character, when available. */
+  readonly birthOptions?: Readonly<Record<string, boolean>>;
   /** total_points: maximum experience plus 100 per level of maximum depth. */
   readonly score: number;
   /** Whether the score table accepted the entry. */

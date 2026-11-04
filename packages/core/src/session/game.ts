@@ -297,7 +297,7 @@ import type {
   CorePack,
   CoreRegistries,
 } from "./boot.js";
-import { Rng } from "../rng.js";
+import { Rng, type RngState } from "../rng.js";
 import type { Player } from "../player/player.js";
 import { OptionState } from "../player/options.js";
 import type { OptionName } from "../player/options.js";
@@ -3273,6 +3273,9 @@ function makeReincarnate(
 ): (opts?: ReincarnateOptions) => ReincarnateResult {
   return (opts: ReincarnateOptions = {}): ReincarnateResult => {
     const rng = state.rng;
+    // This path retains the session's flavor/world state. It is not a fresh
+    // startGame birth, so the previous character's input cannot describe it.
+    delete state.birthRngState;
 
     /* "save the existing dungeon. It is cleared later but needs to be blank when
      * creating the new player" (borg-reincarnate.c:414-418). Nothing below clears
@@ -3622,6 +3625,9 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   const masterSeed = opts.seed !== undefined
     ? opts.seed >>> 0
     : opts.rng || opts.rngState ? undefined : 1;
+  // Retain the actual accepted birth position, including the host's history
+  // and name draws. A master seed alone cannot reconstruct those choices.
+  const birthRngState = mainRng.getState();
 
   const race =
     (opts.raceName ? players.raceByName(opts.raceName) : null) ??
@@ -3819,6 +3825,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   const state: GameState = {
     rng: booted.rng,
     ...(masterSeed === undefined ? {} : { masterSeed }),
+    birthRngState,
     chunk: booted.chunk,
     levelTopology: reg.topology,
     chestTraps: reg.chestTraps,
@@ -4470,6 +4477,18 @@ export interface LoadGameOptions {
   currentPacks?: readonly SavePackRef[];
 }
 
+function readBirthRngState(value: unknown): RngState | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const s = value as Partial<RngState>;
+  const uint32 = (n: unknown): n is number => typeof n === "number"
+    && Number.isInteger(n) && n >= 0 && n <= 0xffffffff;
+  if (typeof s.quick !== "boolean" || typeof s.fixed !== "boolean"
+    || !uint32(s.value) || !uint32(s.stateI) || s.stateI >= 32 || !uint32(s.fixval)
+    || !Array.isArray(s.state) || s.state.length !== 32 || !s.state.every(uint32)) return undefined;
+  return { quick: s.quick, fixed: s.fixed, value: s.value, stateI: s.stateI,
+    fixval: s.fixval, state: [...s.state] };
+}
+
 export function loadGame(
   pack: GamePack,
   saveDocument: SavedGame,
@@ -4682,11 +4701,13 @@ export function loadGame(
     ? deserializeFloor(save.floor, reg.objects, chunk.width, ids)
     : new Map<number, GameObject[]>();
 
+  const birthRngState = readBirthRngState(save.birthRngState);
   const state: GameState = {
     rng,
     ...(typeof save.masterSeed === "number" && Number.isInteger(save.masterSeed)
       && save.masterSeed >= 0 && save.masterSeed <= 0xffffffff
       ? { masterSeed: save.masterSeed } : {}),
+    ...(birthRngState === undefined ? {} : { birthRngState }),
     chunk,
     levelTopology: reg.topology,
     chestTraps: reg.chestTraps,
