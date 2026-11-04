@@ -3617,6 +3617,11 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // seed_flavor; prepare_next_level (ui-game.c:757-760) runs only later.
   const mainRng = opts.rng ?? new Rng(opts.seed ?? 1);
   if (!opts.rng && opts.rngState) mainRng.setState(opts.rngState);
+  // A supplied continuation need not reveal its original seed. Never label it
+  // with the default used only to construct the temporary RNG instance.
+  const masterSeed = opts.seed !== undefined
+    ? opts.seed >>> 0
+    : opts.rng || opts.rngState ? undefined : 1;
 
   const race =
     (opts.raceName ? players.raceByName(opts.raceName) : null) ??
@@ -3813,6 +3818,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
 
   const state: GameState = {
     rng: booted.rng,
+    ...(masterSeed === undefined ? {} : { masterSeed }),
     chunk: booted.chunk,
     levelTopology: reg.topology,
     chestTraps: reg.chestTraps,
@@ -4678,6 +4684,9 @@ export function loadGame(
 
   const state: GameState = {
     rng,
+    ...(typeof save.masterSeed === "number" && Number.isInteger(save.masterSeed)
+      && save.masterSeed >= 0 && save.masterSeed <= 0xffffffff
+      ? { masterSeed: save.masterSeed } : {}),
     chunk,
     levelTopology: reg.topology,
     chestTraps: reg.chestTraps,

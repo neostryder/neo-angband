@@ -10,8 +10,9 @@
  * text. `turn()`, `modal()` and `size()` are one value each. `view()` is the same
  * world a mod holding every `state:*` grant reads (the input snapshot), cloned to
  * plain JSON so a harness can pick a path out of it, and `messages(n)` is the last
- * n lines of the message log, newest last. `seed()` is the master seed the page
- * started from, so a failing run can be replayed with `--lab-seed`. `wizard` is
+ * n lines of the message log, newest last. `seed()` is the game's original
+ * master seed when retained (unknown for legacy saves). Replay also needs a
+ * matching birth path and controller. `wizard` is
  * the typed debug facade a `debug:wizard` mod holds, behind the same refusal until
  * the session is cut loose from its save.
  */
@@ -28,7 +29,7 @@ export interface LabHookDeps {
   readonly size: () => unknown;
   readonly modal: () => boolean;
   readonly turn: () => number;
-  readonly seed: () => number;
+  readonly seed: () => number | undefined;
   readonly snapshot: () => unknown;
   readonly log: LabMessageLog;
   readonly wizard: ModWizard;

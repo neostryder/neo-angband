@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createAgentView,
   HIST,
+  loadGame,
+  saveGame,
   startGame,
   totalPoints,
   type GameState,
@@ -94,7 +96,6 @@ describe("buildRunReport", () => {
       view: view(),
       messages: log.all(),
       key: "lineage-1",
-      seed: 99,
       sheet: null,
       scored: true,
       endedAt: 42,
@@ -127,34 +128,35 @@ describe("buildRunReport", () => {
     expect(Object.isFrozen(first)).toBe(true);
   });
 
-  it("names the seed the run runs on, so a dead run can be replayed", () => {
-    /* #431: the seed was harness-only (the lab hook's `seed()`); a mod that
-     * journals a watched lineage records it here, at the run's end, and
-     * `?seed=<seed>` re-establishes the run from birth. */
-    const p = state.actor.player;
-    const saved = p.diedFrom;
-    p.diedFrom = "a Cave spider";
-    try {
-      const report = buildRunReport({
-        state,
-        view: view(),
-        messages: [],
-        key: null,
-        seed: 4242,
-        sheet: null,
-        scored: false,
-        endedAt: 0,
-      });
-      expect(report.seed).toBe(4242);
-    } finally {
-      p.diedFrom = saved;
-    }
+  describe("seed provenance", () => {
+    it("reports the original game seed after reload, not the new page's random seed", () => {
+      const pack = loadGamePack();
+      const born = startGame(pack, { seed: 4242, depth: 3 });
+      const loaded = loadGame(pack, saveGame(born));
+      const input = {
+        state: loaded.state, view: createAgentView(loaded.state), messages: [],
+        key: null, seed: 9001, sheet: null, scored: false, endedAt: 0,
+      };
+      expect(buildRunReport(input).seed).toBe(4242);
+    });
+
+    it("does not invent an original seed for a legacy save", () => {
+      const pack = loadGamePack();
+      const save = saveGame(startGame(pack, { seed: 4242, depth: 3 })) as ReturnType<typeof saveGame> & { masterSeed?: number };
+      delete save.masterSeed;
+      const loaded = loadGame(pack, save);
+      const input = {
+        state: loaded.state, view: createAgentView(loaded.state), messages: [],
+        key: null, seed: 9001, sheet: null, scored: false, endedAt: 0,
+      };
+      expect(buildRunReport(input)).not.toHaveProperty("seed");
+    });
   });
 
   it("reads a winner and a retirement from the cause and the winner flag", () => {
     const p = state.actor.player;
     const saved = { winner: p.totalWinner, cause: p.diedFrom };
-    const input = { state, view: view(), messages: [], key: null, seed: 99, sheet: null, scored: false, endedAt: 0 };
+    const input = { state, view: view(), messages: [], key: null, sheet: null, scored: false, endedAt: 0 };
     try {
       p.diedFrom = "Retiring";
       expect(buildRunReport(input).outcome).toBe("retired");
