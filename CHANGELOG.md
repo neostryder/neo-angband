@@ -50,7 +50,7 @@ still calls itself.
 
 ### Added
 
-- [Visible] [Modding-API] **The run report names the seed the run ran on.** `RunReport.seed` carries the master seed - what `?seed=` set, else the crypto-random draw - so a mod that journals runs records the one number that replays them: `?seed=<seed>` re-establishes the run from birth. The same value the lab hook's `seed()` hands a harness (#431).
+- [Visible] [Modding-API] **The run report retains the game's original seed when known.** `RunReport.seed` follows the original stream across the birth reload and save/load, rather than reporting a new page's unrelated random seed. Legacy saves and continuations without original-seed provenance omit the field; the lab hook also reports it as unknown. This records provenance for replay, which additionally needs a matching birth path, code and controller policy (#431).
 
 ## [1.23.0-beta.2] - 2026-10-30
 

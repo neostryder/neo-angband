@@ -224,6 +224,8 @@ export interface StoredLevel {
  */
 export interface GameState {
   rng: Rng;
+  /** Original master seed, when known; distinct from the current RNG position. */
+  masterSeed?: number;
   chunk: Chunk;
   actor: PlayerActor;
   /**

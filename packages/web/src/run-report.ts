@@ -79,9 +79,6 @@ export interface RunReportInput {
   readonly view: AgentView;
   readonly messages: readonly LoggedMessage[];
   readonly key: string | null;
-  /** The master seed this page's game started from, as the lab hook's `seed()`
-   * reads it - the value a journal needs to replay the run with `?seed=`. */
-  readonly seed: number;
   readonly sheet: CharacterSheetData | null;
   readonly scored: boolean;
   readonly endedAt: number;
@@ -131,7 +128,7 @@ export function buildRunReport(input: RunReportInput): RunReport {
     depth: state.chunk.depth,
     gold: p.au,
     turn: state.turn,
-    seed: input.seed,
+    ...(state.masterSeed === undefined ? {} : { seed: state.masterSeed }),
     score: totalPoints(p),
     scored: input.scored,
     endedAt: input.endedAt,

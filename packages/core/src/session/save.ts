@@ -1730,6 +1730,8 @@ export interface SavedGame {
   /** The dungeon header retained by C even when the player is dead. */
   dungeonDepth?: number;
   rng: RngState;
+  /** Optional provenance; legacy saves retain their RNG state without an original seed. */
+  masterSeed?: number;
   turn: number;
   playing: boolean;
   isDead: boolean;
@@ -2347,6 +2349,7 @@ export function serializeGame(
           traps,
         }),
     rng: state.rng.getState(),
+    ...(state.masterSeed === undefined ? {} : { masterSeed: state.masterSeed }),
     turn: state.turn,
     playing: state.playing,
     isDead: state.isDead,

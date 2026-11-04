@@ -102,7 +102,8 @@ export interface RunReport {
   
   readonly turn: number;
   
-  readonly seed: number;
+  /** Original master seed when retained; absent for legacy/unknown provenance. */
+  readonly seed?: number;
   
   readonly score: number;
   

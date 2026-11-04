@@ -308,6 +308,7 @@ import type { WorldFrame, WorldLayer } from "./world-view";
 import { detectDesktopBridge, makeDesktopHost } from "./host-electron";
 import { argForceName, argName, initLaunchArgsFromHost } from "./launch";
 import { createBirthSession } from "./birth-session";
+import { birthStartOptions, decodeBirthContinuation, encodeBirthContinuation } from "./birth-continuation";
 import { installBirth, offerBirth, setBirthPresenter } from "./birth-runtime";
 import {
   combineDiskReports,
@@ -1979,11 +1980,11 @@ function bootGame(): ReturnType<typeof startGame> {
   }
   // Resume the main stream after the birth UI advanced it (ui-birth.c draws
   // before level gen). Absent, start from seed as a normal new game.
-  let birthRngState: ReturnType<Rng["getState"]> | undefined;
+  let birthContinuation: ReturnType<typeof decodeBirthContinuation> | undefined;
   try {
     const raw = reloadStorage.getItem(BIRTH_RNG_KEY);
     if (raw) {
-      birthRngState = JSON.parse(raw) as ReturnType<Rng["getState"]>;
+      birthContinuation = decodeBirthContinuation(raw);
       reloadStorage.removeItem(BIRTH_RNG_KEY);
     }
   } catch {
@@ -1991,9 +1992,8 @@ function bootGame(): ReturnType<typeof startGame> {
   }
   const startHooks = activeModHooks();
   const game = startGame(pack, {
-    seed,
+    ...birthStartOptions(seed, birthContinuation),
     depth,
-    ...(birthRngState ? { rngState: birthRngState } : {}),
     // The effective mod-rule flags (qol / bug-fixes tweaks) for this session:
     // enabled mods' declared rules resolved against the player's saved choices.
     // Empty => faithful core. Upstream OPTIONS are NOT set here - they ship in
@@ -11801,7 +11801,6 @@ function continueAdvance(
         view: createAgentView(state, undefined, modSnapshotSource.viewDeps()),
         messages: msglog.all(),
         key: runKey,
-        seed,
         sheet: modSnapshotSource.characterSheet?.() ?? null,
         scored: outcome.entered,
         endedAt: Date.now(),
@@ -13241,7 +13240,7 @@ async function maybeBirth(): Promise<BootStep> {
       reloadStorage.setItem(FORCE_NEW_KEY, "1");
       // Persist the advanced stream so the post-birth reload's startGame
       // continues from this position (store_reset / seeds / level gen).
-      reloadStorage.setItem(BIRTH_RNG_KEY, JSON.stringify(state.rng.getState()));
+      reloadStorage.setItem(BIRTH_RNG_KEY, encodeBirthContinuation(seed, state.rng.getState()));
     } catch {
       /* storage disabled: the reload still starts a fresh game via ?new */
     }
@@ -16897,7 +16896,7 @@ setAutoplayerInterruptOwner({
  * read-only except for `wizard`, and compiled in only for `NEO_ANGBAND_LAB_BUILD=1`,
  * so a release build never carries it (lab-trust.ts, lab-hook.ts). `view()` is the
  * input snapshot with every domain granted, `messages(n)` the log tail, `seed()`
- * the master seed this page started from (set one with the shell's `--lab-seed`),
+ * the game's retained original seed (unknown for legacy saves),
  * and `wizard` the typed debug facade, which refuses until `sandbox()` is called. */
 if (labBuild()) {
   (window as unknown as { __neoLab?: unknown }).__neoLab = createLabHook({
@@ -16905,7 +16904,7 @@ if (labBuild()) {
     size: () => term.size(),
     modal: () => modalDepth > 0,
     turn: () => state.turn,
-    seed: () => seed,
+    seed: () => state.masterSeed,
     snapshot: () => buildInputSnapshot(modSnapshotSource, undefined),
     log: msglog,
     wizard: createModWizard("lab", { wizard: wizardCtx }),
