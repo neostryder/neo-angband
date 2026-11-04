@@ -1510,7 +1510,16 @@ export interface ModSaves {
     key: string;
   }>) => void): () => void;
   list(): Promise<SaveListResult>;
-  load(id: string): Promise<SaveResult>;
+  /**
+   * Load a stored character. With `resumeAutoplayer`, the loaded character's
+   * first boot hands it straight back to this mod's autoplayer without asking
+   * the player again - the load-side twin of `create`'s option, with the same
+   * discipline: accepted only from the mod whose controller holds the keyboard
+   * when `load` is called (any other caller gets a refusal and nothing loads),
+   * and only for the character loaded. Ask the player in your own settings
+   * first: it is how they agree to it.
+   */
+  load(id: string, options?: { readonly resumeAutoplayer?: boolean }): Promise<SaveResult>;
   rename(id: string, name: string): Promise<SaveResult>;
   delete(id: string): Promise<SaveResult>;
   /**

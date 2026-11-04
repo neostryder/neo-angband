@@ -215,6 +215,42 @@ describe("the context wiring", () => {
     expect(disarmed).toBe(0);
   });
 
+  it("passes a load's resumeAutoplayer only when the roll-on gate agrees for this mod, and disarms a failed load (#430)", async () => {
+    const loaded: string[] = [];
+    let loadAnswer: { ok: true } | { ok: false; reason: string } = { ok: true };
+    const saves = {
+      list: async () => ({ ok: true, entries: [] }),
+      create: async () => ({ ok: true }),
+      load: async (id: string) => {
+        loaded.push(id);
+        return loadAnswer;
+      },
+      rename: async () => ({ ok: true }),
+      delete: async () => ({ ok: true }),
+    } as unknown as ModSaves;
+    let armed: string | null = null;
+    let disarmed = 0;
+    const autoplayerRollOn = {
+      arm: (id: string) => id === "squire" ? ((armed = id), { ok: true as const }) : { ok: false as const, reason: "not yours" },
+      disarm: () => void disarmed++,
+    };
+    const session = (id: string) => ({ capabilities: CapabilitySet.fromManifest({
+      id, name: id, version: "1.0.0", shape: "plugin", modApi: 1, capabilities: ["saves:manage"],
+    }), saves, autoplayerRollOn });
+    const other = modPluginContext("other", {}, undefined, {}, session("other"));
+    expect(await other.saves?.load("s1", { resumeAutoplayer: true })).toEqual({ ok: false, reason: "not yours" });
+    expect(loaded).toEqual([]);
+    const squire = modPluginContext("squire", {}, undefined, {}, session("squire"));
+    expect(await squire.saves?.load("s1", { resumeAutoplayer: true })).toEqual({ ok: true });
+    expect(armed).toBe("squire");
+    expect(await squire.saves?.load("s2")).toEqual({ ok: true });
+    expect(loaded).toEqual(["s1", "s2"]);
+    expect(disarmed).toBe(0);
+    loadAnswer = { ok: false, reason: "canceled" };
+    expect(await squire.saves?.load("s3", { resumeAutoplayer: true })).toEqual({ ok: false, reason: "canceled" });
+    expect(disarmed).toBe(1);
+  });
+
   it("offers markNondeterministic only to the controller's owner", () => {
     const marked: string[] = [];
     setModDriverControl({

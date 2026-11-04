@@ -1581,6 +1581,12 @@ const AUTOPLAYER_JUST_CONFIRMED_KEY = "neo-angband-autoplayer-just-confirmed";
 // when rollOnRequest is set, removed by every other newGame, and consumed by the
 // boot after birth. The birth screen's own boot leaves it in place.
 const AUTOPLAYER_ROLL_ON_KEY = "neo-angband-autoplayer-roll-on";
+// The load-side twin (#430): "the autoplayer that held the keyboard asked,
+// through ctx.saves.load(id, { resumeAutoplayer }), to carry on with the stored
+// character it is loading". Written by the roster's load as { mod, slot } just
+// before resumeSelected reloads, and consumed (read once, removed always) by the
+// next boot, which honours it only when that boot is the named slot's.
+const AUTOPLAYER_LOAD_ON_KEY = "neo-angband-autoplayer-load-on";
 interface StoredBirth {
   raceName: string;
   className: string;
@@ -1775,6 +1781,19 @@ try {
   requestedControllerId = reloadStorage.getItem(AUTOPLAYER_ROLL_ON_KEY);
 } catch {
   requestedControllerId = null;
+}
+/* #430: the mod a load asked to carry on, honoured only for the character it
+ * loaded - any other boot reads the key, discards it, and asks as before. */
+let loadRolledOnId: string | null = null;
+try {
+  const raw = reloadStorage.getItem(AUTOPLAYER_LOAD_ON_KEY);
+  reloadStorage.removeItem(AUTOPLAYER_LOAD_ON_KEY);
+  const parsed = raw ? (JSON.parse(raw) as { readonly mod?: unknown; readonly slot?: unknown }) : null;
+  if (parsed && typeof parsed.mod === "string" && typeof parsed.slot === "string" && parsed.slot === getActiveId()) {
+    loadRolledOnId = parsed.mod;
+  }
+} catch {
+  loadRolledOnId = null;
 }
 
 /**
@@ -7398,7 +7417,7 @@ setModProfilesControl((id, caps) => createModProfiles(id, caps, {
     ? { ok: false, reason: "Profiles can be switched before play begins." }
     : { ok: true },
   reload: () => {
-    for (const key of [FORCE_NEW_KEY, SKIP_TITLE_KEY, BIRTH_DONE_KEY, BIRTH_RNG_KEY, AUTOPLAYER_ROLL_ON_KEY]) reloadStorage.removeItem(key);
+    for (const key of [FORCE_NEW_KEY, SKIP_TITLE_KEY, BIRTH_DONE_KEY, BIRTH_RNG_KEY, AUTOPLAYER_ROLL_ON_KEY, AUTOPLAYER_LOAD_ON_KEY]) reloadStorage.removeItem(key);
     const url = new URL(location.href);
     url.searchParams.delete("new");
     url.searchParams.delete("seed");
@@ -7460,7 +7479,24 @@ setModSavesControl(createModSaves({
       return { ok: false, reason: "The current character could not be saved." };
     }
     detachSlot();
-    if (!(await resumeSelected(id))) return { ok: false, reason: "The character load was canceled." };
+    /* #430: a load armed by its autoplayer (savesFor's arm, which sets
+     * rollOnRequest) is carried across the reload to this character's boot. */
+    const loadOn = rollOnRequest;
+    rollOnRequest = null;
+    try {
+      if (loadOn) reloadStorage.setItem(AUTOPLAYER_LOAD_ON_KEY, JSON.stringify({ mod: loadOn, slot: id }));
+      else reloadStorage.removeItem(AUTOPLAYER_LOAD_ON_KEY);
+    } catch {
+      /* storage disabled: the load boot asks, which is the safe direction */
+    }
+    if (!(await resumeSelected(id))) {
+      try {
+        reloadStorage.removeItem(AUTOPLAYER_LOAD_ON_KEY);
+      } catch {
+        /* nothing to release without storage */
+      }
+      return { ok: false, reason: "The character load was canceled." };
+    }
     return { ok: true };
   },
 }));
@@ -16081,7 +16117,10 @@ const folderRuleFlags = resolveModRuleFlagsByMod();
  * seeding one that is about to be discarded, and the reload after birth would
  * ask it again anyway. */
 const sessionFacts: ModSessionFacts = { newCharacter: bootedNew && !birthPending };
-setModControllerArmedControl((id) => requestedControllerId === id && (birthPending || sessionFacts.newCharacter === true));
+setModControllerArmedControl((id) =>
+  (requestedControllerId === id && (birthPending || sessionFacts.newCharacter === true)) ||
+  /* #430: the boot of the character a load asked its autoplayer to carry on with. */
+  (loadRolledOnId === id && !birthPending));
 
 /* The Worker mods' brokers, by mod id (mod-worker/host.ts). */
 const workerPlugins = new Map<string, StartedModWorker>();
@@ -16788,6 +16827,7 @@ try {
  * clears it, so a player who backs out of birth and loads someone else is asked. */
 let rollOnAutoplayerId: string | null = null;
 let rollOnHeldForBirth: string | null = null;
+let rollOnLoaded = false;
 try {
   const armed = reloadStorage.getItem(AUTOPLAYER_ROLL_ON_KEY);
   if (birthPending) {
@@ -16795,6 +16835,11 @@ try {
   } else {
     reloadStorage.removeItem(AUTOPLAYER_ROLL_ON_KEY);
     if (sessionFacts.newCharacter) rollOnAutoplayerId = armed;
+    /* #430: the loaded character's own boot, armed by its load. */
+    else if (loadRolledOnId) {
+      rollOnAutoplayerId = loadRolledOnId;
+      rollOnLoaded = true;
+    }
   }
 } catch {
   /* best-effort; worst case this boot asks, which is the safe direction */
@@ -16849,7 +16894,9 @@ for (const loaded of activeModCode().plugins) {
       finishAutoplayerInstall(loaded, install);
     } else if (rollOnAutoplayerId === loaded.id) {
       finishAutoplayerInstall(loaded, install);
-      say(t("main.autoplayer.roll-on", "{name} carries on with the new character.", { name: loaded.manifest.name }));
+      say(rollOnLoaded
+        ? t("main.autoplayer.load-on", "{name} carries on with the loaded character.", { name: loaded.manifest.name })
+        : t("main.autoplayer.roll-on", "{name} carries on with the new character.", { name: loaded.manifest.name }));
     } else {
       pendingAutoplayerInstall = { loaded, install };
     }
