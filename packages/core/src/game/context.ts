@@ -22,7 +22,7 @@ import type { Loc } from "../loc.js";
 import { distance, locEq } from "../loc.js";
 import { los } from "../world/view.js";
 import type { Connector } from "../gen/util.js";
-import type { Rng } from "../rng.js";
+import type { Rng, RngState } from "../rng.js";
 import type { Chunk } from "../world/chunk.js";
 import type { WorldTopology } from "../world/topology.js";
 import type { ChestTrapEntry } from "../obj/chest.js";
@@ -226,6 +226,8 @@ export interface GameState {
   rng: Rng;
   /** Original master seed, when known; distinct from the current RNG position. */
   masterSeed?: number;
+  /** RNG position accepted by birth, before player/world generation; absent in legacy saves. */
+  birthRngState?: RngState;
   chunk: Chunk;
   actor: PlayerActor;
   /**

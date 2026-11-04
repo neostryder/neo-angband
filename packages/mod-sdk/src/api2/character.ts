@@ -104,6 +104,16 @@ export interface RunReport {
   
   /** Original master seed when retained; absent for legacy/unknown provenance. */
   readonly seed?: number;
+  /** Accepted-birth RNG input, before player/world generation; absent in legacy saves. */
+  readonly birthRngState?: {
+    readonly quick: boolean;
+    readonly value: number;
+    readonly state: readonly number[];
+    readonly stateI: number;
+    readonly fixed: boolean;
+    readonly fixval: number;
+  };
+  readonly birthOptions?: Readonly<Record<string, boolean>>;
   
   readonly score: number;
   
