@@ -1151,7 +1151,11 @@ function manageDomain(ctx: ModPluginContext, options: Api2HostOptions, cleanups:
         if (!options.grants.has("saves:manage")) return api2NotGranted("saves:manage");
         return ctx.saves?.create ? saved(await ctx.saves.create(request)) : api2Unavailable("Character creation is unavailable.");
       }),
-      load: (id) => saveCommand("load", id),
+      load: (id, request) => guarded(async () => {
+        if (!options.grants.has("saves:manage")) return api2NotGranted("saves:manage");
+        if (!ctx.saves) return api2Unavailable("The character roster is unavailable.");
+        return saved(await ctx.saves.load(id, request));
+      }),
       rename: (id, name) => saveCommand("rename", id, name),
       delete: (id) => saveCommand("delete", id),
     }),
@@ -1239,7 +1243,7 @@ function manageDomain(ctx: ModPluginContext, options: Api2HostOptions, cleanups:
     }),
   });
 
-  function saveCommand(method: "load" | "rename" | "delete", id: string, name = ""): Api2Call<null> {
+  function saveCommand(method: "rename" | "delete", id: string, name = ""): Api2Call<null> {
     return guarded(async () => {
       if (!options.grants.has("saves:manage")) return api2NotGranted("saves:manage");
       if (!ctx.saves) return api2Unavailable("The character roster is unavailable.");

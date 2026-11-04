@@ -35,6 +35,11 @@ export interface Api2CreateCharacter {
   readonly resumeAutoplayer?: boolean;
 }
 
+/** `load`'s option, the twin of {@link Api2CreateCharacter.resumeAutoplayer}. */
+export interface Api2LoadCharacter {
+  readonly resumeAutoplayer?: boolean;
+}
+
 export interface Api2ProfileAction {
   readonly kind: "create-character";
   readonly armController?: boolean;
@@ -43,7 +48,7 @@ export interface Api2ProfileAction {
 export interface Api2Saves {
   list(): Api2Call<readonly Api2SaveEntry[]>;
   create(options?: Api2CreateCharacter): Api2Call<null>;
-  load(id: string): Api2Call<null>;
+  load(id: string, options?: Api2LoadCharacter): Api2Call<null>;
   rename(id: string, name: string): Api2Call<null>;
   delete(id: string): Api2Call<null>;
 }

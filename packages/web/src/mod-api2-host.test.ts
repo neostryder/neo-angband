@@ -1302,6 +1302,11 @@ describe("API 2 management", () => {
     const api = management(["saves:manage"], { saves }).manage!;
     expect(await api.saves.list()).toMatchObject({ value: [{ id: "s", dead: false }] });
     expect(await api.saves.load("s")).toMatchObject({ ok: false, code: "save", message: "The current mod set needs approval." });
+    /* #430: the load option reaches the roster door. */
+    const load = vi.fn(async () => ({ ok: true as const }));
+    const withLoad = management(["saves:manage"], { saves: { ...saves, load } }).manage!;
+    expect(await withLoad.saves.load("s", { resumeAutoplayer: true })).toEqual({ ok: true, value: null });
+    expect(load).toHaveBeenCalledWith("s", { resumeAutoplayer: true });
     expect(await api.saves.rename("s", "Name")).toMatchObject({ ok: false });
     const request = { like: { race: "Human", cls: "Warrior", stats: [10, 10, 10, 10, 10] }, resumeAutoplayer: true };
     expect(await api.saves.create(request)).toEqual({ ok: true, value: null });

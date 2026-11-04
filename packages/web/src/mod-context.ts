@@ -633,8 +633,10 @@ function savesFor(id: string, session: ModSessionFacts): ModSaves | undefined {
   if (!base?.create) return base;
   const create = base.create.bind(base);
   const rollOn = session.autoplayerRollOn ?? autoplayerRollOn;
+  const load = base.load.bind(base);
   /* The roster door is shared by every mod; `resumeAutoplayer` is the one option
-   * whose answer depends on which mod asked, so this mod's copy carries its id. */
+   * whose answer depends on which mod asked, so this mod's copy carries its id.
+   * `create` and `load` take it alike: a new character or a stored one. */
   return Object.freeze({
     ...base,
     async create(options?: Parameters<NonNullable<ModSaves["create"]>>[0]) {
@@ -642,6 +644,14 @@ function savesFor(id: string, session: ModSessionFacts): ModSaves | undefined {
       const armed = rollOn?.arm(id) ?? { ok: false as const, reason: "This game cannot hand a new character to an autoplayer." };
       if (!armed.ok) return { ok: false as const, reason: armed.reason };
       const result = await create(options);
+      if (!result.ok) rollOn?.disarm();
+      return result;
+    },
+    async load(slot: string, options?: Parameters<ModSaves["load"]>[1]) {
+      if (options?.resumeAutoplayer !== true) return load(slot);
+      const armed = rollOn?.arm(id) ?? { ok: false as const, reason: "This game cannot hand a loaded character to an autoplayer." };
+      if (!armed.ok) return { ok: false as const, reason: armed.reason };
+      const result = await load(slot);
       if (!result.ok) rollOn?.disarm();
       return result;
     },
