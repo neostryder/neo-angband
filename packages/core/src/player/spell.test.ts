@@ -140,6 +140,15 @@ describe("spell lookups", () => {
     expect(spellByIndex(mage, -1)).toBeNull();
   });
 
+  it("spellByIndex returns the spell holding that sidx for every class, including books that declare spare slots", () => {
+    for (const cls of players.classes) {
+      for (let sidx = 0; sidx < cls.magic.totalSpells; sidx++) {
+        expect(spellByIndex(cls, sidx)?.sidx, `${cls.name} sidx ${String(sidx)}`).toBe(sidx);
+      }
+      for (const book of cls.magic.books) expect(book.numSpells, `${cls.name} ${book.name}`).toBe(book.spells.length);
+    }
+  });
+
   it("classMagicRealms deduplicates realms", () => {
     expect(classMagicRealms(mage).map((r) => r.name)).toEqual(["arcane"]);
     expect(classMagicRealms(warrior)).toEqual([]);

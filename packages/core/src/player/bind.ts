@@ -995,7 +995,9 @@ function bindClassMagic(
       dungeon: b.quality === "dungeon",
       name: b.name,
       realm,
-      numSpells: b.spells,
+      /* init.c:3823 counts the spells a book holds as it parses them; the
+       * declared slot count is only the capacity (init.c:3809). */
+      numSpells: spells.length,
       spells,
       graphics: b["book-graphics"] ?? null,
       properties: b["book-properties"] ?? null,
