@@ -50,6 +50,8 @@ still calls itself.
 
 ### Changed
 
+- [Internal] [Docs] **The migration guide for mod API 2 now opens with what to do and what happens if you do nothing, and its tables of the old context and plugin entries show where each one went, including the keyboard controller and presentation entries.** The release guide now says which kind of evidence backs each claim that a game version and a set of mods work together. It also keeps one kind of evidence from standing in for another.
+
 - [Internal] **Lab builds of the desktop game (bundled with NEO_ANGBAND_LAB_BUILD=1) can now send a GitHub token to api.github.com, so mod install and update checks no longer share GitHub's anonymous limit of 60 requests an hour per address, which several lab runs on one machine used up.** The lab launcher sets NEO_ANGBAND_LAB_GITHUB_TOKEN for one run, and the desktop shell removes the value from its environment as it starts and adds it as an Authorization header to GET requests on api.github.com for a repository's tags, its releases, one release by tag, and one tag's file tree, covering both the page's requests and the shell's own update lookup (packages/desktop/src/lab-github-auth.ts). A mod running in the page cannot use it for other GitHub requests such as writes or account reads. No other host receives the token, the shell never logs or stores it, and release builds ignore the variable and stay anonymous.
 
 ### Fixed

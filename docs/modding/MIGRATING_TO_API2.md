@@ -8,29 +8,82 @@ The SDK has the API 2 types (`ModApi2`, `Api2ModDefinition`, `Api2Result`), the 
 
 The folder loader runs an API 2 mod in either runtime. An in-process mod needs a schema 2 manifest with `"runtime": "in-process"` and an `api` range that admits API 2, such as `>=2.0.0 <3.0.0`; the loader wraps its default export with `api2Plugin`. A Worker mod needs `"runtime": "worker"`, the same kind of range and an `entry` (see Runtime tiers). A manifest whose range admits no API this build runs in that runtime is refused with a line such as `needs mod API >=3.0.0 <4.0.0 in runtime "in-process", which this build does not provide`. `neo-angband-mod-build` still refuses a default export without an integer `api`, so build an API 2 mod with your own bundler and check it with `neo-angband-mod-check`, which reads both kinds of default export.
 
-## Step 1: check what has no API 2 form
+## What to do
 
-A mod has one entry module and one API. If it needs anything in this table, it stays on API 1 until API 2 has a replacement.
+Only a mod that ships a `plugin.js` has anything to move. A data-only mod needs no change, because its records and patches carry no code API and neither do its tiles or text. Its manifest still reads in schema 1. Schema 2 is optional for it, and `ModProject.emit()` already writes schema 2.
 
-| API 1 | In API 2 |
+If you do nothing yet, a plugin that declares `api: 1` keeps loading unchanged. The host marks it as running on a compatibility path and says so on the Mods screen and in the log. `MOD_API_MIN`, the oldest accepted API, is 1. Raising it takes two releases. The first release ships the new behavior and shows the compatibility-path line, and the second raises the floor. No release has raised it so far.
+
+To move a mod that runs code onto API 2, follow these steps:
+
+1. Look up each member of the old `ctx` in Step 1. Every member has a home in API 2 except `ctx.shared`, which holds values shared between mods, and `ctx.debug`, the retired public debug tools.
+2. Convert the manifest (Step 2).
+3. Change the code shape (Step 3), and set `api` to `>=2.0.0 <3.0.0` in the manifest and in the code's own `api`.
+4. Work through Steps 4 to 11 to move reads, actions, events, hooks, and panels, along with storage and network calls.
+5. Set the `engine` range to the first game version with API 2. That range is `>=1.23.0-beta.1` while 1.23.0 is in beta and `>=1.23.0` once it is released.
+6. Check the folder or zip with `npx neo-angband-mod-check path/to/your-mod` and `pnpm mod-runner path/to/your-mod`. `neo-angband-mod-build` still refuses a default export without an integer `api`, so build the mod with your own bundler and then run `neo-angband-mod-check` on the result.
+7. Release as usual. Run `npm run verify`, commit, tag with the mod's own version, and push the tag. A published tag is never moved, so a fix takes a minor bump of the mod's version.
+
+The checklist at the bottom of this guide repeats these steps in short form.
+
+## Step 1: find where each part of the old context went
+
+Nearly every member of the old `ctx` has a home in API 2. Find each member your plugin uses in the table to see where it lives now and who can use it. "First-party only" means only the game's own mods get it. "In-process, needs `engine:access`" means an in-process mod the player gave `engine:access`, never a Worker. Only `ctx.shared` and `ctx.debug` have no home.
+
+| Old ctx name | Where it lives now | Who can use it |
+| --- | --- | --- |
+| `ctx.id`, `ctx.engine`, `ctx.flags`, `ctx.newCharacter`, `ctx.log`, `ctx.mods`, `ctx.controllerArmed` | `meta.id`, `meta.engine`, `meta.flags`, `meta.newCharacter`, `meta.log`, `meta.mods`, `meta.controllerArmed` | Everyone |
+| `ctx.api` | `meta.api`, which is a semver string instead of an integer | Everyone |
+| `ctx.settings` | `meta.settings`, `meta.setSetting` | Everyone |
+| `ctx.core`, `ctx.state`, `ctx.registries` | `engine.core`, `engine.state`, `engine.registries` | In-process, needs `engine:access` |
+| `ctx.data`, `ctx.assetUrl`, `ctx.composedRecords` | `content.own`, `content.asset`, `content.records`, `content.lookup` | Everyone |
+| `ctx.prefs`, `ctx.characterStore` | `store.prefs` (with an explicit prefs migration), `store.character` | Everyone |
+| `ctx.snapshot`, `ctx.driver` | `view.input`, `view.input().driver` | Everyone with `state:interaction.read` |
+| `ctx.knownLevel` | `view.level` | Everyone with `state:map.read` |
+| `ctx.inspect` | `view.inspect` (`inspectItem` is `item`, `spellInfo` is `spell`) | Everyone with the `state:` permission for what each call reads, such as `state:inventory.read` for `item` and `state:spells.read` for `spell` |
+| `ctx.knowledge` | `view.knowledge` (category and id select a recall page) | Everyone with `state:knowledge.read` |
+| `ctx.options` | `view.options`, and `manage.options` for the first-party editor | `view.options` with `state:player.read`, and `manage.options` first-party only |
+| `ctx.character` | `view.character`, `view.player().key`, and `events.on("run-end")` | Everyone with `state:player.read`, plus `event:run-end` for `events.on` |
+| `ctx.intent` | `act.submit` (and `view.catalogue`) | Everyone with `input:intent` (`state:interaction.read` for `view.catalogue`) |
+| `ctx.prompt` | `act.answer` | Everyone with `input:prompt.reply` |
+| `ctx.controller` | `act.controller` | Everyone. The `controller` member needs `state:interaction.read`, `input:intent`, and `input:prompt.reply` (see Step 6) |
+| `ctx.events` | `events.on`, `events.off`, with payloads that carry only what the player knows | Everyone with `event:<name>` |
+| `ctx.keymaps` | `ui.keys` | Everyone with `keymap:write` |
+| `ctx.ui` | `ui.mount`, `ui.patch`, and `presentation.panels` for first-party DOM panels | `ui:panel.mount` for `ui.mount` and `ui.patch`, and first-party only for `presentation.panels` |
+| `ctx.title` | `ui.title`, and `presentation.title` | `ui.title` with `ui:title`, and `presentation.title` first-party only |
+| `ctx.net` | `net.request`, `net.credentials` (credentials by opaque reference) | Everyone with `network:<host>` for each host the manifest names |
+| `ctx.backupFolder` | `backupFolder` | Everyone with `backup:folder` |
+| `ctx.display` | `presentation.display` | First-party only |
+| `ctx.subwindows` | `presentation.subwindows` | First-party only |
+| `ctx.tiles` | `presentation.tiles` | First-party only |
+| `ctx.keyRepeat` | `presentation.keyRepeat` | First-party only |
+| `ctx.authoring` | `manage.authoring` | First-party only, with `mod:authoring` |
+| `ctx.keybindings` | `manage.keys` | First-party only |
+| `ctx.look` | `manage.look` | First-party only |
+| `ctx.saves` | `manage.saves` | First-party only |
+| `ctx.session` | `manage.session` | First-party only |
+| `ctx.profiles` | `manage.profiles` | First-party only |
+| `ctx.installMod` | `manage.mods.planInstall`, `manage.mods.applyPlan` | First-party only |
+| `ctx.reloadGame` | `manage.reloadGame` | First-party only |
+| `ctx.loadModForSession` | `manage.loadForSession` | First-party only |
+| `ctx.readMod` | `manage.mods.discover` | First-party only |
+| `ctx.wizard` | `manage.wizard` | First-party only, with `debug:wizard` |
+| `ctx.shared` | None, because values shared between mods are not in API 2 yet | No one |
+| `ctx.debug` | None, because it is retired from public mods and debug tooling is first-party | No one |
+
+The entries of the plugin object itself move onto the definition:
+
+| Old plugin entry | Definition entry |
 | --- | --- |
-| `register(host, ctx)`'s registry host: every `registry:*` override (effects, rooms, stores, commands, monster AI and the rest) | None. |
-| The `controller`, `frontend`, `hud`, `menu`, `screen`, `birth` and `regions` plugin members | None. An API 2 mod cannot take the keyboard, draw the map, or present menus and screens. |
-| The hooks `newCharacter`, `walkBlockedByDiggable`, `levelGenerated`, `partialStackMerge`, `packOverflowVictim`, `levelRevisited`, `projectionRadius` and `artifactCommit` | None (see Step 8). |
-| `ctx.display`, `ctx.subwindows`, `ctx.tiles`, `ctx.keyRepeat` | None. They reach the host's own drawing and input timing. |
-| `ctx.title` | None. Title-screen actions belong to the first-party presentation mod. |
-| `ctx.authoring` | None at run time. The SDK is a build-time package. |
-| `ctx.debug`, `ctx.wizard` | None for public mods. Debug tools are first-party. |
-| `ctx.knowledge`, `ctx.shared`, `ctx.backupFolder` | Not in API 2 yet. |
-| `ctx.saves`, `ctx.installMod`, `ctx.reloadGame`, `ctx.loadModForSession`, `ctx.readMod` | Not in API 2 yet. `API1_CONTEXT_MAP` lists them as later first-party `manage` members. |
-| `ctx.options.set`, `ctx.keybindings` | Not in API 2. The `optionsChanged` hook reads options after a change, and `ui.keys` reaches only bindings the mod owns. |
-| `ctx.settings.onChange` | None. Read `meta.settings()` again. |
-| `ctx.character.sheet()`, `history()`, `runReport()`, `onRunEnd()` | None. `view.player()` has the numbers from the character sheet. |
-| `ctx.inspect`'s text and geometry: item descriptions, monster recall, spell info, loadout comparison, item tester, projection path, blast area | None. `view` returns the data behind them. |
-| `ctx.intent.catalogue()` | None. |
-| `ctx.snapshot()`'s `resting`, `messages`, `storeStatus`, `activeBlast`, `core` and `frame` | Not in `view.input()`. `view.world()` covers what `core` held. |
+| `controller` | The definition's `controller(mod, input)` member, with `armed`, `onKey`, and `onDeath` |
+| `register(host, ctx)` | `start(mod)`. While `start` runs, the registry host it was given is `mod.engine?.registry` (first-party or `engine:access`, in-process only) |
+| `menu`, `screen`, `hud`, `birth` | The `presentation` member (`menu`, `screen`, `hud`, `birth`) and the `birth` member |
+| Game-menu rows | The `actions` member, or `ui.gameMenu.register` |
+| Title rows | The `titleActions` member, or `ui.title.registerRow` |
 
-`API1_CONTEXT_MAP` in `packages/web/src/mod-api2-shim.ts` names, for every member of the API 1 context, where it went in API 2 or why it has none.
+The hooks that pass live game objects stay reachable through `engineHooks(context)` (see Step 8).
+
+Other mods cannot use any row marked first-party only, so a mod that needs only those rows can stay on API 1. `API1_CONTEXT_MAP` in `packages/web/src/mod-api2-shim.ts` names, for every member of the API 1 context, where it went in API 2 or why it has none.
 
 ## Step 2: convert the manifest
 
@@ -251,7 +304,9 @@ const done = await mod.act.submit(input.value.token, { kind: "stop-resting" });
 if (!done.ok) mod.meta.log(done.message);
 ```
 
-`act.controller` has `owns()`, `setStatus()`, `markNondeterministic()` and `release()`, the same jobs as `ctx.controller`. Only the mod that installed the game's controller holds the keyboard, and an API 2 definition has no member that installs one, so `owns()` answers false and the other three answer `refused` with `not-owner`. An autoplayer stays on API 1.
+An API 2 definition takes the keyboard with its `controller(mod, input)` member, which needs `state:interaction.read`, `input:intent`, and `input:prompt.reply` in the manifest. `armed(context)` tells the game whether the mod is ready. `onKey` hears each key the player presses while the mod holds the keyboard and answers `{ kind: "keep" }` or `{ kind: "release" }`. With `onDeath: "end"`, an ordinary death ends the run, and with the default, `"reincarnate"`, the next character starts. Only one autoplayer holds the keyboard at a time.
+
+`act.controller` has `owns()`, `setStatus(status)`, `markNondeterministic()`, and `release(reason)`. Every call except `owns()` answers `refused` with `not-owner` unless the mod holds the keyboard. An autoplayer plans from the known-world `view` and acts through `act`, and consent to `truth` does not let hidden information into its decisions.
 
 ## Step 7: move event listeners
 
@@ -451,7 +506,7 @@ A message over 64 KB is refused, and a Worker that answers no ping for 5 seconds
 
 ## Checklist
 
-1. Check Step 1's table. If the mod needs anything there, keep it on API 1.
+1. Find each part of the old context in Step 1's table. A mod that needs only first-party rows stays on API 1.
 2. Convert the manifest with `convertManifestV1` and fix the `engine` reason it writes.
 3. Set `api` to `>=2.0.0 <3.0.0` in the manifest and in the definition, and default-export the definition with `satisfies Api2ModDefinition`.
 4. Rename `register` to `start` and `uninstall` to `stop`, drop `ctx` from `migrateBag`, and give `hooks` only `{ id, flags }`.

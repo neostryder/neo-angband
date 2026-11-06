@@ -707,6 +707,16 @@ is not in that path. Releasing one is:
 6. A published tag is still **never moved**. Iterating one takes a MINOR bump,
    because a player's installed copy records the tag it came from.
 
+### What a release set has been checked against
+
+A claim that a game version and a set of mods work together rests on one of three kinds of evidence. No kind implies another, so a release note names the kind behind each claim.
+
+1. Coordinated beta tags. The tags on the game and on the mods released with it name the pieces of a set. They show which versions were meant to go together and nothing about whether the set was ever run.
+2. Canaries. `src/mod-canary.test.ts` and its sibling `src/mod-discover-canary.test.ts` drive the registry of released mods through `discoverMod`, the same path the game uses. Run the first with `MOD_CANARY=1 pnpm --dir packages/web exec vitest run src/mod-canary.test.ts`. Each mod is discovered from its own repository and has its payload served with `Access-Control-Allow-Origin: *`, and its manifest must admit this game version and this mod API. A canary is a small executable contract for those paths. It tells you nothing about how a mod behaves in play.
+3. Recorded smoke runs. A smoke run plays a named game build together with a named mod set. Its record names the game version, the version of each mod, and what was played. `pnpm mod-runner` writes such a record for one mod as JSON, and the play-smoke check boots the built desktop shell for the game. Only a recorded run shows that a named combination ran.
+
+In a release note, write `tagged together`, `canary passes`, and `smoke run recorded for <versions>` as separate claims, and never let one stand in for another.
+
 ## How a mod repository gets the gamedata
 
 A mod test that means anything runs the plugin's hooks against a **real level
