@@ -36,7 +36,8 @@ import {
 import { NodeRawFs } from "@rpgm-tools/neo-angband-cli/host-node";
 import { loadOrderFormat } from "@rpgm-tools/neo-angband-mod-sdk";
 import { LAUNCH_MODULES } from "./modules.js";
-import { rendererQuery } from "./launch-query.js";
+import { labShell, rendererQuery } from "./launch-query.js";
+import { takeLabGithubToken, withLabGithubAuth } from "./lab-github-auth.js";
 import {
   BACKUP_CHANNEL,
   HOST_BRIDGE_CHANNEL,
@@ -2162,6 +2163,15 @@ async function start(): Promise<void> {
    * commands that have no renderer route are handled in createWindow's
    * before-input-event listener. */
   Menu.setApplicationMenu(null);
+
+  /* A lab build may send the lab account's GitHub login to api.github.com, so
+   * that mod checks do not share the anonymous hourly limit; see
+   * lab-github-auth.ts. A player build holds no token and registers no hook. */
+  if (takeLabGithubToken(process.env, labShell())) {
+    session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ["https://api.github.com/*"] }, (details, callback) => {
+      callback({ requestHeaders: withLabGithubAuth(details.url, details.requestHeaders) });
+    });
+  }
 
   /* One playing instance per install, taken AFTER the early-exit commands so that
    * `-l` and the usage text still work while the game is running (upstream's

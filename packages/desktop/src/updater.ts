@@ -27,6 +27,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { withLabGithubAuth } from "./lab-github-auth.js";
 import { WORK_DIRNAME, installRoot, swapPlan, swapScript, updatability } from "./update-plan.js";
 import type { Updatability } from "./update-plan.js";
 import { UPDATE_ARCHIVE_LIMITS, unpackArchive, validateArchive } from "./unpack.js";
@@ -195,7 +196,7 @@ export async function resolveReleaseAsset(args: {
   const url = `https://api.github.com/repos/${args.repo}/releases/tags/${encodeURIComponent(args.tag)}`;
   let res: Response;
   try {
-    res = await get(url, { headers: { Accept: "application/vnd.github+json" } });
+    res = await get(url, { headers: withLabGithubAuth(url, { Accept: "application/vnd.github+json" }) });
   } catch {
     throw new Error("GitHub could not be reached to verify this update");
   }

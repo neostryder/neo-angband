@@ -48,6 +48,10 @@ still calls itself.
 
 ## [Unreleased]
 
+### Changed
+
+- [Internal] **Lab builds of the desktop game (bundled with NEO_ANGBAND_LAB_BUILD=1) can now send a GitHub token to api.github.com, so mod install and update checks no longer share GitHub's anonymous limit of 60 requests an hour per address, which several lab runs on one machine used up.** The lab launcher sets NEO_ANGBAND_LAB_GITHUB_TOKEN for one run, and the desktop shell removes the value from its environment as it starts and adds it as an Authorization header to https://api.github.com requests only, covering both the page's requests and the shell's own update lookup (packages/desktop/src/lab-github-auth.ts). No other host receives the token, the shell never logs or stores it, and release builds ignore the variable and stay anonymous.
+
 ## [1.23.0-beta.3] - 2026-11-05
 
 ### Fixed
