@@ -57,10 +57,10 @@ Angband's automatic player, ported from the borg in Angband 4.2.6. It plays thro
 Installing and enabling it does not give it your character. Press Ctrl-Z in play to hand over the keyboard; it warns you and asks you to confirm first. It is deterministic and draws only on its own seeded random number generator, so your save is not flagged as non-reproducible. Only one autoplayer can hold the keyboard at a time.
 
 - Mod id: `borg`, by neostryder
-- Newest release: [v1.4.0-beta.2](https://github.com/neostryder/neo-angband-mod-borg/releases/tag/v1.4.0-beta.2), published 2026-10-31
+- Newest release: [v1.4.0-beta.3](https://github.com/neostryder/neo-angband-mod-borg/releases/tag/v1.4.0-beta.3), published 2026-11-06
 - Game builds: `>=1.23.0-beta.1`
 - In the game: **Recommended mods...**
-- Links: [repository](https://github.com/neostryder/neo-angband-mod-borg), [docs](https://github.com/neostryder/neo-angband-mod-borg/blob/v1.4.0-beta.2/docs/README.md)
+- Links: [repository](https://github.com/neostryder/neo-angband-mod-borg), [docs](https://github.com/neostryder/neo-angband-mod-borg/blob/v1.4.0-beta.3/docs/README.md)
 
 ### Cutting Room Floor
 
