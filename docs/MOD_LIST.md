@@ -14,13 +14,13 @@ Conveniences that faithful Angband does not have. Angband's own options belong t
 
 Looking for zoom, hover cards or the high-contrast and colourblind displays? Those visual features, along with the other display options, now live in the AnybandUI mod.
 
-Enable it and you get the whole set, and each tweak has its own toggle you can switch off separately. Turn the mod off and the base game is exactly as it was.
+Enable it and you get the tweaks that start on, and each tweak has its own toggle you can switch on or off separately. Turn the mod off and the base game is exactly as it was.
 
 - Mod id: `qol`, by neostryder
-- Newest release: [v1.13.0](https://github.com/neostryder/neo-angband-mod-qol/releases/tag/v1.13.0), published 2026-09-27
-- Game builds: `>=1.8.0`
+- Newest release: [v1.14.0-beta.2](https://github.com/neostryder/neo-angband-mod-qol/releases/tag/v1.14.0-beta.2), published 2026-10-31
+- Game builds: `>=1.23.0-beta.1`
 - In the game: **Recommended mods...**
-- Links: [repository](https://github.com/neostryder/neo-angband-mod-qol), [docs](https://github.com/neostryder/neo-angband-mod-qol/blob/v1.13.0/docs/README.md)
+- Links: [repository](https://github.com/neostryder/neo-angband-mod-qol), [docs](https://github.com/neostryder/neo-angband-mod-qol/blob/v1.14.0-beta.2/docs/README.md)
 
 ### Bug Fixes
 
@@ -29,10 +29,10 @@ Opt-in fixes for bugs in Angband 4.2.6, in the style of an unofficial patch.
 Each kind of fix has its own toggle, so you can switch off any one of them and keep the rest. The port itself reproduces 4.2.6 faithfully, bugs included, so with this mod off none of these fixes apply.
 
 - Mod id: `bug-fixes`, by neostryder
-- Newest release: [v1.3.0](https://github.com/neostryder/neo-angband-mod-bug-fixes/releases/tag/v1.3.0), published 2026-09-26
-- Game builds: `>=1.2.0`
+- Newest release: [v1.4.0-beta.2](https://github.com/neostryder/neo-angband-mod-bug-fixes/releases/tag/v1.4.0-beta.2), published 2026-10-31
+- Game builds: `>=1.23.0-beta.1`
 - In the game: **Recommended mods...**
-- Links: [repository](https://github.com/neostryder/neo-angband-mod-bug-fixes), [docs](https://github.com/neostryder/neo-angband-mod-bug-fixes/blob/v1.3.0/docs/README.md)
+- Links: [repository](https://github.com/neostryder/neo-angband-mod-bug-fixes), [docs](https://github.com/neostryder/neo-angband-mod-bug-fixes/blob/v1.4.0-beta.2/docs/README.md)
 
 ### Linoleum
 
@@ -45,10 +45,10 @@ Unlike a fixed sheet, it can have one symbol draw from a pool of variants, picke
 Converting somebody's tile set modifies their art. The Shockbolt packs ship under permission granted to Neo Angband specifically, on condition that this project does not profit, so check a set's licence before sharing a pack you built from it.
 
 - Mod id: `linoleum`, by neostryder
-- Newest release: [v1.5.0](https://github.com/neostryder/neo-angband-mod-linoleum/releases/tag/v1.5.0), published 2026-10-02
-- Game builds: `>=1.21.1`
+- Newest release: [v1.6.0-beta.2](https://github.com/neostryder/neo-angband-mod-linoleum/releases/tag/v1.6.0-beta.2), published 2026-10-31
+- Game builds: `>=1.23.0-beta.1`
 - In the game: **Recommended mods...**
-- Links: [repository](https://github.com/neostryder/neo-angband-mod-linoleum), [docs](https://github.com/neostryder/neo-angband-mod-linoleum/blob/v1.5.0/docs/README.md)
+- Links: [repository](https://github.com/neostryder/neo-angband-mod-linoleum), [docs](https://github.com/neostryder/neo-angband-mod-linoleum/blob/v1.6.0-beta.2/docs/README.md)
 
 ### Borg
 
@@ -57,10 +57,10 @@ Angband's automatic player, ported from the borg in Angband 4.2.6. It plays thro
 Installing and enabling it does not give it your character. Press Ctrl-Z in play to hand over the keyboard; it warns you and asks you to confirm first. It is deterministic and draws only on its own seeded random number generator, so your save is not flagged as non-reproducible. Only one autoplayer can hold the keyboard at a time.
 
 - Mod id: `borg`, by neostryder
-- Newest release: [v1.3.0](https://github.com/neostryder/neo-angband-mod-borg/releases/tag/v1.3.0), published 2026-10-02
-- Game builds: `>=1.21.1`
+- Newest release: [v1.4.0-beta.2](https://github.com/neostryder/neo-angband-mod-borg/releases/tag/v1.4.0-beta.2), published 2026-10-31
+- Game builds: `>=1.23.0-beta.1`
 - In the game: **Recommended mods...**
-- Links: [repository](https://github.com/neostryder/neo-angband-mod-borg), [docs](https://github.com/neostryder/neo-angband-mod-borg/blob/v1.3.0/docs/README.md)
+- Links: [repository](https://github.com/neostryder/neo-angband-mod-borg), [docs](https://github.com/neostryder/neo-angband-mod-borg/blob/v1.4.0-beta.2/docs/README.md)
 
 ### Cutting Room Floor
 
@@ -69,10 +69,10 @@ Brings back Angband features that later versions dropped, and content upstream w
 Each one has its own toggle, so you can pick just the ones you want.
 
 - Mod id: `feature-restoration`, by neostryder
-- Newest release: [v1.3.0](https://github.com/neostryder/neo-angband-mod-feature-restoration/releases/tag/v1.3.0), published 2026-10-02
-- Game builds: `>=1.21.1`
+- Newest release: [v1.4.0-beta.2](https://github.com/neostryder/neo-angband-mod-feature-restoration/releases/tag/v1.4.0-beta.2), published 2026-10-31
+- Game builds: `>=1.23.0-beta.1`
 - In the game: **Recommended mods...**
-- Links: [repository](https://github.com/neostryder/neo-angband-mod-feature-restoration), [docs](https://github.com/neostryder/neo-angband-mod-feature-restoration/blob/v1.3.0/docs/README.md)
+- Links: [repository](https://github.com/neostryder/neo-angband-mod-feature-restoration), [docs](https://github.com/neostryder/neo-angband-mod-feature-restoration/blob/v1.4.0-beta.2/docs/README.md)
 
 ### ModForge
 
@@ -95,10 +95,10 @@ Opt-in changes from upstream Angband development after 4.2.6, the tag this port 
 Once core rebaselines onto a newer upstream tag, everything here is already in the game and the mod deletes itself.
 
 - Mod id: `upstream-catchup`, by neostryder
-- Newest release: [v1.2.0](https://github.com/neostryder/neo-angband-mod-upstream-catchup/releases/tag/v1.2.0), published 2026-09-26
-- Game builds: `>=1.18.0`
+- Newest release: [v1.3.0-beta.2](https://github.com/neostryder/neo-angband-mod-upstream-catchup/releases/tag/v1.3.0-beta.2), published 2026-10-31
+- Game builds: `>=1.23.0-beta.1`
 - In the game: **Recommended mods...**
-- Links: [repository](https://github.com/neostryder/neo-angband-mod-upstream-catchup), [docs](https://github.com/neostryder/neo-angband-mod-upstream-catchup/blob/v1.2.0/docs/README.md)
+- Links: [repository](https://github.com/neostryder/neo-angband-mod-upstream-catchup), [docs](https://github.com/neostryder/neo-angband-mod-upstream-catchup/blob/v1.3.0-beta.2/docs/README.md)
 
 ### AnybandUI
 

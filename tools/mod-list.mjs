@@ -99,7 +99,18 @@ export async function modFacts(repo, { fetch: get = fetch, token } = {}) {
     `https://raw.githubusercontent.com/${repo}/refs/tags/${encodeURIComponent(tag)}/${file}`;
   const manifestRes = await get(raw("manifest.json"));
   if (!manifestRes.ok) throw new Error(`${repo}: no manifest.json at ${tag}`);
-  const manifest = JSON.parse(await manifestRes.text());
+  const parsed = JSON.parse(await manifestRes.text());
+  /* A manifest is either flat or `{ format, schemaVersion, data }` (mod API 2). */
+  const manifest =
+    typeof parsed.data === "object" && parsed.data !== null && !Array.isArray(parsed.data)
+      ? parsed.data
+      : parsed;
+  const engineRange =
+    typeof manifest.engine === "string"
+      ? manifest.engine
+      : typeof manifest.engine?.range === "string"
+        ? manifest.engine.range
+        : null;
 
   let docs = null;
   for (const file of ["docs/README.md", "README.md"]) {
@@ -116,7 +127,7 @@ export async function modFacts(repo, { fetch: get = fetch, token } = {}) {
     name: typeof manifest.name === "string" && manifest.name !== "" ? manifest.name : repo,
     description: typeof manifest.description === "string" ? manifest.description : "",
     author: typeof manifest.author === "string" ? manifest.author : null,
-    engine: typeof manifest.engine === "string" ? manifest.engine : null,
+    engine: engineRange,
     tag,
     prerelease: release.prerelease === true,
     date: String(release.published_at).slice(0, 10),
