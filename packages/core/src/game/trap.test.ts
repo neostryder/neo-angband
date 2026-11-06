@@ -38,6 +38,7 @@ import { runAction } from "./player-path.js";
 import { makeState, plReg } from "./harness.js";
 import type { GameState } from "./context.js";
 import { FEAT, SQUARE } from "../generated/index.js";
+import { knownFeat } from "./known.js";
 import { movePlayer } from "./context.js";
 import { thrustAway } from "./thrust.js";
 import { squareMemorize } from "./known.js";
@@ -327,6 +328,27 @@ describe("disarm and the step hook", () => {
     expect(squareIsPlayerTrap(state, loc(10, 10))).toBe(true);
     state.chunk.setFeat(loc(10, 10), FEAT.GRANITE);
     expect(squareIsPlayerTrap(state, loc(10, 10))).toBe(false);
+  });
+
+  it("setFeat on a seen grid updates the remembered map (cave-square.c:1261)", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    installChunkFeatHook(state);
+    const grid = loc(10, 10);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    state.chunk.setFeat(grid, FEAT.GRANITE);
+    expect(knownFeat(state, grid)).toBe(FEAT.GRANITE);
+    state.chunk.setFeat(grid, FEAT.FLOOR);
+    expect(knownFeat(state, grid)).toBe(FEAT.FLOOR);
+  });
+
+  it("setFeat on an unseen grid leaves the remembered map alone", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    installChunkFeatHook(state);
+    const grid = loc(10, 10);
+    state.chunk.sqinfoOff(grid, SQUARE.SEEN);
+    const before = knownFeat(state, grid);
+    state.chunk.setFeat(grid, FEAT.GRANITE);
+    expect(knownFeat(state, grid)).toBe(before);
   });
 
   it("squareIsWarded is only glyph of warding, not decoy (cave-square.c:751-755)", () => {
