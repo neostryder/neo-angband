@@ -50,7 +50,12 @@ still calls itself.
 
 ### Changed
 
-- [Internal] **Lab builds of the desktop game (bundled with NEO_ANGBAND_LAB_BUILD=1) can now send a GitHub token to api.github.com, so mod install and update checks no longer share GitHub's anonymous limit of 60 requests an hour per address, which several lab runs on one machine used up.** The lab launcher sets NEO_ANGBAND_LAB_GITHUB_TOKEN for one run, and the desktop shell removes the value from its environment as it starts and adds it as an Authorization header to https://api.github.com requests only, covering both the page's requests and the shell's own update lookup (packages/desktop/src/lab-github-auth.ts). No other host receives the token, the shell never logs or stores it, and release builds ignore the variable and stay anonymous.
+- [Internal] **Lab builds of the desktop game (bundled with NEO_ANGBAND_LAB_BUILD=1) can now send a GitHub token to api.github.com, so mod install and update checks no longer share GitHub's anonymous limit of 60 requests an hour per address, which several lab runs on one machine used up.** The lab launcher sets NEO_ANGBAND_LAB_GITHUB_TOKEN for one run, and the desktop shell removes the value from its environment as it starts and adds it as an Authorization header to GET requests on api.github.com for a repository's tags, its releases, one release by tag, and one tag's file tree, covering both the page's requests and the shell's own update lookup (packages/desktop/src/lab-github-auth.ts). A mod running in the page cannot use it for other GitHub requests such as writes or account reads. No other host receives the token, the shell never logs or stores it, and release builds ignore the variable and stay anonymous.
+
+### Fixed
+
+- [Internal] [Security] **A backup folder purpose id in the desktop game must now be 1 to 64 lowercase letters, digits, and hyphens starting with a letter or digit,** since the id becomes part of a file name in the user data folder and an id such as "x/../../sentinel" could point a forget request at a JSON file outside it. A purpose id that does not match is rejected before any file is read, written, or deleted.
+- [Internal] [Security] **The desktop shell now rejects an update download in the installing process when the release is not newer than the installed version or its tag is not a version.** The page already applied this rule when choosing an update, but any script in the page can call the update bridge with any tag, and because the save format only moves forward, an older engine can damage characters it cannot read.
 
 ## [1.23.0-beta.3] - 2026-11-05
 

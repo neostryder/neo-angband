@@ -10,7 +10,9 @@
  * Four rules keep it narrow:
  *  - only a shell bundled with `NEO_ANGBAND_LAB_BUILD=1` reads the variable;
  *  - the header goes to `https://api.github.com/` and to no other origin, so the
- *    token never reaches a mod's server, a model host, or a redirect target;
+ *    token never reaches a mod's server, a model host, or a redirect target, and
+ *    only on the GET lookups the game makes (tags, releases, file trees), so a mod
+ *    cannot use it to read or change anything else on the account;
  *  - the token is taken out of the process environment as it is read, so a mod
  *    that asks the host relay for an environment variable cannot get it;
  *  - nothing here logs, stores, or returns the token to the page.
@@ -59,15 +61,32 @@ export function isGithubApiUrl(url: string): boolean {
   );
 }
 
+/**
+ * The read-only lookups the game makes: a repository's tags, its releases, one release by
+ * tag, and one tag's file tree. A mod's code runs in the same page and could ask GitHub for
+ * anything else, so the login goes to these and to nothing else.
+ */
+const LAB_READ_PATH = /^\/repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/(?:tags|releases|releases\/tags\/[^/]+|git\/trees\/[^/]+)$/u;
+
+/** True for a GET to one of the read-only lookups above on the exact API host. */
+export function isLabGithubReadRequest(url: string, method: string): boolean {
+  if (method.toUpperCase() !== "GET" || !isGithubApiUrl(url)) return false;
+  return LAB_READ_PATH.test(new URL(url).pathname);
+}
+
 /** The `Authorization` value for this request, or null when it gets none. */
-export function labGithubAuthorization(url: string): string | null {
-  if (heldToken === null || !isGithubApiUrl(url)) return null;
+export function labGithubAuthorization(url: string, method = "GET"): string | null {
+  if (heldToken === null || !isLabGithubReadRequest(url, method)) return null;
   return `Bearer ${heldToken}`;
 }
 
-/** Request headers with the lab login added when this URL qualifies; the input is not changed. */
-export function withLabGithubAuth(url: string, headers: Readonly<Record<string, string>>): Record<string, string> {
-  const authorization = labGithubAuthorization(url);
+/** Request headers with the lab login added when this request qualifies; the input is not changed. */
+export function withLabGithubAuth(
+  url: string,
+  headers: Readonly<Record<string, string>>,
+  method = "GET",
+): Record<string, string> {
+  const authorization = labGithubAuthorization(url, method);
   return authorization === null ? { ...headers } : { ...headers, Authorization: authorization };
 }
 

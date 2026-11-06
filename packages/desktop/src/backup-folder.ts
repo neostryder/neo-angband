@@ -36,8 +36,18 @@ export const BACKUP_FOLDER_FILE = "backup-folder.json";
  */
 export const CHARACTER_BACKUP_PURPOSE = "character-backup";
 
+/**
+ * Is this a purpose id the host will turn into a file name? Lowercase letters, digits, and
+ * hyphens, starting with a letter or digit. A purpose arrives from any script in the page,
+ * so a separator or a `..` in it must never reach a path join.
+ */
+export function isBackupPurpose(purpose: unknown): purpose is string {
+  return typeof purpose === "string" && /^[a-z0-9][a-z0-9-]{0,63}$/u.test(purpose);
+}
+
 /** Which file a purpose's remembered-folder record lives in. */
 export function hostFolderRecordFile(purpose: string): string {
+  if (!isBackupPurpose(purpose)) throw new Error("the backup purpose is not a valid id");
   return purpose === CHARACTER_BACKUP_PURPOSE
     ? BACKUP_FOLDER_FILE
     : `backup-folder-${purpose}.json`;

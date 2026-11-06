@@ -53,6 +53,30 @@ describe("lab GitHub login", () => {
     }
   });
 
+  it("adds the login only to the read-only lookups the game makes, and only on GET", () => {
+    takeLabGithubToken({ [LAB_GITHUB_TOKEN_ENV]: TOKEN }, true);
+    for (const url of [
+      "https://api.github.com/repos/a/b/tags?per_page=100",
+      "https://api.github.com/repos/a/b/releases?per_page=50",
+      "https://api.github.com/repos/a/b/releases/tags/v1.2.3",
+      "https://api.github.com/repos/a/b/git/trees/v1.2.3?recursive=1",
+    ]) {
+      expect(labGithubAuthorization(url, "GET"), url).toBe(`Bearer ${TOKEN}`);
+    }
+    for (const url of [
+      "https://api.github.com/user",
+      "https://api.github.com/repos/a/b/issues",
+      "https://api.github.com/repos/a/b/contents/x",
+      "https://api.github.com/repos/a/b/git/refs",
+      "https://api.github.com/graphql",
+    ]) {
+      expect(labGithubAuthorization(url, "GET"), url).toBeNull();
+    }
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
+      expect(labGithubAuthorization("https://api.github.com/repos/a/b/tags", method), method).toBeNull();
+    }
+  });
+
   it("does not change the headers it is given", () => {
     takeLabGithubToken({ [LAB_GITHUB_TOKEN_ENV]: TOKEN }, true);
     const given = { Accept: "application/vnd.github+json" };

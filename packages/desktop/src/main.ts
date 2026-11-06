@@ -56,6 +56,7 @@ import type { BackupOp } from "./bridge-channel.js";
 import {
   CHARACTER_BACKUP_PURPOSE,
   backupFolderDisplayName,
+  isBackupPurpose,
   isHostFolderFileName,
   listBackupFiles,
   readBackupFolder,
@@ -76,6 +77,7 @@ import {
   shapeOf,
   stageArchive,
 } from "./updater.js";
+import { assertNewerThanInstalled } from "./update-guard.js";
 import { checkWritable, resolveDataBase } from "./data-dir.js";
 import { IMPORTED_DIRNAME, archiveModZip, isModZipName } from "./mod-archive.js";
 import { lastLoopbackPort, legacyPorts } from "./legacy-origins.js";
@@ -676,6 +678,7 @@ function installBackupChannel(): void {
   ipcMain.handle(BACKUP_CHANNEL, async (event, op: unknown, arg: unknown) => {
     const a = (arg ?? {}) as { purpose?: unknown; ext?: unknown; name?: unknown; text?: unknown };
     const purpose = typeof a.purpose === "string" && a.purpose !== "" ? a.purpose : CHARACTER_BACKUP_PURPOSE;
+    if (!isBackupPurpose(purpose)) throw new Error("the backup purpose is not a valid id");
     const ext = typeof a.ext === "string" && a.ext !== "" ? a.ext : ".neochar";
     const folder = readBackupFolder(USER_BASE, purpose);
     switch (op as BackupOp) {
@@ -808,6 +811,7 @@ function installUpdater(): void {
          * and chooses this machine's asset itself, so an in-process mod cannot
          * turn this capability into an arbitrary verified downloader. */
         const tag = releaseTagFromRenderer(arg);
+        assertNewerThanInstalled(tag, app.getVersion());
         const asset = await resolveReleaseAsset({
           tag,
           repo: UPDATE_REPO,
@@ -2169,7 +2173,7 @@ async function start(): Promise<void> {
    * lab-github-auth.ts. A player build holds no token and registers no hook. */
   if (takeLabGithubToken(process.env, labShell())) {
     session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ["https://api.github.com/*"] }, (details, callback) => {
-      callback({ requestHeaders: withLabGithubAuth(details.url, details.requestHeaders) });
+      callback({ requestHeaders: withLabGithubAuth(details.url, details.requestHeaders, details.method) });
     });
   }
 

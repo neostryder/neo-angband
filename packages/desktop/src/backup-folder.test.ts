@@ -12,6 +12,7 @@ import {
   CHARACTER_BACKUP_PURPOSE,
   backupFolderDisplayName,
   hostFolderRecordFile,
+  isBackupPurpose,
   isBackupFileName,
   isHostFolderFileName,
   listBackupFiles,
@@ -122,6 +123,23 @@ describe("purpose-keying (#158): two callers, two remembered folders", () => {
 
   it("any other purpose gets its own file, named from the purpose", () => {
     expect(hostFolderRecordFile("mod-profile-sync")).toBe("backup-folder-mod-profile-sync.json");
+  });
+
+  it("refuses a purpose that would leave the user folder", () => {
+    for (const bad of ["x/../../sentinel", "..", "a/b", "a\b", "A", "", "-x", "x.json", "x".repeat(65)]) {
+      expect(isBackupPurpose(bad), bad).toBe(false);
+      expect(() => hostFolderRecordFile(bad), bad).toThrow();
+    }
+    const sentinel = path.join(path.dirname(base), "sentinel.json");
+    fs.writeFileSync(sentinel, "keep");
+    try {
+      expect(() => writeBackupFolder(base, null, "x/../../sentinel")).toThrow();
+      expect(fs.existsSync(sentinel)).toBe(true);
+    } finally {
+      fs.rmSync(sentinel, { force: true });
+    }
+    expect(isBackupPurpose("mod-profile-sync")).toBe(true);
+    expect(isBackupPurpose(CHARACTER_BACKUP_PURPOSE)).toBe(true);
   });
 
   it("a mod-profile-sync folder and a character-backup folder do not collide", () => {
