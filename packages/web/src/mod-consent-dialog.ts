@@ -23,7 +23,19 @@ async function confirm(title: string, name: string, content: readonly HTMLElemen
   try {
     dialog = document.createElement("dialog");
     const panel = dialog;
-    dialog.style.cssText = "font:16px/1.4 system-ui,sans-serif;color:CanvasText;background:Canvas;border:2px solid CanvasText;padding:24px;width:min(42rem,calc(100vw - 48px));max-height:85vh;overflow:auto";
+    dialog.className = "neo-consent";
+    // The game's own look: a black panel, light grey text, and the yellow of its cursor. The values are
+    // literals, not page variables, so nothing on the page can restyle this dialog.
+    dialog.style.cssText = "font:15px/1.5 'Cascadia Mono',Consolas,ui-monospace,monospace;color:#c0c0c0;background:#000000;color-scheme:dark;accent-color:#ffff00;border:1px solid #606060;border-radius:0;padding:20px 24px;width:min(42rem,calc(100vw - 48px));max-height:85vh;overflow:auto";
+    const look = document.createElement("style");
+    look.textContent = ".neo-consent::backdrop{background:rgba(0,0,0,.72)}" +
+      ".neo-consent h2{margin:0 0 4px;font:inherit;font-weight:700;color:#ffffff}" +
+      ".neo-consent h3{margin:0 0 12px;font:inherit;color:#ffff00}" +
+      ".neo-consent p{margin:0 0 12px}" +
+      ".neo-consent button{font:inherit;color:#c0c0c0;background:#000000;border:1px solid #606060;border-radius:0;padding:4px 14px;cursor:pointer}" +
+      ".neo-consent button:hover{color:#ffffff;border-color:#c0c0c0}" +
+      ".neo-consent button:focus-visible,.neo-consent input:focus-visible{outline:2px solid #ffff00;outline-offset:2px}";
+    dialog.append(look);
     dialog.setAttribute("aria-modal", "true");
     dialog.setAttribute("aria-label", title + ": " + displayName(name));
     const heading = document.createElement("h2");
@@ -79,7 +91,7 @@ export async function drawModPermissionConsent(
     for (const capability of caps) {
       const detail = describeCapability(capability);
       const label = document.createElement("label");
-      label.style.cssText = "display:flex;align-items:start;gap:12px;margin:12px 0";
+      label.style.cssText = "display:flex;align-items:start;gap:12px;margin:10px 0";
       const input = document.createElement("input");
       input.type = "checkbox";
       const entry = matchCapability(capability)?.entry;
@@ -88,7 +100,7 @@ export async function drawModPermissionConsent(
       input.checked = prior?.granted.includes(capability) ? true : prior?.refused.includes(capability) ? false : defaultGrant;
       const text = document.createElement("span");
       text.textContent = detail.text;
-      if (detail.elevated) text.style.fontWeight = "600";
+      if (detail.elevated) text.style.cssText = "font-weight:700;color:#ffffff";
       label.append(input, text);
       controls.set(capability, input);
       content.push(label);

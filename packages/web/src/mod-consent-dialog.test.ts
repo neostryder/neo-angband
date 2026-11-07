@@ -41,7 +41,8 @@ describe("core consent dialogs", () => {
     expect(dialog.textContent).toContain("<img src=x>Mandos");
     expect(dialog.textContent).toContain(MOD_PERMISSION_TEXT.controller);
     expect(dialog.textContent).not.toContain("No permissions needed");
-    expect(dialog.style.font).toContain("system-ui");
+    expect(dialog.style.font).toContain("monospace");
+    expect(dialog.style.backgroundColor).toBe("rgb(0, 0, 0)");
     expect(dialog.querySelectorAll("input")).toHaveLength(2);
     expect(modPanelsSuspended()).toBe(true);
     expect(document.activeElement?.textContent).toBe(MOD_PERMISSION_TEXT.cancel);
