@@ -122,6 +122,10 @@ export class ModManagerService {
 
   get state(): Immutable<ManagerState> { return this.#state; }
 
+  workerConfiguration(): string {
+    return JSON.stringify([this.#env.store.configurationRevision(), this.#env.listCatalog(), this.#metadata, this.#env.conflictOverrides?.read(), this.#env.consent?.read(), this.#env.profile?.()]);
+  }
+
   subscribe(listener: (state: Immutable<ManagerState>) => void): () => void {
     this.#listeners.add(listener);
     return () => { this.#listeners.delete(listener); };

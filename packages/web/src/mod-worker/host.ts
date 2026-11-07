@@ -25,7 +25,7 @@
  */
 
 import { decideAutoplayerKey } from "../autoplayer-keys";
-import { disposeApi2Host, serveSimpleWorkerCall } from "../mod-api2-host";
+import { callWorkerManage, disposeApi2Host, serveSimpleWorkerCall } from "../mod-api2-host";
 import {
   API2_HOOK_NAMES,
   CAPABILITY_VOCABULARY,
@@ -50,11 +50,14 @@ import {
   type ModApi2,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modHealth } from "../mod-health";
+import { modHolds } from "../mod-tier";
 import { modPanelsSuspended } from "../panel-runtime";
 import { cloneWorkerJson, payloadBytes, toWorkerJson } from "./clone";
 import {
   MOD_WORKER_PROTOCOL_VERSION,
   WORKER_CALLS,
+  WORKER_MANAGE_CALLS,
+  validWorkerManageCall,
   SIMPLE_WORKER_CALLS,
   type HostToModWorker,
   type ModWorkerToHost,
@@ -429,7 +432,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     }
   };
 
-  const reply = (requestId: number, calledIn: number, result: Api2Result<unknown> | Error): void => {
+  const reply = (requestId: number, calledIn: number, result: Api2Result<unknown> | Error, authorized?: () => boolean): void => {
     if (result instanceof Error) {
       post({ type: "reply", pluginId: deps.id, epoch: calledIn, requestId, ok: false, error: result.message.slice(0, 4096) });
       return;
@@ -438,12 +441,14 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     try {
       json = toWorkerJson(result);
     } catch (err) {
+      if (authorized && !authorized()) return;
       post({ type: "reply", pluginId: deps.id, epoch: calledIn, requestId, ok: false, error: `the answer could not be copied: ${messageOf(err)}`.slice(0, 4096) });
       return;
     }
     const time = now();
     while (replySizes[0] && replySizes[0].time < time - 1000) replySizes.shift();
     const bytes = payloadBytes(json);
+    if (authorized && !authorized()) return;
     if (bytes > MAX_REPLY_BYTES || replySizes.reduce((total, reply) => total + reply.bytes, bytes) > MAX_REPLY_BYTES_PER_SECOND) {
       post({ type: "reply", pluginId: deps.id, epoch: calledIn, requestId, ok: false, error: MOD_PERMISSION_TEXT.quota });
       health.switchOff(deps.id, "replies", new Error(MOD_PERMISSION_TEXT.quota));
@@ -471,6 +476,14 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       const capability = SIMPLE_WORKER_CALLS[method as keyof typeof SIMPLE_WORKER_CALLS];
       if (!capabilities.has(capability) || !host.meta.granted(capability)) return api2NotGranted(capability);
       return await serveSimpleWorkerCall(host, method, args, current);
+    }
+    if (method.startsWith("truth.")) {
+      const capability = truthCapability(host, method);
+      if (!capability) return api2NotGranted(method === "truth.level" || method === "truth.storeKnowledge" ? "state:map-actual.read" : "state:monsters-actual.read");
+      if (method === "truth.race" ? args.length !== 1 || !Number.isSafeInteger(args[0]) || (args[0] as number) < 0 : args.length !== 0) {
+        return api2Refused("bad-call", "truth reads take no arguments except race, which takes a non-negative race index");
+      }
+      if (!host.truth) return api2NotGranted(capability);
     }
     if ((method === "events.on" || method === "ui.onKey" || method === "backupFolder.onSave") && subscriptions.size + keySubscriptions.size + backupSubscriptions.size >= 64) return api2Refused("quota", MOD_PERMISSION_TEXT.quota);
     if (method === "ui.title.registerRow") {
@@ -591,8 +604,19 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     return await (target(...args) as Promise<Api2Result<unknown>>);
   };
 
+  const truthCapability = (host: ModApi2, method: string): string | null => {
+    const held = (capability: string): boolean => capabilities.has(capability) && host.meta.granted(capability) && modHolds(deps.id, capability);
+    if (held("state:map-actual.read")) return "state:map-actual.read";
+    return method !== "truth.level" && method !== "truth.storeKnowledge" && held("state:monsters-actual.read") ? "state:monsters-actual.read" : null;
+  };
+
   const called = (message: Extract<ModWorkerToHost, { type: "call" }>): void => {
-    const respond = (result: Api2Result<unknown> | Error): void => reply(message.requestId, message.epoch, result);
+    let truthAdmitted = false;
+    const authorized = (): boolean => state === "running" && message.epoch === epoch && api !== null && truthCapability(api, message.method) !== null;
+    const respond = (result: Api2Result<unknown> | Error): void => {
+      if (truthAdmitted && !authorized()) return;
+      reply(message.requestId, message.epoch, result, truthAdmitted ? authorized : undefined);
+    };
     if (message.epoch !== epoch) {
       stale += 1;
       health.recordStale(deps.id);
@@ -607,9 +631,9 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       respond(api2NotGranted("engine:access"));
       return;
     }
-    if (!(WORKER_CALLS as readonly string[]).includes(message.method) && !Object.hasOwn(SIMPLE_WORKER_CALLS, message.method)) {
+    if (!(WORKER_CALLS as readonly string[]).includes(message.method) && !Object.hasOwn(WORKER_MANAGE_CALLS, message.method) && !Object.hasOwn(SIMPLE_WORKER_CALLS, message.method)) {
       fail(`refused call to "${message.method}", which a Worker mod cannot make`);
-      respond(new Error(`"${message.method}" is not part of the API a Worker mod holds`));
+      respond(new Error(`"${message.method}" is not part of the API a Worker mod holds${message.method.startsWith("manage.") ? "; this operation has no isolated Worker mechanism, and exit, quit, and wizard require proven detachment from saves" : ""}`));
       return;
     }
     const t = now();
@@ -620,10 +644,12 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     }
     callTimes.push(t);
     const host = controllerApi && (message.method === "act.submit" || message.method === "act.answer") ? controllerApi : api;
+    truthAdmitted = message.method.startsWith("truth.") && truthCapability(host, message.method) !== null;
     let pending: Promise<Api2Result<unknown>>;
     try {
-      pending = health.run(deps.id, `Worker ${message.method}`, () => serve(host, message.method, message.args,
-        () => state === "running" && message.epoch === epoch));
+      pending = health.run(deps.id, `Worker ${message.method}`, () => message.method.startsWith("manage.")
+        ? serveWorkerManage(host, message.method, message.args, capabilities, () => state === "running" && epoch === message.epoch)
+        : serve(host, message.method, message.args, () => state === "running" && message.epoch === epoch));
     } catch (err) {
       respond(err instanceof Error ? err : new Error(messageOf(err)));
       return;
@@ -767,6 +793,13 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     staleCount: (): number => stale,
     teardown: stop,
   };
+}
+
+async function serveWorkerManage(host: ModApi2, method: string, args: readonly WorkerJson[], capabilities: CapabilitySet, current: () => boolean): Promise<Api2Result<unknown>> {
+  const capability = Object.hasOwn(WORKER_MANAGE_CALLS, method) ? WORKER_MANAGE_CALLS[method] : undefined;
+  if (!capability || !capabilities.has(capability) || !host.meta.granted(capability)) return api2NotGranted(capability ?? "profiles:manage");
+  if (!validWorkerManageCall(method, args)) return api2Refused("bad-call", "The management request has invalid arguments.");
+  return callWorkerManage(host, method, args, current);
 }
 
 /** The API method at `path` on `api`, bound, or null when the domain is absent. */

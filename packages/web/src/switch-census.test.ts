@@ -206,7 +206,10 @@ describe("the switch census", () => {
        * host's event-payload filter were both listed: each is host-internal,
        * since a mod uses API domains and cannot add protocol messages or
        * event kinds. */
-      INTERNAL: 7,
+      /* 8 once the Worker management-call argument allowlist (protocol.ts) was
+       * listed: host-internal, since a mod can name an operation but never
+       * add one or widen what its arguments may be. */
+      INTERNAL: 8,
       /* 3 until the i18n sweep (neostryder/neo-angband#95) added shop.ts's
        * commentWelcome, the greeting-tier-to-translated-line switch that keeps
        * COMMENT_WELCOME's English array intact for its RNG-parity-relevant

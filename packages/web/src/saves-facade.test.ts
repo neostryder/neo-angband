@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
-import { createModSaves, type SavesDoorDeps } from "./saves-facade";
+import { createModSaves, workerSaveAccess, type SavesDoorDeps } from "./saves-facade";
 import { modPluginContext } from "./mod-context";
 import { deleteSlot, listRoster, onRosterChange, setRosterStorage, writeSlot, type CharMeta } from "./roster";
 
@@ -35,6 +36,31 @@ function deps(over: Partial<SavesDoorDeps> = {}): SavesDoorDeps {
 afterEach(() => setRosterStorage(null));
 
 describe("mod saves facade", () => {
+  it("keeps the guarded host load door when the context wraps controller resume", () => {
+    const door = deps({ create: () => ({ ok: true }) });
+    const saves = createModSaves(door);
+    const capabilities = CapabilitySet.fromManifest({ id: "probe", name: "Probe", version: "1.0.0", shape: "plugin", capabilities: ["saves:manage"] });
+    const context = modPluginContext("probe", {}, undefined, {}, { capabilities, saves });
+    expect(context.saves).not.toBe(saves);
+    expect(workerSaveAccess(context.saves!)).toBe(door);
+  });
+
+  it.each(["sideloaded", "first-party"])("keeps %s Worker resume behind the second controller dialog", async (trust) => {
+    const source = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+    const gate = source.match(/async function confirmControllerActivation\(id: string\): Promise<boolean> \{[\s\S]*?\n\}/u)?.[0];
+    if (!gate) throw new Error("The controller consent gate was not found.");
+    const candidate = { id: "probe", manifest: { name: "Probe" }, tier: { trust, execution: "worker" } };
+    const legacy = vi.fn(async () => true);
+    const draw = vi.fn(async () => false);
+    const run = new Function("controllerCandidates", "confirmBorgActivation", "drawModControllerConsent", `${gate.replace("(id: string): Promise<boolean>", "(id)")}\nreturn confirmControllerActivation("probe");`) as (candidates: () => unknown[], legacyCallback: typeof legacy, drawCallback: typeof draw) => Promise<boolean>;
+    expect(await run(() => [candidate], legacy, draw)).toBe(false);
+    expect(draw).toHaveBeenCalledExactlyOnceWith("probe", "Probe");
+    expect(legacy).not.toHaveBeenCalled();
+    const rollOn = source.match(/else if \(rollOnAutoplayerId === loaded.id\) \{([\s\S]*?)\n {4}\}/u)?.[1];
+    expect(rollOn).toContain("pendingAutoplayerInstall = { loaded, install }");
+    expect(rollOn).not.toContain("finishAutoplayerInstall");
+    expect(source).toContain(".then(confirmPendingAutoplayerInstall)");
+  });
   it("exposes roster change events only through the saves facade", () => {
     const backing = storage();
     setRosterStorage(backing);

@@ -225,7 +225,7 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   fixed("input:prompt.reply", { kind: "input-prompt", action: "reply" }, "Answer the game's current question through its input handler",
     "The mod cannot answer the game's questions for you, so you answer them yourself.", { powerful: true, tiers: ALL_TIERS }),
   fixed("saves:manage", { kind: "saves", action: "manage" }, "List, load, rename and delete your characters; deletion asks you first",
-    "The mod's own character list does not appear; the game's list still works.", { powerful: true }),
+    "The mod's own character list does not appear; the game's list still works.", { powerful: true, tiers: ALL_TIERS }),
   fixed("ui:title", { kind: "title", action: "add" }, "Add title screen actions",
     "The mod's entries on the title screen do not appear.", { powerful: false, tiers: ALL_TIERS }),
   fixed("ui:menu.row", { kind: "menu-row", action: "add" }, "Add a row to the game menu",
@@ -294,9 +294,9 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   fixed("state:*.read", { kind: "state", domain: "*", access: "read" }, "Read ALL game state, except the parts of the map your character has not found",
     "The mod cannot read the game state it uses.", { powerful: true, tiers: ALL_TIERS, wildcard: true }),
   fixed("state:map-actual.read", { kind: "state", domain: "map-actual", access: "read" }, "See the real map, hidden terrain, traps, items, shop knowledge, every monster, and true race abilities. Affected characters become permanently unscorable.",
-    "The mod sees only what your character has found.", { powerful: true, tiers: FIRST_PARTY, namespace: "truth" }),
+    "The mod sees only what your character has found.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "truth" }),
   fixed("state:monsters-actual.read", { kind: "state", domain: "monsters-actual", access: "read" }, "See every creature's location and exact state, including unseen creatures, and true race abilities. Affected characters become permanently unscorable.",
-    "The mod sees only what your character has learned about creatures.", { powerful: true, tiers: FIRST_PARTY, namespace: "truth" }),
+    "The mod sees only what your character has learned about creatures.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "truth" }),
   fixed("network:*", { kind: "network", host: "*" }, "Send network requests to ANY host (your data could leave this device)",
     "The mod cannot reach the internet.", { powerful: true, tiers: ALL_TIERS, wildcard: true }),
   fixed("network:local", { kind: "network", host: "local" }, "Send network requests to servers on this computer or your local network",
@@ -307,18 +307,18 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     fixed(`registry:${domain}`, { kind: "registry", domain }, consent,
       "The mod does not start, because it installs this change as it loads.", { powerful, canRunWithout: false, tiers: POLICY_CAPABILITIES.has(`registry:${domain}`) ? ALL_TIERS : IN_PROCESS })),
 
-  /* Management. Not part of the public vocabulary: first-party mods hold these
-   * through the `manage` namespace. */
+  /* The management namespace has bounded Worker operations for the eligible
+   * grants; broader mechanisms still require first-party page execution. */
   fixed("profiles:manage", { kind: "profiles", action: "manage" }, "Create profiles and switch between them",
-    "The mod cannot create profiles or switch between them.", { powerful: true, tiers: FIRST_PARTY, namespace: "manage" }),
+    "The mod cannot create profiles or switch between them.", { powerful: true, tiers: ALL_TIERS, namespace: "manage" }),
   fixed("session:control", { kind: "session", action: "control" }, "Save the game, return to the title screen, or quit",
-    "The mod cannot save the game, leave it or quit for you.", { powerful: false, tiers: FIRST_PARTY, namespace: "manage" }),
+    "The mod cannot save the game, leave it or quit for you.", { powerful: false, tiers: ALL_TIERS, namespace: "manage" }),
   fixed("screens:manage", { kind: "screens", action: "manage" }, "Draw the game's mod, profile and settings screens in its own look",
     "The game's own management screens are shown instead.", { powerful: true, tiers: FIRST_PARTY, namespace: "manage" }),
   fixed("mod:authoring", { kind: "mod", action: "authoring" }, "Validate and prepare mod content using the game's authoring tools; this does not install or run it",
     "The mod cannot check drafts with this game's authoring library.", { powerful: false, tiers: [...FIRST_PARTY, "worker"], namespace: "manage" }),
   fixed("options:manage", { kind: "options", action: "manage" }, "The mod can read and change game options, including cheat options that permanently disqualify a character from scoring",
-    "The mod cannot edit cheat options; the options menu still works.", { powerful: true, tiers: FIRST_PARTY, namespace: "manage" }),
+    "The mod cannot edit cheat options; the options menu still works.", { powerful: true, tiers: ALL_TIERS, namespace: "manage" }),
   /* Install and session loads are two grants: an install arrives switched off,
    * a session load is on as soon as the game reloads. The archive is forgotten
    * with the session; what its records did to a character is not. */

@@ -10,10 +10,7 @@
  * and a permission the player refused answers `not-granted` instead of
  * throwing.
  *
- * `manage` and `truth` are built only when the caller says this mod is
- * allowlisted for them. The real allowlist (the build's first-party origins
- * plus a digest check of the installed bytes) belongs to the loader; this
- * module takes the answer as an argument.
+ * Management eligibility belongs to the loader's allowlist. Truth also opens for Workers holding either explicit truth grant, with a durable consequence before each snapshot.
  */
 
 import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -87,9 +84,9 @@ import {
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPluginContext } from "./mod-plugin";
 import { createModWorkerPanelRenderer, createModWorkerTextRenderer, type ModWorkerPanelRenderer } from "./mod-worker/panels";
-import type { WorkerJson } from "./mod-worker/protocol";
+import { WORKER_MANAGE_CALLS, validWorkerManageCall, type WorkerJson } from "./mod-worker/protocol";
 import { modInstallPrefs, modKeyValueStore, type ModPrefs, type PrefsStorage } from "./mod-prefs";
-import { createManageAdapter, type ManageAdapter } from "./mod-manager/manage-adapter";
+import { createManageAdapter, workerManageOperation, type ManageAdapter } from "./mod-manager/manage-adapter";
 import type { ModManagerService } from "./mod-manager/service";
 import type { ManagerResult } from "./mod-manager/types";
 import type { Api2ManagedMods, Api2ManagerConfirmation, Api2ScreenKey } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -102,6 +99,10 @@ import { clearQueuedUiInputs, enqueueUiInputs, inputEvents } from "./input-door"
 import { closeTopModPanel, modPanelsSuspended, modPresentationSuspended, onModPanelSuspension, topModPanelId } from "./panel-runtime";
 import { removeBackupSink } from "./mod-backup";
 import { prepareTruthRead } from "./mod-truth-consent";
+import { consentBinding } from "./mod-consent-binding";
+import { modHolds } from "./mod-tier";
+import { workerProfileAccess } from "./profile-runtime";
+import { workerSaveAccess } from "./saves-facade";
 import { createModOptions } from "./mod-options";
 import { createModKeybindings, isWorkerBindingKey } from "./mod-keybindings";
 import { workerVisualFilter } from "./visual-filter";
@@ -134,6 +135,7 @@ export interface Api2HostOptions {
   readonly kvStorage?: PrefsStorage | null;
   readonly sessionStorage?: PrefsStorage | null;
   readonly management?: () => Promise<ModManagerService>;
+  readonly workerManagement?: WorkerManagementHost;
   readonly commands?: {
     readonly registry: Pick<ActionRegistry, "has" | "register" | "unregister">;
     readonly verbs?: CommandVerbTable;
@@ -1082,7 +1084,8 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
     ...(backupFolder ? { backupFolder } : {}),
     ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && seams?.manage ? { manage: manageDomain(ctx, options, cleanups, () => stopped) } : {}),
-    ...(seams?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}, (capability) => !stopped && granted(capability)) } : {}),
+    ...(seams?.truth || (options.execution === "worker" && (granted("state:map-actual.read") || granted("state:monsters-actual.read")))
+      ? { truth: truthDomain(ctx, options.viewDeps ?? {}, (capability) => !stopped && granted(capability) && (options.execution !== "worker" || modHolds(ctx.id, capability))) } : {}),
     ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && truthConsentAsk
       ? { permissions: permissionsDomain(ctx, options, granted, truthConsentAsk, () => stopped) } : {}),
     ...(presentation ? {
@@ -1137,6 +1140,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       }),
     } : {}),
   };
+  if (options.execution === "worker") workerManagementCalls.set(api, workerManageDomain(ctx, options, () => stopped));
   if (options.execution === "worker") {
     const simple: SimpleWorkerHost = { ctx, held: (capability) => !stopped && granted(capability), capturing: false, filter: null,
       ...(ctx.state ? { keys: createModKeybindings(ctx.state, { worker: true }) } : {}) };
@@ -1558,24 +1562,27 @@ function permissionsDomain(ctx: ModPluginContext, options: Api2HostOptions, held
 }
 
 function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps, granted: (capability: string) => boolean): Api2Truth {
-  /* A trusted view (no capability set) reads the real map, and
-   * trueMonsterViews lists every monster, perceived or not. Only an
-   * allowlisted mod reaches this. */
+  /* A view without a capability set reads truth, so the durable mark must precede its construction even when the caller only wants one race. */
   const view = (state: GameState) => createAgentView(state, undefined, deps);
   /* Exact monsters and race records have a narrower permission of their own; the level and the shops need the real map. */
-  const mapOpen = () => granted("state:map-actual.read") && (!ctx.state || prepareTruthRead(ctx.id, "state:map-actual.read", ctx.state)) && granted("state:map-actual.read");
-  const monstersOpen = () => mapOpen() || (granted("state:monsters-actual.read") && (!ctx.state || prepareTruthRead(ctx.id, "state:monsters-actual.read", ctx.state)) && granted("state:monsters-actual.read"));
+  const open = async (capability: "state:map-actual.read" | "state:monsters-actual.read"): Promise<boolean> => {
+    if (!granted(capability)) return false;
+    const state = ctx.state;
+    return (!state || await prepareTruthRead(ctx.id, capability, state)) && state === ctx.state && granted(capability);
+  };
+  const mapOpen = () => open("state:map-actual.read");
+  const monstersOpen = async () => await mapOpen() || await open("state:monsters-actual.read");
   return frozen({
-    monsters: () => guarded(() => {
-      if (!monstersOpen()) return api2NotGranted("state:monsters-actual.read");
+    monsters: () => guarded(async () => {
+      if (!await monstersOpen()) return api2NotGranted("state:monsters-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       return api2Ok(data(trueMonsterViews(ctx.state, deps).map((mon) => ({
         ...mon,
         perceived: monsterIsObvious(ctx.state!.monsters[mon.id]!),
       }))) as readonly Api2TrueMonster[]);
     }),
-    race: (index: number) => guarded(() => {
-      if (!monstersOpen()) return api2NotGranted("state:monsters-actual.read");
+    race: (index: number) => guarded(async () => {
+      if (!await monstersOpen()) return api2NotGranted("state:monsters-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       if (!ctx.registries) return api2Unavailable("there are no monster races yet");
       const race = ctx.registries.monsters.races.find((race) => race.ridx === index);
@@ -1596,13 +1603,13 @@ function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps, granted: (capab
         hasFriends: race.friends.length > 0 || race.friendsBase.length > 0,
       }));
     }),
-    storeKnowledge: () => guarded(() => {
-      if (!mapOpen()) return api2NotGranted("state:map-actual.read");
+    storeKnowledge: () => guarded(async () => {
+      if (!await mapOpen()) return api2NotGranted("state:map-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       return api2Ok(data(storeKnowledge(ctx.state)));
     }),
-    level: () => guarded(() => {
-      if (!mapOpen()) return api2NotGranted("state:map-actual.read");
+    level: () => guarded(async () => {
+      if (!await mapOpen()) return api2NotGranted("state:map-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       const level = view(ctx.state).knownLevel?.() ?? null;
       if (!level) return api2Unavailable("there is no level yet");
@@ -1622,4 +1629,134 @@ function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps, granted: (capab
       return api2Ok(data(real));
     }),
   });
+}
+
+export interface WorkerManagementHost {
+  confirm(id: string, plan: string): Promise<boolean>;
+  pickSaves(id: string, entries: readonly import("./mod-plugin").SaveEntry[]): Promise<readonly string[] | null>;
+  scope(): string;
+  markCheat(id: string, state: GameState): boolean;
+  saveOptions(): void;
+}
+
+let workerManagementHost: WorkerManagementHost | undefined;
+let workerManagementBusy = false;
+type WorkerManagementCall = (method: string, args: readonly WorkerJson[], current: () => boolean) => Promise<Api2Result<unknown>>;
+const workerManagementCalls = new WeakMap<ModApi2, WorkerManagementCall>();
+
+export function setApi2WorkerManagementHost(host: WorkerManagementHost | undefined): void {
+  workerManagementHost = host;
+}
+
+export async function callWorkerManage(api: ModApi2, method: string, args: readonly WorkerJson[], current: () => boolean): Promise<Api2Result<unknown>> {
+  return workerManagementCalls.get(api)?.(method, args, current) ?? api2Unavailable("Worker management is unavailable.");
+}
+
+function workerManageDomain(ctx: ModPluginContext, options: Api2HostOptions, stopped: () => boolean): WorkerManagementCall {
+  const binding = consentBinding(ctx.id);
+  const tokens = new Map<string, { id: string; scope: string }>();
+  const requests: number[] = [];
+  const host = options.workerManagement ?? workerManagementHost;
+  const scope = host?.scope();
+  const saved = (result: { ok: boolean; reason?: string }) => result.ok ? api2Ok(null) : api2Refused("management", result.reason ?? "The operation failed.");
+  return async (method, args, epochCurrent) => {
+    const capability = Object.hasOwn(WORKER_MANAGE_CALLS, method) ? WORKER_MANAGE_CALLS[method] : undefined;
+    const current = () => !stopped() && epochCurrent() && typeof binding === "string" && binding === consentBinding(ctx.id) && !!host && scope === host.scope() && !!capability && options.grants.has(capability) && modHolds(ctx.id, capability);
+    if (!capability || !options.grants.has(capability)) return api2NotGranted(capability ?? "profiles:manage");
+    if (!validWorkerManageCall(method, args)) return api2Refused("bad-call", "The management request has invalid arguments.");
+    if (!current() || !host) return api2Refused("revoked", "The management request is no longer authorized.");
+    if (workerManagementBusy) return api2Refused("busy", "The host is handling another management request.");
+    const now = Date.now();
+    while (requests[0] !== undefined && requests[0] < now - 60000) requests.shift();
+    if (requests.length >= 32) return api2Refused("rate", "A Worker can request management at most 32 times per minute.");
+    requests.push(now);
+    workerManagementBusy = true;
+    try {
+      const confirm = async (plan: string, fingerprint: () => string): Promise<boolean> => {
+        const before = fingerprint();
+        return await host.confirm(ctx.id, plan) && current() && before === fingerprint();
+      };
+      if (method.startsWith("manage.mods.")) {
+        const provider = options.management ?? managementHost;
+        if (!provider) return api2Unavailable("The mod manager is unavailable.");
+        const service = await provider();
+        const result = await workerManageOperation(service, ctx.id, method.slice("manage.mods.".length), args, (plan) => host.confirm(ctx.id, plan), current);
+        return result.status === "ok" ? api2Ok(data(result.value)) : result.status === "refused" ? api2Refused(result.code, result.reason) : api2Refused("confirmation", "The operation needs a player decision.");
+      }
+      if (method.startsWith("manage.profiles.")) {
+        const profiles = ctx.profiles;
+        const access = profiles && workerProfileAccess(profiles);
+        if (!profiles || !access) return api2Unavailable("The profile manager is unavailable.");
+        const list = () => access.list();
+        if (method === "manage.profiles.list") return api2Ok(data(list()));
+        if (method !== "manage.profiles.create" && !list().some((profile) => profile.id === args[0])) return api2Refused("profile", "This mod did not create that profile.");
+        if (method === "manage.profiles.create" && list().length >= 64) return api2Refused("quota", "A mod can create at most 64 profiles.");
+        if (method === "manage.profiles.switchTo" && args[1] !== undefined && (!options.grants.has("saves:manage") || !modHolds(ctx.id, "saves:manage"))) return api2NotGranted("saves:manage");
+        if (!(await confirm(JSON.stringify({ operation: method, args }), () => access.fingerprint(method === "manage.profiles.create" ? undefined : args[0] as string)))) return api2Refused("changed", "The profile request was declined or changed.");
+        if (method === "manage.profiles.switchTo" && args[1] !== undefined && !modHolds(ctx.id, "saves:manage")) return api2NotGranted("saves:manage");
+        if (method === "manage.profiles.create") {
+          const result = profiles.create(args[0] as string);
+          return result.ok ? api2Ok(data(result.value)) : api2Refused("profile", result.reason);
+        }
+        return saved(method === "manage.profiles.rename" ? access.rename(args[0] as string, args[1] as string) : profiles.switchTo(args[0] as string, args[1] as unknown as import("./mod-plugin").ModProfileAction));
+      }
+      if (method.startsWith("manage.saves.")) {
+        const saves = ctx.saves;
+        const access = saves && workerSaveAccess(saves);
+        if (!saves || !access) return api2Unavailable("The character roster is unavailable.");
+        const roster = () => access.listRoster();
+        if (method === "manage.saves.list") {
+          const result = await saves.list();
+          if (!result.ok) return api2Refused("save", result.reason);
+          if (!current() || result.entries.length > 128) return api2Refused("quota", "The character selection is unavailable or too large.");
+          const before = JSON.stringify(roster());
+          const selected = await host.pickSaves(ctx.id, result.entries);
+          if (!selected || !current() || before !== JSON.stringify(roster()) || selected.length > 128 || new Set(selected).size !== selected.length || selected.some((id) => !result.entries.some((entry) => entry.id === id))) return api2Refused("changed", "The character selection was declined or changed.");
+          tokens.clear();
+          return api2Ok(data(result.entries.filter((entry) => selected.includes(entry.id)).map((entry) => {
+            const token = crypto.randomUUID();
+            tokens.set(token, { id: entry.id, scope: host.scope() });
+            return { ...entry, id: token };
+          })));
+        }
+        const selected = tokens.get(args[0] as string);
+        if (!selected || selected.scope !== host.scope()) return api2Refused("save", "The player has not selected that character.");
+        const meta = roster().find((entry) => entry.id === selected.id);
+        if (!meta) return api2Refused("save", "The selected character no longer exists.");
+        const fingerprint = () => JSON.stringify([roster(), access.activeSlot(), access.namePinned(), access.fingerprint?.(selected.id)]);
+        if (!(await confirm(JSON.stringify({ operation: method, character: meta.name, args: args.slice(1) }), fingerprint))) return api2Refused("changed", "The character request was declined or changed.");
+        if (method === "manage.saves.delete") {
+          if (access.activeSlot() === selected.id) return api2Refused("save", "The active character cannot be deleted.");
+          access.deleteSlot(selected.id);
+          tokens.delete(args[0] as string);
+          return api2Ok(null);
+        }
+        if (method === "manage.saves.rename") return saved(await saves.rename(selected.id, args[1] as string));
+        if (!meta.alive) return api2Refused("save", "This character has died.");
+        const request = args[1] as { resumeAutoplayer?: boolean } | undefined;
+        const before = fingerprint();
+        return saved(await access.load(selected.id, () => current() && before === fingerprint(), request?.resumeAutoplayer ? ctx.id : undefined));
+      }
+      if (method.startsWith("manage.options.")) {
+        if (!ctx.state) return api2Unavailable(NO_GAME);
+        const editor = createModOptions(ctx.state, { writable: true, management: true, beforeCheat: () => current() && host.markCheat(ctx.id, ctx.state!), afterChange: () => host.saveOptions() });
+        if (method === "manage.options.get") return api2Ok(data(editor.get()));
+        const change = args[0] as unknown as import("@rpgm-tools/neo-angband-mod-sdk").Api2OptionsChange;
+        const cheat = Object.keys(change.values ?? {}).some((name) => OPTION_ENTRIES.some((entry) => entry.name === name && entry.type === "CHEAT"));
+        if (!(await confirm(JSON.stringify({ operation: method, change, ...(cheat ? { consequence: "Cheat changes permanently make this character unscorable." } : {}) }), () => JSON.stringify(editor.get())))) return api2Refused("changed", "The options request was declined or changed.");
+        const result = editor.set!(change);
+        return result.ok ? api2Ok(data(result.changed)) : api2Refused("options", result.reason);
+      }
+      if (method === "manage.session.save") {
+        if (!ctx.session) return api2Unavailable(NO_GAME);
+        if (!(await confirm("Save the current character.", () => host.scope()))) return api2Refused("changed", "The save request was declined or changed.");
+        return saved(ctx.session.save());
+      }
+      return api2Refused("mechanism", "This operation requires a host mechanism Workers do not have; exit, quit, and wizard require proven detachment from saves.");
+    } catch {
+      return api2Refused("management", "The management request failed.");
+    } finally {
+      workerManagementBusy = false;
+    }
+  };
 }

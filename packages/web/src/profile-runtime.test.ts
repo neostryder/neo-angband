@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setConsentBindings } from "./mod-consent-binding";
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modPluginContext, setModControllerArmedControl, setModProfilesControl } from "./mod-context";
-import { ModStore, MOD_SETTINGS_STORAGE_KEY } from "./mod-store";
+import { ModStore, MOD_SETTINGS_STORAGE_KEY, setSessionConsents } from "./mod-store";
 import { consumeProfileAction, createModProfiles, PROFILE_ACTION_KEY } from "./profile-runtime";
 import { ProfileStore } from "./profiles";
 import { scopedStorage, type ScopedStorage } from "./profile-scope";
@@ -35,12 +35,23 @@ function fixture(grants = ["profiles:manage", "saves:manage"]) {
   return { storage, pendingStorage, store, caps, api, deps, reload, installed };
 }
 
-afterEach(() => { setConsentBindings(new Map()); vi.restoreAllMocks(); });
+afterEach(() => { setConsentBindings(new Map()); setSessionConsents({}); vi.restoreAllMocks(); });
 
 function approve(f: ReturnType<typeof fixture>, id: string): void {
   const manifest = f.installed[0]!;
   new ModStore(scopedStorage(f.storage, id)).setDecisions(manifest.id, { granted: manifest.capabilities ?? [], refused: [], binding: "measured-player" }, manifest.version);
 }
+
+it("refuses session decisions from another profile as destination authority", () => {
+  const f = fixture();
+  const result = f.api.create("Destination");
+  if (!result.ok || !result.value.id) throw new Error("The profile was not created.");
+  setSessionConsents({ "test-player": ["profiles:manage", "saves:manage"] });
+  expect(f.api.setEnabledMods(result.value.id, [])).toMatchObject({ ok: false });
+  expect(f.api.switchTo(result.value.id, { kind: "create-character" })).toMatchObject({ ok: false });
+  expect(new ModStore(scopedStorage(f.storage, result.value.id)).getConsents()).toEqual({});
+  expect(f.reload).not.toHaveBeenCalled();
+});
 
 function created(f: ReturnType<typeof fixture>, options?: { copyFrom?: string | null }): string {
   const result = f.api.create("Test profile", options);

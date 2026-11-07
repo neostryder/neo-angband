@@ -15,6 +15,26 @@ function stateWith(options = new OptionState()): GameState {
 }
 
 describe("ctx.options", () => {
+  it("requires the cheat consequence before any part of an option transaction changes", () => {
+    const state = stateWith();
+    const beforeCheat = vi.fn(() => {
+      expect(state.options!.get("cheat_live")).toBe(false);
+      expect(state.options!.get("use_sound")).toBe(false);
+      return false;
+    });
+    const afterChange = vi.fn();
+    const editor = createModOptions(state, { writable: true, management: true, beforeCheat, afterChange });
+    expect(editor.set!({ values: { use_sound: true, cheat_live: true } })).toMatchObject({ ok: false });
+    expect(state.options!.get("use_sound")).toBe(false);
+    expect(state.options!.get("cheat_live")).toBe(false);
+    expect(afterChange).not.toHaveBeenCalled();
+    expect(beforeCheat).toHaveBeenCalledTimes(1);
+    expect(editor.set!({ values: { birth_no_recall: true, cheat_live: true } })).toMatchObject({ ok: false });
+    expect(beforeCheat).toHaveBeenCalledTimes(1);
+    beforeCheat.mockReturnValue(true);
+    expect(editor.set!({ values: { cheat_live: true } })).toMatchObject({ ok: true });
+    expect(state.options!.get("score_live")).toBe(true);
+  });
   it("lists every page's options and marks only interface options writable", () => {
     const view = createModOptions(stateWith(), { writable: true }).get();
     const byName = new Map(view.entries.map((e) => [e.name, e]));

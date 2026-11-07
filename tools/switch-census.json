@@ -101,6 +101,13 @@
       "verdict": "REACHABLE - the arm behind registry:tval. These five obj-tval.c bodies are no longer the dispatch: each is core's registered handler inside seedTval(...), and the exported predicate is one lookup. A mod reaches the WHOLE arm through classes.handlerFor(name) and wraps it, so the switch inside is core's own data rather than a closed door. The census counts a switch wherever it lives, which is why these rows stay - kept verbatim on purpose, because the 1,224 recorded answers are what proves the conversion changed nothing."
     },
     {
+      "file": "packages/web/src/mod-worker/protocol.ts",
+      "cases": 17,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - the argument-shape allowlist for Worker management calls. Each arm validates one named operation and the default refuses, so an unlisted call can never reach the host. Moving it to a registry would let a mod widen the allowlist, which is the opposite of its job."
+    },
+    {
       "file": "packages/web/src/options.ts",
       "cases": 17,
       "hasDefault": true,

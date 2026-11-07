@@ -16,6 +16,8 @@ From then on the frame retains both page-facing ports. The Worker sends JSON tex
 
 A mod that fails any step fails to start, with a problem line on the Mods screen. So does a Worker that has not answered as ready within 3 seconds. Nothing falls back to an unisolated Worker.
 
+The broker's operations include `view.*`, `store.*`, `backupFolder.*`, and granted truth snapshots. `truth.level()` and `truth.storeKnowledge()` require `state:map-actual.read`. `truth.monsters()` and `truth.race(index)` accept either that grant or `state:monsters-actual.read`, including unseen monsters and true race abilities. Every author follows the same rule. The broker checks the connection identity, epoch, arguments, and current grant, awaits confirmation that the character's permanent unscorable mark and provenance were saved, and only then builds the snapshot. Missing or failed persistence and sessions without a character return no hidden data. Revocation or an epoch change before delivery drops the reply. The existing 4 MiB reply and 200 calls per second limits apply; an oversized reply does not undo the mark. Management, engine access, and raw presentation remain unavailable to Workers.
+
 ## The three layers
 
 Worker text replacements and grid regions carry only bounded line records, fixed style tokens, and grid coordinates. The host draws them with `textContent`, clips them to validated geometry, caps them at eight outputs, and hides them whenever a host dialog or another modal screen owns the display. Workers receive no DOM, canvas, callback, or transferable handle for these regions.
@@ -73,6 +75,14 @@ Run them with `pnpm exec playwright test tests/e2e/mod-worker-isolation.spec.ts`
 - **BroadcastChannel without the lockdown.** It opens, scoped to the frame's opaque origin, which each sandboxed frame gets afresh. Two mods running at once were not tested against each other; the lockdown removes the API in any case.
 - **Empty stores of its own.** WebKit gives the Worker an empty Cache Storage of its own. It holds nothing of the game's and is gone with the frame.
 - **Engine bugs.** This is not a VM or a process boundary. It depends on Chromium, Gecko and WebKit enforcing the sandbox and the policy, and on the desktop app's Electron being kept current.
+
+## Worker management operations
+
+The broker permits `manage.profiles.list/create/switchTo/rename` under `profiles:manage`, `manage.session.save` under `session:control`, `manage.options.get/set` under `options:manage`, and `manage.saves.list/load/rename/delete` under `saves:manage`, for every author after player consent. Profiles are limited to the caller's own creations; creation accepts no copy source, and character creation requires destination-local stored consent. The character picker returns only player-selected entries with host-issued opaque ids, never raw slot ids. Every mutation has a host-drawn confirmation, and deletion refuses the active character after confirmation too. Cheat changes persist an unscorable mark before applying the option. Birth and score options stay locked.
+
+`profiles:manage` also permits an identity-only `manage.mods.snapshot`, changes to the caller's own disable, setting, section, and conflict choices, and withdrawal of third-party consent. These mutations require a host confirmation and do not write capability consent. The broker validates exact argument shapes and sizes, keeps one management operation in flight globally, and permits 32 management requests per mod per minute. It checks caller identity, epoch, current grant, measured payload binding, profile/session scope, and plan stability before committing. A new character selection invalidates earlier opaque ids. Worker controller resume retains its separate consent dialog.
+
+Workers cannot resolve confirmations, write permission decisions, enable or install code, load session packs, replace management screens, or invoke engine or presentation objects through this surface. Quit, exit-to-title, and wizard remain refused until detachment from saves is proven.
 
 ## Refused permissions
 

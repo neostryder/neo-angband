@@ -240,6 +240,21 @@ export function installModWorkerBootstrap(
         prefs: { get: method("store.prefs.get"), set: method("store.prefs.set") },
         character: { get: method("store.character.get"), set: method("store.character.set") },
       },
+      ...(m.granted.includes("state:map-actual.read") || m.granted.includes("state:monsters-actual.read") ? {
+        truth: {
+          level: method("truth.level"), monsters: method("truth.monsters"),
+          race: method("truth.race"), storeKnowledge: method("truth.storeKnowledge"),
+        },
+      } : {}),
+      ...(["profiles:manage", "session:control", "options:manage", "saves:manage"].some((cap) => m.granted.includes(cap)) ? {
+        manage: {
+          profiles: { list: method("manage.profiles.list"), create: method("manage.profiles.create"), switchTo: method("manage.profiles.switchTo"), rename: method("manage.profiles.rename") },
+          session: { save: method("manage.session.save") },
+          options: { get: method("manage.options.get"), set: method("manage.options.set") },
+          saves: { list: method("manage.saves.list"), load: method("manage.saves.load"), rename: method("manage.saves.rename"), delete: method("manage.saves.delete") },
+          mods: { snapshot: method("manage.mods.snapshot"), disable: method("manage.mods.disable"), setSettingValue: method("manage.mods.setSettingValue"), setSectionChoice: method("manage.mods.setSectionChoice"), setConflictOverride: method("manage.mods.setConflictOverride"), setThirdPartyConsent: method("manage.mods.setThirdPartyConsent") },
+        },
+      } : {}),
       ...(m.net ? {
         net: {
           request: method("net.request"),

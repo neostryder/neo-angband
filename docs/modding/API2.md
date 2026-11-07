@@ -65,8 +65,8 @@ A call never throws for a missing permission. `isNotGranted(result)` tells a mis
 | `ui` | Host-drawn panels (`mount`, `patch`) and the mod's key bindings (`keys`). | `ui:panel.mount`, `keymap:write` |
 | `store` | `prefs`, kept apart from any character, and `character`, kept in the current character's save. | None |
 | `net` | Requests to the hosts the manifest names, with credentials passed by reference. Present only when the manifest asks for a `network:` permission. | `network:<host>` |
-| `manage` | Profiles and session control. First-party mods only. | `profiles:manage`, `session:control` |
-| `truth` | Every monster and the real map. Any in-process mod the player allows it. | `state:map-actual.read`, or `state:monsters-actual.read` for monsters and races only |
+| `manage` | Host-confirmed profile, save, option, and character operations for Workers; broader legacy management for first-party in-process mods. | `profiles:manage`, `session:control`, `options:manage`, `saves:manage` |
+| `truth` | Every monster and the real map. Any in-process mod or Worker the player allows it. | `state:map-actual.read`, or `state:monsters-actual.read` for monsters and races only |
 
 ### What `view` shows
 
@@ -231,7 +231,7 @@ Running there costs a mod these things:
 
 - Hooks that answer inside a turn. A turn cannot wait for a message, so every hook that returns an answer comes from `policies`. In a Worker, `hooks(context)` may declare only `optionsChanged`, `abilityGained`, `monsterBecameVisible` and `artifactIdentified`, and the game passes each one on without waiting. Any other hook function is reported on the Mods screen and not installed.
 - Immediate answers. Every call returns a promise, and every value is a copy. `meta.granted` is the only question the Worker answers itself.
-- `manage` and `truth`. No Worker mod gets either.
+- `manage`. No Worker mod gets management operations. A Worker with either explicit truth grant gets `truth.level`, `truth.monsters`, `truth.race`, and `truth.storeKnowledge`, subject to that method's grant.
 - Files and the network. `content.asset(path)` answers a `data:` URL holding the file's bytes, since the sandbox can load nothing. `net.credential(name)` gives the Worker a reference only; the game keeps the value and adds it to the request after the request leaves the Worker.
 - A wildcard grant. A Worker gets the permissions the player granted under their API 2 names, and `"*"` grants nothing.
 
@@ -252,8 +252,10 @@ A third-party (public) mod can use the features marked Yes in the table once the
 | Commands | `command:add` | Yes |
 | Rows on the title screen | `ui:title` | Yes |
 | Rows in the game menu | `ui:menu.row` | Yes |
-| Profile and session management | `profiles:manage`, `session:control` | No |
-| Hidden state (truth) reads | Either truth grant permanently makes affected characters unscorable, for every author; a public Worker gets no truth domain | No |
+| Profile and session management | `profiles:manage`, `session:control` | Yes, mod-owned profiles and host-confirmed saving only |
+| Game option management | `options:manage` | Yes, host-confirmed changes; birth and score options stay locked, and cheat changes persist an unscorable mark first |
+| Character management | `saves:manage` | Yes, player-selected characters with opaque ids and host confirmation on load, rename, and delete |
+| Hidden state (truth) reads | `state:map-actual.read` or `state:monsters-actual.read` | Workers: yes, by grant and consent; marks every affected character unscorable |
 | Raw engine access | none | No |
 | Raw presentation replacement | none | No |
 
@@ -273,9 +275,15 @@ A first-party in-process mod that the game lets see the real map can ask for it 
 
 `meta.tier` reports measured identity separately from these permissions. A public mod with consent to `truth` still reports `"public"`.
 
-`truth` is built for any in-process mod the player has allowed `state:map-actual.read`. `manage` is built only for a first-party mod whose `FIRST_PARTY_ORIGINS` entry names the capability (see section 4 of `MOD_LIFECYCLE.md`). A mod that declares one it may not hold loads without it, and the Mods screen says why.
+`truth` is built for any in-process mod or Worker the player has allowed either truth grant. The Worker broker validates arguments, identity, and epoch, rechecks the grant at call time, awaits the permanent save mark before building a plain snapshot, and drops the reply if the grant is revoked or the epoch changes before delivery. A session without a character to save returns no hidden data. Truth replies share the 4 MiB reply cap and 200 calls per second cap; an oversized reply leaves the permanent mark intact. A Worker can hold `profiles:manage`, `session:control`, `options:manage`, and `saves:manage`, regardless of author, after separate Core confirmation. Its `manage` proxy contains only the operations below. Broader in-process management still requires a first-party mod whose `FIRST_PARTY_ORIGINS` entry names the capability. A mod that declares a permission it cannot hold loads without it, and the Mods screen says why.
 
-`manage.profiles` lists and creates player profiles, sets which mods a profile enables, and switches profile, under `profiles:manage`. A mod-created copy carries only enabled-mod selections, with no consent decisions, pins, settings, or private preferences. Permission decisions must belong to the destination profile before the mod changes its enabled set or requests character creation there. Existing profiles are unchanged. `manage.session` saves, exits to the title screen or quits under `session:control`, without asking the player to confirm, so a mod asks first in its own panel.
+The in-process `manage.profiles` lists and creates player profiles, sets which mods a profile enables, and switches profile, under `profiles:manage`. A mod-created copy carries only enabled-mod selections, with no consent decisions, pins, settings, or private preferences. Permission decisions must belong to the destination profile before the mod changes its enabled set or requests character creation there. Existing profiles are unchanged. `manage.session` saves, exits to the title screen or quits under `session:control`, without asking the player to confirm, so a mod asks first in its own panel.
+
+Worker management calls are bounded JSON requests and allow one host operation at a time, with at most 32 requests per mod per minute. `manage.profiles.list/create/switchTo/rename` access only profiles the caller created, with a maximum of 64 profiles per mod. Creation accepts only a name, with no copy source. The SDK's current profile type does not declare the Worker `rename` method; TypeScript callers need a local type for that runtime method. A character-creation switch requires the destination profile's own stored permission decisions and `saves:manage`; session decisions from another profile do not qualify. `manage.session.save` asks the player to save. Worker exit-to-title, quit, wizard, install, session-pack loading, screen replacement, engine access, and presentation remain refused because their isolated mechanisms are absent; leaving or wizard operation also needs proven detachment from saves.
+
+`manage.options.get/set` reads options and proposes a validated transaction. Every change asks the player, cheat changes disclose their permanent scoring consequence, and the host persists `NOSCORE.DEBUG` and `modNoscore` before changing a cheat option. Birth and score options remain locked. `manage.saves.list` opens a host-drawn picker with unchecked character choices, limited to 128 roster entries. Only selected entries return, with fresh opaque ids that expire on the next selection or profile/session change. A raw slot id never works. `load`, `rename`, and `delete` each ask again; active-slot deletion remains refused after confirmation. `load(id, { resumeAutoplayer: true })` still waits for the separate controller consent dialog at the resumed character's boot.
+
+Under `profiles:manage`, a Worker can read `manage.mods.snapshot()`, which returns only its own `{ id, name }`. It can request `disable`, `setSettingValue`, or `setSectionChoice` for its own id, select itself with `setConflictOverride`, or withdraw third-party consent with `setThirdPartyConsent(false)`. Every mutation uses a host-drawn confirmation naming the caller and changes. The host binds approval to the current measured payload and configuration; a changed plan, revoked grant, or stale epoch refuses the operation. No Worker method records permissions, resolves confirmation ids, enables code, copies scoped storage, or installs mods.
 
 The mod-facing management snapshot, subscription, and refresh responses omit stored consent, settings, payload digests, and pending confirmations. Mods cannot resolve confirmations or change the third-party consent switch. Recording permissions always requests a host decision, even when every requested grant is already held; a session grant never becomes a stored decision through that request alone.
 
@@ -298,4 +306,4 @@ Most of the API 1 context has a direct home in API 2. `API1_CONTEXT_MAP` in `pac
 | `ctx.prefs`, `ctx.characterStore` | `store.prefs`, `store.character` |
 | `ctx.data`, `ctx.assetUrl`, `ctx.composedRecords` | `content.own`, `content.asset`, `content.records` |
 | `ctx.net` | `net`, with credentials by reference |
-| `ctx.profiles`, `ctx.session` | `manage`, first-party only |
+| `ctx.profiles`, `ctx.session` | `manage`; Workers receive the bounded operations below |
