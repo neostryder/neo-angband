@@ -284,17 +284,9 @@ describe("the seam policy", () => {
     expect(needsOwnConfirmation("command:add")).toBe(false);
   });
 
-  it("lets any in-process mod or Worker hold either truth grant with consent", () => {
+  it("lets any in-process mod hold the real map with consent, but not a sideloaded Worker", () => {
     expect(tierRefusal(TRUTH_MAP, sideloaded)).toBeNull();
-    for (const trust of ["first-party", "listed", "reviewed", "sideloaded"] as const) {
-      for (const capability of [TRUTH_MAP, TRUTH_MONSTERS]) {
-        const tier = { ...worker, trust };
-        expect(tierRefusal(capability, tier)).toBeNull();
-        expect(effectiveGrants([capability], tier, { granted: [capability], refused: [] }).granted).toEqual([capability]);
-        expect(effectiveGrants([capability], tier, { granted: [capability], refused: [capability] }).granted).toEqual([]);
-        expect(effectiveGrants([capability], tier, { granted: [], refused: [] }).granted).toEqual([]);
-      }
-    }
+    expect(tierRefusal(TRUTH_MAP, worker)).toBe("this needs a brokered mechanism Workers do not have yet");
     const held = effectiveGrants([TRUTH_MAP], sideloaded, { granted: [TRUTH_MAP], refused: [] });
     expect(held.granted).toEqual([TRUTH_MAP]);
   });
@@ -324,7 +316,7 @@ describe("the seam policy", () => {
     expect(modStartGrants("unknown").firstParty).toBeUndefined();
   });
 
-  it("marks either truth grant for every author", () => {
+  it("marks either truth grant for every author without widening Worker eligibility", () => {
     setModTiers(new Map([["anybandui", anybandui], ["s", sideloaded]]));
     setModGrants(new Map([["s", effectiveGrants([TRUTH_MAP], sideloaded, { granted: [TRUTH_MAP], refused: [] })]]));
     expect(saveMarkingGrantHeld()).toBe(true);

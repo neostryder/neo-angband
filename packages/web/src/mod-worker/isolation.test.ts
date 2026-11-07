@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
-import { resetModTiers, setModGrants, TRUTH_MONSTERS } from "../mod-tier";
 import { startModWorker, type ModWorkerHostDeps, type StartedModWorker } from "./host";
 import {
   createIsolatedModWorker,
@@ -132,7 +131,6 @@ afterEach(() => {
   for (const session of sessions.splice(0)) session.teardown();
   FakeWorker.frame = null;
   FakeWorker.importShim = noModule;
-  resetModTiers();
 });
 
 describe("the mod frame's document and policy", () => {
@@ -259,29 +257,6 @@ describe("an isolated mod Worker end to end through the relay", () => {
     ],
     size: 0,
   };
-
-  it("carries granted truth through the relay with lockdown enabled", async () => {
-    const frames: FakeFrame[] = [];
-    const logs: string[] = [];
-    setModGrants(new Map([["probe", { granted: [TRUTH_MONSTERS], refusedByTier: [], refusedByPlayer: [], undecided: [], blocking: [] }]]));
-    FakeWorker.importShim = () => Promise.resolve({ default: {
-      api: ">=2.0.0 <3.0.0",
-      start: async (api: ModApi2) => {
-        api.meta.log(JSON.stringify(await api.truth!.monsters()));
-      },
-    } });
-    const worker = createIsolatedModWorker({ id: "probe", graph, protocolVersion: MOD_WORKER_PROTOCOL_VERSION, frame: frameFactory(frames), nonce: NONCE });
-    const session = startModWorker(worker, deps("probe", {
-      grants: [TRUTH_MONSTERS],
-      api: () => ({ meta: { granted: (capability: string) => capability === TRUTH_MONSTERS },
-        truth: { monsters: () => Promise.resolve({ ok: true, value: [{ id: 1, perceived: false }] }) } }) as unknown as ModApi2,
-      onLog: (_level, message) => logs.push(message),
-    }));
-    sessions.push(session);
-    await session.ready;
-    session.start();
-    await vi.waitFor(() => expect(logs).toEqual([JSON.stringify({ ok: true, value: [{ id: 1, perceived: false }] })]));
-  });
 
   it("boots the linked entry, carries requests and replies, and stops the frame on teardown", async () => {
     const frames: FakeFrame[] = [];

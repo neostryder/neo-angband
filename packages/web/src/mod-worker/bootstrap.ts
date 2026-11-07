@@ -98,6 +98,13 @@ export function installModWorkerBootstrap(
 
   const buildApi = (m: WorkerMeta, active: readonly string[]): ModApi2 => {
     const api = {
+      options: { set: method("options.set") },
+      display: { filter: method("display.filter") },
+      keybindings: {
+        keyset: method("keybindings.keyset"), list: method("keybindings.list"), commands: method("keybindings.commands"),
+        set: method("keybindings.set"), remove: method("keybindings.remove"),
+        capture: method("keybindings.capture"), cancelCapture: method("keybindings.cancelCapture"),
+      },
       meta: {
         id: m.id,
         api: m.api,
@@ -177,6 +184,10 @@ export function installModWorkerBootstrap(
         lookup: method("content.lookup"),
       },
       ui: {
+        messages: { replace: method("ui.messages.replace") },
+        sidebar: { replace: method("ui.sidebar.replace") },
+        status: { replace: method("ui.status.replace") },
+        region: { create: method("ui.region.create"), remove: method("ui.region.remove") },
         ...(m.granted.includes("ui:title") ? { title: {
           registerRow: (row: { id: string; label: string; run: () => void }) => {
             const callbackId = ++nextCallback;
@@ -229,12 +240,6 @@ export function installModWorkerBootstrap(
         prefs: { get: method("store.prefs.get"), set: method("store.prefs.set") },
         character: { get: method("store.character.get"), set: method("store.character.set") },
       },
-      ...(m.granted.includes("state:map-actual.read") || m.granted.includes("state:monsters-actual.read") ? {
-        truth: {
-          level: method("truth.level"), monsters: method("truth.monsters"),
-          race: method("truth.race"), storeKnowledge: method("truth.storeKnowledge"),
-        },
-      } : {}),
       ...(m.net ? {
         net: {
           request: method("net.request"),

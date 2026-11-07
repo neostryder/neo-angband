@@ -80,8 +80,8 @@ describe("describeCapability", () => {
     expect(describeCapability("network:local").text).toMatch(/local network/);
     expect(describeCapability("network:localhost:8010").text).toBe("Send network requests to localhost:8010");
     expect(describeCapability("display:filter")).toMatchObject({ elevated: false });
-    expect(describeCapability("display:filter").text).toMatch(/post-processing filter/i);
-    expect(describeCapability("display:filter").text).toMatch(/canvas and panels/i);
+    expect(describeCapability("display:filter").text).toContain("make details difficult to see");
+    expect(describeCapability("display:filter").text).toContain("host permission dialogs keep their own appearance");
   });
 
   it("gives mod:install and mod:session DIFFERENT sentences, and neither is padding", () => {

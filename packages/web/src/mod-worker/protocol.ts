@@ -44,8 +44,8 @@ export interface ModWorkerPanelPatch {
 
 /**
  * The `ModApi2` methods a Worker may call, by path. Anything else is refused
- * before it reaches the host's domains. Truth reads require a durable mark;
- * management still needs an in-process mechanism.
+ * before it reaches the host's domains. `manage` and `truth` are absent: a
+ * Worker mod never holds them.
  */
 export const WORKER_CALLS = [
   "meta.settings",
@@ -76,10 +76,6 @@ export const WORKER_CALLS = [
   "view.inspect.tileActions",
   "view.input",
   "view.isCurrent",
-  "truth.level",
-  "truth.monsters",
-  "truth.race",
-  "truth.storeKnowledge",
   "act.submit",
   "act.answer",
   "act.controller.owns",
@@ -215,3 +211,32 @@ export type ModWorkerToHost =
   | (FromWorker & { readonly type: "answer"; readonly askId: number; readonly ok: false; readonly error: string })
   | (FromWorker & { readonly type: "log"; readonly level: WorkerLogLevel; readonly message: string })
   | (FromWorker & { readonly type: "fault"; readonly site: string; readonly message: string });
+
+/** Simple grants use separate paths so they never open the management domain. */
+export const SIMPLE_WORKER_CALLS = {
+  "options.set": "options:write",
+  "keybindings.keyset": "keymap:edit",
+  "keybindings.list": "keymap:edit",
+  "keybindings.commands": "keymap:edit",
+  "keybindings.set": "keymap:edit",
+  "keybindings.remove": "keymap:edit",
+  "keybindings.capture": "keymap:edit",
+  "keybindings.cancelCapture": "keymap:edit",
+  "display.filter": "display:filter",
+  "ui.messages.replace": "ui:messages.replace",
+  "ui.sidebar.replace": "ui:sidebar.replace",
+  "ui.status.replace": "ui:status.replace",
+  "ui.region.create": "ui:region.create",
+  "ui.region.remove": "ui:region.create",
+} as const;
+
+export interface WorkerTextLine {
+  readonly text: string;
+  readonly style?: "normal" | "muted" | "warning" | "danger" | "good";
+}
+
+export interface WorkerTextRegion {
+  readonly id: string;
+  readonly rect: { readonly col: number; readonly row: number; readonly cols: number; readonly rows: number };
+  readonly lines: readonly WorkerTextLine[];
+}

@@ -203,6 +203,12 @@ const UI_REGIONS: readonly (readonly [string, string, string])[] = [
   ["birth", "character creation screens", "The game shows its own character creation screens."],
 ];
 
+const WORKER_TEXT_CONSENT: Readonly<Record<string, string>> = {
+  messages: "Replace game messages with text; it can hide or change warnings",
+  sidebar: "Replace your vitals panel with text; it can misstate health, food, armor, or depth",
+  status: "Replace the status line with text; it can hide harmful conditions",
+};
+
 const FIXED_ENTRIES: readonly FixedEntry[] = [
   fixed("input:controller", { kind: "input", action: "controller" }, MOD_PERMISSION_TEXT.controller,
     MOD_PERMISSION_TEXT.denied, { powerful: true, tiers: ALL_TIERS }),
@@ -230,18 +236,18 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "Other mods cannot see what this mod shares.", { powerful: false }),
   fixed("display:replace", { kind: "display", action: "replace" }, "Draw the dungeon itself - everything you see of the map comes from this mod instead of the game",
     "The game draws the map itself and this mod's view is not used.", { powerful: true, canRunWithout: false }),
-  fixed("display:filter", { kind: "display", action: "filter" }, "Apply a visual post-processing filter to the game's terminal canvas and panels",
-    "The game's screen is shown without this mod's filter.", { powerful: false }),
+  fixed("display:filter", { kind: "display", action: "filter" }, "Change how the game looks; it can make details difficult to see, while host permission dialogs keep their own appearance",
+    "The game's screen is shown without this mod's filter.", { powerful: false, tiers: ALL_TIERS }),
   fixed("ui:*.replace", { kind: "ui", region: "*", action: "replace" }, "Draw the whole interface around the map - your messages, your vitals, the status line, every menu and every full screen all come from this mod",
     "The game draws its own interface around the map.", { powerful: true, wildcard: true }),
   ...UI_REGIONS.map(([region, words, withoutIt]) =>
-    fixed(`ui:${region}.replace`, { kind: "ui", region, action: "replace" }, `Draw the ${words} instead of the game`,
-      withoutIt, { powerful: true })),
+    fixed(`ui:${region}.replace`, { kind: "ui", region, action: "replace" }, WORKER_TEXT_CONSENT[region] ?? `Draw the ${words} instead of the game`,
+      withoutIt, { powerful: true, ...(Object.hasOwn(WORKER_TEXT_CONSENT, region) ? { tiers: ALL_TIERS } : {}) })),
   /* `create` adds a rectangle of the game's own character grid; it hands over
    * nothing the game already draws, so it is its own action, and `ui:*.replace`
    * does not cover it (#261). */
-  fixed("ui:region.create", { kind: "ui", region: "region", action: "create" }, "Add furniture of its own to your screen - panels this mod draws itself, over the map and beside the game's own",
-    "The panels this mod draws on the game screen do not appear.", { powerful: true }),
+  fixed("ui:region.create", { kind: "ui", region: "region", action: "create" }, "Add text panels over or beside the game; they can cover information and show misleading instructions, while host dialogs remain protected",
+    "The panels this mod draws on the game screen do not appear.", { powerful: true, tiers: ALL_TIERS }),
   /* `mount` puts real web content above the game. The consent text tells the
    * player the two facts they have no other way to learn: what they see may
    * not be the game, and what they type into it is the mod's to read. */
@@ -263,10 +269,10 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The mod cannot use the game's debug commands.", { powerful: true }),
   fixed("keymap:write", { kind: "keymap", action: "write" }, "Create new shortcut keymaps in your current keyset without replacing your existing shortcuts",
     "The shortcut keys this mod offers to add are not created.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("keymap:edit", { kind: "keymap", action: "edit" }, "Change, replace and remove any of your keymaps in the current keyset, and read the next key you press to bind it",
-    "The mod's keymap editor cannot change your keymaps.", { powerful: true }),
-  fixed("options:write", { kind: "options", action: "write" }, "Change your user interface options and delay settings, as the options menu does; birth and cheat options stay yours to set",
-    "The mod cannot change your options; the options menu still works.", { powerful: false }),
+  fixed("keymap:edit", { kind: "keymap", action: "edit" }, "Change or remove shortcuts in your current keyset and request one key for binding; host recovery keys and permission-dialog input stay with the game",
+    "The mod's keymap editor cannot change your keymaps.", { powerful: true, tiers: ALL_TIERS }),
+  fixed("options:write", { kind: "options", action: "write" }, "Change your interface options and delays; this permission cannot change birth, cheat, or score options",
+    "The mod cannot change your options; the options menu still works.", { powerful: false, tiers: ALL_TIERS }),
   fixed("query:snapshot", { kind: "query", action: "snapshot" }, "Read the host's named, cloned engine and content snapshots",
     "The mod cannot read the game's snapshots.", { powerful: false, tiers: ALL_TIERS }),
   fixed("policy:install", { kind: "policy", action: "install" }, "Install declared host-side policies that the game evaluates synchronously",
@@ -288,9 +294,9 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   fixed("state:*.read", { kind: "state", domain: "*", access: "read" }, "Read ALL game state, except the parts of the map your character has not found",
     "The mod cannot read the game state it uses.", { powerful: true, tiers: ALL_TIERS, wildcard: true }),
   fixed("state:map-actual.read", { kind: "state", domain: "map-actual", access: "read" }, "See the real map, hidden terrain, traps, items, shop knowledge, every monster, and true race abilities. Affected characters become permanently unscorable.",
-    "The mod sees only what your character has found.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "truth" }),
+    "The mod sees only what your character has found.", { powerful: true, tiers: FIRST_PARTY, namespace: "truth" }),
   fixed("state:monsters-actual.read", { kind: "state", domain: "monsters-actual", access: "read" }, "See every creature's location and exact state, including unseen creatures, and true race abilities. Affected characters become permanently unscorable.",
-    "The mod sees only what your character has learned about creatures.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "truth" }),
+    "The mod sees only what your character has learned about creatures.", { powerful: true, tiers: FIRST_PARTY, namespace: "truth" }),
   fixed("network:*", { kind: "network", host: "*" }, "Send network requests to ANY host (your data could leave this device)",
     "The mod cannot reach the internet.", { powerful: true, tiers: ALL_TIERS, wildcard: true }),
   fixed("network:local", { kind: "network", host: "local" }, "Send network requests to servers on this computer or your local network",

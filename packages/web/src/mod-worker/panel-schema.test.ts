@@ -2,17 +2,98 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { panelDescription, panelPatch } from "./panel-schema";
-import { createModWorkerPanelRenderer } from "./panels";
-import { resetModPanels, suspendModPanels } from "../panel-runtime";
+import { createModWorkerPanelRenderer, createModWorkerTextRenderer } from "./panels";
+import { resetModPanels, setModHostDialogOpen, suspendModPanels } from "../panel-runtime";
 import { dispatchUiInput } from "../input-door";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { api2Plugin } from "../mod-api2-shim";
-import { createApi2Host, disposeApi2Host } from "../mod-api2-host";
+import { createApi2Host, disposeApi2Host, serveSimpleWorkerCall } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
+import { cloneWorkerJson } from "./clone";
+import type { WorkerJson } from "./protocol";
+import type { ModDisplay } from "../mod-plugin";
 
-afterEach(() => { resetModPanels(); });
+afterEach(() => { setModHostDialogOpen(false); resetModPanels(); });
+
+function textDisplay(): ModDisplay {
+  const pixels = { x: 0, y: 0, width: 100, height: 20 };
+  return { snapshot: () => ({ mode: "play", surface: { x: 0, y: 0, width: 800, height: 480 },
+    grid: { cols: 80, rows: 24, cellWidth: 10, cellHeight: 20 },
+    regions: { messages: { pixels }, sidebar: { pixels }, status: { pixels } } }),
+  } as unknown as ModDisplay;
+}
 
 describe("API-2 declarative panel schema", () => {
+  it.each(["messages", "sidebar", "status"] as const)("draws Worker %s text and fixed tokens without interpreting markup", async (name) => {
+    let held = true;
+    const display = textDisplay();
+    const api = createApi2Host({ ...modPluginContext("text-probe", {}), display }, { execution: "worker", grants: { has: () => held } });
+    const call = (value: unknown, current = true) => serveSimpleWorkerCall(api, `ui.${name}.replace`, [value as WorkerJson], () => current);
+    expect(await call([{ text: "<img src=x onerror=alert(1)>", style: "warning" }])).toEqual({ ok: true, value: null });
+    const root = document.querySelector<HTMLElement>('[role="region"]')!;
+    expect(root.textContent).toBe("<img src=x onerror=alert(1)>");
+    expect(root.querySelector("img")).toBeNull();
+    expect(root.firstElementChild!.getAttribute("style")).toContain("rgb(255, 255, 0)");
+    const before = root.innerHTML;
+    for (const bad of [[{ text: "x", style: "url(https://evil.test)" }], [{ text: "x".repeat(4097) }], [{ text: "x", layer: "system" }]]) {
+      expect(await call(bad)).toMatchObject({ ok: false });
+      expect(root.innerHTML).toBe(before);
+    }
+    held = false;
+    expect(await call([{ text: "revoked" }])).toMatchObject({ reason: "not-granted" });
+    held = true;
+    expect(await call([{ text: "stale" }], false)).toMatchObject({ reason: "unavailable" });
+    expect(root.innerHTML).toBe(before);
+    const restore = suspendModPanels();
+    expect(root.hidden).toBe(true);
+    expect(root.inert).toBe(true);
+    expect(await call([{ text: "cover consent" }])).toMatchObject({ ok: false });
+    restore();
+    expect(root.hidden).toBe(false);
+    setModHostDialogOpen(true);
+    expect(root.hidden).toBe(true);
+    setModHostDialogOpen(false);
+    disposeApi2Host(api);
+    expect(root.isConnected).toBe(false);
+  });
+
+  it("bounds owned grid rectangles and rejects live objects before drawing", () => {
+    const renderer = createModWorkerTextRenderer(textDisplay(), () => true);
+    const region = { id: "owned", rect: { col: 2, row: 2, cols: 10, rows: 2 }, lines: [{ text: "owned" }] };
+    renderer.create(region);
+    const root = document.querySelector<HTMLElement>('[role="region"]')!;
+    const before = root.outerHTML;
+    for (const bad of [{ ...region, id: "victim:owned" }, { ...region, layer: "system" }, { ...region, rect: { col: 79, row: 0, cols: 10, rows: 2 } }, { ...region, lines: [{ text: "x", style: "position:fixed" }] }]) {
+      expect(() => renderer.create(bad as WorkerJson)).toThrow();
+      expect(root.outerHTML).toBe(before);
+    }
+    const shadow = document.createElement("div").attachShadow({ mode: "open" });
+    const channel = new MessageChannel();
+    for (const value of [document.createElement("div"), shadow, () => {}, channel.port1, new (class OffscreenCanvas {})()]) {
+      expect(() => cloneWorkerJson({ value })).toThrow();
+      expect(() => renderer.create({ ...region, lines: [{ text: value }] } as unknown as WorkerJson)).toThrow();
+    }
+    channel.port1.close();
+    channel.port2.close();
+    for (let index = 1; index < 8; index++) renderer.create({ ...region, id: `region-${index}` });
+    expect(() => renderer.create({ ...region, id: "ninth" })).toThrow(/eight/);
+    expect(document.querySelectorAll('[role="region"]')).toHaveLength(8);
+    renderer.teardown();
+  });
+  it("keeps Worker panels hidden and inert during ordinary host dialogs", () => {
+    const renderer = createModWorkerPanelRenderer();
+    const action = vi.fn();
+    renderer.apply("probe", "mount", { id: "panel", root: { type: "button", label: "Run", action: "run" } }, undefined, action);
+    setModHostDialogOpen(true);
+    const root = document.querySelector<HTMLElement>('[role="region"]')!;
+    root.querySelector("button")!.click();
+    expect(root.style.visibility).toBe("hidden");
+    expect(root.inert).toBe(true);
+    expect(action).not.toHaveBeenCalled();
+    setModHostDialogOpen(false);
+    expect(root.style.visibility).toBe("");
+    renderer.teardown("probe");
+  });
   it("hands first-party pages a host-owned root and releases them on dismissal and teardown", async () => {
     const caps = CapabilitySet.fromManifest({ id: "pages", name: "Pages", version: "1.0.0", shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: ["ui:panel.mount", "ui:region.create"] });
     const ctx = modPluginContext("pages", {}, undefined, {}, { capabilities: caps });

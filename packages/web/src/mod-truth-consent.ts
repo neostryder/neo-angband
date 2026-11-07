@@ -25,7 +25,7 @@ export interface TruthConsentDeps {
 }
 
 export type TruthCapability = typeof TRUTH_MAP | typeof TRUTH_MONSTERS;
-type TruthSaveWriter = (id: string, capability: TruthCapability, state: GameState) => boolean | Promise<boolean>;
+type TruthSaveWriter = (id: string, capability: TruthCapability, state: GameState) => boolean;
 let truthSaveWriter: TruthSaveWriter | undefined;
 
 export function setTruthSaveWriter(writer: TruthSaveWriter | undefined): void {
@@ -33,12 +33,8 @@ export function setTruthSaveWriter(writer: TruthSaveWriter | undefined): void {
 }
 
 /** A missing or failed durable writer must never release hidden information. */
-export async function prepareTruthRead(id: string, capability: TruthCapability, state: GameState): Promise<boolean> {
-  try {
-    return await truthSaveWriter?.(id, capability, state) === true;
-  } catch {
-    return false;
-  }
+export function prepareTruthRead(id: string, capability: TruthCapability, state: GameState): boolean {
+  return truthSaveWriter?.(id, capability, state) === true;
 }
 
 export function recordTruthUse(manifest: SaveManifest, player: { noscore: number }, identity: CapabilityUseIdentity, capability: TruthCapability, activation: CapabilityUseEntry["activation"]): void {
