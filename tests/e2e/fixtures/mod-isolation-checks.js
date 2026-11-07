@@ -23,7 +23,7 @@ export async function runChecks(gameOrigin) {
   results.origin = String(self.origin);
   /* Reading a global can itself throw: Chromium's `caches` getter does inside a
    * data: URL Worker. A global that throws when read is not reachable. */
-  results.globals = ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "indexedDB", "caches", "Worker", "importScripts", "BroadcastChannel"]
+  results.globals = ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "indexedDB", "caches", "Worker", "importScripts", "BroadcastChannel", "SharedArrayBuffer", "Atomics", "OffscreenCanvas", "Blob", "RTCPeerConnection", "webkitRTCPeerConnection", "mozRTCPeerConnection", "localStorage", "sessionStorage", "cookieStore", "Cache", "CacheStorage", "StorageBucket", "StorageBucketManager", "webkitIndexedDB", "StorageManager", "FileSystemHandle", "FileSystemDirectoryHandle", "FileSystemFileHandle", "requestFileSystem", "webkitRequestFileSystem"]
     .filter((name) => {
       try {
         return typeof self[name] !== "undefined";
@@ -45,6 +45,43 @@ export async function runChecks(gameOrigin) {
   }));
   await attempt("caches", async () => `[${(await caches.keys()).join(",")}]`);
   await attempt("opfs", async () => (await navigator.storage.getDirectory()).kind);
+  await attempt("sharedArrayBuffer", () => new SharedArrayBuffer(8).byteLength);
+  await attempt("atomics", () => Atomics.load(new Int32Array(1), 0));
+  await attempt("offscreenCanvas", () => new OffscreenCanvas(1, 1).width);
+  await attempt("blob", () => new Blob(["code"]).size);
+  await attempt("objectUrl", () => URL.createObjectURL(new Blob(["code"])));
+  await attempt("sendBeacon", () => navigator.sendBeacon("https://remote.test/beacon", "probe"));
+  await attempt("serviceWorker", async () => (await navigator.serviceWorker.getRegistrations()).length);
+  await attempt("storage", async () => (await navigator.storage.estimate()).usage);
+  await attempt("storageBuckets", async () => (await navigator.storageBuckets.keys()).length);
+  await attempt("storageFoundation", async () => (await navigator.storageFoundation.getAll()).length);
+  for (const name of ["webkitTemporaryStorage", "webkitPersistentStorage", "getStorageDirectory"]) {
+    await attempt(name, () => {
+      if (typeof navigator[name] === "undefined") throw new TypeError("storage API unavailable");
+      return "reachable";
+    });
+  }
+  await attempt("locks", async () => (await navigator.locks.query()).held.length);
+  for (const name of ["RTCPeerConnection", "webkitRTCPeerConnection", "mozRTCPeerConnection"]) {
+    await attempt(name, () => {
+      const connection = new self[name]();
+      connection.close();
+      return "constructed";
+    });
+  }
+  await attempt("portWrap", () => {
+    const original = MessagePort.prototype.postMessage;
+    if (!Reflect.defineProperty(MessagePort.prototype, "postMessage", { value: function (...args) { return original.apply(this, args); } })) throw new TypeError("frozen port");
+    return "wrapped";
+  });
+  await attempt("messageEventWrap", () => {
+    if (!Reflect.defineProperty(MessageEvent.prototype, "data", { get() { return {}; } })) throw new TypeError("frozen event");
+    return "wrapped";
+  });
+  const codeUrl = (text) => `data:text/javascript,${encodeURIComponent(text)}`;
+  await attempt("dataImport", async () => (await import(codeUrl("export default 42"))).default);
+  await attempt("dataImportFetch", async () => (await import(codeUrl("export default (url) => fetch(url)"))).default(`${gameOrigin}/secret.txt`));
+  await attempt("pageAccess", () => self.parent.document.body);
   await attempt("fetchGame", async () => (await (await fetch(`${gameOrigin}/secret.txt`)).text()));
   await attempt("fetchRemote", async () => (await fetch("https://remote.test/beacon")).status);
   await attempt("xhr", () => new Promise((resolve, reject) => {

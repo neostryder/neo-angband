@@ -163,8 +163,8 @@ export const DEFAULT_ENABLED_MODS: readonly string[] = [];
  * A LATCH rather than a parameter for the reason `boundRegistries` is one in
  * mod-context.ts: `getConsent` has several callers across three modules, and a
  * caller that forgot to thread the session grants would refuse a staged mod's code
- * for want of a consent the player actually gave. Page-storage records cannot
- * supply these grants; boot only uses this latch to clear staged decisions.
+ * for want of a consent the player actually gave. Set once at boot, from the
+ * archives that are actually staged, so it can never name an id that is not there.
  */
 let sessionConsents: Readonly<Record<string, readonly string[]>> = {};
 let sessionRefusals: Readonly<Record<string, readonly string[]>> = {};
@@ -932,8 +932,16 @@ export class ModStore {
   }
 
   getConsent(id: string): string[] {
-    // Runtime session decisions must not become stored authority through a read.
-    if (typeof consentBinding(id) !== "string") return [];
+    /* A SESSION GRANT COUNTS AND IS NOT STORED. A mod staged for this session only
+     * (mod-session.ts) was consented to for this session only, so the grant lives
+     * beside the staged archive rather than in the stored consents - otherwise
+     * testing somebody's mod once would leave a standing grant for an id that is
+     * not installed, and the player would never see the row it belongs to.
+     *
+     * Read HERE rather than at each caller because there are several - the plugin
+     * loader, the manager's row, the conflict report - and one of them missing it
+     * would be a mod whose code is refused for want of a consent the player gave. */
+    if (consentBinding(id) === null) return [];
     if (consentBinding(id) !== undefined && consentMatches(id, readField(this.storage, "consentBindings", {})[id])) return this.getConsents()[id] ?? [];
     return sessionConsents[id]?.slice() ?? this.getConsents()[id] ?? [];
   }
@@ -992,7 +1000,7 @@ export class ModStore {
   /** The capabilities the player refused for this mod. */
   getRefusal(id: string): string[] {
     if (consentBinding(id) !== undefined && consentMatches(id, readField(this.storage, "consentBindings", {})[id])) return this.getRefusals()[id] ?? [];
-    if (typeof consentBinding(id) !== "string") return [];
+    if (consentBinding(id) === null) return [];
     return sessionRefusals[id]?.slice() ?? this.getRefusals()[id] ?? [];
   }
 
@@ -1009,12 +1017,11 @@ export class ModStore {
   setDecisions(id: string, decided: ConsentRecord, version: string): void {
     const currentBinding = consentBinding(id);
     if (decided.binding !== undefined && decided.binding !== currentBinding) throw new Error(MOD_PERMISSION_TEXT.changed);
-    if (typeof currentBinding !== "string") return;
-    if (decided.binding === undefined && decided.granted.some((capability) => !this.getConsents()[id]?.includes(capability))) return;
+    if (currentBinding !== undefined && decided.binding === undefined && decided.granted.some((capability) => !this.getConsent(id).includes(capability))) return;
     const touched = new Set([...decided.granted, ...decided.refused]);
     const before = this.getDecisions(id);
-    const granted = [...(this.getConsents()[id] ?? []).filter((c) => !touched.has(c)), ...decided.granted];
-    const refused = [...(this.getRefusals()[id] ?? []).filter((c) => !touched.has(c)), ...decided.refused.filter((c) => !decided.granted.includes(c))];
+    const granted = [...before.granted.filter((c) => !touched.has(c)), ...decided.granted];
+    const refused = [...before.refused.filter((c) => !touched.has(c)), ...decided.refused.filter((c) => !decided.granted.includes(c))];
     const saved = modState.update(this.storage, (data) => {
       const refusals = { ...data.refusals };
       if (refused.length > 0) refusals[id] = [...new Set(refused)];

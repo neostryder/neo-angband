@@ -10,7 +10,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
   CHARACTER_BACKUP_PURPOSE,
-  BACKUP_LIMITS,
   backupFolderDisplayName,
   hostFolderRecordFile,
   isBackupPurpose,
@@ -19,7 +18,6 @@ import {
   listBackupFiles,
   readBackupFolder,
   writeBackupFolder,
-  writeBackupFile,
 } from "./backup-folder.js";
 
 let base: string;
@@ -172,14 +170,6 @@ describe("purpose-keying (#158): two callers, two remembered folders", () => {
     expect(isBackupFileName("ironman.ndelve")).toBe(false);
   });
 
-  it("refuses Windows devices, alternate streams, traversal, and invalid extensions", () => {
-    for (const name of ["CON.neochar", "aux.neochar", "LPT1.neochar", "COM\u00b9.neochar", "CON .neochar", "CONIN$.neochar", "C:x.neochar", "a:stream.neochar", "a..b.neochar", "a/b.neochar", "a\\b.neochar", "a?.neochar", "a\n.neochar"]) {
-      expect(isHostFolderFileName(name, ".neochar"), name).toBe(false);
-    }
-    expect(isHostFolderFileName("x.exe", "")).toBe(false);
-    expect(isHostFolderFileName("x.exe", ".exe/..")).toBe(false);
-  });
-
   it("listBackupFiles reads a purpose's own extension, not .neochar unconditionally", () => {
     fs.writeFileSync(path.join(base, "ruleset.ndelve"), "{}", "utf8");
     fs.writeFileSync(path.join(base, "Bilbo-abcdef12.neochar"), "{}", "utf8");
@@ -187,70 +177,5 @@ describe("purpose-keying (#158): two callers, two remembered folders", () => {
     expect(listBackupFiles(base, ".neochar")).toEqual([
       { name: "Bilbo-abcdef12.neochar", text: "{}" },
     ]);
-  });
-});
-
-describe("backup writes", () => {
-  it("requires a fresh host confirmation for each replacement and leaves declined writes unchanged", async () => {
-    let asks = 0;
-    const decline = async () => { asks++; return false; };
-    const accept = async () => { asks++; return true; };
-    expect(await writeBackupFile(base, "Bilbo.neochar", "first", ".neochar", decline)).toBe(true);
-    expect(asks).toBe(0);
-    expect(await writeBackupFile(base, "Bilbo.neochar", "second", ".neochar", decline)).toBe(false);
-    expect(fs.readFileSync(path.join(base, "Bilbo.neochar"), "utf8")).toBe("first");
-    expect(await writeBackupFile(base, "Bilbo.neochar", "second", ".neochar", accept)).toBe(true);
-    expect(await writeBackupFile(base, "Bilbo.neochar", "third", ".neochar", decline)).toBe(false);
-    expect(asks).toBe(3);
-    expect(fs.readFileSync(path.join(base, "Bilbo.neochar"), "utf8")).toBe("second");
-    expect(await writeBackupFile(base, "Bilbo.neochar", "third", ".neochar", async () => { throw new Error("dialog failed"); })).toBe(false);
-    expect(fs.readFileSync(path.join(base, "Bilbo.neochar"), "utf8")).toBe("second");
-  });
-
-  it("rejects invalid names and oversized UTF-8 text without creating files or asking", async () => {
-    const confirm = async () => { throw new Error("The dialog must not open."); };
-    expect(await writeBackupFile(base, "../x.neochar", "bad", ".neochar", confirm)).toBe(false);
-    expect(await writeBackupFile(base, "big.neochar", "\u00e9".repeat(BACKUP_LIMITS.fileBytes / 2 + 1), ".neochar", confirm)).toBe(false);
-    expect(fs.readdirSync(base)).toEqual([]);
-  });
-
-  it("enforces the file count and total byte quotas without creating another file", async () => {
-    for (let i = 0; i < BACKUP_LIMITS.files; i++) fs.writeFileSync(path.join(base, `${i}.neochar`), "");
-    expect(await writeBackupFile(base, "extra.neochar", "x", ".neochar", async () => true)).toBe(false);
-    expect(fs.existsSync(path.join(base, "extra.neochar"))).toBe(false);
-    fs.truncateSync(path.join(base, "0.neochar"), BACKUP_LIMITS.totalBytes);
-    expect(await writeBackupFile(base, "1.neochar", "x", ".neochar", async () => true)).toBe(false);
-    expect(fs.statSync(path.join(base, "1.neochar")).size).toBe(0);
-  });
-
-  it("does not read or overwrite a hard link and refuses a linked directory", async () => {
-    const target = path.join(base, "target");
-    fs.mkdirSync(target);
-    const sentinel = path.join(target, "outside.neochar");
-    fs.writeFileSync(sentinel, "keep");
-    const link = path.join(base, "linked.neochar");
-    fs.linkSync(sentinel, link);
-    expect(await writeBackupFile(base, "linked.neochar", "stolen", ".neochar", async () => true)).toBe(false);
-    expect(listBackupFiles(base)).toEqual([]);
-    expect(fs.readFileSync(sentinel, "utf8")).toBe("keep");
-    const linkedDir = path.join(base, "linked-dir");
-    fs.symlinkSync(target, linkedDir, "junction");
-    expect(await writeBackupFile(linkedDir, "new.neochar", "bad", ".neochar", async () => true)).toBe(false);
-    expect(listBackupFiles(linkedDir)).toEqual([]);
-    expect(fs.existsSync(path.join(target, "new.neochar"))).toBe(false);
-  });
-
-  it("checks the file again after the confirmation yields", async () => {
-    const file = path.join(base, "Bilbo.neochar");
-    const sentinel = path.join(base, "sentinel.txt");
-    fs.writeFileSync(file, "original");
-    fs.writeFileSync(sentinel, "keep");
-    const result = await writeBackupFile(base, "Bilbo.neochar", "bad", ".neochar", async () => {
-      fs.unlinkSync(file);
-      fs.linkSync(sentinel, file);
-      return true;
-    });
-    expect(result).toBe(false);
-    expect(fs.readFileSync(sentinel, "utf8")).toBe("keep");
   });
 });

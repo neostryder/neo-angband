@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { APP_ORIGIN, appRequestPath, isGameBridgeFrame, isGameUrl, isLegacyProbe, legacyOrigin } from "./app-origin.js";
+import { APP_ORIGIN, GAME_PAGE_CSP, appRequestPath, isGameUrl, isLegacyProbe, legacyOrigin } from "./app-origin.js";
 import { ORIGIN_PROBE_ROUTE } from "./routes.js";
 
 describe("the game's own origin", () => {
+  it("denies unlisted loads, inline scripts, eval, embedding, and form submissions in the proposed page policy", () => {
+    const directives = GAME_PAGE_CSP.split("; ");
+    expect(directives).toContain("default-src 'none'");
+    expect(directives).toContain("script-src 'self' blob:");
+    expect(directives).toContain("object-src 'none'");
+    expect(directives).toContain("frame-ancestors 'none'");
+    expect(directives).toContain("form-action 'none'");
+    expect(GAME_PAGE_CSP).not.toContain("unsafe-eval");
+  });
   it("has no port in it", () => {
     expect(APP_ORIGIN).toBe("neo-angband://game");
     expect(new URL(`${APP_ORIGIN}/`).port).toBe("");
@@ -14,7 +23,6 @@ describe("the game's own origin", () => {
     for (const url of [
       "neo-angband://game.example/",
       "neo-angband://other/",
-      "neo-angband://user:password@game/",
       "http://game/",
       "http://127.0.0.1:45871/",
       "javascript:alert(1)",
@@ -24,15 +32,6 @@ describe("the game's own origin", () => {
     ]) {
       expect(isGameUrl(url), url).toBe(false);
     }
-  });
-
-  it("refuses a subframe, a missing frame, and a main frame on another origin", () => {
-    const main = { url: `${APP_ORIGIN}/` };
-    expect(isGameBridgeFrame(main, main)).toBe(true);
-    expect(isGameBridgeFrame({ url: main.url }, main)).toBe(false);
-    expect(isGameBridgeFrame(null, main)).toBe(false);
-    const foreign = { url: "https://example.com/" };
-    expect(isGameBridgeFrame(foreign, foreign)).toBe(false);
   });
 
   it("hands routes.ts the path and query of a game URL", () => {

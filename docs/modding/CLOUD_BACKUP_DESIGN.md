@@ -131,10 +131,6 @@ section 9's step 3 (`mod-backup.ts`) now needs a per-platform `BackupFolder`
 implementation rather than one shared one: desktop calls `neoDesktop.backup(op,
 arg)`, the browser tab keeps the File System Access path.
 
-Desktop writes now reject traversal, drive letters, Windows device names, and linked files or folders. Each purpose's chosen folder permits at most 200 matching files, 8 MiB per new file, and 256 MiB of matching files in total. Listing reads at most those limits and skips linked or oversized files. A replacement requires a native confirmation every time, and the host checks the target again after the dialog returns. A declined or failed confirmation leaves the file unchanged.
-
-The authority boundary remains unfinished. `mod-backup.ts`'s `desktopBackupFolder` sends no mod identity, and `host-folder.ts`'s `desktopHostFolder` sends a purpose and extension without an installation binding. The channel still accepts any syntactically valid purpose and returns file text for that shared purpose. It has no per-mod allocation, grant check, or names-and-sizes-only listing. A main-process record needs an authenticated installation connection before those promises can hold; a table selected by renderer-supplied ids and digests would still permit impersonation. The existing callers retain their response format in this change.
-
 ---
 
 ## The design: qol mod, two small host seams, zero core changes

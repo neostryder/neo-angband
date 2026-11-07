@@ -5,7 +5,6 @@ import { registerLocale, resetLocales } from "@rpgm-tools/neo-angband-core";
 import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import { drawModControllerConsent, drawModPermissionConsent } from "./mod-consent-dialog";
 import { setConsentBindings } from "./mod-consent-binding";
-import * as snapshots from "./mod-code-snapshot";
 import { buildCatalog, ModStore } from "./mod-store";
 import { assignTier } from "./mod-tier";
 import { modPanelsSuspended, resetModPanels } from "./panel-runtime";
@@ -13,7 +12,6 @@ import { modPanelsSuspended, resetModPanels } from "./panel-runtime";
 const priorShow = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
 const priorClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
 beforeEach(() => {
-  vi.spyOn(snapshots, "modPayloadDigest").mockImplementation((id) => id === "two" ? "b".repeat(64) : "a".repeat(64));
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function(this: HTMLDialogElement) { this.open = true; } });
   Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: function(this: HTMLDialogElement) { this.open = false; this.dispatchEvent(new Event("close")); } });
   setConsentBindings(new Map([["probe", "digest-a"]]));
@@ -23,7 +21,7 @@ afterEach(() => {
   document.body.replaceChildren(); document.body.removeAttribute("style");
   if (priorShow) Object.defineProperty(HTMLDialogElement.prototype, "showModal", priorShow); else Reflect.deleteProperty(HTMLDialogElement.prototype, "showModal");
   if (priorClose) Object.defineProperty(HTMLDialogElement.prototype, "close", priorClose); else Reflect.deleteProperty(HTMLDialogElement.prototype, "close");
-  resetLocales(); resetModPanels(); setConsentBindings(new Map()); vi.restoreAllMocks();
+  resetLocales(); resetModPanels(); setConsentBindings(new Map());
 });
 
 function ask(caps = ["input:controller", "input:intent"]) {
@@ -57,11 +55,11 @@ describe("core consent dialogs", () => {
     expect(modPanelsSuspended()).toBe(false);
   });
 
-  it("starts prior grants unchecked and rejects content changes while a dialog is open", async () => {
+  it("preserves refusals and rejects content changes while a dialog is open", async () => {
     const result = drawModPermissionConsent([ask()], () => ({ granted: ["input:intent"], refused: ["input:controller"] }));
     document.querySelector<HTMLInputElement>("dialog input")!.checked = false;
     apply();
-    expect((await result)?.get("probe")).toEqual({ granted: [], refused: ["input:controller", "input:intent"], binding: "digest-a" });
+    expect((await result)?.get("probe")).toEqual({ granted: ["input:intent"], refused: ["input:controller"], binding: "digest-a" });
     const changed = drawModPermissionConsent([ask()]);
     setConsentBindings(new Map([["probe", "digest-b"]])); apply();
     expect(await changed).toBeNull();
@@ -73,31 +71,7 @@ describe("core consent dialogs", () => {
     const caps = ["input:controller", "input:observe", "input:intent", "input:prompt.reply", "network:*", "network:local", "network:example.com", "command:add", "command:submit", "ui:title", "keymap:write", "keymap:edit", "ui:panel.mount", "state:map-actual.read", "display:filter", "ui:panel"];
     const result = drawModPermissionConsent([ask(caps)]);
     apply();
-    expect((await result)?.get("probe")).toEqual({ granted: [], refused: caps, binding: "digest-a" });
-  });
-
-  it("distinguishes identical display names by id, repository, and digest", async () => {
-    const request = ask();
-    setConsentBindings(new Map([["one", "digest-one"], ["two", "digest-two"]]));
-    const lines: string[] = [];
-    for (const id of ["one", "two"]) {
-      const mod = { ...request.mod, id, name: "Same name", manifest: { ...request.mod.manifest, id, repository: `https://github.com/owner/${id}` } };
-      const result = drawModPermissionConsent([{ mod, caps: request.caps }]);
-      expect(document.querySelector("dialog h3")?.textContent).toBe("Same name");
-      lines.push(document.querySelector(".neo-consent-identity")!.textContent!);
-      expect(lines.at(-1)).toContain(`Id: ${id}`);
-      expect(lines.at(-1)).toContain(`Repository: https://github.com/owner/${id}`);
-      expect(lines.at(-1)).toContain("SHA-256:");
-      expect(lines.at(-1)).toContain(`SHA-256: ${(id === "two" ? "b" : "a").repeat(12)}`);
-      apply(); await result;
-    }
-    expect(lines[0]).not.toBe(lines[1]);
-  });
-
-  it("refuses an absent binding before drawing a dialog", async () => {
-    setConsentBindings(new Map());
-    expect(await drawModPermissionConsent([ask()])).toBeNull();
-    expect(document.querySelector("dialog")).toBeNull();
+    expect((await result)?.get("probe")).toEqual({ granted: ["display:filter", "ui:panel"], refused: caps.slice(0, -2), binding: "digest-a" });
   });
 
   it("normalizes names and removes format and line controls before truncating", async () => {

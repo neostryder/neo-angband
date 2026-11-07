@@ -183,84 +183,15 @@ describe("content-bound permission decisions", () => {
     expect(store.sawUnreviewedNotice("probe")).toBe(true);
   });
 
-  it("measures first-party payloads and loads only retained bytes", async () => {
+  it("keeps verified first-party consent unchanged", async () => {
     const f = fixture(); f.store.setConsent("probe", caps);
-    const firstParty = { ...tier, trust: "first-party" as const };
-    await prepareModPayloads(f.report, () => firstParty, async (path) => f.files.get(path)!, webcrypto.subtle as SubtleCrypto);
-    expect(f.store.getConsent("probe")).toEqual([]);
-    expect(typeof consentBinding("probe")).toBe("string");
-    f.approve();
+    await prepareModPayloads(f.report, () => ({ ...tier, trust: "first-party" }));
     expect(f.store.getConsent("probe")).toEqual(caps);
-    const measured = modPayloadBytes("probe", "worker.js");
-    f.files.set("worker.js", encode("throw new Error('unmeasured bytes')"));
-    const live = vi.fn(async () => "live:entry");
-    const loaded = await loadModCode({ packs: f.report.packs, codeUrl: live, enabled: () => true, consented: () => caps, tier: () => firstParty });
-    expect(live).not.toHaveBeenCalled();
-    expect(loaded.workers).toHaveLength(1);
-    const response = await fetch(loaded.workers[0]!.entryUrl);
-    expect(await response.text()).toBe(new TextDecoder().decode(measured!));
+    expect(consentBinding("probe")).toBeUndefined();
   });
-
-  it("does not promote untouched session grants into a stored decision", async () => {
-    const f = fixture(); await f.prepare(); f.approve();
-    f.files.set("worker.js", encode("export default {}"));
-    await f.prepare();
-    setSessionConsents({ probe: caps });
-    const before = f.values.get(MOD_STATE_STORAGE_KEY);
-    f.store.setDecisions("probe", { granted: caps, refused: [] }, "1.0.0");
-    expect(f.values.get(MOD_STATE_STORAGE_KEY)).toBe(before);
-    f.store.setDecisions("probe", { granted: [caps[0]!], refused: [], binding: consentBinding("probe")! }, "1.0.0");
-    expect(f.store.getConsents().probe).toEqual([caps[0]]);
-  });
-
 });
 
 describe("execution policy", () => {
-  it("imports retained first-party bytes after the live source changes", async () => {
-    const f = fixture([]);
-    const raw = { ...f.raw, data: { ...f.raw.data, runtime: "in-process", entry: "plugin.js" } };
-    const pack = { ...f.report.packs[0]!, manifest: validateManifest(raw, { code: ["plugin.js"] }), code: ["plugin.js"] };
-    const original = "export default { start() {} }";
-    f.files.set("manifest.json", encode(JSON.stringify(raw)));
-    f.files.set("plugin.js", encode(original));
-    const firstParty = { ...tier, trust: "first-party" as const, execution: "in-process" as const };
-    await prepareModPayloads({ ...f.report, packs: [pack] }, () => firstParty, async (path) => f.files.get(path)!, webcrypto.subtle as SubtleCrypto);
-    f.files.set("plugin.js", encode("throw new Error('replacement')"));
-    const live = vi.fn(async () => "live:entry");
-    const seen: string[] = [];
-    const loaded = await loadModCode({ packs: [pack], enabled: () => true, consented: () => [], tier: () => firstParty, codeUrl: live,
-      importer: async (url) => { seen.push(await (await fetch(url)).text()); return { default: { api: ">=2.0.0 <3.0.0", start: () => {} } }; } });
-    expect(live).not.toHaveBeenCalled();
-    expect(seen).toEqual([original]);
-    expect(loaded.plugins).toHaveLength(1);
-    expect(loaded.problems).toEqual([]);
-  });
-
-  it("does not import first-party code after its binding changes during URL resolution", async () => {
-    const f = fixture([]);
-    const raw = { ...f.raw, data: { ...f.raw.data, runtime: "in-process", entry: "plugin.js" } };
-    const pack = { ...f.report.packs[0]!, manifest: validateManifest(raw, { code: ["plugin.js"] }), code: ["plugin.js"] };
-    f.files.set("manifest.json", encode(JSON.stringify(raw)));
-    f.files.set("plugin.js", encode("export default { start() {} }"));
-    const firstParty = { ...tier, trust: "first-party" as const, execution: "in-process" as const };
-    await prepareModPayloads({ ...f.report, packs: [pack] }, () => firstParty, async (path) => f.files.get(path)!, webcrypto.subtle as SubtleCrypto);
-    const importer = vi.fn();
-    const pending = loadModCode({ packs: [pack], enabled: () => true, consented: () => [], tier: () => firstParty, importer, codeUrl: async () => "live:entry" });
-    setConsentBindings(new Map([["probe", "replacement"]]));
-    const loaded = await pending;
-    expect(importer).not.toHaveBeenCalled();
-    expect(loaded.plugins).toEqual([]);
-    expect(loaded.problems).toEqual([{ id: "probe", why: MOD_PERMISSION_TEXT.changed }]);
-  });
-
-  it("drops a Worker entry when its binding changes while resolving the URL", async () => {
-    const f = fixture(); await f.prepare();
-    const loaded = await loadModCode({ packs: f.report.packs, enabled: () => true, consented: () => caps, acknowledged: () => true,
-      codeUrl: async () => { setConsentBindings(new Map([["probe", "replacement"]])); return "stale:entry"; } });
-    expect(loaded.workers).toEqual([]);
-    expect(loaded.problems).toEqual([{ id: "probe", why: MOD_PERMISSION_TEXT.changed }]);
-  });
-
   it("stages an in-process API 2 producer without evaluating it on the host", async () => {
     const f = fixture();
     const manifest = { ...f.raw, data: { ...f.raw.data, runtime: "in-process", entry: "plugin.js" } };
@@ -273,13 +204,13 @@ describe("execution policy", () => {
     expect(loaded.plugins).toEqual([]);
   });
 
-  it.each(["sideloaded", "first-party"] as const)("refuses unmeasured %s code", async (trust) => {
+  it("refuses public code whose bytes were never measured", async () => {
     const f = fixture();
     const manifest = { ...f.raw, data: { ...f.raw.data, runtime: "in-process", entry: "plugin.js" } };
     const pack = { ...f.report.packs[0]!, manifest: validateManifest(manifest, { code: ["plugin.js"] }), code: ["plugin.js"] };
     const importer = vi.fn();
     setConsentBindings(new Map());
-    const loaded = await loadModCode({ packs: [pack], codeUrl: async () => "staged:entry", enabled: () => true, consented: () => caps, acknowledged: () => true, importer, tier: () => ({ ...tier, trust }) });
+    const loaded = await loadModCode({ packs: [pack], codeUrl: async () => "staged:entry", enabled: () => true, consented: () => caps, acknowledged: () => true, importer });
     expect(importer).not.toHaveBeenCalled();
     expect(loaded.workers).toEqual([]);
     expect(loaded.plugins).toEqual([]);

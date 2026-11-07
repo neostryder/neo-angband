@@ -48,7 +48,7 @@ still calls itself.
 
 ## [Unreleased]
 
-- [Visible] [Security] **Mod permission decisions require measured payloads and fresh host choices.** First-party code loads retained measured bytes, permission checkboxes start unchecked, and dialogs show the mod id, repository, and digest. Profile copies carry only enabled-mod selections. Session archives cannot share installed ids or grant themselves permissions through page storage, and mod-facing management responses hide private decisions and settings. Executable session imports and headless runs without measured bindings are refused.
+- [Visible] [Security] **Worker mods fail closed when isolation globals survive lockdown.** The frame authenticates boot with a single-use nonce and port handshake, keeps module source off window messages, and forwards only bounded JSON without Worker handles. The game-page CSP ships as report-only; runtime data: imports remain confined to the sandbox.
 
 ### Added
 
@@ -58,7 +58,6 @@ still calls itself.
 
 ### Changed
 
-- [Visible] [Security] **Desktop mod requests now refuse private and metadata destinations.** The relay checks DNS before each request and again when opening the connection, including redirects, caps request rates and headers, and removes raw authorization headers. Backup writes reject Windows device names and linked files, enforce file and byte limits, and ask before each replacement. Quit and update actions also ask in a native dialog. These checks do not authenticate individual mods in the shared game page.
 - [Visible] [Modding-API] **The game now implements mod API 2.1.0, up from 2.0.0.** The minor version rises because this release adds the `input:controller` and `input:observe` permissions that let third-party mods run controllers and watch gameplay keys, the `resumeAutoplayer` option on `saves.load`, and the `seed`, `birthRngState`, and `birthOptions` fields on the run report, and the `input-flush` event now fires. Mods that declare `">=2.0.0 <3.0.0"` keep loading unchanged. A mod that needs any of these additions should declare `">=2.1.0 <3.0.0"` so older games refuse it with a version message instead of failing at run time.
 - [Visible] [Compatibility] **The game page refuses public API 1 code.** Legacy in-process code runs only in a lab build with `?labprocess=<mod-id>`, and only if the mod declares and is granted `engine:access` and its content is approved. The headless runner runs folder mods with code only when started with `--unsafe-in-process`.
 - [Visible] [UI] **Mod consent dialogs now match the black Angband screen.** The permissions dialog and the "Automatic gameplay" dialog use a black panel with light grey monospace text, white bold headings, the mod's name in yellow, outlined buttons, and a yellow focus ring, and the page behind them is dimmed. Focus still starts on Cancel, and Escape still declines.

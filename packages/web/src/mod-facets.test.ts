@@ -18,9 +18,7 @@
  * seam can.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { setConsentBindings } from "./mod-consent-binding";
-import * as snapshots from "./mod-code-snapshot";
+import { describe, expect, it } from "vitest";
 import { problemLines } from "./mod-problems";
 import {
   composeContentPacks,
@@ -107,8 +105,6 @@ function pluginModule(): unknown {
 }
 
 async function loadOne(pack: DiskPack) {
-  setConsentBindings(new Map([[pack.manifest.id, "measured-fixture"]]));
-  vi.spyOn(snapshots, "modPayloadUrl").mockImplementation(resolver());
   return loadModCode({
     tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }),
     acknowledged: () => true,
@@ -119,8 +115,6 @@ async function loadOne(pack: DiskPack) {
     importer: () => Promise.resolve(pluginModule()),
   });
 }
-
-afterEach(() => { vi.restoreAllMocks(); setConsentBindings(new Map()); });
 
 /** The composed speed of core's kobold, which the hybrid's field patch raises. */
 function kobold(composed: { records: Record<string, unknown[]> }): unknown {

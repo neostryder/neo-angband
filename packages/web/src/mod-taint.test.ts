@@ -25,8 +25,6 @@
 
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { setConsentBindings } from "./mod-consent-binding";
-import * as snapshots from "./mod-code-snapshot";
 import { MOD_API_VERSION } from "./mod-plugin";
 import { NO_DISK_PACKS, resetDiskPacks, setDiskPacks, type DiskPack } from "./disk-packs";
 import { loadModCode, PLUGIN_FILE, resetModCode, setModCode } from "./mod-code";
@@ -45,7 +43,6 @@ import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 /* No vi.resetModules(), for the same reason as mod-engine-gate.test.ts: it would
  * give a dynamic import private copies of the latches this file writes to. */
 afterEach(() => {
-  vi.restoreAllMocks(); setConsentBindings(new Map());
   resetDiskPacks();
   resetModCode();
   resetModFaults();
@@ -233,8 +230,6 @@ async function withExplodingMod(...also: DiskPack[]): Promise<{
 }> {
   let calls = 0;
   const packs = [codePack("rowdy"), ...also];
-  setConsentBindings(new Map(packs.map((pack) => [pack.manifest.id, "measured-fixture"])));
-  vi.spyOn(snapshots, "modPayloadUrl").mockImplementation(resolver);
   setDiskPacks(folderWith(...packs));
   setModCode(
     await loadModCode({

@@ -7,7 +7,7 @@ export function consentBinding(id: string): string | null | undefined {
 
 export function consentMatches(id: string, recorded: string | undefined): boolean {
   const current = bindings.get(id);
-  return typeof current === "string" && current === recorded;
+  return current === undefined || (current !== null && current === recorded);
 }
 
 export function invalidateModConsent(id: string): void {

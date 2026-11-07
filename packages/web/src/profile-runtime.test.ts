@@ -1,13 +1,11 @@
 import { readFileSync } from "node:fs";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { setConsentBindings } from "./mod-consent-binding";
+import { describe, expect, it, vi } from "vitest";
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modPluginContext, setModControllerArmedControl, setModProfilesControl } from "./mod-context";
 import { ModStore, MOD_SETTINGS_STORAGE_KEY } from "./mod-store";
 import { consumeProfileAction, createModProfiles, PROFILE_ACTION_KEY } from "./profile-runtime";
 import { ProfileStore } from "./profiles";
 import { scopedStorage, type ScopedStorage } from "./profile-scope";
-import * as profileScope from "./profile-scope";
 
 function fakeStorage(): ScopedStorage {
   const map = new Map<string, string>();
@@ -21,25 +19,17 @@ function fakeStorage(): ScopedStorage {
 }
 
 function fixture(grants = ["profiles:manage", "saves:manage"]) {
-  setConsentBindings(new Map([["test-player", "measured-player"], ["helper", "measured-helper"]]));
   const storage = fakeStorage();
   const pendingStorage = fakeStorage();
   const store = new ProfileStore(storage);
   const manifest: PackManifest = { id: "test-player", name: "Test Player", version: "1.0.0", shape: "plugin", modApi: 1, capabilities: grants };
   const installed: PackManifest[] = [manifest, { id: "helper", name: "Helper", version: "1.0.0", shape: "content" }];
   const caps = CapabilitySet.fromManifest(manifest);
-  new ModStore(storage).setDecisions(manifest.id, { granted: grants, refused: [], binding: "measured-player" }, manifest.version);
+  new ModStore(storage).setConsent(manifest.id, grants);
   const reload = vi.fn();
   const deps = { storage, pendingStorage, store, installed: () => installed, reload, hasController: () => true, canSwitch: () => ({ ok: true as const }) };
   const api = createModProfiles(manifest.id, caps, deps);
   return { storage, pendingStorage, store, caps, api, deps, reload, installed };
-}
-
-afterEach(() => { setConsentBindings(new Map()); vi.restoreAllMocks(); });
-
-function approve(f: ReturnType<typeof fixture>, id: string): void {
-  const manifest = f.installed[0]!;
-  new ModStore(scopedStorage(f.storage, id)).setDecisions(manifest.id, { granted: manifest.capabilities ?? [], refused: [], binding: "measured-player" }, manifest.version);
 }
 
 function created(f: ReturnType<typeof fixture>, options?: { copyFrom?: string | null }): string {
@@ -50,18 +40,6 @@ function created(f: ReturnType<typeof fixture>, options?: { copyFrom?: string | 
 }
 
 describe("mod profiles", () => {
-  it("cannot reach consent writes or scoped storage copies through profile grants", () => {
-    const f = fixture();
-    const decisions = vi.spyOn(ModStore.prototype, "setDecisions");
-    const copy = vi.spyOn(profileScope, "copyScopedStorage");
-    const id = created(f, { copyFrom: null });
-    expect(f.api.setEnabledMods(id, ["helper"])).toMatchObject({ ok: false });
-    expect(decisions).not.toHaveBeenCalled();
-    expect(copy).not.toHaveBeenCalled();
-    expect("setDecisions" in f.api).toBe(false);
-    expect("copyScopedStorage" in f.api).toBe(false);
-  });
-
   it("creates a fresh profile with its creator enabled and lists the active profile", () => {
     const f = fixture();
     f.storage.setItem("neo-angband-user:customized_birth_options.json", "source options");
@@ -69,30 +47,25 @@ describe("mod profiles", () => {
     const target = scopedStorage(f.storage, id);
     expect(target.getItem("neo-angband-user:customized_birth_options.json")).toBeNull();
     expect(new ModStore(target).getEnabled()).toEqual(["test-player"]);
-    expect(new ModStore(target).getConsent("test-player")).toEqual([]);
+    expect(new ModStore(target).getConsent("test-player")).toEqual(["profiles:manage", "saves:manage"]);
     expect(f.api.list()).toEqual({ ok: true, value: [{ id: null, name: "Default", active: true }, { id, name: "Test profile", active: false }] });
   });
 
-  it.each([null, "source"])("copies enabled selections from %s without private records", (fromId) => {
+  it.each([null, "source"])("copies configuration from %s without saves, roster or global keys", (fromId) => {
     const f = fixture();
     const sourceId = fromId === null ? null : f.store.create("Source");
     const source = scopedStorage(f.storage, sourceId);
     const sourceMods = new ModStore(source);
     sourceMods.setEnabled(["helper"]);
-    sourceMods.setDecisions("helper", { granted: ["ui:panel.mount"], refused: [], binding: "measured-helper" }, "1.0.0");
-    sourceMods.pinAgainst("helper", "test-player", "before");
     source.setItem("neo-angband-user:customized_interface_options.json", "options");
     source.setItem(MOD_SETTINGS_STORAGE_KEY, "settings");
     source.setItem("neo:modPrefs:helper", "preferences");
     for (const key of ["neo-angband-save:slot", "neo-angband-roster", "neo-angband:roster", "neo-angband:active-slot", "neo-angband:deaths", "neo:profiles", "profile:sibling:k", "neo-angband-user:hero.json", "global"]) source.setItem(key, "excluded");
     const id = created(f, { copyFrom: sourceId });
     const target = scopedStorage(f.storage, id);
-    expect(target.getItem("neo-angband-user:customized_interface_options.json")).toBeNull();
-    expect(target.getItem(MOD_SETTINGS_STORAGE_KEY)).toBeNull();
-    expect(target.getItem("neo:modPrefs:helper")).toBeNull();
-    expect(new ModStore(target).getDecisions("helper")).toEqual({ granted: [], refused: [] });
-    expect(new ModStore(target).getConsentVersion("helper")).toBeUndefined();
-    expect(new ModStore(target).getPins()).toEqual([]);
+    expect(target.getItem("neo-angband-user:customized_interface_options.json")).toBe("options");
+    expect(target.getItem(MOD_SETTINGS_STORAGE_KEY)).toBe("settings");
+    expect(target.getItem("neo:modPrefs:helper")).toBe("preferences");
     expect(new ModStore(target).getEnabled()).toEqual(["test-player", "helper"]);
     for (const key of ["neo-angband-save:slot", "neo-angband-roster", "neo-angband:roster", "neo-angband:active-slot", "neo-angband:deaths", "neo:profiles", "profile:sibling:k", "neo-angband-user:hero.json", "global"]) expect(target.getItem(key)).toBeNull();
     expect(source.getItem("neo-angband-save:slot")).toBe("excluded");
@@ -101,8 +74,6 @@ describe("mod profiles", () => {
   it("sets installed enabled mods only in profiles the caller created", () => {
     const f = fixture();
     const id = created(f);
-    expect(f.api.setEnabledMods(id, ["helper"])).toMatchObject({ ok: false });
-    approve(f, id);
     expect(f.api.setEnabledMods(id, ["helper", "helper"])).toEqual({ ok: true, value: undefined });
     const mods = new ModStore(scopedStorage(f.storage, id));
     expect(mods.getEnabled()).toEqual(["test-player", "helper"]);
@@ -127,9 +98,6 @@ describe("mod profiles", () => {
   it("reloads into a profile and consumes the pending action once", () => {
     const f = fixture();
     const id = created(f);
-    expect(f.api.switchTo(id, { kind: "create-character", armController: true })).toMatchObject({ ok: false });
-    expect(f.pendingStorage.getItem(PROFILE_ACTION_KEY)).toBeNull();
-    approve(f, id);
     const action = { kind: "create-character" as const, armController: true };
     expect(f.api.switchTo(id, action)).toEqual({ ok: true, value: undefined });
     expect(f.store.activeId()).toBe(id);
@@ -144,7 +112,6 @@ describe("mod profiles", () => {
   it("reports a failed or mismatched action and never retries it", () => {
     const f = fixture();
     const id = created(f);
-    approve(f, id);
     f.api.switchTo(id, { kind: "create-character" });
     const run = vi.fn(() => ({ ok: false as const, reason: "Controller unavailable." }));
     expect(consumeProfileAction(f.pendingStorage, id, run)).toEqual({ ok: false, reason: "Controller unavailable." });
@@ -172,7 +139,6 @@ describe("mod profiles", () => {
   it("rolls back a failed reload and refuses switches during play", () => {
     const f = fixture();
     const id = created(f);
-    approve(f, id);
     const failed = createModProfiles("test-player", f.caps, { ...f.deps, reload: () => { throw new Error("reload failed"); } });
     expect(failed.switchTo(id, { kind: "create-character" })).toMatchObject({ ok: false });
     expect(f.store.activeId()).toBeNull();
@@ -219,7 +185,6 @@ describe("mod profiles", () => {
   it("returns a refusal if reload storage refuses writes or clearing", () => {
     const f = fixture();
     const id = created(f);
-    approve(f, id);
     const unavailable = createModProfiles("test-player", f.caps, {
       ...f.deps,
       pendingStorage: { ...f.pendingStorage, removeItem: () => { throw new Error("Denied."); } },

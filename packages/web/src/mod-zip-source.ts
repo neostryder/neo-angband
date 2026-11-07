@@ -59,8 +59,9 @@ export interface ZipImportDeps {
    * plus one more confirmation. A mod handing the engine another mod's code is a
    * different act, and it stays refused.
    *
-   * Legacy decision arguments remain accepted for caller compatibility, but
-   * cannot authorize code. The host needs a measured player decision instead.
+   * `granted` is what the player agreed the mod may do, for this session, and is
+   * held beside the archive rather than written into the persistent consent store -
+   * testing somebody's mod once must not leave a standing grant behind.
    */
   readonly loadForSession: (
     bytes: Uint8Array,
@@ -213,9 +214,9 @@ export function zipImportDeps(
     },
     pick: pickZipFile,
     install: async (bytes) => await installModFromZip(bytes, env, allowed()),
-    loadForSession: async (bytes, source) =>
+    loadForSession: async (bytes, source, granted, grantedDigest, refused, acknowledged) =>
       await stageSessionMod(
-        { bytes, source, granted: [], allowed: allowed() },
+        { bytes, source, granted, grantedDigest, ...(refused ? { refused } : {}), ...(acknowledged === undefined ? {} : { acknowledged }), allowed: allowed() },
         env.scope ?? globalThis,
       ),
     sessionSurvivesReload: () => sessionSurvivesReload(env.scope ?? globalThis),
