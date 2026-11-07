@@ -112,15 +112,15 @@ describe("engine hooks", () => {
     api2Plugin({ api: "^2.0.0", engineHooks } as never, () => ({ grants: capabilities("eh", [...grants]), tier }));
 
   it("hands a first-party mod's own game hooks to the game", () => {
-    const plugin = build("first-party", [], (() => ({ levelGenerated: veto, partialStackMerge: () => true })) as never);
+    const plugin = build("first-party", ["engine:access"], (() => ({ levelGenerated: veto, partialStackMerge: () => true })) as never);
     const hooks = load("eh", plugin).hooks;
     expect(hooks?.levelGenerated?.({}, false)).toBe(false);
     expect(hooks?.partialStackMerge?.({} as never, {} as never)).toBe(true);
   });
 
-  it("asks a mod with no engine access for nothing", () => {
+  it.each(["public", "first-party"] as const)("asks a %s mod with no engine access for nothing", (tier) => {
     let asked = false;
-    const plugin = build("public", [], (() => { asked = true; return { levelGenerated: veto }; }) as never);
+    const plugin = build(tier, [], (() => { asked = true; return { levelGenerated: veto }; }) as never);
     const hooks = load("eh", plugin).hooks;
     expect(asked).toBe(false);
     expect(hooks?.levelGenerated).toBeUndefined();
@@ -134,7 +134,7 @@ describe("engine hooks", () => {
   it("refuses a name that is not a game hook, a value that is not a function, and a hook it already declares", () => {
     const refuse = (declared: unknown, pattern: RegExp) => {
       const plugin = api2Plugin({ api: "^2.0.0", hooks: () => ({ messageText: (raw: string) => raw }), engineHooks: () => declared } as never,
-        () => ({ grants: capabilities("eh", []), tier: "first-party" }));
+        () => ({ grants: capabilities("eh", ["engine:access"]), tier: "first-party" }));
       expect(() => plugin.hooks?.(modPluginContext("eh", { loud: true }, undefined, {}, { capabilities: capabilities("eh", []) }))).toThrow(pattern);
     };
     refuse({ notAHook: veto }, /not a game hook/u);
@@ -154,7 +154,7 @@ describe("engine tiles", () => {
   };
 
   it("hands a first-party mod's tile filler and player provider to the game's tile seams", () => {
-    const registrations = registrationsOf(build("first-party", [], () => ({ filler, player })));
+    const registrations = registrationsOf(build("first-party", ["engine:access"], () => ({ filler, player })));
     expect(Object.keys(registrations ?? {}).sort()).toEqual(["playerTile", "tileFiller"]);
     const seen: string[] = [];
     let provider: ((view: never) => unknown) | undefined;
@@ -187,7 +187,7 @@ describe("engine tiles", () => {
   it("refuses values that are not functions, and a filler beside a tileMap table's", () => {
     const refuse = (declared: unknown, pattern: RegExp, extra: object = {}) => {
       const plugin = api2Plugin({ api: "^2.0.0", engineTiles: () => declared, ...extra } as never,
-        () => ({ grants: capabilities("et", ["registry:tiles"]), tier: "first-party" }));
+        () => ({ grants: capabilities("et", ["registry:tiles", "engine:access"]), tier: "first-party" }));
       expect(() => plugin.hooks?.(modPluginContext("et", {}, undefined, {}, { capabilities: capabilities("et", ["registry:tiles"]) }))).toThrow(pattern);
     };
     refuse({ filler: 3 }, /filler is not a function/u);
@@ -390,7 +390,7 @@ describe("an API 2 definition through the shim", () => {
       return menu;
     } } });
     expect(checkApi2Definition(definition)).toBeNull();
-    const caps = capabilities("modern", []);
+    const caps = capabilities("modern", ["ui:menu.replace"]);
     const ctx = modPluginContext("modern", {}, undefined, {}, { capabilities: caps });
     const p = api2Plugin(definition, () => ({ grants: caps, tier: "first-party", firstParty: { presentation: true } }));
     expect(p.menu?.(ctx)).toBe(menu);
@@ -424,7 +424,7 @@ describe("an API 2 definition through the shim", () => {
     const host = { marker: true } as unknown as ModRegistryHost;
     const seen: Record<string, unknown> = {};
     for (const tier of ["first-party", "public"] as const) {
-      const plugin = api2Plugin({ api: ">=2.0.0 <3.0.0", start(mod: ModApi2) { seen[tier] = mod.engine?.registry; } } as never, () => ({ grants: capabilities("reg", []), tier }));
+      const plugin = api2Plugin({ api: ">=2.0.0 <3.0.0", start(mod: ModApi2) { seen[tier] = mod.engine?.registry; } } as never, () => ({ grants: capabilities("reg", ["engine:access"]), tier }));
       plugin.register?.(host, modPluginContext("reg", {}, undefined, {}, { capabilities: capabilities("reg", []) }));
     }
     expect(seen["first-party"]).toBe(host);

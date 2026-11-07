@@ -101,7 +101,6 @@ import { menuRegistry } from "./menu-registry";
 import { clearQueuedUiInputs, enqueueUiInputs, inputEvents } from "./input-door";
 import { closeTopModPanel, modPanelsSuspended, topModPanelId } from "./panel-runtime";
 import { removeBackupSink } from "./mod-backup";
-import { prepareTruthRead } from "./mod-truth-consent";
 
 /** Asks the player for the real map on behalf of a mod; the game wires it at boot (main.ts). */
 type TruthConsentAsk = (modId: string, reason: string) => Promise<"granted" | "declined" | "unavailable">;
@@ -139,7 +138,7 @@ export interface Api2HostOptions {
   readonly tier?: "first-party" | "public";
   /** The permissions the player granted this mod. */
   readonly grants: AgentCapabilities;
-  /** The loader settles namespace grants separately from measured identity. */
+  /** The loader settles namespace grants separately from measured identity; the property name remains for compatibility. */
   readonly firstParty?: Api2Allowlist;
   /** Resolver and glyph sources for the known world (ids and glyphs are absent without them). */
   readonly viewDeps?: AgentViewDeps;
@@ -210,13 +209,19 @@ export function disposeApi2Host(api: ModApi2): void {
 }
 
 export function api2Engine(ctx: ModPluginContext, options: Api2HostOptions): Api2Engine | undefined {
-  if (options.execution === "worker" || !(options.tier === "first-party" || (options.developerInProcess && options.grants.has("engine:access")))) return undefined;
+  const held = (): boolean => options.execution !== "worker" && options.execution !== "data" &&
+    (options.tier === "first-party" || options.developerInProcess === true) && options.grants.has("engine:access");
+  if (!held()) return undefined;
+  const read = <T>(value: () => T): T => {
+    if (!held()) throw new AgentCapabilityError("this mod needs capability \"engine:access\"");
+    return value();
+  };
   return frozen({
-    api: ENGINE_API2_VERSION,
-    core: ctx.core,
-    get state() { return ctx.state; },
-    get registries() { return ctx.registries ?? modRegistries(); },
-    registry: options.registry,
+    get api() { return read(() => ENGINE_API2_VERSION); },
+    get core() { return read(() => ctx.core); },
+    get state() { return read(() => ctx.state); },
+    get registries() { return read(() => ctx.registries ?? modRegistries()); },
+    get registry() { return read(() => options.registry); },
   });
 }
 
@@ -357,8 +362,10 @@ export function api2MayObserveKeys(ctx: Pick<ModPluginContext, "snapshot">): boo
 export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions): ModApi2 {
   const cleanups = new Set<() => void>();
   const { grants } = options;
+  const seams = options.firstParty;
   const granted = (capability: string): boolean => {
-    if (capability === "engine:access") return options.execution !== "worker" && (options.tier === "first-party" || (options.developerInProcess === true && grants.has(capability)));
+    if (capability === "engine:access") return options.execution !== "worker" && options.execution !== "data" &&
+      (options.tier === "first-party" || options.developerInProcess === true) && grants.has(capability);
     try {
       return grants.has(capability);
     } catch {
@@ -395,6 +402,30 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   const keySubscriptions = new Map<string, () => void>();
   const ownedKeys = new Set<string>();
   let stopped = false;
+  const presentationHeld = (capability: string): boolean => !stopped && options.tier === "first-party" &&
+    options.execution !== "worker" && options.execution !== "data" && seams?.presentation === true && granted(capability);
+  const requirePresentation = (capability: string): void => {
+    if (!presentationHeld(capability)) throw new AgentCapabilityError(`this mod needs capability "${capability}"`);
+  };
+  const presentationFacade = <T extends object>(source: T, capability: string): T => new Proxy({} as T, {
+    get: (_target, key) => {
+      requirePresentation(capability);
+      const value: unknown = Reflect.get(source, key, source);
+      return typeof value === "function" ? (...args: unknown[]) => {
+        requirePresentation(capability);
+        return Reflect.apply(value, source, args);
+      } : value;
+    },
+    ownKeys: () => Reflect.ownKeys(source),
+    getOwnPropertyDescriptor: (_target, key) => key in source ? { configurable: true, enumerable: true } : undefined,
+    set: () => false,
+    defineProperty: () => false,
+    deleteProperty: () => false,
+  });
+  const presentationCapabilities = ["display:replace", "ui:sidebar.replace", "ui:status.replace", "ui:messages.replace",
+    "ui:menu.replace", "ui:screen.replace", "ui:birth.replace", "ui:region.create", "keymap:edit", "screens:manage", "ui:title"];
+  const presentation = presentationCapabilities.some(presentationHeld);
+  const engineOptions = { ...options, grants: { has: (capability: string) => !stopped && granted(capability) } };
   let nextSubscription = 1;
   const runSubscriptions = new Map<string, () => void>();
   const titleRows = new Map<string, () => void>();
@@ -415,7 +446,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     if (owner?.kind === "controller") return owner.owner === ctx.id;
     return actionBudget > 0 && Date.now() <= actionUntil;
   };
-  const title: Api2Title | undefined = (options.tier === "first-party" && options.firstParty?.presentation) || granted("ui:title") ? frozen<Api2Title>({
+  const title: Api2Title | undefined = granted("ui:title") ? frozen<Api2Title>({
     registerRow: (row) => guarded(() => {
       if (!granted("ui:title")) return api2NotGranted("ui:title");
       if (!ctx.title) return api2Unavailable("this front end has no title actions");
@@ -448,6 +479,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
   }) : undefined;
   const openPage = (spec: import("@rpgm-tools/neo-angband-mod-sdk").Api2PanelSpec) => guarded(() => {
+    if (!["ui:region.create", "ui:screen.replace", "screens:manage"].some(presentationHeld)) return api2NotGranted("ui:region.create");
     if (!granted("ui:panel.mount")) return api2NotGranted("ui:panel.mount");
     if (!ctx.ui) return api2Unavailable("this front end mounts no pages");
     try {
@@ -579,8 +611,9 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     return api2Ok(data(list));
   };
 
+  const engine = api2Engine(ctx, engineOptions);
   const api: ModApi2 = {
-    ...(api2Engine(ctx, options) ? { engine: api2Engine(ctx, options)! } : {}),
+    ...(engine ? { engine } : {}),
     meta: frozen({
       id: ctx.id,
       api: MOD_API2_VERSION,
@@ -907,7 +940,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         return api2Ok(null);
       }),
       ...(title ? { title } : {}),
-      ...(options.tier === "first-party" && options.firstParty?.presentation ? {
+      ...(presentationHeld("ui:region.create") || presentationHeld("ui:screen.replace") || presentationHeld("screens:manage") ? {
         overlay: (spec: import("@rpgm-tools/neo-angband-mod-sdk").Api2PanelSpec = { id: "overlay", modal: true }) => openPage(spec),
         mountPage: async (kind: string, mount: (root: ShadowRoot) => void, pageOptions?: Omit<import("@rpgm-tools/neo-angband-mod-sdk").Api2PanelSpec, "id">) => {
           const opened = await openPage({ id: kind, ...pageOptions });
@@ -1042,48 +1075,57 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
 
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
     ...(backupFolder ? { backupFolder } : {}),
-    ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && options.firstParty?.manage ? { manage: manageDomain(ctx, options, cleanups, () => stopped) } : {}),
-    ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}, (capability) => !stopped && granted(capability)) } : {}),
+    ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && seams?.manage ? { manage: manageDomain(ctx, options, cleanups, () => stopped) } : {}),
+    ...(seams?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}, granted) } : {}),
     ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && truthConsentAsk
       ? { permissions: permissionsDomain(ctx, options, granted, truthConsentAsk, () => stopped) } : {}),
-    ...(options.tier === "first-party" && options.firstParty?.presentation ? {
+    ...(presentation ? {
       presentation: frozen({
         cancelInput: (escapeCount: number = 3) => guarded(() => {
-          if (!Number.isSafeInteger(escapeCount) || escapeCount < 1) return api2Refused("bad-count", "cancellation needs a positive escape count");
+          if (!presentationHeld("keymap:edit")) return api2NotGranted("keymap:edit");
+          if (modPanelsSuspended()) return api2Refused("input", "the host is asking for permission");
+          if (!Number.isSafeInteger(escapeCount) || escapeCount < 1 || escapeCount > 32) return api2Refused("bad-count", "cancellation needs an escape count from 1 to 32");
           clearQueuedUiInputs();
           enqueueUiInputs(Array.from({ length: escapeCount }, () => ({
             key: { key: "Escape", modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false },
           })));
           return api2Ok(null);
         }),
-        ...(ctx.keyRepeat ? { keyRepeat: ctx.keyRepeat } : {}),
+        ...(ctx.keyRepeat && presentationHeld("keymap:edit") ? { keyRepeat: () => {
+          requirePresentation("keymap:edit");
+          return ctx.keyRepeat!();
+        } } : {}),
         ...(title ? { title } : {}),
         phase: bootPhase,
         onPhaseChanged: (listener: (phase: import("@rpgm-tools/neo-angband-mod-sdk").Api2BootPhase) => void) => {
           const off = onBootPhaseChanged((phase) => {
+            if (!presentationCapabilities.some(presentationHeld)) return;
             try { listener(phase); }
             catch (error) { ctx.log(`phase listener failed: ${String(error)}`); }
           });
           cleanups.add(off);
           return () => { off(); cleanups.delete(off); };
         },
-        ...(ctx.display ? { display: frozen({
+        ...(ctx.display && presentationHeld("display:replace") ? { display: presentationFacade({
           ...ctx.display,
           onKey: (listener: (event: KeyboardEvent) => void) => {
-            const off = ctx.display!.onKey(listener);
+            requirePresentation("keymap:edit");
+            const off = ctx.display!.onKey((event) => {
+              if (presentationHeld("display:replace") && presentationHeld("keymap:edit") && !modPanelsSuspended()) listener(event);
+            });
             cleanups.add(off);
             return () => { off(); cleanups.delete(off); };
           },
           ...(ctx.display.onFrame ? { onFrame: (listener: () => void) => {
-            const off = ctx.display!.onFrame!(listener);
+            const off = ctx.display!.onFrame!(() => { if (presentationHeld("display:replace")) listener(); });
             cleanups.add(off);
             return () => { off(); cleanups.delete(off); };
           } } : {}),
-        }) } : {}),
-        ...(ctx.subwindows ? { subwindows: ctx.subwindows } : {}),
-        ...(ctx.tiles ? { tiles: ctx.tiles } : {}),
-        ...(ctx.ui ? { panels: ctx.ui } : {}),
-        ...(typeof document !== "undefined" && document.getElementById("game-view") ? {
+        }, "display:replace") } : {}),
+        ...(ctx.subwindows && presentationHeld("ui:region.create") ? { subwindows: presentationFacade(ctx.subwindows, "ui:region.create") } : {}),
+        ...(ctx.tiles && presentationHeld("display:replace") ? { tiles: presentationFacade(ctx.tiles, "display:replace") } : {}),
+        ...(ctx.ui && presentationHeld("ui:region.create") ? { panels: presentationFacade(ctx.ui, "ui:region.create") } : {}),
+        ...(presentationHeld("ui:sidebar.replace") && typeof document !== "undefined" && document.getElementById("game-view") ? {
           sidebarHost: document.getElementById("game-view")!,
         } : {}),
       }),
@@ -1367,7 +1409,7 @@ function managedMods(id: string, options: Api2HostOptions, cleanups: Set<() => v
 function permissionsDomain(ctx: ModPluginContext, options: Api2HostOptions, held: (capability: string) => boolean, ask: TruthConsentAsk, stopped: () => boolean): Api2Permissions {
   /* A yes to the question holds the real map from then on, though the capability set the mod started with does not name it. */
   let allowed = false;
-  const granted = (capability: string): boolean => !stopped() && (held(capability) || (allowed && capability === "state:map-actual.read"));
+  const granted = (capability: string): boolean => held(capability) || (allowed && capability === "state:map-actual.read");
   let truth: Api2Truth | undefined = options.firstParty?.truth ? truthDomain(ctx, options.viewDeps ?? {}, granted) : undefined;
   return frozen({
     truthHeld: () => truth !== undefined,
@@ -1376,7 +1418,6 @@ function permissionsDomain(ctx: ModPluginContext, options: Api2HostOptions, held
       if (truth) return api2Ok(truth);
       if (typeof reason !== "string" || reason.trim() === "") return api2Refused("bad-reason", "the question needs a reason to show the player");
       const answer = await ask(ctx.id, reason);
-      if (stopped()) return api2Unavailable("this mod has stopped");
       if (answer === "unavailable") return api2Refused("unavailable", "this mod may not ask for the real map");
       if (answer === "declined") return api2Refused("declined", "the player did not allow it");
       allowed = true;
@@ -1392,8 +1433,8 @@ function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps, granted: (capab
    * allowlisted mod reaches this. */
   const view = (state: GameState) => createAgentView(state, undefined, deps);
   /* Exact monsters and race records have a narrower permission of their own; the level and the shops need the real map. */
-  const mapOpen = () => granted("state:map-actual.read") && (!ctx.state || prepareTruthRead(ctx.id, "state:map-actual.read", ctx.state)) && granted("state:map-actual.read");
-  const monstersOpen = () => mapOpen() || (granted("state:monsters-actual.read") && (!ctx.state || prepareTruthRead(ctx.id, "state:monsters-actual.read", ctx.state)) && granted("state:monsters-actual.read"));
+  const monstersOpen = () => granted("state:monsters-actual.read") || granted("state:map-actual.read");
+  const mapOpen = () => granted("state:map-actual.read");
   return frozen({
     monsters: () => guarded(() => {
       if (!monstersOpen()) return api2NotGranted("state:monsters-actual.read");

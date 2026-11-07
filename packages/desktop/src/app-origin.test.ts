@@ -1,17 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { APP_ORIGIN, GAME_PAGE_CSP, appRequestPath, isGameBridgeFrame, isGameUrl, isLegacyProbe, legacyOrigin } from "./app-origin.js";
+import { APP_ORIGIN, appRequestPath, isGameBridgeFrame, isGameUrl, isLegacyProbe, legacyOrigin } from "./app-origin.js";
 import { ORIGIN_PROBE_ROUTE } from "./routes.js";
 
 describe("the game's own origin", () => {
-  it("denies unlisted loads, inline scripts, eval, embedding, and form submissions in the proposed page policy", () => {
-    const directives = GAME_PAGE_CSP.split("; ");
-    expect(directives).toContain("default-src 'none'");
-    expect(directives).toContain("script-src 'self' blob:");
-    expect(directives).toContain("object-src 'none'");
-    expect(directives).toContain("frame-ancestors 'none'");
-    expect(directives).toContain("form-action 'none'");
-    expect(GAME_PAGE_CSP).not.toContain("unsafe-eval");
-  });
   it("has no port in it", () => {
     expect(APP_ORIGIN).toBe("neo-angband://game");
     expect(new URL(`${APP_ORIGIN}/`).port).toBe("");

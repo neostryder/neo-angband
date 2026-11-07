@@ -358,9 +358,7 @@ import {
   modTier,
   playerHeld,
   modTiers,
-  modHolds,
-  TRUTH_MAP,
-  TRUTH_MONSTERS,
+  saveMarkingGrantHeld,
   setModGrants,
   setModTiers,
 } from "./mod-tier";
@@ -463,7 +461,7 @@ import { openTakenScreen } from "./mod-screens";
 import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2CommandPusher, setApi2DirectionPrompt, setApi2ManagementHost, setApi2TruthConsent } from "./mod-api2-host";
 import { classicManager } from "./mod-manager/classic-service";
 import { C_FG, C_WARN } from "./mod-manager/classic-colors";
-import { recordTruthUse, requestTruthConsent, setTruthSaveWriter, type TruthCapability } from "./mod-truth-consent";
+import { markPlayerForTruth, requestTruthConsent } from "./mod-truth-consent";
 import { drawPendingManagementConfirmation } from "./mod-manager/classic-confirmation";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
 import { faultMessage, modDisplayName, reportModFault, setModNameLookup } from "./mod-problems";
@@ -2089,13 +2087,12 @@ setApi2PolicyLoadOrder(enabledModIds());
 let finishWorkerPolicies: () => void = () => undefined;
 const workerPoliciesReady = new Promise<void>((resolve) => { finishWorkerPolicies = resolve; });
 const game = bootGame();
-/* Hidden-information consequences belong to the capability, regardless of author. */
-for (const loaded of activeModCode().plugins) {
-  for (const capability of [TRUTH_MAP, TRUTH_MONSTERS] as const) {
-    if (modHolds(loaded.id, capability)) recordTruthUse(game.manifest, game.state.actor.player,
-      { installation: loaded.permissionBinding ?? null, id: loaded.id, version: loaded.manifest.version, digest: loaded.contentDigest ?? null },
-      capability, { turn: game.state.turn, depth: game.state.chunk.depth });
-  }
+/* A mod that holds a capability its tier marks the save for (AnybandUI seeing
+ * the real map, mod-tier.ts FIRST_PARTY_ORIGINS) marks the character the way
+ * debug mode does, for as long as it is allowed. The mark is one-way, like
+ * upstream's NOSCORE_DEBUG. With no such mod loaded nothing changes. */
+if (saveMarkingGrantHeld()) {
+  game.state.actor.player.noscore = markNoscore(game.state.actor.player.noscore, NOSCORE.DEBUG);
 }
 // Strip the one-shot boot params (?new / ?seed / ?depth) from the visible URL
 // once they have been consumed. They are read into `params` / `seed` / `depth`
@@ -2125,16 +2122,7 @@ setApi2CommandPusher((code, dir) => {
   commandBuffer.push({ code, ...(dir === undefined ? {} : { dir }) });
   advance();
 });
-function saveTruthUse(id: string, capability: TruthCapability): boolean {
-  const loaded = activeModCode().plugins.find((mod) => mod.id === id);
-  if (!loaded || !loaded.permissionBinding || loaded.permissionBinding !== consentBinding(id)) return false;
-  recordTruthUse(game.manifest, game.state.actor.player,
-    { installation: loaded.permissionBinding, id, version: loaded.manifest.version, digest: loaded.contentDigest ?? null },
-    capability, { turn: game.state.turn, depth: game.state.chunk.depth });
-  return persistSave(false, true);
-}
-setTruthSaveWriter((id, capability, current) => current === game.state && modHolds(id, capability) && saveTruthUse(id, capability));
-/* Runtime consent must persist the consequence before activating truth. */
+/* A first-party mod asks for the real map here, with the game's own question. A yes is stored like a manager decision and marks the character. */
 setApi2TruthConsent((id, reason) => requestTruthConsent(id, reason, {
   store: defaultModStore(),
   ask: async (modId, why, marksSave) => {
@@ -2163,7 +2151,7 @@ setApi2TruthConsent((id, reason) => requestTruthConsent(id, reason, {
     repaintEverything();
     return pick === 0;
   },
-  markSave: (id) => saveTruthUse(id, TRUTH_MAP),
+  markSave: () => markPlayerForTruth(game.state.actor.player),
 }));
 /* Every plugin context built from here on reports these as `ctx.registries`.
  *
@@ -7607,14 +7595,14 @@ let suppressSave = false;
  * The port used to swallow every failure silently, so a quota-exceeded
  * localStorage write left the player playing on believing they were saved.
  */
-function persistSave(deliberate = false, required = false): boolean {
+function persistSave(deliberate = false): boolean {
   /* A mod's hook threw mid-turn (mod-taint.ts), so this state may be half-updated
    * and must not go over the last good save. THE ONLY GATE THAT MATTERS: the tail
    * autosave is not the sole writer - a level change, the 'S' command, the options
    * screen and pagehide all force a save, so gating autosave() alone would leave
    * four ways to overwrite the file the moment the player walked downstairs. */
-  if (sessionTaint()) return !required;
-  if (suppressSave || birthPending) return !required; // a throwaway claims no slot
+  if (sessionTaint()) return true;
+  if (suppressSave || birthPending) return true; // a throwaway claims no slot
   /* THIS PAGE'S SLOT, not the origin's. `getActiveId` would answer with whatever
    * character any tab most recently chose to resume, which is how two tabs on one
    * character autosaved over each other every three seconds with neither told.
@@ -7623,7 +7611,7 @@ function persistSave(deliberate = false, required = false): boolean {
    * whose slot turned out to belong to another tab has already been detached and
    * writes nowhere (slot-attach.ts). */
   const id = attachedSlot();
-  if (!id) return !required; // attached to nothing (e.g. the picker is up): nothing to save
+  if (!id) return true; // attached to nothing (e.g. the picker is up): nothing to save
   try {
     if (!saveCatalog || !modSaveGuard) return false;
     const current = captureModList(game.modList?.name ?? "", defaultModStore(), saveCatalog(), saveModMetadata);
@@ -7633,7 +7621,7 @@ function persistSave(deliberate = false, required = false): boolean {
     const b64 = bytesToB64(encodeSavedGame(save, undefined, SAVE_CODEC));
     /* writeSlot's own verdict, not just "nothing threw": the storage write
      * itself is where a quota failure shows up. */
-    const ok = writeSlot(id, b64, metaFromState(id)) && (!required || readSlotSave(id) === b64);
+    const ok = writeSlot(id, b64, metaFromState(id));
     if (ok) game.modList = save.modList;
     /* There is now a character worth protecting from the browser's own eviction, so
      * this is the moment to ask for persistent storage - once per session, in the
@@ -11873,7 +11861,6 @@ function continueAdvance(
         scored: outcome.entered,
         endedAt: Date.now(),
         autoplayers: game.manifest.autoplayers,
-        capabilityUse: game.manifest.capabilityUse,
       }));
     } catch (error) {
       log.error("report", "run report failed", error);
@@ -16170,7 +16157,7 @@ setModControllerArmedControl((id) =>
 const workerPlugins = new Map<string, StartedModWorker>();
 const workerControllers = new Map<string, LoadedModPlugin>();
 function controllerCandidates(): readonly LoadedModPlugin[] {
-  return [...activeModCode().plugins, ...workerControllers.values()].filter((loaded) => loaded.tier.trust === "first-party" ||
+  return [...activeModCode().plugins, ...workerControllers.values()].filter((loaded) =>
     (loaded.permissionBinding === consentBinding(loaded.id) && ["input:controller", "input:intent"].every((capability) => defaultModStore().getConsent(loaded.id).includes(capability))));
 }
 /* What each Worker mod's policy tables install beside hooks, once it settles. */
@@ -16780,7 +16767,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
   const takenOver = state.actor.player;
   const identity = { id: loaded.id, name: loaded.manifest.name, version: loaded.manifest.version,
     digest: loaded.contentDigest ?? null, firstParty: loaded.tier.trust === "first-party" };
-  recordControllerUse(game.manifest, takenOver, identity, { installation: loaded.permissionBinding ?? null, activation: { turn: state.turn, depth: state.chunk.depth } });
+  recordControllerUse(game.manifest, takenOver, identity);
   try { autosave(true); }
   catch (err) { modHealth().recordFault(loaded.id, "autosave", err); }
   log.info(`mod:${loaded.id}`, `installed an autoplayer`);
@@ -16911,14 +16898,13 @@ try {
 } catch {
   /* best-effort; worst case this boot asks, which is the safe direction */
 }
-/* The other boot that may skip the prompt (#300): the first boot of a character
+/* The boot that may carry an armed controller (#300): the first boot of a character
  * whose predecessor's autoplayer asked to carry on (AUTOPLAYER_ROLL_ON_KEY). The
  * birth screen's boot keeps the flag for the boot after it and installs nothing,
  * since its character is the throwaway behind the birth screen. Any other boot
  * clears it, so a player who backs out of birth and loads someone else is asked. */
 let rollOnAutoplayerId: string | null = null;
 let rollOnHeldForBirth: string | null = null;
-let rollOnLoaded = false;
 try {
   const armed = reloadStorage.getItem(AUTOPLAYER_ROLL_ON_KEY);
   if (birthPending) {
@@ -16929,7 +16915,6 @@ try {
     /* #430: the loaded character's own boot, armed by its load. */
     else if (loadRolledOnId) {
       rollOnAutoplayerId = loadRolledOnId;
-      rollOnLoaded = true;
     }
   }
 } catch {
@@ -16990,11 +16975,9 @@ for (const loaded of controllerCandidates()) {
      * gets, every single boot. */
     if (justConfirmedAutoplayerId === autoplayerConfirmationKey(loaded.id)) {
       finishAutoplayerInstall(loaded, install);
-    } else if (loaded.tier.trust === "first-party" && rollOnAutoplayerId === loaded.id) {
-      finishAutoplayerInstall(loaded, install);
-      say(rollOnLoaded
-        ? t("main.autoplayer.load-on", "{name} carries on with the loaded character.", { name: loaded.manifest.name })
-        : t("main.autoplayer.roll-on", "{name} carries on with the new character.", { name: loaded.manifest.name }));
+    } else if (rollOnAutoplayerId === loaded.id) {
+      /* A profile can arm a controller, but it cannot accept the session dialog. */
+      pendingAutoplayerInstall = { loaded, install };
     } else {
       pendingAutoplayerInstall = { loaded, install };
     }

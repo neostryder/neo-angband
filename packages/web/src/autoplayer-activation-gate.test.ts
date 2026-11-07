@@ -317,7 +317,7 @@ describe("the boot-time install loop no longer installs unconditionally", () => 
 describe("finishAutoplayerInstall shows the on-screen indicator", () => {
   it("shows the banner as part of installing, not as an afterthought bolted on", () => {
     const body = finishBody();
-    const markAt = body.indexOf("recordControllerUse(game.manifest, takenOver, identity,");
+    const markAt = body.indexOf("recordControllerUse(game.manifest, takenOver, identity)");
     const bannerAt = body.indexOf("showAutoplayerBanner(modName");
     expect(markAt).toBeGreaterThan(-1);
     expect(bannerAt, "finishAutoplayerInstall still shows the banner").toBeGreaterThan(-1);
