@@ -40,6 +40,8 @@
  *   5. every declared payload file is still served, at the tag, with CORS open;
  *   6. and the qol plugin, DOWNLOADED, still does what it says.
  *
+ * WHAT A GREEN RUN COVERS. A green canary means each mod on the registry list still serves, at its tag, what the game expects to install; it does not tell you whether any mod works. The canary reads the registry and each manifest, then checks that the repository describes an installable mod, that the manifest id matches, that the engine range admits this build, that a mod shipping code declares an api range this host admits (apiRangeVerdict), and that every declared payload file is served with CORS open. It loads no mod code and runs no gameplay. The qol check, the one that downloaded and ran a plugin, is skipped until it is rewritten against the API 2 host, so item 6 above does not currently run. Permissions and consent, Worker isolation, controllers, events, saves, and a mod's behavior in play are covered by the unit tests in this package, the headless mod runner, and lab runs with the mods installed.
+ *
  * OFF BY DEFAULT, and deliberately not part of `pnpm test`. It needs the network and
  * GitHub, and a PR must not go red because a CDN hiccupped - a check that cries wolf
  * gets ignored, and this one has to be believed. It runs on a schedule in its own
