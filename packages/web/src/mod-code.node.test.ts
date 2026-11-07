@@ -22,7 +22,9 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { setConsentBindings } from "./mod-consent-binding";
+import * as snapshots from "./mod-code-snapshot";
 import { problemLines } from "./mod-problems";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
@@ -133,8 +135,12 @@ function loadPackRecords<T>(name: string): T[] {
 }
 
 function loadModCode(options: Parameters<typeof loadCode>[0]) {
+  setConsentBindings(new Map(options.packs.map((pack) => [pack.manifest.id, "measured-fixture"])));
+  vi.spyOn(snapshots, "modPayloadUrl").mockImplementation(async (id, file) => options.codeUrl?.(id, file) ?? null);
   return loadCode({ tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }), ...options });
 }
+
+afterEach(() => { vi.restoreAllMocks(); setConsentBindings(new Map()); });
 
 /** The real object kinds, for the two tval dispatches that read a kind. */
 function loadObjKinds(): { tval: number; name: string }[] {

@@ -8,6 +8,7 @@ import type { ModTier } from "./mod-tier";
 interface Payload {
   readonly files: ReadonlyMap<string, Uint8Array>;
   readonly digest: string;
+  readonly repository: string | null;
   readonly urls: Map<string, string>;
   readonly codeUrls: Map<string, string>;
 }
@@ -16,6 +17,10 @@ let payloads: ReadonlyMap<string, Payload> = new Map();
 
 export function modPayloadDigest(id: string): string | null {
   return payloads.get(id)?.digest ?? null;
+}
+
+export function modPayloadRepository(id: string): string | null {
+  return payloads.get(id)?.repository ?? null;
 }
 
 export function modPayloadBytes(id: string, file: string): Uint8Array | null {
@@ -95,7 +100,6 @@ export async function prepareModPayloads(
   try {
     for (const pack of report.packs) {
       const id = pack.manifest.id;
-      if (tierOf(id).trust === "first-party") continue;
       bindings.set(id, null);
       try {
         if (!subtle || !report.assetUrl || expired || totalSize >= 128 * 1024 * 1024 || (enabled && !enabled(id))) continue;
@@ -131,7 +135,7 @@ export async function prepareModPayloads(
         const digest = await bounded(sha256Hex(new TextEncoder().encode(JSON.stringify(hashes)), subtle));
         const binding = await bounded(sha256Hex(new TextEncoder().encode(JSON.stringify([id, digest, tierOf(id).execution, [...new Set(pack.manifest.capabilities ?? [])].sort()])), subtle));
         const prior = payloads.get(id);
-        next.set(id, prior?.digest === digest ? prior : { files, digest, urls: new Map(), codeUrls: new Map() });
+        next.set(id, prior?.digest === digest ? prior : { files, digest, repository: pack.manifest.repository ?? null, urls: new Map(), codeUrls: new Map() });
         bindings.set(id, binding);
       } catch {
         // A partial payload cannot authorize any code or permission.

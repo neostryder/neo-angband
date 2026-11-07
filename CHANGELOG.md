@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+- [Visible] [Security] **Mod permission decisions require measured payloads and fresh host choices.** First-party code loads retained measured bytes, permission checkboxes start unchecked, and dialogs show the mod id, repository, and digest. Profile copies carry only enabled-mod selections. Session archives cannot share installed ids or grant themselves permissions through page storage, and mod-facing management responses hide private decisions and settings. Executable session imports and headless runs without measured bindings are refused.
+
 ### Added
 
 - [Visible] [Modding-API] **Third-party mods can now play the game as autoplayer controllers once the player grants their permissions.** Public mods can also observe gameplay keys and register commands, and they can add rows to the title screen and the game menu. Before, only the game's own mods could take the keyboard as a controller. Public API 2 code always runs in an isolated Worker that the host checks on every message, and the game page draws its own consent dialog bound to a digest of the mod's files and requested permissions. A public controller needs a second dialog each time a save is loaded or resumed, and starting one marks the character unscorable and the save nondeterministic.

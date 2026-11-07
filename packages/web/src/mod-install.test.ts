@@ -19,6 +19,8 @@ import { zipSync } from "fflate";
 import { discoverMod, type DiscoverEnv, type DiscoveredMod, type PayloadEntry } from "./mod-discover";
 import { classifyModPin, classifyModTag } from "./mod-updates";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setConsentBindings } from "./mod-consent-binding";
+import * as snapshots from "./mod-code-snapshot";
 
 import { STORE_HANDLES, STORE_MODS, STORE_MOD_META, STORE_MOD_VERSIONS } from "./idb";
 import { activateModTransaction, stageModPlan, stageModRollback, previousModVersion, releasePreviousModVersions, type ModTransactionEnvironment } from "./mod-transactions";
@@ -65,6 +67,8 @@ import { modPluginContext, setModInstallDoor } from "./mod-context";
 import { CapabilitySet, validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 
 const subtle = webcrypto.subtle;
+
+afterEach(() => { vi.restoreAllMocks(); setConsentBindings(new Map()); });
 
 /* ------------------------------------------------------------------ *
  * A multi-store IndexedDB fake.
@@ -328,6 +332,7 @@ async function envFor(
 const CURATED = { origin: "curated", allowed: false } as const;
 
 function transactionFixture(failPut?: (store: string, key: string, value: unknown) => boolean) {
+  setConsentBindings(new Map(["demo", "other", "bundled"].map((id) => [id, "measured-fixture"])));
   const made = fakeIdb({ ...(failPut ? { failPut } : {}) });
   const values = new Map<string, string>();
   const storage = {
@@ -539,7 +544,7 @@ describe("staged mod transactions", () => {
     await f.stage(f.makePlan("2.0.0"));
     const before = f.active();
     f.pending()!.data.phase = "activating";
-    f.store.setDecisions("demo", { granted: ["ui:sidebar.replace"], refused: [] }, "2.0.0");
+    f.store.setDecisions("demo", { granted: ["ui:sidebar.replace"], refused: [], binding: "measured-fixture" }, "2.0.0");
     expect(await activateModTransaction(f.env)).toContain("previous versions were restored");
     expect(f.store.getConsent("demo")).toEqual([]);
     expect(f.store.getConsentVersion("demo")).toBe("1.0.0");
@@ -562,7 +567,7 @@ describe("staged mod transactions", () => {
     const f = transactionFixture();
     await f.installInitial();
     f.store.setEnabled(["other", "demo"]);
-    f.store.setDecisions("demo", { granted: ["ui:sidebar.replace"], refused: ["ui:messages.replace"] }, "1.0.0");
+    f.store.setDecisions("demo", { granted: ["ui:sidebar.replace"], refused: ["ui:messages.replace"], binding: "measured-fixture" }, "1.0.0");
     f.store.setSettingValue("demo", "amount", 7);
     f.store.pinAgainst("demo", "other", "after");
     await f.stage(f.makePlan("2.0.0"));
@@ -842,7 +847,7 @@ describe("saved lists through staged activation", () => {
     expect(plan.value.downloads).toEqual([]);
     const pending = m.service.applyModListPlan(plan.value.id);
     if (pending.status !== "confirmation") throw new Error("The restore did not ask for confirmation.");
-    expect((await m.core.resolveConfirmation(pending.confirmation.id, { accepted: true, permissions: { bundled: { granted: ["ui:sidebar.replace"], refused: [] } } })).status).toBe("ok");
+    expect((await m.core.resolveConfirmation(pending.confirmation.id, { accepted: true, permissions: { bundled: { granted: ["ui:sidebar.replace"], refused: [], binding: "measured-fixture" } } })).status).toBe("ok");
     expect(f.store.getEnabled()).toEqual([]);
     expect(f.store.getConsent("bundled")).toEqual([]);
     expect(await activateModTransaction(f.env)).toBeNull();
@@ -2152,6 +2157,9 @@ describe("an INSTALLED mod's plugin.js actually runs", () => {
     const report = await loadInstalledMods({ indexedDB: made.factory });
     expect(report.problems).toEqual([]);
     expect(report.packs).toHaveLength(1);
+
+    setConsentBindings(new Map([["demo", "measured-fixture"]]));
+    vi.spyOn(snapshots, "modPayloadUrl").mockImplementation(report.codeUrl!);
 
     return await loadModCode({
       tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }),

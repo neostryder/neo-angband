@@ -3,7 +3,8 @@ import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sd
 import { createApi2Host, stopApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
 import type { SaveModList } from "@rpgm-tools/neo-angband-mod-sdk";
-import { buildCatalog, ModStore, type StorageLike } from "../mod-store";
+import { buildCatalog, ModStore, setSessionConsents, type StorageLike } from "../mod-store";
+import { setConsentBindings } from "../mod-consent-binding";
 import { assignTier, effectiveGrants, resetModTiers, setModGrants, setModTiers, TRUTH_MAP } from "../mod-tier";
 import type { DiscoveredMod } from "../mod-discover";
 import type { InstalledModMeta } from "../mod-install";
@@ -27,6 +28,7 @@ function discovered(m: PackManifest): DiscoveredMod {
 }
 
 function fixture(manifests: PackManifest[] = [manifest("a"), manifest("b")], overrides: Partial<ModManagerEnvironment> = {}) {
+  setConsentBindings(new Map(manifests.map((mod) => [mod.id, `measured-${mod.id}`])));
   const store = new ModStore(storage());
   const local = new Map(manifests.map((m) => [m.id, m]));
   const remote = new Map(manifests.map((m) => [m.id, m]));
@@ -72,7 +74,7 @@ async function accept(core: CoreModManager, result: ManagerResult<unknown>, deci
   return core.resolveConfirmation(result.confirmation.id, decision);
 }
 
-afterEach(() => { resetModTiers(); });
+afterEach(() => { resetModTiers(); setConsentBindings(new Map()); setSessionConsents({}); vi.restoreAllMocks(); });
 
 describe("saved mod list restore plans", () => {
   async function savedFixture() {
@@ -354,11 +356,11 @@ describe("enablement, permission records, and settings", () => {
 
   it("requires confirmation for a permission grant and preserves older decisions", async () => {
     const f = fixture([manifest("a", { shape: "plugin", capabilities: ["ui:messages.replace", "ui:sidebar.replace"] })]);
-    f.store.setDecisions("a", { granted: ["ui:messages.replace"], refused: [] }, "0.9.0");
-    expect(await accept(f.core, f.service.recordConsent("a", { granted: ["ui:sidebar.replace"], refused: [] }))).toMatchObject({ status: "ok" });
+    f.store.setDecisions("a", { granted: ["ui:messages.replace"], refused: [], binding: "measured-a" }, "0.9.0");
+    expect(await accept(f.core, f.service.recordConsent("a", { granted: ["ui:sidebar.replace"], refused: [] }), { accepted: true, permissions: { a: { granted: ["ui:sidebar.replace"], refused: [] } } })).toMatchObject({ status: "ok" });
     expect(f.store.getConsent("a")).toEqual(["ui:messages.replace", "ui:sidebar.replace"]);
     expect(f.store.getConsentVersion("a")).toBe("1.0.0");
-    expect(f.service.recordConsent("a", { granted: [], refused: ["ui:sidebar.replace"] }).status).toBe("ok");
+    expect((await accept(f.core, f.service.recordConsent("a", { granted: [], refused: ["ui:sidebar.replace"] }), { accepted: true, permissions: { a: { granted: [], refused: ["ui:sidebar.replace"] } } })).status).toBe("ok");
   });
 
   it("refuses a permission the mod did not request", () => {
@@ -374,7 +376,7 @@ describe("enablement, permission records, and settings", () => {
 
   it("requires confirmation when enabling a mod that already holds truth", async () => {
     const f = fixture([manifest("a", { shape: "plugin", capabilities: [TRUTH_MAP] })]);
-    f.store.setConsent("a", [TRUTH_MAP]);
+    f.store.setDecisions("a", { granted: [TRUTH_MAP], refused: [], binding: "measured-a" }, "1.0.0");
     expect((await accept(f.core, f.service.enable("a"))).status).toBe("ok");
   });
 
@@ -633,6 +635,64 @@ describe("Core-private confirmations and the first-party adapter", () => {
     const removal = await adapter.remove("a");
     expect(removal.status).toBe("confirmation");
     expect(f.uninstall).not.toHaveBeenCalled();
+  });
+
+  it("redacts snapshots, subscriptions, and refresh results", async () => {
+    grantManager();
+    const f = fixture([manifest("a", { capabilities: ["ui:sidebar.replace"] })]);
+    f.store.setDecisions("a", { granted: ["ui:sidebar.replace"], refused: [], binding: "measured-a" }, "1.0.0");
+    f.store.setSettingValue("a", "private-setting", 17);
+    f.metadata.set("a", { id: "a", name: "Mod a", repo: "owner/a", tag: "v1.0.0", sha: "commit", files: [], digests: { "manifest.json": "private-digest" }, installedAt: "today" });
+    await f.service.refresh();
+    const result = createManageAdapter(f.service, "anybandui");
+    if (result.status !== "ok") throw new Error("The caller was refused.");
+    const adapter = result.value;
+    const received: unknown[] = [];
+    const off = adapter.subscribe((state) => received.push(state));
+    adapter.enable("a");
+    const refresh = await adapter.refresh();
+    expect(refresh.status).toBe("ok");
+    const states = [adapter.snapshot(), ...received, ...(refresh.status === "ok" ? [refresh.value] : [])];
+    for (const state of states) {
+      expect(state).toMatchObject({ pendingConfirmation: null, pendingPlans: [], installed: [{ digests: null, settings: {}, consent: { granted: [], refused: [] }, consentVersion: null, catalogMod: { granted: [] } }] });
+      expect(JSON.stringify(state)).not.toContain("private-setting");
+      expect(JSON.stringify(state)).not.toContain("private-digest");
+      expect(JSON.stringify(state)).not.toContain("measured-a");
+    }
+    expect(f.service.state.pendingConfirmation?.id).toBeTypeOf("number");
+    expect("resolveConfirmation" in adapter).toBe(false);
+    expect("setDecisions" in adapter).toBe(false);
+    expect("copyScopedStorage" in adapter).toBe(false);
+    off();
+  });
+
+  it("cannot save its own session grants or change third-party consent through management", async () => {
+    grantManager();
+    const id = "anybandui";
+    const f = fixture([manifest(id, { capabilities: ["ui:sidebar.replace", "ui:messages.replace"] })]);
+    setSessionConsents({ [id]: ["ui:sidebar.replace", "ui:messages.replace"] });
+    const write = vi.spyOn(f.store, "setDecisions");
+    const thirdParty = vi.spyOn(f.service, "setThirdPartyConsent");
+    const result = createManageAdapter(f.service, id);
+    if (result.status !== "ok") throw new Error("The caller was refused.");
+    const adapter = result.value;
+    expect(adapter.setThirdPartyConsent(true)).toMatchObject({ status: "refused", code: "host-only" });
+    expect(adapter.setThirdPartyConsent(false)).toMatchObject({ status: "refused", code: "host-only" });
+    expect(thirdParty).not.toHaveBeenCalled();
+    const pending = adapter.recordConsent(id, { granted: ["ui:sidebar.replace"], refused: [] });
+    expect(pending.status).toBe("confirmation");
+    expect(write).not.toHaveBeenCalled();
+    expect(await accept(f.core, pending)).toMatchObject({ status: "refused", code: "permissions" });
+    expect(write).not.toHaveBeenCalled();
+    const approved = adapter.recordConsent(id, { granted: ["ui:sidebar.replace"], refused: [] });
+    expect(await accept(f.core, approved, { accepted: true, permissions: { [id]: { granted: ["ui:sidebar.replace"], refused: [] } } })).toMatchObject({ status: "ok" });
+    expect(f.store.getConsents()[id]).toEqual(["ui:sidebar.replace"]);
+    write.mockClear();
+    const held = adapter.recordConsent(id, { granted: ["ui:sidebar.replace"], refused: [] });
+    expect(held.status).toBe("confirmation");
+    expect(write).not.toHaveBeenCalled();
+    expect(await accept(f.core, held, { accepted: false })).toMatchObject({ status: "refused", code: "cancelled" });
+    expect(write).not.toHaveBeenCalled();
   });
 
   it("rechecks measured grants when a saved adapter mutates state", () => {

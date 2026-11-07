@@ -24,6 +24,7 @@ import {
   type ModTierFacts,
 } from "./mod-tier";
 import { setConsentBindings } from "./mod-consent-binding";
+import * as snapshots from "./mod-code-snapshot";
 import { loadModCode, measureModTiers, settledGrants, PLUGIN_FILE } from "./mod-code";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
 import { MOD_API_VERSION } from "./mod-plugin";
@@ -110,6 +111,7 @@ const plugin = { default: { api: MOD_API_VERSION, hooks: () => ({}) } };
 
 afterEach(() => {
   vi.restoreAllMocks();
+  setConsentBindings(new Map());
   resetModTiers();
   resetSafeLaunch();
   setScreenPresenter(null);
@@ -339,13 +341,14 @@ describe("per-permission consent", () => {
   });
 
   it("requires the notice after a first-party copy loses trust", async () => {
+    vi.spyOn(snapshots, "modPayloadUrl").mockImplementation(codeUrl);
     const pack = codePack("anybandui", []);
     const importer = vi.fn(() => Promise.resolve(plugin));
     const opts = { packs: [pack], codeUrl, enabled: () => true, consented: () => [], importer };
-    measured("p");
+    measured("anybandui");
     expect((await loadModCode({ ...opts, tier: () => assignTier(installed()) })).plugins).toHaveLength(1);
     importer.mockClear();
-    measured("p");
+    measured("anybandui");
     expect((await loadModCode({ ...opts, tier: () => assignTier(installed({ digestsMatch: false })) })).plugins).toHaveLength(0);
     expect(importer).not.toHaveBeenCalled();
   });
@@ -422,8 +425,9 @@ describe("per-permission consent", () => {
   });
 
   it("asks an update only about what is new, keeping earlier choices", () => {
+    measured("m");
     const store = new ModStore(fakeStorage());
-    store.setDecisions("m", { granted: ["command:add"], refused: ["state:monsters.read"] }, "1.0.0");
+    store.setDecisions("m", { granted: ["command:add"], refused: ["state:monsters.read"], binding: "bound" }, "1.0.0");
     const row = (caps: string[]) =>
       buildCatalog({
         content: [],
@@ -436,7 +440,7 @@ describe("per-permission consent", () => {
       }).find((m) => m.id === "m");
     expect(row(["command:add", "state:monsters.read"])?.consented).toBe(true);
     expect(row(["command:add", "state:monsters.read", "event:message"])?.consented).toBe(false);
-    store.setDecisions("m", { granted: ["event:message"], refused: [] }, "1.1.0");
+    store.setDecisions("m", { granted: ["event:message"], refused: [], binding: "bound" }, "1.1.0");
     expect(store.getDecisions("m")).toEqual({
       granted: ["command:add", "event:message"],
       refused: ["state:monsters.read"],
@@ -484,6 +488,7 @@ describe("the unreviewed notice and badge", () => {
   });
 
   it("is due once, before the first enable, and only for a mod that runs code", () => {
+    setConsentBindings(new Map([["s", "bound"]]));
     const store = new ModStore(fakeStorage());
     const row = catalogRow(sideloaded);
     expect(unreviewedNoticeDue(row, store)).toBe(true);
