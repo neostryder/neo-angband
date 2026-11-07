@@ -724,3 +724,36 @@ it("preserves host controller attribution through a save reload", () => {
   expect(saveGame(restored).manifest?.autoplayers).toEqual(game.manifest.autoplayers);
   expect(restored.manifest.determinism).toBe("nondeterministic");
 });
+
+it("retains permanent consequences after controller history truncation and bag removal", () => {
+  const game = startGame(pack, { seed: 20260716, depth: 5 });
+  game.mods = { "mod-0": { schema: 1, data: { claimedScoreable: true } } };
+  game.manifest.modNoscore = true;
+  game.manifest.capabilityUse = { schema: 1, entries: Array.from({ length: 40 }, (_, index) => ({
+    installation: `binding-${index}`, id: `mod-${index}`, version: "1.0.0", digest: `digest-${index}`,
+    capability: "input:controller", activation: { turn: index, depth: 5 }, consequence: "controller",
+  })) };
+  game.manifest.autoplayers = game.manifest.capabilityUse.entries.slice(-32).map((entry) => ({
+    id: entry.id, name: entry.id, version: entry.version, digest: entry.digest, firstParty: false,
+  }));
+  const saved = clone(saveGame(game));
+  saved.mods = {};
+  const restored = loadGame(pack, saved, new Set(["core"]));
+  const roundtrip = clone(saveGame(restored));
+  expect(roundtrip.manifest?.modNoscore).toBe(true);
+  expect(roundtrip.manifest?.autoplayers).toHaveLength(32);
+  expect(roundtrip.manifest?.capabilityUse).toEqual(game.manifest.capabilityUse);
+  expect(roundtrip.manifest?.capabilityUse?.entries).toHaveLength(40);
+  expect(restored.mods).toEqual({});
+});
+
+it("loads saves without capability provenance and preserves future schemas", () => {
+  const saved = clone(saveGame(startGame(pack, { seed: 20260716, depth: 5 })));
+  delete saved.manifest;
+  const old = loadGame(pack, saved, new Set(["core"]));
+  expect(old.manifest.modNoscore).toBe(false);
+  expect(old.manifest.capabilityUse).toBeUndefined();
+  const future = clone(saveGame(old));
+  future.manifest!.capabilityUse = { schema: 9, entries: [] };
+  expect(saveGame(loadGame(pack, future)).manifest?.capabilityUse).toEqual({ schema: 9, entries: [] });
+});

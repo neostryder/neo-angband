@@ -88,6 +88,7 @@ import {
   APP_ORIGIN,
   APP_SCHEME,
   APP_SCHEME_PRIVILEGES,
+  GAME_PAGE_CSP,
   appRequestPath,
   isGameUrl,
   isGameBridgeFrame,
@@ -288,6 +289,7 @@ function respond(status: number, body: string | Buffer, type?: string): Response
     status,
     headers: {
       "Content-Type": type ?? "text/plain; charset=utf-8",
+      "Content-Security-Policy-Report-Only": GAME_PAGE_CSP,
       // Cross-origin isolation -> crossOriginIsolated -> SharedArrayBuffer.
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",

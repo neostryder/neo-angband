@@ -14,7 +14,7 @@ afterEach(() => { resetModPanels(); });
 
 describe("API-2 declarative panel schema", () => {
   it("hands first-party pages a host-owned root and releases them on dismissal and teardown", async () => {
-    const caps = CapabilitySet.fromManifest({ id: "pages", name: "Pages", version: "1.0.0", shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: ["ui:panel.mount", "ui:region.create"] });
+    const caps = CapabilitySet.fromManifest({ id: "pages", name: "Pages", version: "1.0.0", shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: ["ui:panel.mount"] });
     const ctx = modPluginContext("pages", {}, undefined, {}, { capabilities: caps });
     const api = createApi2Host(ctx, { grants: caps, tier: "first-party", firstParty: { presentation: true } });
     const opened = await api.ui.mountPage!("order", (root) => {

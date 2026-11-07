@@ -230,3 +230,14 @@ it("keeps host controller attribution in the immutable run report", () => {
   expect(report.autoplayers?.[0]?.name).toBe("Mandos");
   expect(Object.isFrozen(report.autoplayers?.[0])).toBe(true);
 });
+
+it("copies permanent capability provenance without controller history or mod bags", () => {
+  const capabilityUse = { schema: 1, entries: [{ installation: "binding", id: "public", version: "1.0.0", digest: "abc",
+    capability: "state:monsters-actual.read", activation: { turn: 12, depth: 3 }, consequence: "hidden-information" as const }] };
+  const report = buildRunReport({ state, view: createAgentView(state), messages: [], key: null, sheet: null, scored: false, endedAt: 0, capabilityUse });
+  capabilityUse.entries[0]!.activation.turn = 99;
+  capabilityUse.entries.length = 0;
+  expect(report.capabilityUse?.entries[0]?.activation?.turn).toBe(12);
+  expect(Object.isFrozen(report.capabilityUse?.entries[0])).toBe(true);
+  expect(Object.isFrozen(report.capabilityUse?.entries[0]?.activation)).toBe(true);
+});

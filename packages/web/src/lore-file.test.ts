@@ -140,7 +140,7 @@ describe("main.ts reaches the wiring", () => {
      * it has no upstream counterpart at all. So the write is gated on
      * `deliberate`, and autosave passes its own `force`. */
     expect(body).toMatch(/if \(ok && deliberate && !saveLoreFile\(/u);
-    expect(body).toMatch(/function persistSave\(deliberate = false\)/u);
+    expect(body).toMatch(/function persistSave\(deliberate = false, required = false\)/u);
     expect(body).toMatch(/if \(persistSave\(force\)\)/u);
     expect(body).toMatch(/while \(!persistSave\(true\)\)/u);
   });
