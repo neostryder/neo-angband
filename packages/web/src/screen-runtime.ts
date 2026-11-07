@@ -34,6 +34,7 @@ import type { PromptRequest } from "./prompt-view";
 import type { ScreenHost, ScreenPresenter, ScreenShown, ScreenView } from "./screen-view";
 import { pushRegion, type RegionHandle, type RegionSpec } from "./ui-stack";
 import { isCoreDrawn } from "./core-drawn";
+import { workerScreenOwner } from "./mod-worker/presenters";
 
 /** What a mod must hold in its manifest before it may show the game's screens. */
 export const SCREEN_CAPABILITY = "ui:screen.replace";
@@ -163,7 +164,7 @@ export function setScreenPresenter(next: InstalledScreen | null): void {
 
 /** The installed presenter, or null when the game is showing its own screens. */
 export function currentScreenPresenter(): InstalledScreen | null {
-  return broken ? null : installed;
+  return broken ? null : installed ?? workerScreenOwner();
 }
 
 /**

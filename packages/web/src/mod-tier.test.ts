@@ -36,17 +36,17 @@ import { MODELLED_SCREENS } from "./screen-view";
 it("lets Workers stage pure authoring without opening management", () => {
   const tier = assignTier({ id: "author", source: "folder", execution: "worker" });
   expect(tierRefusal("mod:authoring", tier)).toBeNull();
-  expect(tierRefusal("screens:manage", tier)).not.toBeNull();
+  for (const capability of ["mod:install", "mod:session"]) expect(tierRefusal(capability, tier)).not.toBeNull();
 });
 
 it("applies Worker eligibility to first-party grants and refuses broad replacements", () => {
   for (const id of ["anybandui", "other"]) {
     const tier = id === "anybandui" ? assignTier(installed({ execution: "worker" })) : assignTier({ id, source: "folder", execution: "worker" });
-    for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create", "mod:authoring", "debug:spawn", "shared:read", "shared:publish", "debug:wizard", "mod:install", "mod:session", "mod:read", "session:control"]) {
+    for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create", "mod:authoring", "ui:menu.replace", "ui:screen.replace", "display:replace", "screens:manage"]) {
       expect(tierRefusal(capability, tier)).toBeNull();
       expect(effectiveGrants([capability], tier, { granted: [], refused: [] }).granted).toEqual([]);
     }
-    for (const capability of ["ui:*.replace", "ui:birth.replace", "ui:menu.replace", "ui:screen.replace", "display:replace", "engine:access", "screens:manage"]) {
+    for (const capability of ["ui:*.replace", "ui:birth.replace", "debug:spawn", "debug:wizard", "shared:read", "shared:publish", "engine:access", "mod:install", "mod:session", "mod:read"]) {
       expect(tierRefusal(capability, tier)).not.toBeNull();
       expect(effectiveGrants([capability], tier, { granted: [capability], refused: [] }).granted).toEqual([]);
     }
@@ -288,7 +288,7 @@ describe("the seam policy", () => {
 
   it("opens only the serialized management grants and the pure authoring library to Workers of every author", () => {
     const capabilities = ["screens:manage", "session:control", "profiles:manage", "mod:install", "mod:session", "mod:authoring", "options:manage"];
-    const workerCapabilities = ["profiles:manage", "session:control", "options:manage", "saves:manage", "mod:authoring", "mod:install", "mod:session"];
+    const workerCapabilities = ["profiles:manage", "session:control", "options:manage", "saves:manage", "mod:authoring", "screens:manage"];
     for (const capability of capabilities) {
       for (const trust of ["listed", "reviewed", "sideloaded"] as const) expect(tierRefusal(capability, { ...anybandui, trust })).not.toBeNull();
       for (const trust of ["first-party", "listed", "reviewed", "sideloaded"] as const) {

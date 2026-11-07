@@ -206,6 +206,7 @@ let suspended = 0;
 let hostDialogOpen = false;
 let presentationSuspended = false;
 const suspensionListeners = new Set<(suspended: boolean) => void>();
+const permissionSuspensionListeners = new Set<(suspended: boolean) => void>();
 let suspensionHeld: { container: HTMLElement; visibility: string; inert: boolean }[] = [];
 
 export function modPanelsSuspended(): boolean {
@@ -228,6 +229,13 @@ export function onModPanelSuspension(listener: (suspended: boolean) => void): ()
   return () => { suspensionListeners.delete(listener); };
 }
 
+/** A presenter can own a gameplay modal, but it must yield to Core questions inside that modal. */
+export function onModPermissionSuspension(listener: (suspended: boolean) => void): () => void {
+  permissionSuspensionListeners.add(listener);
+  listener(modPanelsSuspended());
+  return () => { permissionSuspensionListeners.delete(listener); };
+}
+
 /**
  * Hide every panel and take its keyboard away while Core asks the player
  * something only Core may draw (core-drawn.ts). No panel opens until the
@@ -236,12 +244,14 @@ export function onModPanelSuspension(listener: (suspended: boolean) => void): ()
 export function suspendModPanels(): () => void {
   suspended++;
   updatePanelSuspension();
+  for (const listener of permissionSuspensionListeners) listener(true);
   let restored = false;
   return () => {
     if (restored) return;
     restored = true;
     suspended = Math.max(0, suspended - 1);
     updatePanelSuspension();
+    for (const listener of permissionSuspensionListeners) listener(modPanelsSuspended());
   };
 }
 

@@ -757,19 +757,3 @@ it("loads saves without capability provenance and preserves future schemas", () 
   future.manifest!.capabilityUse = { schema: 9, entries: [] };
   expect(saveGame(loadGame(pack, future)).manifest?.capabilityUse).toEqual({ schema: 9, entries: [] });
 });
-
-it("round-trips spawn and shared-write alongside older controller and truth summaries", () => {
-  const game = startGame(pack, { seed: 20260716, depth: 5 });
-  game.manifest.modNoscore = true;
-  game.manifest.capabilityUse = { schema: 1, entries: ["controller", "hidden-information", "spawn", "shared-write"].map((consequence, index) => ({
-    installation: "measured", id: `mod-${index}`, version: "1.0.0", digest: "digest", capability: ["input:controller", "state:map-actual.read", "debug:spawn", "shared:publish"][index]!,
-    activation: { turn: index, depth: 5 }, consequence: consequence as import("./save-blocks.js").CapabilityUseEntry["consequence"],
-  })) };
-  const saved = clone(saveGame(game));
-  saved.mods = {};
-  saved.manifest!.autoplayers = [];
-  expect(saveGame(loadGame(pack, saved)).manifest?.capabilityUse).toEqual(game.manifest.capabilityUse);
-  const older = clone(saved);
-  older.manifest!.capabilityUse!.entries = older.manifest!.capabilityUse!.entries.slice(0, 2);
-  expect(saveGame(loadGame(pack, older)).manifest?.capabilityUse).toEqual(older.manifest?.capabilityUse);
-});

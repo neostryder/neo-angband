@@ -411,7 +411,6 @@ import { createModSaves } from "./saves-facade";
 import { buildInputSnapshot, frozenDriver, type InputDriver, type InputSnapshotSource } from "./input-snapshot";
 import { createLabHook } from "./lab-hook";
 import { createModWizard } from "./wizard-runtime";
-import { workerRepositoryLookup } from "./install-runtime";
 import type { ControllerKeyAnswer, ControllerKeyPress, ModControllerInstall, ModDisplay, ModPluginContext, ModSubwindowInfo, ModSubwindows, ModTiles } from "./mod-plugin";
 import { createModNet, netRelayBridge } from "./mod-net";
 import { playerCommandEvent } from "./player-command-event";
@@ -460,7 +459,7 @@ import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION } from "./mod-worker/protocol";
-import { openTakenScreen } from "./mod-screens";
+import { openTakenScreen, withHostManagementScreen } from "./mod-screens";
 import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2CommandPusher, setApi2DirectionPrompt, setApi2ManagementHost, setApi2TruthConsent, setApi2WorkerManagementHost } from "./mod-api2-host";
 import { suspendModPanels } from "./panel-runtime";
 import { classicManager } from "./mod-manager/classic-service";
@@ -2139,32 +2138,6 @@ function saveTruthUse(id: string, capability: TruthCapability): boolean {
   return persistSave(false, true);
 }
 setTruthSaveWriter((id, capability, current) => current === game.state && modHolds(id, capability) && saveTruthUse(id, capability));
-import { drawWorkerSpawnConsent, setApi2WorkerSpawnSharedHost, spawnWorkerContent } from "./mod-api2-host";
-import { recordCapabilityUse } from "./mod-controller-record";
-
-function saveSpawnSharedUse(id: string, capability: "debug:spawn" | "shared:publish"): boolean {
-  if (suppressSave || birthPending || !attachedSlot() || dead || sessionTaint()) return false;
-  const loaded = activeModCode().workers.find((mod) => mod.id === id);
-  if (!loaded || !loaded.permissionBinding || loaded.permissionBinding !== consentBinding(id) || !modHolds(id, capability)) return false;
-  if (capability === "debug:spawn") state.actor.player.noscore = markNoscore(state.actor.player.noscore, NOSCORE.DEBUG);
-  recordCapabilityUse(game.manifest, { installation: loaded.permissionBinding, id, version: loaded.manifest.version, digest: loaded.contentDigest ?? null,
-    capability, activation: { turn: state.turn, depth: state.chunk.depth }, consequence: capability === "debug:spawn" ? "spawn" : "shared-write" });
-  return persistSave(false, true);
-}
-
-setApi2WorkerSpawnSharedHost({
-  confirm: (id, request) => {
-    const loaded = activeModCode().workers.find((mod) => mod.id === id);
-    return loaded ? drawWorkerSpawnConsent(id, loaded.manifest.name, request) : Promise.resolve(false);
-  },
-  mark: (id, capability, current, authorized) => current === state && authorized() && saveSpawnSharedUse(id, capability),
-  spawn: (current, request) => {
-    if (current !== state) return 0;
-    const spawned = spawnWorkerContent(state, request, buildWizardDeps());
-    repaintEverything();
-    return spawned;
-  },
-});
 /* Runtime consent must persist the consequence before activating truth. */
 setApi2TruthConsent((id, reason) => requestTruthConsent(id, reason, {
   store: defaultModStore(),
@@ -7572,16 +7545,6 @@ setModSavesControl(createModSaves({
 }));
 
 setApi2WorkerManagementHost({
-  content: {
-    door: {
-      env: { fetch: (url) => fetch(url), subtle: crypto.subtle, scope: globalThis, now: () => new Date().toISOString() },
-      allowed: () => readConsent(channelStore()),
-      reload: () => reloadAfterModChange(),
-    },
-    discovery: () => ({ engineVersion: ENGINE_VERSION, channel: readChannel(channelStore(), ENGINE_VERSION) }),
-    fetch: (url, init) => fetch(url, init),
-    lookupFetch: (id) => workerRepositoryLookup(id, modPayloadDigest(id), netRelayBridge(globalThis), fetch),
-  },
   scope: () => JSON.stringify([profileStore.activeId(), attachedSlot()]),
   confirm: async (id, plan) => (await drawWorkerManagement(id, plan)) !== null,
   pickSaves: (id, entries) => drawWorkerManagement(id, "Choose the characters this mod can manage. Each later load, rename, or deletion asks again.", entries),
@@ -8212,7 +8175,7 @@ async function buildModManagerDeps(): Promise<ModManagerDeps> {
 }
 
 async function openModManager(opts?: { resume?: boolean }): Promise<void> {
-  /* A first-party mod that draws the mod manager gets the entry; it falls back to ours if it will not open. */
+  /* A replacement can decline, so the host manager remains the recovery path. */
   if (await openTakenScreen("mods")) return;
   const deps = await modManagerDeps();
   if (opts?.resume === false) {
@@ -8222,7 +8185,7 @@ async function openModManager(opts?: { resume?: boolean }): Promise<void> {
       reloadAfterModChange({ ...reloadOpts, resume: false });
   }
   await withUnfilteredSystemScreen(() =>
-    runModManager(term, deps, opts?.resume === false ? { fromTitle: true } : undefined));
+    withHostManagementScreen(() => runModManager(term, deps, opts?.resume === false ? { fromTitle: true } : undefined)));
 }
 
 async function openModOptions(): Promise<void> {

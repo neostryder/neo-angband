@@ -44,5 +44,14 @@ export const CORE_DRAWN_IDS: ReadonlySet<string> = new Set([
 
 /** Whether a menu or screen id is one only Core may draw. */
 export function isCoreDrawn(id: string): boolean {
-  return CORE_DRAWN_IDS.has(id);
+  return coreDrawingDepth > 0 || CORE_DRAWN_IDS.has(id);
+}
+
+let coreDrawingDepth = 0;
+
+/** Recovery must not re-enter another presenter on the way to permission controls. */
+export async function withCoreDrawing<T>(run: () => Promise<T>): Promise<T> {
+  coreDrawingDepth += 1;
+  try { return await run(); }
+  finally { coreDrawingDepth -= 1; }
 }

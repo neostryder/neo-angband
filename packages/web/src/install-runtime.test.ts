@@ -10,62 +10,13 @@
  * value rather than a throw. Those three are what these tests are about.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { zipSync } from "fflate";
-import { contentOnlyRefusal, createModInstaller, createModReload, workerRepositoryLookup } from "./install-runtime";
-import type { NetRelayBridge } from "./mod-net";
+import { contentOnlyRefusal, createModInstaller, createModReload } from "./install-runtime";
 import { installFailureLines } from "./mod-browse";
 import { MOD_CHECK_ADVICE } from "./mod-install";
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
-
-describe("desktop repository metadata transport", () => {
-  const digest = "b".repeat(64);
-  const token = "a".repeat(64);
-  const bridge = () => ({
-    consent: vi.fn(async () => ({ ok: true, modId: "@repository/probe", digest, installation: token })),
-    net: vi.fn(async () => ({ ok: true, status: 200, headers: {}, body: "public metadata" })),
-  });
-
-  it("uses native destination authority without credentials and reuses only the local handle", async () => {
-    const relay = bridge(); const fallback = vi.fn();
-    const fetch = workerRepositoryLookup("probe", digest, relay, fallback);
-    const first = await fetch("https://api.github.com/repos/a/b/tags");
-    expect(await first.text()).toBe("public metadata");
-    await fetch("https://raw.githubusercontent.com/a/b/manifest.json");
-    expect(relay.consent).toHaveBeenCalledTimes(1);
-    expect(relay.consent).toHaveBeenCalledWith({ modId: "@repository/probe", digest, grants: ["network:api.github.com", "network:raw.githubusercontent.com"], destinations: ["api.github.com", "raw.githubusercontent.com"] });
-    expect(relay.net).toHaveBeenCalledWith("request", { installation: token, modId: "@repository/probe", digest, request: { url: "https://api.github.com/repos/a/b/tags", method: "GET", headers: {}, timeoutMs: 15000 } });
-    expect(fallback).not.toHaveBeenCalled();
-  });
-
-  it.each(["declined", "identity", "digest", "handle", "body", "aborted"])("refuses %s without falling back to page fetch", async (attack) => {
-    const relay = bridge(); const fallback = vi.fn(); const controller = new AbortController();
-    if (attack === "declined") relay.consent.mockResolvedValue({ ok: false, modId: "@repository/probe", digest, installation: token });
-    if (attack === "identity") relay.consent.mockResolvedValue({ ok: true, modId: "victim", digest, installation: token });
-    if (attack === "digest") relay.consent.mockResolvedValue({ ok: true, modId: "@repository/probe", digest: "c".repeat(64), installation: token });
-    if (attack === "handle") relay.consent.mockResolvedValue({ ok: true, modId: "@repository/probe", digest, installation: "invalid" });
-    if (attack === "body") relay.net.mockResolvedValue({ ok: true, status: 200, headers: {}, body: "x".repeat(1024 * 1024 + 1) });
-    if (attack === "aborted") controller.abort();
-    const fetch = workerRepositoryLookup("probe", digest, relay, fallback);
-    await expect(fetch("https://api.github.com/repos/a/b/tags", { signal: controller.signal })).rejects.toThrow();
-    expect(fallback).not.toHaveBeenCalled();
-    if (attack !== "body") expect(relay.net).not.toHaveBeenCalled();
-  });
-
-  it.each(["http://api.github.com/x", "https://127.0.0.1/x", "https://user:password@api.github.com/x", "https://api.github.com:444/x"])("refuses %s before native consent", async (url) => {
-    const relay = bridge();
-    await expect(workerRepositoryLookup("probe", digest, relay, vi.fn())(url)).rejects.toThrow();
-    expect(relay.consent).not.toHaveBeenCalled(); expect(relay.net).not.toHaveBeenCalled();
-  });
-
-  it("refuses a desktop without native consent or a measured digest", async () => {
-    const relay = bridge();
-    await expect(workerRepositoryLookup("probe", null, relay, vi.fn())("https://api.github.com/x")).rejects.toThrow();
-    await expect(workerRepositoryLookup("probe", digest, { net: relay.net } as NetRelayBridge, vi.fn())("https://api.github.com/x")).rejects.toThrow();
-    expect(relay.net).not.toHaveBeenCalled();
-  });
-});
 
 function manifest(over: Record<string, unknown> = {}): string {
   return JSON.stringify({

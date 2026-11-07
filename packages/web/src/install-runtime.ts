@@ -69,20 +69,10 @@
  * system gives of itself (docs/modding/PLUGINS.md, "What a capability gates").
  */
 
-import { archiveFaults, installedMeta, installedMods, installModFromRepo, installModFromZip, manifestDisplayName, markInstallRevision, sha256Hex, versionKey, type InstallEnv } from "./mod-install";
-import { installedModFormat } from "@rpgm-tools/neo-angband-mod-sdk";
-import { zipSync } from "fflate";
-import { discoverMod, type DiscoverEnv } from "./mod-discover";
-import { parseRepoRef } from "./mod-source";
-import { diskPacks, sessionPacks } from "./disk-packs";
-import { openDb, STORE_MODS, STORE_MOD_META, STORE_MOD_VERSIONS } from "./idb";
-import { defaultModStore } from "./mod-store";
-import { readBoundedZip, ZIP_LIMITS } from "./mod-archive";
-import type { WorkerContentSource } from "./mod-worker/protocol";
-import type { NetRelayBridge } from "./mod-net";
+import { installedMeta, installModFromZip, manifestDisplayName, type InstallEnv } from "./mod-install";
 import { installFailureLines, installOutcomeLines } from "./mod-browse";
 import { readModZip, type ZipRead } from "./mod-zip";
-import { previewSessionArchive, sessionSurvivesReload, stageSessionMod } from "./mod-session";
+import { sessionSurvivesReload, stageSessionMod } from "./mod-session";
 import type { ModInstallOutcome, ModSessionOutcome } from "./mod-plugin";
 import { manifestFields, type Finding } from "@rpgm-tools/neo-angband-mod-sdk";
 
@@ -211,7 +201,6 @@ export interface InstallDoorDeps {
    * comments about. The compiler is a cheaper reminder than either.
    */
   readonly reload: () => void;
-  readonly authorized?: () => boolean;
 }
 
 /**
@@ -405,7 +394,6 @@ export function createModSessionLoader(
           granted: [],
           contentOnly: true,
           allowed: deps.allowed(),
-          ...(deps.authorized ? { authorized: deps.authorized } : {}),
         },
         scope,
       );
@@ -421,184 +409,6 @@ export function createModSessionLoader(
         ok: false,
         problem: `loading it for this session failed: ${err instanceof Error ? err.message : String(err)}`,
       };
-    }
-  };
-}
-
-export interface WorkerContentDeps {
-  readonly door: InstallDoorDeps;
-  readonly discovery: () => Omit<DiscoverEnv, "fetch">;
-  readonly fetch: typeof fetch;
-  readonly lookupFetch?: (id: string) => typeof fetch;
-}
-
-export interface WorkerContentPlan {
-  readonly id: string;
-  readonly modId: string;
-  readonly repository: string;
-  readonly version: string | null;
-  readonly digest: string;
-  readonly capabilities: readonly string[];
-  readonly session: boolean;
-}
-
-/** Each broker owns one expiring plan, so an archive cannot exhaust host memory. */
-export function createWorkerContentBroker(deps: WorkerContentDeps, callerId: string) {
-  let pending: { plan: WorkerContentPlan; bytes: Uint8Array; expires: number; configuration: string; authorized: () => boolean } | undefined;
-  const scope = deps.door.env.scope ?? globalThis;
-  const occupied = async (id: string) => defaultModStore().isEnabled(id) || defaultModStore().getModChoices()[id] === true || diskPacks().packs.some((pack) => pack.manifest.id === id) || sessionPacks().packs.some((pack) => pack.manifest.id === id) || (await installedMods(scope)).some((mod) => mod.id === id);
-  const reference = (input: string) => {
-    const parsed = parseRepoRef(input);
-    if (!parsed.ok || !/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(parsed.ref.repo) || parsed.ref.tag !== undefined && (parsed.ref.tag.length > 128 || /[\p{Cc}\p{Cf}]/u.test(parsed.ref.tag))) throw new Error("The repository address is invalid.");
-    return parsed.ref;
-  };
-  const network = (repo: string, current: () => boolean, lookup = false) => {
-    let total = 0;
-    let calls = 0;
-    const fetch = lookup ? deps.lookupFetch?.(callerId) ?? deps.fetch : deps.fetch;
-    return async (url: string): Promise<Response> => {
-      const target = new URL(url);
-      const prefix = target.hostname === "api.github.com" ? `/repos/${repo}/` : `/${repo}/`;
-      if (!current() || ++calls > 32 || target.protocol !== "https:" || target.port || target.username || target.password || !["api.github.com", "raw.githubusercontent.com"].includes(target.hostname) || !target.pathname.startsWith(prefix)) throw new Error("The repository destination is not authorized.");
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15000);
-      let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-      try {
-        const response = await fetch(url, { credentials: "omit", redirect: "error", signal: controller.signal });
-        reader = response.body?.getReader();
-        if (!current() || response.redirected || response.status >= 300 && response.status < 400) throw new Error("The repository request was revoked or redirected.");
-        const chunks: Uint8Array[] = [];
-        let size = 0;
-        for (;;) {
-          const next = await reader?.read();
-          if (!next || next.done) break;
-          size += next.value.length;
-          total += next.value.length;
-          if (!current() || size > 1024 * 1024 || total > 4 * 1024 * 1024) throw new Error("The repository response is revoked or too large.");
-          chunks.push(next.value);
-        }
-        const bytes = new Uint8Array(size);
-        let offset = 0;
-        for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-        return new Response(bytes, { status: response.status });
-      } finally {
-        await reader?.cancel().catch(() => undefined);
-        reader?.releaseLock();
-        clearTimeout(timer);
-      }
-    };
-  };
-  const plan = async (source: WorkerContentSource, session: boolean, confirm: (description: string) => Promise<boolean>, current: () => boolean): Promise<WorkerContentPlan> => {
-    pending = undefined;
-    if (!current() || !deps.door.allowed()) throw new Error("The content request is not authorized.");
-    let bytes: Uint8Array;
-    let repository: string | undefined;
-    if ("archive" in source) bytes = Uint8Array.from(source.archive);
-    else {
-      const ref = reference(source.repo);
-      if (!(await confirm(`Contact GitHub to prepare content from ${ref.repo}${ref.tag ? ` at ${ref.tag}` : ""}. GitHub learns about this lookup. Nothing is installed yet.`)) || !current()) throw new Error("The repository request was declined or revoked.");
-      const fetch = network(ref.repo, current);
-      const found = await discoverMod(ref, { ...deps.discovery(), fetch });
-      if (!found.ok) throw new Error(found.problem);
-      if (!found.mod.compatible || found.mod.payload.length > 128) throw new Error("The repository mod is incompatible or has too many files.");
-      let files: ReadonlyArray<readonly [string, Uint8Array]> | undefined;
-      const prepared = await installModFromRepo(found.mod, null, { ...deps.door.env, fetch,
-        downloaded: async (path, body) => {
-          if (found.mod.payload.some((entry) => entry.path === path && entry.kind === "archive")) {
-            const bounded = readBoundedZip(body, { limits: { ...ZIP_LIMITS, maxEntries: 128, maxFileBytes: 4 * 1024 * 1024, maxTotalBytes: 4 * 1024 * 1024 } });
-            if (!bounded.ok) throw new Error(bounded.problem);
-          }
-        },
-        stage: async (_meta, arriving) => { files = arriving; return current(); },
-      }, { origin: "third-party", allowed: deps.door.allowed() });
-      if (!prepared.ok || !files) throw new Error(prepared.ok ? "The repository had no files." : prepared.problem);
-      if (files.length > 128 || files.reduce((n, [, body]) => n + body.length, 0) > 4 * 1024 * 1024) throw new Error("The repository content is too large.");
-      repository = ref.repo;
-      bytes = zipSync(Object.fromEntries(files));
-    }
-    const bounded = readBoundedZip(bytes, { limits: { ...ZIP_LIMITS, maxEntries: 128, maxArchiveBytes: 4 * 1024 * 1024, maxFileBytes: 4 * 1024 * 1024, maxTotalBytes: 4 * 1024 * 1024 } });
-    if (!bounded.ok) throw new Error(bounded.problem);
-    const refusal = contentOnlyRefusal(bytes);
-    if (refusal) throw new Error(refusal);
-    const read = readModZip(bytes);
-    if (!read.ok) throw new Error(read.problem);
-    const fault = archiveFaults(read.id, read.files);
-    if (fault) throw new Error(fault.problem);
-    const preview = await previewSessionArchive(bytes, { crypto: { subtle: deps.door.env.subtle } });
-    if (!preview.ok || !/^[a-f0-9]{64}$/u.test(preview.digest)) throw new Error("The content digest could not be measured.");
-    if (repository && read.repository?.toLowerCase().replace(/^https:\/\/github.com\//u, "").replace(/\.git$/u, "") !== repository.toLowerCase()) throw new Error("The manifest repository does not match the requested repository.");
-    if (await occupied(read.id) || !current()) throw new Error("This id is already present or the request was revoked. Content installs cannot replace another mod.");
-    const value: WorkerContentPlan = Object.freeze({ id: crypto.randomUUID(), modId: read.id, repository: read.repository ?? "unavailable", version: read.version, digest: preview.digest, capabilities: [], session });
-    if (new TextEncoder().encode(JSON.stringify(value)).length > 8192) throw new Error("The content identity is too large.");
-    pending = { plan: value, bytes, expires: Date.now() + 60000, configuration: defaultModStore().configurationRevision(), authorized: current };
-    return value;
-  };
-  const apply = async (id: string, session: boolean, confirm: (description: string) => Promise<boolean>, current: () => boolean) => {
-    const held = pending;
-    pending = undefined;
-    if (!held || held.plan.id !== id || held.plan.session !== session || held.expires < Date.now() || !held.authorized() || !current()) throw new Error("The content plan is unavailable.");
-    const unchanged = async () => held.expires >= Date.now() && held.authorized() && current() && deps.door.allowed() && held.plan.digest === await sha256Hex(held.bytes, deps.door.env.subtle) && !await occupied(held.plan.modId) && held.configuration === defaultModStore().configurationRevision() && current();
-    if (!await unchanged()) throw new Error("The content plan changed.");
-    if (!(await confirm(JSON.stringify({ operation: session ? "Load content for this session" : "Install content switched off", ...held.plan, asksFor: "No capabilities. Records and tweaks only; no code.", consequence: session ? "The archive ends with this session. Its effects on characters can remain." : "The player must enable this content separately." }))) || !await unchanged()) throw new Error("The content plan was declined or changed.");
-    if (session) return createModSessionLoader({ ...deps.door, authorized: current })(held.bytes);
-    const db = await openDb(scope);
-    if (!db || !current()) throw new Error("The install store is unavailable or the request was revoked.");
-    const stage: NonNullable<InstallEnv["stage"]> = async (meta, files) => {
-      if (!await unchanged()) return false;
-      return new Promise<boolean>((resolve) => {
-        if (!current()) { resolve(false); return; }
-        const tx = db.transaction([STORE_MODS, STORE_MOD_META, STORE_MOD_VERSIONS], "readwrite");
-        // The absence check and writes share a transaction to refuse racing installs.
-        const existing = tx.objectStore(STORE_MOD_META).get(meta.id);
-        existing.onsuccess = () => {
-          if (existing.result !== undefined || !current()) { tx.abort(); return; }
-          for (const [path, body] of files) tx.objectStore(STORE_MODS).put(body, `${meta.id}/${path}`);
-          const record = { format: installedModFormat.format, schemaVersion: installedModFormat.schemaVersion, data: meta };
-          tx.objectStore(STORE_MOD_META).put(record, meta.id);
-          tx.objectStore(STORE_MOD_VERSIONS).put({ meta: record, files }, versionKey(meta));
-        };
-        tx.oncomplete = () => { defaultModStore().setModEnabled(meta.id, false); markInstallRevision(scope); resolve(true); };
-        tx.onabort = tx.onerror = () => resolve(false);
-      });
-    };
-    return createModInstaller({ ...deps.door, env: { ...deps.door.env, stage } }, callerId)(held.bytes);
-  };
-  const read = async (input: string, confirm: (description: string) => Promise<boolean>, current: () => boolean) => {
-    const ref = reference(input);
-    if (!(await confirm(`Look up public mod metadata and file names at ${ref.repo}${ref.tag ? ` at ${ref.tag}` : ""} on GitHub. GitHub learns about this lookup. No file text is returned.`)) || !current()) throw new Error("The repository lookup was declined or revoked.");
-    const found = await discoverMod(ref, { ...deps.discovery(), fetch: network(ref.repo, current, true) });
-    if (!found.ok) throw new Error(found.problem);
-    if (!current() || found.mod.payload.length > 128 || new TextEncoder().encode(JSON.stringify(found.mod)).length > 64 * 1024) throw new Error("The repository metadata is revoked or too large.");
-    return found.mod;
-  };
-  return { plan, apply, read };
-}
-
-/** Desktop lookups reuse the relay's DNS and destination guards without mod credentials. */
-export function workerRepositoryLookup(id: string, digest: string | null, relay: NetRelayBridge | null, fallback: typeof fetch): typeof fetch {
-  if (!relay) return fallback;
-  const modId = `@repository/${id}`;
-  let installation: Promise<string> | undefined;
-  return async (input, init) => {
-    const url = String(input);
-    const target = new URL(url);
-    if (!digest || !/^[a-f0-9]{64}$/u.test(digest) || !relay.consent || target.protocol !== "https:" || target.username || target.password || target.port || !["api.github.com", "raw.githubusercontent.com"].includes(target.hostname)) throw new Error("The desktop repository lookup is not authorized.");
-    if (init?.signal?.aborted) throw new Error("The repository lookup was canceled.");
-    const abort = () => { void relay.consent!({ modId, digest, revoke: true }).catch(() => undefined); };
-    init?.signal?.addEventListener("abort", abort, { once: true });
-    try {
-      installation ??= (async () => {
-        const answer = await relay.consent!({ modId, digest, grants: ["network:api.github.com", "network:raw.githubusercontent.com"], destinations: ["api.github.com", "raw.githubusercontent.com"] }) as Record<string, unknown> | null;
-        if (!answer || answer.ok !== true || answer.modId !== modId || answer.digest !== digest || typeof answer.installation !== "string" || !/^[a-f0-9]{64}$/u.test(answer.installation)) throw new Error("The desktop repository lookup was declined.");
-        return answer.installation;
-      })();
-      const token = await installation;
-      if (init?.signal?.aborted) throw new Error("The repository lookup was canceled.");
-      const answer = await relay.net("request", { installation: token, modId, digest, request: { url, method: "GET", headers: {}, timeoutMs: 15000 } }) as Record<string, unknown> | null;
-      if (init?.signal?.aborted || !answer || answer.ok !== true || typeof answer.status !== "number" || typeof answer.body !== "string" || new TextEncoder().encode(answer.body).length > 1024 * 1024) throw new Error("The desktop repository lookup failed or exceeded its limit.");
-      return new Response(answer.body, { status: answer.status });
-    } finally {
-      init?.signal?.removeEventListener("abort", abort);
     }
   };
 }

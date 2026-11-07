@@ -1,5 +1,5 @@
 /**
- * The game's own screens a first-party mod can draw instead (`manage.screens.take`).
+ * The game's management screens, with live legacy handlers and data-only Worker presenters.
  *
  * A mod holding `screens:manage` names the screens it draws; the game opens the
  * mod's handler where it would have opened its own. A handler that rejects, or a
@@ -8,6 +8,9 @@
  */
 import type { Api2ScreenHandler, Api2ScreenKey } from "@rpgm-tools/neo-angband-mod-sdk";
 import { log } from "./logging";
+import { openWorkerManagementScreen } from "./mod-worker/presenters";
+import { isCoreDrawn, withCoreDrawing } from "./core-drawn";
+import { suspendModPanels } from "./panel-runtime";
 
 const SCREEN_KEYS: readonly Api2ScreenKey[] = ["mods"];
 
@@ -47,6 +50,9 @@ export function takeScreens(modId: string, handlers: Partial<Record<Api2ScreenKe
 
 /** Run the mod's screen if one is held; answers whether the player was shown it. */
 export async function openTakenScreen(key: Api2ScreenKey): Promise<boolean> {
+  if (isCoreDrawn("core:mods")) return false;
+  const worker = key === "mods" ? openWorkerManagementScreen() : undefined;
+  if (worker) return worker;
   const held = taken.get(key);
   if (!held) return false;
   try {
@@ -61,4 +67,11 @@ export async function openTakenScreen(key: Api2ScreenKey): Promise<boolean> {
 /** Forget every hold (tests and a full reload). */
 export function resetTakenScreens(): void {
   taken.clear();
+}
+
+/** The fallback keeps permission navigation outside every mod presentation grant. */
+export async function withHostManagementScreen<T>(run: () => Promise<T>): Promise<T> {
+  const restore = suspendModPanels();
+  try { return await withCoreDrawing(run); }
+  finally { restore(); }
 }

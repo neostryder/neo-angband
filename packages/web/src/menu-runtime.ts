@@ -38,6 +38,7 @@
  */
 
 import { isCoreDrawn } from "./core-drawn";
+import { workerMenuOwner } from "./mod-worker/presenters";
 import { modHealth } from "./mod-health";
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
@@ -162,7 +163,7 @@ export function setMenuPresenter(next: InstalledMenu | null): void {
 
 /** The installed presenter, or null when the game is asking its own questions. */
 export function currentMenuPresenter(): InstalledMenu | null {
-  return broken ? null : installed;
+  return broken ? null : installed ?? workerMenuOwner();
 }
 
 /**

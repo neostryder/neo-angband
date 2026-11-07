@@ -241,12 +241,3 @@ it("copies permanent capability provenance without controller history or mod bag
   expect(Object.isFrozen(report.capabilityUse?.entries[0])).toBe(true);
   expect(Object.isFrozen(report.capabilityUse?.entries[0]?.activation)).toBe(true);
 });
-
-it("copies spawn and shared publication consequences into the immutable report", () => {
-  const capabilityUse = { schema: 1, entries: ["spawn", "shared-write"].map((consequence) => ({ installation: "binding", id: "public", version: "1.0.0", digest: "digest",
-    capability: consequence === "spawn" ? "debug:spawn" : "shared:publish", activation: { turn: 4, depth: 3 }, consequence: consequence as "spawn" | "shared-write" })) };
-  const report = buildRunReport({ state, view: createAgentView(state), messages: [], key: null, sheet: null, scored: false, endedAt: 0, capabilityUse });
-  capabilityUse.entries.length = 0;
-  expect(report.capabilityUse?.entries.map((entry) => entry.consequence)).toEqual(["spawn", "shared-write"]);
-  expect(Object.isFrozen(report.capabilityUse?.entries[1])).toBe(true);
-});

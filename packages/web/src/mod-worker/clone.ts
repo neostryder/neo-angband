@@ -8,24 +8,14 @@ export function cloneWorkerJson(value: unknown, depth: number = 0): WorkerJson {
     if (!Number.isFinite(value)) throw new Error("payload numbers must be finite");
     return value;
   }
-  if (Array.isArray(value)) {
-    const out: WorkerJson[] = [];
-    for (let index = 0; index < value.length; index++) {
-      if (!Object.hasOwn(value, index)) throw new Error("payload arrays cannot contain empty slots");
-      out.push(cloneWorkerJson(value[index], depth + 1));
-    }
-    return out;
-  }
+  if (Array.isArray(value)) return value.map((item) => cloneWorkerJson(item, depth + 1));
   if (typeof value !== "object") throw new Error("payload must contain only JSON values");
   const proto = Object.getPrototypeOf(value);
   if (proto !== Object.prototype && proto !== null) {
     throw new Error("payload records must have Object.prototype or null prototype");
   }
   const out: { [key: string]: WorkerJson } = {};
-  for (const [key, item] of Object.entries(value)) {
-    /* Published JSON keys must stay data even when they name a prototype setter. */
-    Object.defineProperty(out, key, { value: cloneWorkerJson(item, depth + 1), enumerable: true, writable: true, configurable: true });
-  }
+  for (const [key, item] of Object.entries(value)) out[key] = cloneWorkerJson(item, depth + 1);
   return out;
 }
 
@@ -48,7 +38,7 @@ export function toWorkerJson(value: unknown, depth: number = 0): WorkerJson {
     if (proto !== Object.prototype && proto !== null) throw new Error("only plain records cross to a Worker");
     const out: { [key: string]: WorkerJson } = {};
     for (const [key, item] of Object.entries(value)) {
-      if (item !== undefined) Object.defineProperty(out, key, { value: toWorkerJson(item, depth + 1), enumerable: true, writable: true, configurable: true });
+      if (item !== undefined) out[key] = toWorkerJson(item, depth + 1);
     }
     return out;
   }

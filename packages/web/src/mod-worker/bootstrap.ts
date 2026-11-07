@@ -99,7 +99,7 @@ export function installModWorkerBootstrap(
   const buildApi = (m: WorkerMeta, active: readonly string[]): ModApi2 => {
     const api = {
       options: { set: method("options.set") },
-      display: { filter: method("display.filter") },
+      display: { filter: method("display.filter"), replace: presenter("display.replace") },
       keybindings: {
         keyset: method("keybindings.keyset"), list: method("keybindings.list"), commands: method("keybindings.commands"),
         set: method("keybindings.set"), remove: method("keybindings.remove"),
@@ -184,6 +184,9 @@ export function installModWorkerBootstrap(
         lookup: method("content.lookup"),
       },
       ui: {
+        menu: { replace: presenter("ui.menu.replace") },
+        screen: { replace: presenter("ui.screen.replace") },
+        management: { replace: presenter("ui.management.replace") },
         messages: { replace: method("ui.messages.replace") },
         sidebar: { replace: method("ui.sidebar.replace") },
         status: { replace: method("ui.status.replace") },
@@ -246,21 +249,14 @@ export function installModWorkerBootstrap(
           race: method("truth.race"), storeKnowledge: method("truth.storeKnowledge"),
         },
       } : {}),
-      ...(["profiles:manage", "session:control", "options:manage", "saves:manage", "mod:install", "mod:session", "mod:read", "debug:wizard"].some((cap) => m.granted.includes(cap)) ? {
+      ...(["profiles:manage", "session:control", "options:manage", "saves:manage"].some((cap) => m.granted.includes(cap)) ? {
         manage: {
           profiles: { list: method("manage.profiles.list"), create: method("manage.profiles.create"), switchTo: method("manage.profiles.switchTo"), rename: method("manage.profiles.rename") },
-          session: { save: method("manage.session.save"), exitToTitle: method("manage.session.exitToTitle"), quit: method("manage.session.quit") },
+          session: { save: method("manage.session.save") },
           options: { get: method("manage.options.get"), set: method("manage.options.set") },
           saves: { list: method("manage.saves.list"), load: method("manage.saves.load"), rename: method("manage.saves.rename"), delete: method("manage.saves.delete") },
           mods: { snapshot: method("manage.mods.snapshot"), disable: method("manage.mods.disable"), setSettingValue: method("manage.mods.setSettingValue"), setSectionChoice: method("manage.mods.setSectionChoice"), setConflictOverride: method("manage.mods.setConflictOverride"), setThirdPartyConsent: method("manage.mods.setThirdPartyConsent") },
-          ...contentManage(m),
         },
-      } : {}),
-      ...(m.granted.includes("debug:spawn") ? {
-        debug: { spawnObject: method("debug.spawnObject"), spawnMonster: method("debug.spawnMonster") },
-      } : {}),
-      ...(m.granted.includes("shared:read") || m.granted.includes("shared:publish") ? {
-        shared: { read: method("shared.read"), publish: method("shared.publish"), withdraw: method("shared.withdraw") },
       } : {}),
       ...(m.net ? {
         net: {
@@ -366,6 +362,10 @@ export function installModWorkerBootstrap(
       } else if (q.kind === "install.migrate") {
         if (!definition?.install) throw new Error("this mod declares no install migration");
         value = await definition.install.migrate(q.value as never, q.fromVersion);
+      } else if (q.kind === "presentation") {
+        const handler = presenterCallbacks.get(q.callbackId);
+        if (!handler) throw new Error("this presenter is no longer registered");
+        value = await (q.phase === "describe" ? handler.describe : handler.select)?.(freeze(q.input), q.presentationId);
       }
       reply({ ok: true, value: plain(value) });
     } catch (err) {
@@ -470,6 +470,7 @@ export function installModWorkerBootstrap(
         listeners.clear();
         callbacks.clear();
         backupCallbacks.clear();
+        presenterCallbacks.clear();
         for (const request of pending.values()) request.reject(new Error("the mod was stopped"));
         pending.clear();
         try {
@@ -484,29 +485,26 @@ export function installModWorkerBootstrap(
     }
   };
 
-  function contentManage(m: WorkerMeta): Record<string, unknown> {
-    const content: Record<string, unknown> = {};
-    const source = (value: unknown) => value instanceof Uint8Array ? { archive: [...value] } : value;
-    if (m.granted.includes("mod:install")) {
-      content.planInstall = (value: unknown) => call("manage.content.planInstall", [source(value)]);
-      content.applyInstall = method("manage.content.applyInstall");
-    }
-    if (m.granted.includes("mod:session")) {
-      content.planSession = (value: unknown) => call("manage.content.planSession", [source(value)]);
-      content.applySession = method("manage.content.applySession");
-    }
-    const wizard = Object.fromEntries([
-      "sandboxed", "attached", "sandbox", "catalogue", "where", "spawnItem", "spawnCreature", "spawnArtifact",
-      "goToDepth", "grantExperience", "setExperience", "setGold", "setStat", "maxOut", "heal", "rerollLife",
-      "acquire", "summonRandom", "banish", "killVisible", "teleport", "mapLevel", "lightLevel", "findCreatures", "learnItems", "learnCreatures",
-    ].map((name) => [name, method(`manage.wizard.${name}`)]));
-    return {
-      ...(Object.keys(content).length ? { content } : {}),
-      ...(m.granted.includes("mod:read") ? { readMod: method("manage.readMod") } : {}),
-      ...(m.granted.includes("debug:wizard") ? { wizard: async () => {
-        const result = await call("manage.wizard", []) as unknown as { ok: boolean };
-        return result.ok ? { ok: true, value: freeze(wizard) } : result;
-      } } : {}),
+  // The shipped bootstrap keeps its helpers inside this function's source.
+  type PresenterCallback = (input: unknown, presentationId: string) => unknown;
+  const presenterCallbacks = new Map<number, { describe: PresenterCallback; select?: PresenterCallback }>();
+  function presenter(path: string) {
+    let previous: number | undefined;
+    return async (describe: PresenterCallback | null, select?: PresenterCallback): Promise<unknown> => {
+      if (describe !== null && typeof describe !== "function") throw new Error("a presenter needs a local description callback or null");
+      const callbackId = describe === null ? null : ++nextCallback;
+      if (callbackId !== null && describe !== null) presenterCallbacks.set(callbackId, { describe, ...(select ? { select } : {}) });
+      try {
+        const result = await call(path, [callbackId]) as { ok: boolean };
+        if (result.ok) {
+          if (previous !== undefined) presenterCallbacks.delete(previous);
+          previous = callbackId ?? undefined;
+        } else if (callbackId !== null) presenterCallbacks.delete(callbackId);
+        return result;
+      } catch (error) {
+        if (callbackId !== null) presenterCallbacks.delete(callbackId);
+        throw error;
+      }
     };
   }
 }
