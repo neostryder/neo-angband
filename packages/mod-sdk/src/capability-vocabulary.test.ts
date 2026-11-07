@@ -24,6 +24,18 @@ const granting = (...capabilities: string[]): CapabilitySet =>
   CapabilitySet.fromManifest({ id: "m", name: "M", version: "1.0.0", shape: "plugin", capabilities });
 
 describe("the capability vocabulary", () => {
+  it("discloses unseen monsters, race truth, and permanent scoring consequences without opening Workers", () => {
+    const map = consentText(matchCapability("state:map-actual.read")!);
+    const monsters = consentText(matchCapability("state:monsters-actual.read")!);
+    expect(map).toContain("every monster");
+    expect(map).toContain("race abilities");
+    expect(monsters).toContain("every creature's location and exact state");
+    expect(monsters).toContain("unseen creatures");
+    for (const capability of ["state:map-actual.read", "state:monsters-actual.read"]) {
+      expect(consentText(matchCapability(capability)!)).toContain("permanently unscorable");
+      expect(capabilityTiers(capability)).not.toContain("worker");
+    }
+  });
   it("allows the Worker tier to request every policy table's registry permission", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(capabilityTiers(kind.capability), kind.name).toContain("worker");

@@ -83,6 +83,7 @@ export interface RunReportInput {
   readonly scored: boolean;
   readonly endedAt: number;
   readonly autoplayers?: RunReport["autoplayers"];
+  readonly capabilityUse?: RunReport["capabilityUse"];
 }
 
 export function buildRunReport(input: RunReportInput): RunReport {
@@ -138,6 +139,7 @@ export function buildRunReport(input: RunReportInput): RunReport {
     scored: input.scored,
     endedAt: input.endedAt,
     ...(input.autoplayers ? { autoplayers: structuredClone(input.autoplayers) } : {}),
+    ...(input.capabilityUse ? { capabilityUse: structuredClone(input.capabilityUse) } : {}),
     history: characterHistory(state),
     messages: input.messages.slice(-RUN_REPORT_MESSAGES).map((m) => ({
       text: m.text,

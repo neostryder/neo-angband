@@ -8,6 +8,7 @@ import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sd
 import {
   FIRST_PARTY_ORIGINS,
   TRUTH_MAP,
+  TRUTH_MONSTERS,
   assignTier,
   effectiveGrants,
   installListing,
@@ -287,13 +288,17 @@ describe("the seam policy", () => {
     expect(modStartGrants("unknown").firstParty).toBeUndefined();
   });
 
-  it("marks the save only while a mod holds a capability its own entry marks", () => {
+  it("marks either truth grant for every author without widening Worker eligibility", () => {
     setModTiers(new Map([["anybandui", anybandui], ["s", sideloaded]]));
     setModGrants(new Map([["s", effectiveGrants([TRUTH_MAP], sideloaded, { granted: [TRUTH_MAP], refused: [] })]]));
-    expect(saveMarkingGrantHeld()).toBe(false);
+    expect(saveMarkingGrantHeld()).toBe(true);
+    setModGrants(new Map([["s", effectiveGrants([TRUTH_MONSTERS], sideloaded, { granted: [TRUTH_MONSTERS], refused: [] })]]));
+    expect(saveMarkingGrantHeld()).toBe(true);
     setModGrants(new Map([["anybandui", effectiveGrants([TRUTH_MAP], anybandui, { granted: [TRUTH_MAP], refused: [] })]]));
     expect(saveMarkingGrantHeld()).toBe(true);
     expect(FIRST_PARTY_ORIGINS.find((o) => o.id === "anybandui")?.marksSave).toEqual([TRUTH_MAP]);
+    setModGrants(new Map());
+    expect(saveMarkingGrantHeld()).toBe(false);
   });
 });
 

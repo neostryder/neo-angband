@@ -101,6 +101,7 @@ import { menuRegistry } from "./menu-registry";
 import { clearQueuedUiInputs, enqueueUiInputs, inputEvents } from "./input-door";
 import { closeTopModPanel, modPanelsSuspended, topModPanelId } from "./panel-runtime";
 import { removeBackupSink } from "./mod-backup";
+import { prepareTruthRead } from "./mod-truth-consent";
 
 /** Asks the player for the real map on behalf of a mod; the game wires it at boot (main.ts). */
 type TruthConsentAsk = (modId: string, reason: string) => Promise<"granted" | "declined" | "unavailable">;
@@ -1042,7 +1043,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
     ...(backupFolder ? { backupFolder } : {}),
     ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && options.firstParty?.manage ? { manage: manageDomain(ctx, options, cleanups, () => stopped) } : {}),
-    ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}, granted) } : {}),
+    ...(options.firstParty?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}, (capability) => !stopped && granted(capability)) } : {}),
     ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && truthConsentAsk
       ? { permissions: permissionsDomain(ctx, options, granted, truthConsentAsk, () => stopped) } : {}),
     ...(options.tier === "first-party" && options.firstParty?.presentation ? {
@@ -1366,7 +1367,7 @@ function managedMods(id: string, options: Api2HostOptions, cleanups: Set<() => v
 function permissionsDomain(ctx: ModPluginContext, options: Api2HostOptions, held: (capability: string) => boolean, ask: TruthConsentAsk, stopped: () => boolean): Api2Permissions {
   /* A yes to the question holds the real map from then on, though the capability set the mod started with does not name it. */
   let allowed = false;
-  const granted = (capability: string): boolean => held(capability) || (allowed && capability === "state:map-actual.read");
+  const granted = (capability: string): boolean => !stopped() && (held(capability) || (allowed && capability === "state:map-actual.read"));
   let truth: Api2Truth | undefined = options.firstParty?.truth ? truthDomain(ctx, options.viewDeps ?? {}, granted) : undefined;
   return frozen({
     truthHeld: () => truth !== undefined,
@@ -1375,6 +1376,7 @@ function permissionsDomain(ctx: ModPluginContext, options: Api2HostOptions, held
       if (truth) return api2Ok(truth);
       if (typeof reason !== "string" || reason.trim() === "") return api2Refused("bad-reason", "the question needs a reason to show the player");
       const answer = await ask(ctx.id, reason);
+      if (stopped()) return api2Unavailable("this mod has stopped");
       if (answer === "unavailable") return api2Refused("unavailable", "this mod may not ask for the real map");
       if (answer === "declined") return api2Refused("declined", "the player did not allow it");
       allowed = true;
@@ -1390,8 +1392,8 @@ function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps, granted: (capab
    * allowlisted mod reaches this. */
   const view = (state: GameState) => createAgentView(state, undefined, deps);
   /* Exact monsters and race records have a narrower permission of their own; the level and the shops need the real map. */
-  const monstersOpen = () => granted("state:monsters-actual.read") || granted("state:map-actual.read");
-  const mapOpen = () => granted("state:map-actual.read");
+  const mapOpen = () => granted("state:map-actual.read") && (!ctx.state || prepareTruthRead(ctx.id, "state:map-actual.read", ctx.state)) && granted("state:map-actual.read");
+  const monstersOpen = () => mapOpen() || (granted("state:monsters-actual.read") && (!ctx.state || prepareTruthRead(ctx.id, "state:monsters-actual.read", ctx.state)) && granted("state:monsters-actual.read"));
   return frozen({
     monsters: () => guarded(() => {
       if (!monstersOpen()) return api2NotGranted("state:monsters-actual.read");

@@ -4,13 +4,14 @@
  * `truth` only for an allowlisted mod.
  */
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ActionRegistry,
   CommandVerbTable,
   GameEvents,
   FEAT,
   MFLAG,
+  NOSCORE,
   SQUARE,
   observeKnownStore,
   TMD,
@@ -19,6 +20,8 @@ import {
   monsterIsObvious,
   monsterSwap,
   startGame,
+  saveGame,
+  loadGame,
   inputToken,
   bumpInputRevision,
   createAgentView,
@@ -49,6 +52,10 @@ import { createModSaves } from "./saves-facade";
 import { createModWizard } from "./wizard-runtime";
 import * as authoring from "@rpgm-tools/neo-angband-mod-sdk";
 import { assignTier, effectiveGrants, modStartGrants, resetModTiers, setModGrants, setModTiers } from "./mod-tier";
+import { recordTruthUse, setTruthSaveWriter } from "./mod-truth-consent";
+
+beforeEach(() => setTruthSaveWriter(() => true));
+afterEach(() => setTruthSaveWriter(undefined));
 
 function loadJson<T>(name: string): T {
   return JSON.parse(readFileSync(new URL(`../../content/pack/${name}.json`, import.meta.url), "utf8")) as T;
@@ -517,6 +524,73 @@ describe("the API 2 host's commands", () => {
     const wildcard = host(game, [...READS, "state:*.read"], { tier: "first-party", firstParty: { truth: true } }).truth!;
     expect(await wildcard.monsters()).toMatchObject({ ok: false, reason: "not-granted" });
     expect(await wildcard.level()).toMatchObject({ ok: false, reason: "not-granted" });
+  });
+
+  it.each(["state:map-actual.read", "state:monsters-actual.read"])("persists %s before a reply survives a crashing caller", async (capability) => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    let saved: ReturnType<typeof saveGame> | undefined;
+    setTruthSaveWriter((id, used, current) => {
+      expect(current).toBe(game.state);
+      expect(id).toBe("probe");
+      recordTruthUse(game.manifest, current.actor.player, { installation: "binding", id, version: "1.0.0", digest: "digest" }, used,
+        { turn: current.turn, depth: current.chunk.depth });
+      saved = structuredClone(saveGame(game));
+      return true;
+    });
+    const api = host(game, [capability], { tier: "public", firstParty: { truth: true } });
+    const crash = async (): Promise<void> => {
+      const reply = await api.truth!.monsters();
+      expect(reply.ok).toBe(true);
+      expect(saved?.manifest?.modNoscore).toBe(true);
+      expect(saved?.manifest?.capabilityUse?.entries[0]?.capability).toBe(capability);
+      const restored = loadGame(pack, saved!);
+      expect(restored.state.actor.player.noscore & NOSCORE.DEBUG).not.toBe(0);
+      throw new Error("caller crashed after the reply");
+    };
+    await expect(crash()).rejects.toThrow("caller crashed after the reply");
+    stopApi2Host(api);
+    expect((await api.truth!.monsters()).ok).toBe(false);
+    expect(game.manifest.capabilityUse).toEqual(saved?.manifest?.capabilityUse);
+    expect(game.manifest.modNoscore).toBe(true);
+    expect(game.manifest.determinism).toBe("deterministic");
+  });
+
+  it("withholds all truth when persistence fails or the writer is missing", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const api = host(game, ["state:map-actual.read"], { firstParty: { truth: true } });
+    const before = structuredClone(saveGame(game));
+    for (const writer of [undefined, () => false]) {
+      setTruthSaveWriter(writer);
+      expect((await api.truth!.monsters()).ok).toBe(false);
+      expect((await api.truth!.race(0)).ok).toBe(false);
+      expect((await api.truth!.level()).ok).toBe(false);
+      expect((await api.truth!.storeKnowledge()).ok).toBe(false);
+    }
+    expect(saveGame(game)).toEqual(before);
+  });
+
+  it("does not invoke the writer for a caller without a truth grant or after revocation", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const writer = vi.fn(() => true);
+    setTruthSaveWriter(writer);
+    const before = structuredClone(saveGame(game));
+    const ungranted = host(game, ["state:*.read"], { firstParty: { truth: true } });
+    expect((await ungranted.truth!.monsters()).ok).toBe(false);
+    const granted = host(game, ["state:map-actual.read"], { firstParty: { truth: true } });
+    stopApi2Host(granted);
+    expect((await granted.truth!.monsters()).ok).toBe(false);
+    expect((await granted.truth!.level()).ok).toBe(false);
+    expect(writer).not.toHaveBeenCalled();
+    expect(saveGame(game)).toEqual(before);
+  });
+
+  it("rechecks revocation after the save writer runs", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const api = host(game, ["state:map-actual.read", "state:monsters-actual.read"], { firstParty: { truth: true } });
+    const before = structuredClone(saveGame(game));
+    setTruthSaveWriter(() => { stopApi2Host(api); return true; });
+    expect((await api.truth!.monsters()).ok).toBe(false);
+    expect(saveGame(game)).toEqual(before);
   });
 
   it("checks key availability without claiming it", async () => {

@@ -8,6 +8,7 @@ import type {
 import type { KnownLevelView } from "../agent/known-level.js";
 import type { GameState } from "../game/context.js";
 import type { RngState } from "../rng.js";
+import type { CapabilityUseSummary } from "./save-blocks.js";
 import type { CoreRegistries } from "../session/boot.js";
 import type { ModRegistryHost } from "./registry-host.js";
 import type {
@@ -2673,6 +2674,7 @@ export interface RunBelonging {
 }
 
 export interface RunReport {
+  readonly capabilityUse?: CapabilityUseSummary;
   readonly autoplayers?: readonly { readonly id: string; readonly name: string; readonly version: string; readonly digest: string | null; readonly firstParty: boolean }[];
   readonly outcome: RunOutcome;
   /** The killer's name, "Ripe Old Age" for a winner, or "Retiring". */

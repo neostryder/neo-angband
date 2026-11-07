@@ -109,6 +109,28 @@ export interface SavePackRef {
   source?: string;
 }
 
+/** Measured provenance must remain independent of mod-owned bags. */
+export interface CapabilityUseIdentity {
+  /** Unmeasured callers must not invent an installation identity. */
+  installation: string | null;
+  id: string;
+  version: string;
+  digest: string | null;
+}
+
+export interface CapabilityUseEntry extends CapabilityUseIdentity {
+  capability: string;
+  /** Retaining the first activation avoids growing the summary on every turn. */
+  activation: { turn: number; depth: number } | null;
+  consequence: "controller" | "hidden-information";
+}
+
+/** Permanent consequences must outlive bounded event histories. */
+export interface CapabilityUseSummary {
+  schema: number;
+  entries: CapabilityUseEntry[];
+}
+
 /**
  * The manifest block: the exact pack set + resolved load order + determinism
  * mode that produced the save. The save's profile fingerprint.
@@ -124,6 +146,8 @@ export interface SaveManifest {
   modNoscore: boolean;
   /** The host records controller identity independently of mod-owned save bags. */
   autoplayers?: { id: string; name: string; version: string; digest: string | null; firstParty: boolean }[];
+  /** History truncation and bag removal must not erase permanent consequences. */
+  capabilityUse?: CapabilityUseSummary;
 }
 
 /**

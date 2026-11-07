@@ -48,6 +48,7 @@ still calls itself.
 
 ## [Unreleased]
 
+- [Visible] [Security] **Controller and hidden-information marks apply to every mod author.** Every mod controller makes its character permanently unscorable and its save nondeterministic. Either truth grant permanently marks affected characters unscorable, and truth reads require the mark to be saved before a reply. Saves and run reports retain capability-use provenance independently of truncated controller history and mod-owned bags. Consent text discloses unseen creatures and the map grant's monster and race access. Worker capability eligibility is unchanged.
 - [Visible] [Security] **Mod permission decisions require measured payloads and fresh host choices.** First-party code loads retained measured bytes, permission checkboxes start unchecked, and dialogs show the mod id, repository, and digest. Profile copies carry only enabled-mod selections. Session archives cannot share installed ids or grant themselves permissions through page storage, and mod-facing management responses hide private decisions and settings. Executable session imports and headless runs without measured bindings are refused.
 - [Visible] [Security] **Worker mods fail closed when isolation globals survive lockdown.** The frame authenticates boot with a single-use nonce and port handshake, keeps module source off window messages, and forwards only bounded JSON without Worker handles. The game-page CSP ships as report-only; runtime data: imports remain confined to the sandbox.
 

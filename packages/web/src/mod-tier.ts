@@ -522,9 +522,8 @@ export function modStartGrants(id: string): ModStartGrants {
 
 /** Whether any loaded mod holds a capability that marks the save. */
 export function saveMarkingGrantHeld(): boolean {
-  for (const [id, held] of grants) {
-    const marks = modTier(id).marksSave;
-    if (held.granted.some((cap) => marks.includes(cap))) return true;
+  for (const held of grants.values()) {
+    if (held.granted.some((cap) => cap === TRUTH_MAP || cap === TRUTH_MONSTERS)) return true;
   }
   return false;
 }
