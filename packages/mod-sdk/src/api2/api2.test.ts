@@ -97,7 +97,7 @@ describe("API 2 boundary values", () => {
 
 describe("apiRangeVerdict", () => {
   it("admits the default range and the host version", () => {
-    expect(MOD_API2_VERSION).toBe("2.0.0");
+    expect(MOD_API2_VERSION).toBe("2.1.0");
     expect(apiRangeVerdict(MOD_API2_DEFAULT_RANGE)).toEqual({ ok: true });
     expect(apiRangeVerdict("^2.0.0")).toEqual({ ok: true });
     expect(apiRangeVerdict(">=2.0.0 <3.0.0", "2.4.1")).toEqual({ ok: true });
@@ -108,7 +108,7 @@ describe("apiRangeVerdict", () => {
     expect(apiRangeVerdict("^1.0.0")).toMatchObject({ ok: false, code: "too-old" });
     expect(apiRangeVerdict(">=1.0.0 <2.0.0")).toMatchObject({ ok: false, code: "too-old" });
     expect(apiRangeVerdict(">=1.0.0 <2.1.0", "2.2.0")).toMatchObject({ ok: false, code: "outside" });
-    expect(apiRangeVerdict(">=2.1.0 <3.0.0")).toMatchObject({ ok: false, code: "outside" });
+    expect(apiRangeVerdict(">=2.2.0 <3.0.0")).toMatchObject({ ok: false, code: "outside" });
     expect(apiRangeVerdict(">=2.1.0 <3.0.0", "2.1.0")).toEqual({ ok: true });
   });
 

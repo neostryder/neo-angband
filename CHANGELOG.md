@@ -56,6 +56,7 @@ still calls itself.
 
 ### Changed
 
+- [Visible] [Modding-API] **The game now implements mod API 2.1.0, up from 2.0.0.** The minor version rises because this release adds the `input:controller` and `input:observe` permissions that let third-party mods run controllers and watch gameplay keys, the `resumeAutoplayer` option on `saves.load`, and the `seed`, `birthRngState`, and `birthOptions` fields on the run report, and the `input-flush` event now fires. Mods that declare `">=2.0.0 <3.0.0"` keep loading unchanged. A mod that needs any of these additions should declare `">=2.1.0 <3.0.0"` so older games refuse it with a version message instead of failing at run time.
 - [Visible] [Compatibility] **The game page refuses public API 1 code.** Legacy in-process code runs only in a lab build with `?labprocess=<mod-id>`, and only if the mod declares and is granted `engine:access` and its content is approved. The headless runner runs folder mods with code only when started with `--unsafe-in-process`.
 - [Internal] [Docs] **The migration guide for mod API 2 now opens with what to do and what happens if you do nothing, and its tables of the old context and plugin entries show where each one went, including the keyboard controller and presentation entries.** The release guide now says which kind of evidence backs each claim that a game version and a set of mods work together. It also keeps one kind of evidence from standing in for another.
 

@@ -2,7 +2,7 @@
 
 API 2 is the set of calls a mod's code gets from the game: what it can read, what it can do, and what it hears. Every call returns plain data, a permission the player turned down comes back as a result you can check, and reads show the game as the player knows it. The types are in `@rpgm-tools/neo-angband-mod-sdk`, and the in-process host is in the web package (`packages/web/src/mod-api2-host.ts`).
 
-The mod API has its own version number, which is not the game's. This game implements API 2.0.0, and a mod's `api` range is checked against that number alone, so a new game version can ship with the same API.
+The mod API has its own version number, which is not the game's. This game implements API 2.1.0, and a mod's `api` range is checked against that number alone, so a new game version can ship with the same API.
 
 Status: the types, the version check, the in-process host, the Worker broker and the folder loader are built. The loader runs an in-process API 2 mod wrapped as a plugin (`api2Plugin` in `packages/web/src/mod-api2-shim.ts`), runs a Worker mod through the broker (see In a Worker), and runs API 1 plugins unchanged.
 
@@ -35,9 +35,9 @@ export default defineApi2Mod({
 
 ## Versions
 
-`api` is a semver range over the API's own version, `MOD_API2_VERSION` (now `2.0.0`). The game's version is for diagnostics only. The minor number rises when the API gains a call. The major number rises when an existing call changes or goes away, so `>=2.0.0 <3.0.0` (`MOD_API2_DEFAULT_RANGE`) is the range to declare.
+`api` is a semver range over the API's own version, `MOD_API2_VERSION` (now `2.1.0`). The game's version is for diagnostics only. The minor number rises when the API gains a call. The major number rises when an existing call changes or goes away, so `>=2.0.0 <3.0.0` (`MOD_API2_DEFAULT_RANGE`) is the range to declare.
 
-A loader calls `apiRangeVerdict(range)` before importing any mod code. It returns `{ ok: true }`, or `ok: false` with a `code` and a `why` sentence naming both versions. The code is `malformed` when the range is missing or does not parse. It is `too-new` when every version the range names has a higher major number than this game's API, so the mod needs a newer game, and `too-old` when every one has a lower major number, so the mod needs an update. Any other miss is `outside`, such as `>=2.1.0 <3.0.0` on a game with API 2.0.0.
+A loader calls `apiRangeVerdict(range)` before importing any mod code. It returns `{ ok: true }`, or `ok: false` with a `code` and a `why` sentence naming both versions. The code is `malformed` when the range is missing or does not parse. It is `too-new` when every version the range names has a higher major number than this game's API, so the mod needs a newer game, and `too-old` when every one has a lower major number, so the mod needs an update. Any other miss is `outside`, such as `>=2.2.0 <3.0.0` on a game with API 2.1.0.
 
 ## Results
 

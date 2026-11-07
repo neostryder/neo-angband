@@ -411,7 +411,7 @@ describe("an API 2 definition through the shim", () => {
     const { hooks } = load("modern", plugin);
     expect(hooks?.messageText?.("hello")).toBe("hello!");
     expect(started?.meta.id).toBe("modern");
-    expect(started?.meta.api).toBe("2.0.0");
+    expect(started?.meta.api).toBe("2.1.0");
     expect(started?.hooks.active).toEqual(["messageText"]);
     expect(started?.hooks.available).toEqual(API2_HOOK_NAMES);
     expect(started?.manage).toBeUndefined();

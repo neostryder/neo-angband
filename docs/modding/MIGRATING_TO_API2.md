@@ -474,7 +474,7 @@ if (!response.ok) mod.meta.log(response.message);
 | API 1 | API 2 |
 | --- | --- |
 | `ctx.id`, `ctx.engine`, `ctx.flags`, `ctx.newCharacter`, `ctx.log` | `meta.id`, `meta.engine`, `meta.flags`, `meta.newCharacter`, `meta.log` |
-| `ctx.api` (an integer) | `meta.api`, a version string such as `"2.0.0"` |
+| `ctx.api` (an integer) | `meta.api`, a version string such as `"2.1.0"` |
 | `ctx.settings.get`, `ctx.settings.all`, `ctx.settings.set` | `meta.settings()`, `meta.setSetting(id, value)`. An unknown id answers `refused` with `unknown-setting`. |
 | `ctx.mods()` | `meta.mods()` |
 | `ctx.options` | The `optionsChanged` hook, after the player changes an option |

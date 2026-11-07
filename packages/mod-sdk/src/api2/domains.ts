@@ -99,7 +99,7 @@ export interface Api2ModSummary {
 export interface Api2Meta {
   /** This mod's id. */
   readonly id: string;
-  /** The mod API version the host implements, such as "2.0.0". */
+  /** The mod API version the host implements, such as "2.1.0". */
   readonly api: string;
   /** The game's version, for diagnostics only. Gate on `api`, never on this. */
   readonly engine: string;
