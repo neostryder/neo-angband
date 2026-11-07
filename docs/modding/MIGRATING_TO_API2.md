@@ -480,7 +480,7 @@ if (!response.ok) mod.meta.log(response.message);
 | `ctx.options` | The `optionsChanged` hook, after the player changes an option |
 | `ctx.profiles`, `ctx.session` | `manage.profiles`, `manage.session`, first-party only |
 
-`meta.engine` is for diagnostics: decide on `meta.api`, never on the game version. `manage` exists only for the game's own mods: the build lists each one by its repository (`FIRST_PARTY_ORIGINS`), and a mod gets `manage` when it came from that repository with its files unchanged, was listed for that capability, and the player allowed it on its own confirmation screen. `truth` goes to any in-process mod the player allows, with a consent line saying the mod sees what the character has not found. A Worker mod gets neither. Test `mod.manage` and `mod.truth` before use, because they are absent from a mod that does not hold them.
+`meta.engine` is for diagnostics: decide on `meta.api`, never on the game version. Any Worker mod, first-party or third-party, can hold the management grants (`profiles:manage`, `session:control`, `options:manage`, `saves:manage`, `screens:manage`), the truth reads (`state:map-actual.read`, `state:monsters-actual.read`), and the other brokered grants, with the player's consent. A truth read marks the character unscorable before it returns any data. `mod.manage` and `mod.truth` are absent from a mod that does not hold them, so test for each one before you use it:
 
 ## Runtime tiers
 
