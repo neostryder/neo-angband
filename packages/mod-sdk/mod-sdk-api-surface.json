@@ -45,6 +45,7 @@
     "MOD_API2_DEFAULT_RANGE",
     "MOD_API2_VERSION",
     "MOD_API_1_RANGE",
+    "MOD_PERMISSION_TEXT",
     "MOD_REQUIREMENTS",
     "MOD_RUNTIMES",
     "ManifestConversionError",

@@ -219,3 +219,12 @@ describe("API-2 declarative panel schema", () => {
     expect(panelPatch({ style: "position:fixed" })).toBeNull();
   });
 });
+
+it("limits each mod's panels without borrowing another mod's allocation", () => {
+  const renderer = createModWorkerPanelRenderer();
+  try {
+    for (let i = 0; i < 8; i++) renderer.apply("limited", "mount", { id: "panel-" + i, root: { type: "text", text: "Panel" } });
+    expect(() => renderer.apply("limited", "mount", { id: "overflow", root: { type: "text", text: "Panel" } })).toThrow();
+    expect(() => renderer.apply("another", "mount", { id: "available", root: { type: "text", text: "Panel" } })).not.toThrow();
+  } finally { renderer.teardown("limited"); renderer.teardown("another"); }
+});

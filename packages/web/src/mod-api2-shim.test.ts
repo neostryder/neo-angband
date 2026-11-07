@@ -126,9 +126,9 @@ describe("engine hooks", () => {
     expect(hooks?.levelGenerated).toBeUndefined();
   });
 
-  it("serves a public mod the player gave engine access", () => {
+  it("keeps live engine hooks reserved outside the folder lab opt-in", () => {
     const plugin = build("public", ["engine:access"], (() => ({ levelGenerated: veto })) as never);
-    expect(load("eh", plugin).hooks?.levelGenerated?.({}, false)).toBe(false);
+    expect(load("eh", plugin).hooks?.levelGenerated?.({}, false)).toBeUndefined();
   });
 
   it("refuses a name that is not a game hook, a value that is not a function, and a hook it already declares", () => {
@@ -181,7 +181,7 @@ describe("engine tiles", () => {
     let asked = false;
     expect(registrationsOf(build("public", [], () => { asked = true; return { filler }; }))).toBeUndefined();
     expect(asked).toBe(false);
-    expect(Object.keys(registrationsOf(build("public", ["engine:access"], () => ({ filler }))) ?? {})).toEqual(["tileFiller"]);
+    expect(Object.keys(registrationsOf(build("public", ["engine:access"], () => ({ filler }))) ?? {})).toEqual([]);
   });
 
   it("refuses values that are not functions, and a filler beside a tileMap table's", () => {

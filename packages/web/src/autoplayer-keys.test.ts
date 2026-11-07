@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { decideAutoplayerKey, describeKeyPress } from "./autoplayer-keys";
 import type { ControllerKeyAnswer, ControllerKeyPress } from "./mod-plugin";
 
@@ -77,4 +77,11 @@ describe("a key while an autoplayer drives (#334)", () => {
     expect(describeKeyPress(press("e", { ctrl: true, meta: true }))).toBe("Ctrl-Meta-e");
     expect(describeKeyPress(press("Z", { ctrl: true, shift: true }))).toBe("Ctrl-Shift-Z");
   });
+});
+
+it("releases emergency keys during input method composition without consulting the mod", () => {
+  const onKey = vi.fn(keepAll);
+  expect(decideAutoplayerKey(press("Escape"), onKey, true).kind).toBe("release");
+  expect(decideAutoplayerKey(press("z", { ctrl: true }), onKey, true).kind).toBe("release");
+  expect(onKey).not.toHaveBeenCalled();
 });

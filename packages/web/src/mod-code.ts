@@ -67,6 +67,7 @@
 
 import {
   CapabilitySet,
+  MOD_PERMISSION_TEXT,
   MOD_API2_VERSION,
   PLUGIN_FILE,
   WORKER_PREVIEW_API,
@@ -76,6 +77,7 @@ import {
   type Api2ModDefinition,
   type PackManifest,
 } from "@rpgm-tools/neo-angband-mod-sdk";
+import { consentBinding } from "./mod-consent-binding";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
 import { api2Plugin, checkApi2Definition } from "./mod-api2-shim";
 import { engineBlocksCode } from "./mod-engine";
@@ -117,6 +119,8 @@ export interface LoadedModPlugin {
   readonly declared: readonly string[];
   /** The mod's tier, as measured at boot. */
   readonly tier: ModTier;
+  readonly permissionBinding?: string;
+  readonly contentDigest?: string | null;
   /** What it holds, and what it asked for and does not. */
   readonly grants: ModGrants;
   readonly plugin: ModPlugin;
@@ -151,6 +155,8 @@ export interface LoadedModWorker {
   /** The capabilities the manifest declared, before tier and player refusals. */
   readonly declared: readonly string[];
   readonly tier: ModTier;
+  readonly permissionBinding?: string;
+  readonly contentDigest?: string | null;
   readonly grants: ModGrants;
   readonly api: 2;
   /** Kept alive for the host-owned Worker bootstrap to import after it starts. */
@@ -201,6 +207,9 @@ export interface LoadModCodeOptions {
   readonly refused?: (id: string) => readonly string[];
   /** Unreviewed code needs its notice acknowledged before resolving any module. */
   readonly acknowledged?: (id: string) => boolean;
+  readonly payloadDigest?: (id: string) => string | null;
+  /** The Node authoring runner has no containment; its caller must opt in explicitly. */
+  readonly unsafeInProcess?: boolean;
   /**
    * The mod's measured tier (mod-tier.ts). Absent, every pack is treated as
    * sideloaded, which is the tier that holds least.
@@ -253,9 +262,16 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
 
   for (const pack of withCode) {
     const id = pack.manifest.id;
+    const binding = consentBinding(id);
+    const approvedPayload = { ...(typeof binding === "string" ? { permissionBinding: binding } : {}),
+      ...(opts.payloadDigest ? { contentDigest: opts.payloadDigest(id) } : {}) };
 
     if (!opts.enabled(id)) {
       skipped.push({ id, why: "not enabled" });
+      continue;
+    }
+    if (binding === null) {
+      problems.push({ id, why: MOD_PERMISSION_TEXT.unavailable });
       continue;
     }
     /* THE ENGINE GATE, before the plugin's own ABI check and before any import.
@@ -295,7 +311,10 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
      * uses, and the host's Worker broker serves exactly that API. The preview
      * ABI that schema 1 called `modApi: 2` is retired: its manifest still
      * reads, and its code is refused with what to do about it. */
-    if (pack.manifest.runtime === "worker") {
+    const measuredTier = opts.tier?.(pack) ?? assignTier({ id, source: "folder", execution: executionOf(pack) });
+    const isolate = measuredTier.trust !== "first-party" && !measuredTier.developerInProcess &&
+      pack.manifest.manifestSchema === 2 && typeof pack.manifest.api === "string" && apiRangeVerdict(pack.manifest.api).ok;
+    if (pack.manifest.runtime === "worker" || isolate) {
       const range = pack.manifest.api ?? (pack.manifest.modApi === 2 ? WORKER_PREVIEW_API : undefined);
       if (range === WORKER_PREVIEW_API) {
         problems.push({
@@ -328,12 +347,12 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
         skipped.push({ id, why: "awaiting acknowledgment of the unreviewed mod notice" });
         continue;
       }
-      const entry = workerEntryOf(pack);
+      const entry = isolate && pack.manifest.runtime !== "worker" ? PLUGIN_FILE : workerEntryOf(pack);
       if (entry === null) {
         problems.push({ id, why: "declares runtime \"worker\" but names no entry module" });
         continue;
       }
-      if (!hasWorkerPlugin(pack)) {
+      if (!pack.code.includes(entry)) {
         problems.push({ id, why: `starts ${entry}, which is not in the mod` });
         continue;
       }
@@ -350,6 +369,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       }
       workers.push({
         id,
+        ...approvedPayload,
         manifest: settled.manifest,
         declared: settled.declared,
         tier: settled.tier,
@@ -419,6 +439,11 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       continue;
     }
 
+    if (tier.trust !== "first-party" && !(tier.developerInProcess && (grants.granted.includes("engine:access") || opts.unsafeInProcess === true))) {
+      skipped.push({ id, why: opts.unsafeInProcess === false ? MOD_PERMISSION_TEXT.headlessOptIn : MOD_PERMISSION_TEXT.legacy });
+      continue;
+    }
+
     if (!hasPlugin(pack)) {
       problems.push({ id, why: `targets trusted API 1 but does not ship ${PLUGIN_FILE}` });
       continue;
@@ -465,13 +490,14 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       const capabilities = CapabilitySet.fromManifest(manifest);
       plugins.push({
         id,
+        ...approvedPayload,
         manifest,
         declared,
         tier,
         grants,
         plugin: api2Plugin(entry as Api2ModDefinition, () => {
           const start = modStartGrants(id);
-          return { grants: capabilities, execution: start.tier.execution, tier: start.tier.trust === "first-party" ? "first-party" : "public", ...(start.firstParty ? { firstParty: start.firstParty } : {}) };
+          return { grants: capabilities, execution: start.tier.execution, developerInProcess: start.tier.developerInProcess === true, tier: start.tier.trust === "first-party" ? "first-party" : "public", ...(start.firstParty ? { firstParty: start.firstParty } : {}) };
         }),
         api: 2,
         url,
@@ -486,6 +512,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
     }
     plugins.push({
       id,
+      ...approvedPayload,
       manifest,
       declared,
       tier,
@@ -518,6 +545,7 @@ export async function measureModTiers(
   records: readonly InstallRecordFacts[],
   verify: (id: string) => Promise<boolean>,
   labTrusted: ReadonlySet<string> = new Set(),
+  developerInProcess: ReadonlySet<string> = new Set(),
 ): Promise<Map<string, ModTier>> {
   const byId = new Map(records.map((record) => [record.id, record]));
   const out = new Map<string, ModTier>();
@@ -544,6 +572,16 @@ export async function measureModTiers(
         digestsMatch: firstParty || record.listing === "reviewed" ? await verify(id) : false,
       }),
     );
+  }
+  for (const pack of packs) {
+    const id = pack.manifest.id;
+    const tier = out.get(id)!;
+    if (tier.trust === "first-party" || tier.execution === "data") continue;
+    if (sources.folder.has(id) && developerInProcess.has(id)) {
+      out.set(id, Object.freeze({ ...tier, developerInProcess: true }));
+    } else if (pack.manifest.manifestSchema === 2 && typeof pack.manifest.api === "string" && apiRangeVerdict(pack.manifest.api).ok) {
+      out.set(id, Object.freeze({ ...tier, execution: "worker", capabilityTier: "worker" }));
+    }
   }
   return out;
 }
@@ -588,7 +626,10 @@ type Settled =
 function settleGrants(pack: DiskPack, opts: LoadModCodeOptions): Settled {
   const id = pack.manifest.id;
   const declared = pack.manifest.capabilities ?? [];
-  const tier = opts.tier?.(pack) ?? assignTier({ id, source: "folder", execution: executionOf(pack) });
+  const measured = opts.tier?.(pack) ?? assignTier({ id, source: "folder", execution: executionOf(pack) });
+  const tier: ModTier = measured.trust !== "first-party" && !measured.developerInProcess && pack.manifest.manifestSchema === 2 &&
+    typeof pack.manifest.api === "string" && apiRangeVerdict(pack.manifest.api).ok
+    ? { ...measured, execution: "worker", capabilityTier: "worker" } : measured;
   const grants = effectiveGrants(declared, tier, {
     granted: opts.consented(id),
     refused: opts.refused?.(id) ?? [],

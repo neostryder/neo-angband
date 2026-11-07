@@ -246,7 +246,7 @@ import {
 import { installCrashScreen } from "./crash-screen.js";
 import { offerSafeLaunch, showSafeLaunchNotice, showSafeModeScreen } from "./safe-mode.js";
 import { addressWithoutSafeLaunch, bootCompleted, decideSafeLaunch, enterSafeLaunch, safeLaunch, watchSafeKey } from "./safe-launch";
-import { labBuild, labTrust } from "./lab-trust";
+import { labBuild, labTrust, labInProcess } from "./lab-trust";
 import { installController, ContentIdResolver, subscribeEvents, createModRegistryHost, effectInfoRegistry, randartRegistry, runeRegistry, tvalRegistry, VocabularyRegistry } from "@rpgm-tools/neo-angband-core";
 import type { AgentController, AgentSession } from "@rpgm-tools/neo-angband-core";
 import {
@@ -362,6 +362,13 @@ import {
   setModGrants,
   setModTiers,
 } from "./mod-tier";
+import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
+import { consentBinding, onModConsentChange } from "./mod-consent-binding";
+import { modPayloadBytes, modPayloadDigest, modPayloadUrl, prepareModPayloads } from "./mod-code-snapshot";
+import { api2MayObserveKeys } from "./mod-api2-host";
+import { drawModControllerConsent } from "./mod-consent-dialog";
+import { recordControllerUse } from "./mod-controller-record";
+import { gameplayIntents } from "./mod-gameplay-intents";
 import { hideAutoplayerBanner, showAutoplayerBanner } from "./autoplayer-banner";
 import { decideAutoplayerKey, keyPressOf } from "./autoplayer-keys";
 import {
@@ -445,7 +452,7 @@ import { runProfileScreen } from "./profile-ui";
 import { setPrefsStorage } from "./mod-prefs";
 import { startModWorker, type ModWorkerLike, type StartedModWorker } from "./mod-worker/host";
 import { settleWorkerHooks } from "./mod-worker/hooks";
-import { api2DisplayOption, api2PluginRegistrations, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "./mod-api2-shim";
+import { api2Plugin, api2DisplayOption, api2PluginRegistrations, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "./mod-api2-shim";
 import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
@@ -1117,6 +1124,7 @@ async function rediscoverModSources(): Promise<void> {
         return subtle !== undefined ? await installed.verifyDigests(id, subtle) : false;
       },
       labTrust(),
+      labInProcess(),
     ),
   );
 
@@ -1126,6 +1134,8 @@ async function rediscoverModSources(): Promise<void> {
    * one that can actually compose. A folder or session copy may shadow the
    * installed id, and bundled packs always win too; caching one of those hashes
    * would falsely describe bytes the game is not using. */
+  await prepareModPayloads(diskPacks(), modTier);
+
   const shadowed = new Set([
     ...folder.packs.map((pack) => pack.manifest.id),
     ...sessionPacks().packs.map((pack) => pack.manifest.id),
@@ -1179,11 +1189,13 @@ let modTransactionNotice: string | null = null;
   const store = defaultModStore();
   const code = await loadModCode({
     packs: disk.packs,
-    codeUrl: disk.codeUrl,
+    codeUrl: (id, file) => modTier(id).trust === "first-party"
+      ? disk.codeUrl?.(id, file) ?? Promise.resolve(null) : modPayloadUrl(id, file, true),
     enabled: (id) => enabledModIds().includes(id),
     consented: (id) => store.getConsent(id),
     refused: (id) => store.getRefusal(id),
-    acknowledged: (id) => store.sawUnreviewedNotice(id),
+    payloadDigest: modPayloadDigest,
+    acknowledged: (id) => store.sawUnreviewedNotice(id) && (modTier(id).trust === "first-party" || modPayloadDigest(id) !== null),
     tier: (pack) => modTier(pack.manifest.id),
   });
   /* What each mod holds, for the Worker runtime's modStartGrants and the save mark. */
@@ -1576,6 +1588,9 @@ const SHOW_GRAPHICS_KEY = "neo-angband-show-graphics";
 // activateAutoplayerCmd right before its reload; consumed (read once, cleared
 // unconditionally) by the controller-install loop below.
 const AUTOPLAYER_JUST_CONFIRMED_KEY = "neo-angband-autoplayer-just-confirmed";
+function autoplayerConfirmationKey(id: string): string {
+  return modTier(id).trust === "first-party" ? id : id + ":" + consentBinding(id);
+}
 // One-shot across the two reloads of a new character (#300): "the autoplayer
 // that held the keyboard asked, through ctx.saves.create({ resumeAutoplayer }),
 // to carry on with the character about to be born". Written by newGame only
@@ -11840,6 +11855,7 @@ function continueAdvance(
         sheet: modSnapshotSource.characterSheet?.() ?? null,
         scored: outcome.entered,
         endedAt: Date.now(),
+        autoplayers: game.manifest.autoplayers,
       }));
     } catch (error) {
       log.error("report", "run report failed", error);
@@ -13693,8 +13709,15 @@ async function confirmBorgActivation(): Promise<boolean> {
  * found the activation through this key or through a mod whose rule was
  * already on at boot.
  */
+async function confirmControllerActivation(id: string): Promise<boolean> {
+  const loaded = controllerCandidates().find((candidate) => candidate.id === id);
+  if (!loaded) return false;
+  if (loaded.tier.trust === "first-party") return confirmBorgActivation();
+  return await drawModControllerConsent(id, loaded.manifest.name) && controllerCandidates().some((candidate) => candidate.id === id);
+}
+
 async function activateAutoplayerCmd(modId: string): Promise<void> {
-  if (!(await confirmBorgActivation())) return;
+  if (!(await confirmControllerActivation(modId))) return;
   /* Marked HERE, before the reload, not left for the boot loop that runs after
    * it (#125): NOSCORE.BORG is the permanent, one-way, score-invalidating
    * mark (upstream's own player->noscore |= NOSCORE_BORG), and it stays that
@@ -13710,7 +13733,7 @@ async function activateAutoplayerCmd(modId: string): Promise<void> {
    * reload where consent was JUST given, would be a pointless double prompt.
    * Every other boot still asks; see the install loop below. */
   try {
-    reloadStorage.setItem(AUTOPLAYER_JUST_CONFIRMED_KEY, modId);
+    reloadStorage.setItem(AUTOPLAYER_JUST_CONFIRMED_KEY, autoplayerConfirmationKey(modId));
   } catch {
     /* best-effort; worst case this one reload asks again, which is safe */
   }
@@ -13736,7 +13759,7 @@ function tryBorgCommand(): void {
     stopInstalledController?.("the autoplayer command");
     return;
   }
-  const candidate = activeModCode().plugins.find(
+  const candidate = controllerCandidates().find(
     (loaded) => typeof loaded.plugin.controller === "function",
   );
   if (!candidate) {
@@ -13766,12 +13789,12 @@ async function confirmPendingAutoplayerInstall(): Promise<void> {
   if (!pending) return;
   pendingAutoplayerInstall = null;
   await openModal(async () => {
-    if (!(await confirmBorgActivation())) {
+    if (!(await confirmControllerActivation(pending.loaded.id))) {
       say(
         t(
           "main.autoplayer.declined",
           "{id} will not take the keyboard this session. You will be asked again the next time it tries to activate.",
-          { id: pending.loaded.id },
+          { id: pending.loaded.manifest.name },
         ),
       );
       render();
@@ -16124,6 +16147,11 @@ setModControllerArmedControl((id) =>
 
 /* The Worker mods' brokers, by mod id (mod-worker/host.ts). */
 const workerPlugins = new Map<string, StartedModWorker>();
+const workerControllers: LoadedModPlugin[] = [];
+function controllerCandidates(): readonly LoadedModPlugin[] {
+  return [...activeModCode().plugins, ...workerControllers].filter((loaded) => loaded.tier.trust === "first-party" ||
+    (loaded.permissionBinding === consentBinding(loaded.id) && ["input:controller", "input:intent"].every((capability) => defaultModStore().getConsent(loaded.id).includes(capability))));
+}
 /* What each Worker mod's policy tables install beside hooks, once it settles. */
 const workerRegistrations = new Map<string, Api2PolicyRegistrations>();
 const workerPanelRenderer = createModWorkerPanelRenderer();
@@ -16237,9 +16265,11 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
         flags,
         engine: ENGINE_VERSION,
         newCharacter: sessionFacts.newCharacter ?? false,
+        controllerArmed: reloadStorage.getItem(AUTOPLAYER_JUST_CONFIRMED_KEY) === autoplayerConfirmationKey(loaded.id),
         net: context.net !== undefined,
         api: (options) => createApi2Host(context, { grants: capabilities, panels: workerPanelRenderer, ...options, execution: "worker" }),
         readAsset: async (path) => {
+          if (modTier(loaded.id).trust !== "first-party") return modPayloadBytes(loaded.id, path);
           const url = await disk.assetUrl?.(loaded.id, path);
           if (!url) return null;
           const response = await fetch(url);
@@ -16256,6 +16286,7 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
           settleWorkerHooks(loaded.id, null);
           workerPanelRenderer.teardown(loaded.id);
           workerPlugins.delete(loaded.id);
+          if (installedController?.id === loaded.id) stopInstalledController?.(MOD_PERMISSION_TEXT.revoked);
         },
       });
       session = started;
@@ -16264,6 +16295,23 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
         new Promise<void>((_, reject) => setTimeout(() => reject(new Error("its Worker did not become ready")), 3000)),
       ]);
       workerPlugins.set(loaded.id, session);
+      if (session.hasController()) {
+        workerControllers.push({ ...loaded, url: loaded.entryUrl, plugin: api2Plugin({
+          api: ">=2.0.0 <3.0.0", onDeath: "end", armed: () => started.controllerArmed(),
+          controller: (mod, input) => started.decide(input, mod),
+          ...(started.hasKeyHandler() ? { onKey: (press: import("@rpgm-tools/neo-angband-mod-sdk").Api2ControllerKey) => {
+            if (!api2MayObserveKeys(context)) return { kind: "release" as const };
+            void started.key(press).then((answer) => {
+              if (installedController?.id !== loaded.id) return;
+              if (answer.kind === "release") stopInstalledController?.(MOD_PERMISSION_TEXT.keySource, answer.reason);
+              else if (answer.message) { say(answer.message); render(); }
+            }).catch(() => {
+              if (installedController?.id === loaded.id) stopInstalledController?.(MOD_PERMISSION_TEXT.keySource, MOD_PERMISSION_TEXT.keyFailed);
+            });
+            return { kind: "keep" as const };
+          } } : {}),
+        }, () => ({ grants: capabilities, tier: "public", execution: "worker" })) });
+      }
     } catch (err) {
       session?.teardown();
       if (!session) worker?.terminate();
@@ -16644,6 +16692,11 @@ function controllerInstallOf(answer: AgentController | ModControllerInstall): Mo
 }
 
 function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModControllerInstall): void {
+  if (installedController !== null) return;
+  if (loaded.tier.trust !== "first-party" && (loaded.permissionBinding !== consentBinding(loaded.id) ||
+    !defaultModStore().sawUnreviewedNotice(loaded.id) ||
+    !["input:controller", "input:intent"].every((capability) => defaultModStore().getConsent(loaded.id).includes(capability)) ||
+    (loaded.tier.execution === "worker" && !workerPlugins.has(loaded.id)))) return;
   const controller = install.controller;
   /* Player text names the mod as its manifest does; the id stays in the log. */
   const modName = loaded.manifest.name.trim();
@@ -16663,10 +16716,17 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
     /* A switched-off autoplayer answers nothing until the keyboard is handed
      * back (modSwitchedOff). */
     if (modHealth().isOff(loaded.id)) return null;
-    return modHealth().run(loaded.id, "controller", () => controller(view, act));
+    const command = modHealth().run(loaded.id, "controller", () => controller(view, act));
+    if (!command || loaded.tier.trust === "first-party") return command;
+    let accepted: PlayerCommand | null = null;
+    const gate = createIntentGate({ state, registry, snapshotSource: { phase: () => storeModalActive ? "store" : "play", prompt: () => null },
+      push: (value) => { accepted = value; }, storeCommand: (value) => { accepted = value; return true; }, advance: () => undefined });
+    gameplayIntents(gate).submit(inputToken(state), { kind: "command", command });
+    return accepted;
   };
   const session = installController(state, modLatched, {
-    capabilities: CapabilitySet.fromManifest(loaded.manifest),
+    capabilities: loaded.api === 2 ? { has: (capability) => capability === "command:add" || CapabilitySet.fromManifest(loaded.manifest).has(capability) }
+      : CapabilitySet.fromManifest(loaded.manifest),
     /* The same deps the mod's input snapshot uses, so an autoplayer reads the
      * names the inventory shows and store prices, as the player does. Without
      * them an item view carries only its kind's raw label. */
@@ -16691,7 +16751,10 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
    * one-way (markNoscore only ORs) and there is no path that clears it, so a save
    * that has run an autoplayer stays marked for the rest of its life. */
   const takenOver = state.actor.player;
-  takenOver.noscore = markNoscore(takenOver.noscore, NOSCORE.BORG);
+  const identity = { id: loaded.id, name: loaded.manifest.name, version: loaded.manifest.version,
+    digest: loaded.contentDigest ?? null, firstParty: loaded.tier.trust === "first-party" };
+  recordControllerUse(game.manifest, takenOver, identity);
+  autosave(true);
   log.info(`mod:${loaded.id}`, `installed an autoplayer`);
   /* The other half of #125: a save can no longer be quietly handed to an
    * autoplayer, so a player who IS running one must be able to see that from
@@ -16797,6 +16860,7 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
       reportModFault(id, `could not be released from the keyboard: ${faultMessage(err)}`);
     }
     installedController = null;
+    workerPlugins.get(id)?.teardown();
     announceDriver();
     installedControllerSpeed = null;
     stopInstalledController = null;
@@ -16844,7 +16908,14 @@ try {
 } catch {
   /* best-effort; worst case this boot asks, which is the safe direction */
 }
-for (const loaded of activeModCode().plugins) {
+onModConsentChange((id) => {
+  workerPlugins.get(id)?.teardown();
+  if (installedController?.id === id) stopInstalledController?.(MOD_PERMISSION_TEXT.revoked);
+  if (pendingAutoplayerInstall?.loaded.id === id) pendingAutoplayerInstall = null;
+  activeModCode().plugins.find((loaded) => loaded.id === id)?.plugin.uninstall?.();
+});
+
+for (const loaded of controllerCandidates()) {
   const makeController = loaded.plugin.controller;
   if (!makeController) continue;
   const holderId = currentOrPendingAutoplayerId();
@@ -16890,9 +16961,9 @@ for (const loaded of activeModCode().plugins) {
      * candidate and asks via confirmPendingAutoplayerInstall once the game
      * screen is live - the same warn-and-confirm a first-time activation
      * gets, every single boot. */
-    if (justConfirmedAutoplayerId === loaded.id) {
+    if (justConfirmedAutoplayerId === autoplayerConfirmationKey(loaded.id)) {
       finishAutoplayerInstall(loaded, install);
-    } else if (rollOnAutoplayerId === loaded.id) {
+    } else if (loaded.tier.trust === "first-party" && rollOnAutoplayerId === loaded.id) {
       finishAutoplayerInstall(loaded, install);
       say(rollOnLoaded
         ? t("main.autoplayer.load-on", "{name} carries on with the loaded character.", { name: loaded.manifest.name })

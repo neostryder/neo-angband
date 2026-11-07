@@ -521,7 +521,7 @@ describe("the API 2 host's commands", () => {
 
   it("checks key availability without claiming it", async () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const api = host(game, ["keymap:write"]);
+    const api = host(game, ["keymap:write"], { tier: "first-party" });
     expect(await api.ui.keys.isBindableTriggerKey("F10")).toEqual({ ok: true, value: true });
     expect(await api.ui.keys.list()).toEqual({ ok: true, value: [] });
     expect(await api.ui.keys.bind("F10", "a")).toEqual({ ok: true, value: null });
@@ -532,7 +532,7 @@ describe("the API 2 host's commands", () => {
 
   it("adds a runnable Game-menu entry and removes it when the mod stops", async () => {
     menuRegistry.clear();
-    const api = host(startGame(pack, { seed: SEED, depth: DEPTH }), ["registry:menu"]);
+    const api = host(startGame(pack, { seed: SEED, depth: DEPTH }), ["ui:menu.row"], { execution: "worker" });
     let ran = false;
     expect(await api.ui.gameMenu.register("backup", "Backups", () => { ran = true; })).toEqual({ ok: true, value: null });
     const rows = menuRegistry.transform("core:game-menu", []);
@@ -550,7 +550,7 @@ describe("the API 2 host's commands", () => {
       prefs: memoryPrefs(),
       intentGate: { submit: (_token, intent) => (sent.push(intent), { accepted: true }) },
     });
-    return { api: createApi2Host(ctx, { grants: caps }), sent };
+    return { api: createApi2Host({ ...ctx, driver: () => ({ kind: "controller", owner: "probe" }) }, { grants: caps }), sent };
   }
 
   it("turn a target's KnownMonster id into the monster it names, and an unknown id into none", async () => {
@@ -675,7 +675,7 @@ describe("the first-party seams", () => {
     await api.ui.title!.registerRow({ id: "new-character", label: "New character", run: () => undefined });
     disposeApi2Host(api);
     expect(runtime.list()).toEqual([]);
-    expect(createApi2Host(ctx, { grants: caps, tier: "public" }).ui.title).toBeUndefined();
+    expect(createApi2Host(ctx, { grants: caps, tier: "public" }).ui.title).toBeDefined();
   });
   it("refuses presentation to a public mod even with a namespace flag", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
@@ -990,7 +990,8 @@ describe("API 2 engine and content", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const caps = capabilities("probe", ["engine:access"]);
     const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: caps, registries: game.booted.registries });
-    const api = createApi2Host(ctx, { grants: caps });
+    expect(createApi2Host(ctx, { grants: caps }).engine).toBeUndefined();
+    const api = createApi2Host(ctx, { grants: caps, developerInProcess: true });
     expect(api.engine?.api).toBe("1.0.0");
     expect(api.engine?.core).toBe(ctx.core);
     expect(api.engine?.state).toBe(game.state);
@@ -1078,7 +1079,7 @@ describe("API 2 engine and content", () => {
     const api = createApi2Host({ ...context, display: { onKey: (listener: (event: KeyboardEvent) => void) => {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
-    } } as NonNullable<typeof context.display> }, { grants: caps });
+    } } as NonNullable<typeof context.display> }, { grants: caps, tier: "first-party" });
     const heard: unknown[] = [];
     const subscription = await api.ui.onKey((event) => { heard.push(event); });
     expect(subscription.ok).toBe(true);
@@ -1096,15 +1097,15 @@ describe("API 2 engine and content", () => {
 });
 
 describe("API 2 controller decisions", () => {
-  function controller(definition: Api2ModDefinition, tier: "first-party" | "public" = "first-party") {
+  function controller(definition: Api2ModDefinition, tier: "first-party" | "public" = "first-party", sensitive: string[] = []) {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     game.state.events = new GameEvents();
-    const caps = capabilities("probe", ["command:add", "input:intent", "state:*.read", "event:message"]);
-    const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: caps, snapshotSource: {
+    const caps = capabilities("probe", ["command:add", "input:intent", "state:*.read", "event:message", ...sensitive]);
+    const ctx = { ...modPluginContext("probe", {}, game.state, {}, { capabilities: caps, snapshotSource: {
       state: () => game.state, viewDeps: () => ({}), phase: () => "play", messagePending: () => false,
       prompt: () => null, frame: () => null, knownLevel: () => null,
-    } });
-    const plugin = api2Plugin(definition, () => ({ grants: caps, tier }));
+    } }), driver: () => ({ kind: "controller" as const, owner: "probe" }) };
+    const plugin = api2Plugin(definition, () => ({ grants: caps, tier, execution: tier === "public" ? "worker" : "in-process" }));
     plugin.register?.({} as never, ctx);
     const offered = plugin.controller!(ctx);
     const decide = typeof offered === "function" ? offered : offered?.controller;
@@ -1150,10 +1151,36 @@ describe("API 2 controller decisions", () => {
     release();
   });
 
-  it("keeps arming separate from ownership and refuses public controllers", () => {
+  it.each(["quit", "retire", "suicide", "save", "profiles:delete", "session:quit", "mod:install"])("refuses controller command %s", async (code) => {
+    let result: unknown;
+    const { game, plugin, decide } = controller({ api: ">=2.0.0 <3.0.0", controller: async (mod, input) => {
+      result = await mod.act.submit(input.token, { kind: "command", command: { code } });
+    } }, "public", ["input:controller"]);
+    expect(decide!(createAgentView(game.state), createAgentActions(game.state))).toBeNull();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(result).toMatchObject({ ok: false });
+    expect(decide!(createAgentView(game.state), createAgentActions(game.state))).toBeNull();
+    plugin.uninstall?.();
+  });
+
+  it("accepts a validated public controller gameplay command", async () => {
+    let result: unknown;
+    const { game, plugin, decide } = controller({ api: ">=2.0.0 <3.0.0", controller: async (mod, input) => {
+      result = await mod.act.submit(input.token, { kind: "command", command: { code: "hold" } });
+    } }, "public", ["input:controller"]);
+    expect(decide!(createAgentView(game.state), createAgentActions(game.state))).toEqual({ code: "hold" });
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(result).toEqual({ ok: true, value: null });
+    plugin.uninstall?.();
+  });
+
+  it("keeps arming separate from ownership and requires declared controller consent", () => {
     const definition = { api: ">=2.0.0 <3.0.0", armed: ({ armed }: { armed: boolean }) => armed, controller: () => undefined };
     expect(controller(definition).decide).toBeUndefined();
     expect(controller({ ...definition, armed: () => true }, "public").decide).toBeUndefined();
+    const allowed = controller({ ...definition, armed: () => true }, "public", ["input:controller"]);
+    expect(allowed.decide).toBeTypeOf("function");
+    allowed.plugin.uninstall?.();
     const { plugin, decide } = controller({ ...definition, armed: () => true });
     expect(decide).toBeTypeOf("function");
     plugin.uninstall?.();
@@ -1407,4 +1434,71 @@ describe("API 2 management", () => {
     expect(await api.manage!.keys.set("F2", "h")).toMatchObject({ reason: "unavailable" });
     expect(keys.list()).toEqual([]);
   });
+});
+
+describe("public input containment", () => {
+  it("requires explicit key observation and omits keys outside gameplay", async () => {
+    const grants = capabilities("probe", ["input:observe"]);
+    const listeners = new Set<(event: KeyboardEvent) => void>();
+    let phase = "play";
+    const context = { ...modPluginContext("probe", {}), snapshot: () => ({ phase }) as never,
+      display: { onKey: (listener: (event: KeyboardEvent) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; } } as never };
+    expect(await createApi2Host(context, { grants: capabilities("probe", ["keymap:write"]) }).ui.onKey(() => undefined)).toMatchObject({ capability: "input:observe" });
+    const api = createApi2Host(context, { grants, execution: "worker" });
+    const heard: unknown[] = [];
+    await api.ui.onKey((key) => heard.push(key));
+    const emit = (key: string, ctrlKey = false) => { for (const listener of listeners) listener({ key, code: key, ctrlKey, altKey: false, metaKey: false, shiftKey: false, repeat: false } as KeyboardEvent); };
+    for (const value of ["modal", "pregame", "dead", "store"]) { phase = value; emit("password"); }
+    phase = "play"; emit("Escape"); emit("z", true); emit("a");
+    vi.stubGlobal("document", { activeElement: { id: "other-mod-panel" }, body: {}, documentElement: {} });
+    try { emit("hidden-key"); } finally { vi.unstubAllGlobals(); }
+    expect(heard).toEqual([{ key: "a", code: "a", modifiers: [], isRepeat: false }]);
+    stopApi2Host(api); expect(listeners.size).toBe(0);
+  });
+
+  it("refuses background intents, other controller owners, and management prompt answers", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grants = capabilities("probe", ["input:intent", "input:prompt.reply", "ui:title"]);
+    const submitted = vi.fn(() => ({ accepted: true })); const replied = vi.fn(() => ({ accepted: true }));
+    let owner: string | null = null; let phase = "play"; let clicked: (() => void) | undefined;
+    const ctx = { ...modPluginContext("probe", {}, game.state),
+      driver: () => owner ? { kind: "controller" as const, owner } : { kind: "player" as const },
+      snapshot: () => ({ phase }) as never, intent: { submit: submitted }, prompt: { reply: replied },
+      title: { registerRow: (row: { run: () => void }) => { clicked = row.run; return () => undefined; } } as never };
+    const api = createApi2Host(ctx, { grants, execution: "worker" });
+    const command = { kind: "command" as const, command: { code: "hold" } }; const token = { epoch: 0, revision: 0 };
+    expect(await api.act.submit(token, command)).toMatchObject({ ok: false });
+    await api.ui.title!.registerRow({ id: "act", label: "Act", run: () => undefined }); clicked!();
+    expect(await api.act.submit(token, command)).toMatchObject({ ok: true });
+    expect(await api.act.submit(token, command)).toMatchObject({ ok: false });
+    owner = "other"; expect(await api.act.submit(token, command)).toMatchObject({ ok: false });
+    owner = "probe"; expect(await api.act.submit(token, command)).toMatchObject({ ok: true });
+    for (const code of ["quit", "retire", "save", "mod:install", "other:command"]) expect(await api.act.submit(token, { kind: "command", command: { code } })).toMatchObject({ ok: false });
+    phase = "modal"; expect(await api.act.answer(1, { kind: "confirm", yes: true } as never)).toMatchObject({ ok: false });
+    expect(replied).not.toHaveBeenCalled(); expect(submitted).toHaveBeenCalledTimes(2);
+    stopApi2Host(api);
+  });
+
+  it("limits title rows and never exposes management, presentation, or truth implicitly", async () => {
+    const grants = capabilities("probe", ["ui:title", "input:controller", "input:intent", "state:*.read", "engine:access", "profiles:manage", "session:control", "mod:install"]);
+    const registered = vi.fn(() => () => undefined);
+    const ctx = { ...modPluginContext("probe", {}), title: { registerRow: registered } as never };
+    const api = createApi2Host(ctx, { grants, execution: "worker", firstParty: { manage: true, presentation: true } });
+    expect(api.engine).toBeUndefined(); expect(api.manage).toBeUndefined(); expect(api.truth).toBeUndefined(); expect(api.presentation).toBeUndefined();
+    for (let i = 0; i < 16; i++) expect(await api.ui.title!.registerRow({ id: "row-" + i, label: "Row", run: () => undefined })).toMatchObject({ ok: true });
+    expect(await api.ui.title!.registerRow({ id: "too-many", label: "Row", run: () => undefined })).toMatchObject({ ok: false });
+    expect(registered).toHaveBeenCalledTimes(16); stopApi2Host(api);
+  });
+});
+
+it("restricts public shortcuts to the mod's own registered commands", async () => {
+  const grants = capabilities("probe", ["keymap:write", "command:add"]);
+  const registry = new ActionRegistry(); const bound = vi.fn(() => true);
+  const ctx = { ...modPluginContext("probe", {}), keymaps: { bind: bound, remove: () => true } as never };
+  const api = createApi2Host(ctx, { grants, execution: "worker", commands: { registry } });
+  expect(await api.ui.keys.bind("F10", "quit")).toMatchObject({ ok: false });
+  expect(await api.ui.keys.bind("F10", "other:act")).toMatchObject({ ok: false });
+  expect(await api.ui.commands.register("probe:act", "act", () => undefined)).toMatchObject({ ok: true });
+  expect(await api.ui.keys.bind("F10", "probe:act")).toMatchObject({ ok: true });
+  expect(bound).toHaveBeenCalledTimes(1); stopApi2Host(api);
 });

@@ -25,13 +25,14 @@
  * A capability a manifest does not list is not granted.
  */
 
+import { MOD_PERMISSION_TEXT } from "./mod-permission-text.js";
 import { API2_POLICY_KINDS } from "./api2/policies.js";
 
 /** A capability string parsed into its structured form. */
 export type ParsedCapability =
   | { kind: "engine"; action: "access" }
   | { kind: "command"; action: "add" | "submit" }
-  | { kind: "input"; action: "intent" }
+  | { kind: "input"; action: "intent" | "controller" | "observe" }
   | { kind: "input-prompt"; action: "reply" }
   | { kind: "event"; name: string }
   | { kind: "state"; domain: string; access: "read" }
@@ -203,10 +204,14 @@ const UI_REGIONS: readonly (readonly [string, string, string])[] = [
 ];
 
 const FIXED_ENTRIES: readonly FixedEntry[] = [
-  fixed("engine:access", { kind: "engine", action: "access" }, "Read and change the live engine, including facts your character has not learned",
+  fixed("input:controller", { kind: "input", action: "controller" }, MOD_PERMISSION_TEXT.controller,
+    MOD_PERMISSION_TEXT.denied, { powerful: true, tiers: ALL_TIERS }),
+  fixed("input:observe", { kind: "input", action: "observe" }, MOD_PERMISSION_TEXT.observe,
+    MOD_PERMISSION_TEXT.denied, { powerful: true, tiers: ALL_TIERS }),
+  fixed("engine:access", { kind: "engine", action: "access" }, MOD_PERMISSION_TEXT.inProcess,
     "The mod cannot use the live engine.", { powerful: true }),
   fixed("command:add", { kind: "command", action: "add" }, "Add new player commands",
-    "The commands this mod adds are not available.", { powerful: false }),
+    "The commands this mod adds are not available.", { powerful: false, tiers: ALL_TIERS }),
   fixed("command:submit", { kind: "command", action: "submit" }, "Ask the game to run commands by their names, the way your own keys do",
     "The mod cannot ask the game to run commands for you.", { powerful: true, tiers: ALL_TIERS }),
   fixed("input:intent", { kind: "input", action: "intent" }, "Act on your character's behalf with the same commands your own keys use",
@@ -216,9 +221,9 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   fixed("saves:manage", { kind: "saves", action: "manage" }, "List, load, rename and delete your characters; deletion asks you first",
     "The mod's own character list does not appear; the game's list still works.", { powerful: true }),
   fixed("ui:title", { kind: "title", action: "add" }, "Add title screen actions",
-    "The mod's entries on the title screen do not appear.", { powerful: false }),
+    "The mod's entries on the title screen do not appear.", { powerful: false, tiers: ALL_TIERS }),
   fixed("ui:menu.row", { kind: "menu-row", action: "add" }, "Add a row to the game menu",
-    "The mod's row in the game menu does not appear.", { powerful: false }),
+    "The mod's row in the game menu does not appear.", { powerful: false, tiers: ALL_TIERS }),
   fixed("shared:read", { kind: "shared", action: "read" }, "Read data other mods share",
     "The mod cannot see what other mods share with it.", { powerful: false }),
   fixed("shared:publish", { kind: "shared", action: "publish" }, "Share data with other mods",

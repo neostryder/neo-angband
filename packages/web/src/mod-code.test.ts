@@ -18,9 +18,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { problemLines } from "./mod-problems";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
-import { loadModCode, hasPlugin, hasWorkerPlugin, PLUGIN_FILE } from "./mod-code";
+import { loadModCode as loadCode, hasPlugin, hasWorkerPlugin, PLUGIN_FILE } from "./mod-code";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
 import { MOD_API_MIN, MOD_API_VERSION, modApiVerdict, validateModPlugin } from "./mod-plugin";
+
+function loadModCode(options: Parameters<typeof loadCode>[0]) {
+  return loadCode({ tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }), ...options });
+}
 
 /** A pack that ships code, with whatever manifest overrides a case needs. */
 function codePack(id: string, over: Partial<PackManifest> = {}): DiskPack {

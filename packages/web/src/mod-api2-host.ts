@@ -16,6 +16,8 @@
  * module takes the answer as an argument.
  */
 
+import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
+import { gameplayIntent } from "./mod-gameplay-intents";
 import {
   AgentCapabilityError,
   buildKnownWorld,
@@ -119,6 +121,7 @@ export interface Api2Allowlist {
 /** What the loader tells the host about one mod. */
 export interface Api2HostOptions {
   readonly intent?: ModPluginContext["intent"];
+  readonly developerInProcess?: boolean;
   readonly execution?: "in-process" | "worker" | "data";
   /** The gated registry host the loader built for this mod; offered as `engine.registry` while `start` runs. */
   readonly registry?: ModRegistryHost;
@@ -206,7 +209,7 @@ export function disposeApi2Host(api: ModApi2): void {
 }
 
 export function api2Engine(ctx: ModPluginContext, options: Api2HostOptions): Api2Engine | undefined {
-  if (options.execution === "worker" || !(options.tier === "first-party" || options.grants.has("engine:access"))) return undefined;
+  if (options.execution === "worker" || !(options.tier === "first-party" || (options.developerInProcess && options.grants.has("engine:access")))) return undefined;
   return frozen({
     api: ENGINE_API2_VERSION,
     core: ctx.core,
@@ -342,12 +345,19 @@ export function api2EventPayload<K extends Exclude<Api2EventName, "run-end">>(
   return out === undefined ? undefined : deepFreeze(out) as Api2EventMap[K];
 }
 
+export function api2MayObserveKeys(ctx: Pick<ModPluginContext, "snapshot">): boolean {
+  if (modPanelsSuspended() || ctx.snapshot?.()?.phase !== "play") return false;
+  if (typeof document === "undefined") return true;
+  const focus = document.activeElement;
+  return focus === null || focus === document.body || focus === document.documentElement || focus.id === "game" || focus.id === "game-view";
+}
+
 /** Build the API 2 domains for one in-process mod over its API 1 context. */
 export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions): ModApi2 {
   const cleanups = new Set<() => void>();
   const { grants } = options;
   const granted = (capability: string): boolean => {
-    if (capability === "engine:access") return options.execution !== "worker" && (options.tier === "first-party" || grants.has(capability));
+    if (capability === "engine:access") return options.execution !== "worker" && (options.tier === "first-party" || (options.developerInProcess === true && grants.has(capability)));
     try {
       return grants.has(capability);
     } catch {
@@ -387,13 +397,31 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   let nextSubscription = 1;
   const runSubscriptions = new Map<string, () => void>();
   const titleRows = new Map<string, () => void>();
-  const title: Api2Title | undefined = options.tier === "first-party" && options.firstParty?.presentation ? frozen<Api2Title>({
+  const publicMod = options.tier !== "first-party";
+  let actionBudget = 0;
+  let actionUntil = 0;
+  let choosingTitle = false;
+  const ownedCommands = new Set<string>();
+  const ownedMenuActions = new Set<string>();
+  const playerAction = <T extends unknown[]>(run: (...args: T) => unknown) => (...args: T): void => {
+    actionBudget = 8;
+    actionUntil = Date.now() + 1000;
+    void run(...args);
+  };
+  const inputAllowed = (): boolean => {
+    if (modPanelsSuspended()) return false;
+    const owner = ctx.driver?.();
+    if (owner?.kind === "controller") return owner.owner === ctx.id;
+    return actionBudget > 0 && Date.now() <= actionUntil;
+  };
+  const title: Api2Title | undefined = (options.tier === "first-party" && options.firstParty?.presentation) || granted("ui:title") ? frozen<Api2Title>({
     registerRow: (row) => guarded(() => {
       if (!granted("ui:title")) return api2NotGranted("ui:title");
       if (!ctx.title) return api2Unavailable("this front end has no title actions");
       if (!/^[a-z][a-z0-9-]{0,63}$/.test(row.id) || titleRows.has(row.id)) return api2Refused("bad-title-row", "a title action needs a free id");
       try {
-        const remove = ctx.title.registerRow(row);
+        if (publicMod && (titleRows.size >= 16 || typeof row.label !== "string" || row.label.length > 120 || [...row.label].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) || typeof row.run !== "function")) return api2Refused("bad-title-row", MOD_PERMISSION_TEXT.title);
+        const remove = ctx.title.registerRow({ ...row, run: playerAction(row.run) });
         titleRows.set(row.id, remove);
         cleanups.add(remove);
         return api2Ok(frozen({ id: row.id }));
@@ -411,7 +439,11 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     }),
     choose: (label, choices) => guarded(async () => {
       if (!granted("ui:title")) return api2NotGranted("ui:title");
-      return ctx.title ? api2Ok(await ctx.title.choose(label, [...choices])) : api2Unavailable("this front end has no title choices");
+      if (publicMod && (choosingTitle || !inputAllowed() || ctx.snapshot?.()?.phase !== "pregame" || typeof label !== "string" || label.length > 120 ||
+        !Array.isArray(choices) || choices.length > 32 || choices.some((choice) => typeof choice !== "string" || choice.length > 120))) return api2Refused("title", MOD_PERMISSION_TEXT.title);
+      choosingTitle = true;
+      try { return ctx.title ? api2Ok(await ctx.title.choose(label, [...choices])) : api2Unavailable("this front end has no title choices"); }
+      finally { choosingTitle = false; }
     }),
   }) : undefined;
   const openPage = (spec: import("@rpgm-tools/neo-angband-mod-sdk").Api2PanelSpec) => guarded(() => {
@@ -703,6 +735,8 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         const gate = options.intent ?? ctx.intent;
         if (!gate) return api2Unavailable("this front end takes no commands from mods");
         const copy = structuredClone(intent) as PlayerIntent;
+        if (publicMod && (!inputAllowed() || !gameplayIntent(copy))) return api2Refused("gameplay", MOD_PERMISSION_TEXT.gameplay);
+        if (publicMod) actionBudget = copy.kind === "command" || copy.kind === "travel" ? 0 : actionBudget - 1;
         /* A monster target names the monster by its KnownMonster id. One the
          * player does not perceive now becomes 0, which the game refuses the
          * same way it refuses a monster it cannot target. */
@@ -716,6 +750,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       }),
       answer: (promptId, answer) => guarded(() => {
         if (!granted("input:prompt.reply")) return api2NotGranted("input:prompt.reply");
+        if (publicMod && (!inputAllowed() || ctx.snapshot?.()?.phase !== "store")) return api2Refused("gameplay", MOD_PERMISSION_TEXT.gameplay);
         if (!ctx.prompt) return api2Unavailable("this front end takes no prompt answers from mods");
         const result = ctx.prompt.reply(promptId, structuredClone(answer) as PromptAnswer);
         return result.accepted
@@ -852,10 +887,11 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ui: frozen({
       onKey: (listener) => guarded(() => {
         if (stopped) return api2Unavailable("this mod has stopped");
-        if (!granted("keymap:write")) return api2NotGranted("keymap:write");
+        if (!granted(publicMod ? "input:observe" : "keymap:write")) return api2NotGranted(publicMod ? "input:observe" : "keymap:write");
         if (!ctx.display) return api2Unavailable("this front end sends no key events");
         const id = `${ctx.id}:key:${nextSubscription++}`;
         const off = ctx.display.onKey((event) => {
+          if (publicMod && (!api2MayObserveKeys(ctx) || event.ctrlKey || event.altKey || event.metaKey || event.key === "Escape")) return;
           if (!stopped) listener(data({ key: event.key, code: event.code, modifiers: [
             ...(event.shiftKey ? ["shift" as const] : []), ...(event.ctrlKey ? ["ctrl" as const] : []),
             ...(event.altKey ? ["alt" as const] : []), ...(event.metaKey ? ["meta" as const] : []),
@@ -889,12 +925,14 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           if (!id.startsWith(`${ctx.id}:`) || !/^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/.test(id) || !verb.trim() || typeof run !== "function") {
             return api2Refused("bad-command", "a command needs an owned id, a verb and a handler");
           }
+          if (publicMod && ownedCommands.size >= 64) return api2Refused("quota", MOD_PERMISSION_TEXT.quota);
           const commands = options.commands ?? commandHost;
           if (!commands) return api2Unavailable("this front end installs no mod commands");
           if (commands.registry.has(id)) return api2Refused("command-taken", `command "${id}" is already registered`);
           const direction = commandOptions?.direction === true;
           const turn = commandOptions?.turn === true;
           const invoke = (dir?: number): number => {
+            if (publicMod) { actionBudget = 8; actionUntil = Date.now() + 1000; }
             try {
               const result = run(dir === undefined ? {} : { dir });
               if (result instanceof Promise) {
@@ -910,6 +948,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           };
           const entry: KeymapCommand = { direction, turn, invoke };
           keymapCommands.set(id, entry);
+          ownedCommands.add(id);
           commands.registry.register(id, (_state, cmd) => invoke(cmd?.dir));
           commands.verbs?.set(id, verb);
           cleanups.add(() => {
@@ -925,7 +964,9 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           if (!/^[a-z][a-z0-9-]{0,63}$/.test(action) || !label.trim() || /[\r\n]/.test(label) || typeof run !== "function") {
             return api2Refused("bad-action", "a menu action needs an id, a label and a handler");
           }
-          menuRegistry.addAction("core:game-menu", action, label, run, ctx.id);
+          if (publicMod && (ownedMenuActions.size >= 16 || ownedMenuActions.has(action) || label.length > 120)) return api2Refused("quota", MOD_PERMISSION_TEXT.quota);
+          ownedMenuActions.add(action);
+          menuRegistry.addAction("core:game-menu", action, label, playerAction(run), ctx.id);
           cleanups.add(() => menuRegistry.removeAction("core:game-menu", action, ctx.id));
           return api2Ok(null);
         }),
@@ -936,7 +977,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         const draw = renderer();
         if (!draw) return api2Unavailable("this front end draws no panels");
         try {
-          draw.apply(ctx.id, "mount", structuredClone(panel) as unknown as WorkerJson, undefined, (_panelId, action, value) => { if (!stopped) onAction?.(action, value); }, onDismiss);
+          draw.apply(ctx.id, "mount", structuredClone(panel) as unknown as WorkerJson, undefined, (_panelId, action, value) => { if (!stopped && onAction) playerAction(onAction)(action, value); }, onDismiss);
           cleanups.add(() => draw.teardown(ctx.id));
         } catch (e) {
           return api2Refused("bad-panel", e instanceof Error ? e.message : String(e));
@@ -971,6 +1012,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           if (stopped) return api2Unavailable("this mod has stopped");
           if (!granted("keymap:write")) return api2NotGranted("keymap:write");
           if (!ctx.keymaps) return api2Unavailable(NO_GAME);
+          if (publicMod && (ownedKeys.size >= 64 || !action.startsWith(ctx.id + ":") || !keymapCommands.has(action))) return api2Refused("gameplay", MOD_PERMISSION_TEXT.gameplay);
           const bound = ctx.keymaps.bind(trigger, action);
           if (bound) ownedKeys.add(trigger);
           return bound

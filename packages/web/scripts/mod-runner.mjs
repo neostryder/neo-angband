@@ -18,7 +18,7 @@ import { runnerImport } from "vite";
 const WEB = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function usage(message) {
-  process.stderr.write(`${message}\nWARNING: Mod code runs with the full privileges of the host process. Only run untrusted mods inside an ephemeral OS sandbox.\nusage: node packages/web/scripts/mod-runner.mjs <folder>... [--seed N] [--enable id,id] [--out file]\n`);
+  process.stderr.write(`${message}\nWARNING: Mod code runs with the full privileges of the host process. Only run untrusted mods inside an ephemeral OS sandbox.\nusage: node packages/web/scripts/mod-runner.mjs <folder>... [--seed N] [--enable id,id] [--out file] [--unsafe-in-process]\n`);
   process.exit(2);
 }
 
@@ -26,10 +26,13 @@ const folders = [];
 let seed;
 let enable;
 let out;
+let unsafeInProcess = false;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (arg === "--seed") {
+  if (arg === "--unsafe-in-process") {
+    unsafeInProcess = true;
+  } else if (arg === "--seed") {
     seed = Number(args[++i]);
     if (!Number.isSafeInteger(seed)) usage("--seed needs a whole number");
   } else if (arg === "--enable") {
@@ -68,6 +71,7 @@ try {
 
 const report = await runner.runHeadless({
   source,
+  unsafeInProcess,
   ...(seed === undefined ? {} : { seed }),
   ...(enable === undefined ? {} : { enable }),
   watchProcess: true,

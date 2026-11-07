@@ -1,4 +1,6 @@
 import { isTruthCapability, modListValidator, resolveSettingValue, sortModOrder, type DeclaredConflict, type SortResult, type SaveModList } from "@rpgm-tools/neo-angband-mod-sdk";
+import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
+import { consentBinding } from "../mod-consent-binding";
 import { declaredConflicts, undecidedCapabilities, unreviewedNoticeDue, needsGameplayNoscoreWarning } from "./state-rules";
 import { CONSENT_DISCLAIMER, type ModOrigin } from "../mod-consent";
 import { needsOwnConfirmation, playerHeld, tierRefusal, UNKNOWN_TIER } from "../mod-tier";
@@ -254,7 +256,7 @@ export class ModManagerService {
     const grants = decisions.granted.filter((cap) => !this.#env.store.getConsent(id).includes(cap));
     if (grants.length === 0) return this.#writeConsent(id, decisions);
     const copy = immutable(decisions);
-    return this.#request({ operation: "permissions", requestedBy, mods: [this.#subject(mod)], permissions: grants.map((cap) => permissionConfirmation(id, cap)) }, async () => this.#writeConsent(id, copy));
+    return this.#request({ operation: "permissions", requestedBy, mods: [this.#subject(mod)], permissions: grants.map((cap) => permissionConfirmation(id, cap)) }, async (decision) => this.#writeConsent(id, decision.permissions?.[id] ?? copy));
   }
 
   enable(id: string, requestedBy: string | null = null): ManagerResult<unknown> {
@@ -633,7 +635,7 @@ export class ModManagerService {
     const invalid = this.#consentRefusal(mod, decisions);
     if (invalid) return invalid;
     const held = playerHeld(mod.capabilities, { granted: [...this.#env.store.getConsent(id).filter((cap) => !decisions.refused.includes(cap)), ...decisions.granted], refused: decisions.refused });
-    this.#env.store.setDecisions(id, { granted: decisions.granted.filter((cap) => held.held.includes(cap)), refused: decisions.refused }, mod.version);
+    this.#env.store.setDecisions(id, { granted: decisions.granted.filter((cap) => held.held.includes(cap)), refused: decisions.refused, ...(decisions.binding !== undefined ? { binding: decisions.binding } : {}) }, mod.version);
     this.#publish();
     return { status: "ok", value: null };
   }
@@ -675,7 +677,9 @@ export class ModManagerService {
   #request(request: CoreConfirmationRequest, action: (decision: ConfirmationDecision) => Promise<ManagerResult<unknown>>): ManagerResult<unknown> {
     if (this.#pending || this.#busy) return refused("busy", "A mod operation is already waiting for confirmation.");
     this.#pending = this.#confirmation(request);
-    this.#pendingAction = action;
+    const bindings = (request.mods ?? []).map((mod) => [mod.id, consentBinding(mod.id)] as const);
+    this.#pendingAction = (decision) => bindings.some(([id, binding]) => consentBinding(id) !== binding)
+      ? Promise.resolve(refused("changed", MOD_PERMISSION_TEXT.changed)) : action(decision);
     this.#publish();
     return { status: "confirmation", confirmation: this.#pending };
   }

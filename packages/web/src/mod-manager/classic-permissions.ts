@@ -1,3 +1,5 @@
+import { drawModPermissionConsent } from "../mod-consent-dialog";
+import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import { needsGameplayNoscoreWarning, decidableCapabilities, undecidedCapabilities, unreviewedNoticeDue } from "./state-rules";
 export { needsGameplayNoscoreWarning, decidableCapabilities, undecidedCapabilities, unreviewedNoticeDue };
 import { classicManager, permissionCore, confirmationMod, catalogCore } from "./classic-service";
@@ -287,12 +289,21 @@ export async function decidePermissions(
   asks: readonly PermissionAsk[],
   opts?: { readonly oneByOne?: boolean; readonly current?: (id: string) => ConsentRecord; readonly core?: CoreModManager },
 ): Promise<Map<string, ConsentRecord> | null> {
+  if (asks.some(({ mod, caps }) => mod.tier?.trust !== "first-party" && caps.length > 256)) return null;
   const core = opts?.core ?? (asks[0] ? catalogCore(asks[0].mod) : undefined) ?? createModManagerService({ store: new ModStore(null), listCatalog: () => asks.map((ask) => ask.mod) }).core;
   return core.drawConfirmation({
     operation: "permissions",
     mods: asks.map((ask) => confirmationMod(ask.mod)),
     permissions: asks.flatMap((ask) => ask.caps.map((cap) => permissionConfirmation(ask.mod.id, cap))),
-  }, () => drawPermissionChoices(term, asks, opts));
+  }, async () => {
+    if (typeof document === "undefined" || !asks.some(({ mod }) => mod.tier?.trust !== "first-party")) return drawPermissionChoices(term, asks, opts);
+    const trusted = asks.filter(({ mod }) => mod.tier?.trust === "first-party");
+    const publicAsks = asks.filter(({ mod }) => mod.tier?.trust !== "first-party");
+    const first = trusted.length ? await drawPermissionChoices(term, trusted, opts) : new Map<string, ConsentRecord>();
+    if (!first) return null;
+    const other = await drawModPermissionConsent(publicAsks, opts?.current);
+    return other ? new Map([...first, ...other]) : null;
+  });
 }
 
 async function drawPermissionChoices(
@@ -487,7 +498,7 @@ export function unreviewedNoticeScreen(m: CatalogMod): ScreenView {
             {
               text: t(
                 "modsScreen.unreviewed.who",
-                "Nobody has reviewed the code in {name}. It did not come from the game's own list of mods, so no one has checked what it does.",
+                MOD_PERMISSION_TEXT.unreviewed(m.name),
                 { name: m.name },
               ),
             },
@@ -502,7 +513,7 @@ export function unreviewedNoticeScreen(m: CatalogMod): ScreenView {
             {
               text: t(
                 "modsScreen.unreviewed.what",
-                "A mod that runs code inside the game can change how the game plays and can read and change your saved characters and settings. The permissions on the next screen limit what the game hands it, but its code can reach past them. Only turn it on if you trust whoever made it.",
+                m.tier?.execution === "worker" ? MOD_PERMISSION_TEXT.isolatedNotice : MOD_PERMISSION_TEXT.inProcess,
               ),
             },
           ],
@@ -556,7 +567,7 @@ export async function consentSessionMod(
   term: GridSurface & GridPointerInput,
   manifest: PackManifest,
 ): Promise<ConsentRecord | null> {
-  const tier = assignTier({ id: manifest.id, source: "session", execution: manifest.runtime === "worker" ? "worker" : "in-process" });
+  const tier = assignTier({ id: manifest.id, source: "session", execution: manifest.runtime === "worker" || (manifest.manifestSchema === 2 && manifest.api !== undefined) ? "worker" : "in-process" });
   const row = buildCatalog({ content: [], sandbox: [], trusted: [manifest], enabled: [], consents: {}, tierOf: () => tier })[0];
   if (!row) return null;
   if (!(await confirmUnreviewed(term, { store: new ModStore(null) }, [row]))) return null;

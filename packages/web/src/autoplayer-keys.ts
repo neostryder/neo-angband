@@ -74,10 +74,11 @@ export function decideAutoplayerKey(
   onKey: ((press: ControllerKeyPress) => ControllerKeyAnswer) | undefined,
   composing = false,
 ): AutoplayerKeyOutcome {
-  if (composing || BARE_KEYS.has(press.key) || isSystemShortcut(press)) return { kind: "ignore" };
   const source = `key ${describeKeyPress(press)}`;
   const ctrlZ = press.ctrl && !press.alt && !press.meta && press.key.toLowerCase() === "z";
-  if (press.key === "Escape" || ctrlZ || onKey === undefined) return { kind: "release", source };
+  if (press.key === "Escape" || ctrlZ) return { kind: "release", source };
+  if (composing || BARE_KEYS.has(press.key) || isSystemShortcut(press)) return { kind: "ignore" };
+  if (onKey === undefined) return { kind: "release", source };
   let answer: unknown;
   try {
     answer = onKey(press);

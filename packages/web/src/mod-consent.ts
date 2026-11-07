@@ -30,6 +30,7 @@
  * dares use is not a safety control.
  */
 
+import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import { readSetting, writeSetting, type SettingsWriter } from "./settings-store";
 
 /** How a mod arrived, which is the only thing consent depends on. */
@@ -87,27 +88,4 @@ export function installBlocked(origin: ModOrigin, allowed: boolean): string | nu
  * Returned as lines rather than one blob so the caller can lay it out; the text
  * lives here so it is one thing to review and one thing to translate.
  */
-export const CONSENT_DISCLAIMER: readonly string[] = [
-  "A mod is not just data. A mod folder can contain code, and that code runs",
-  "inside the game with the same reach the game has - including your saved",
-  "characters and the settings stored in this browser or app.",
-  "",
-  "Nobody reviews that code. Not this project, not GitHub, and not the",
-  "recommended list - a recommendation says a maintainer thought the mod was",
-  "worth offering, NOT that anybody audited it.",
-  "",
-  "If you turn this on:",
-  "  - Install from repositories you have a reason to trust, and prefer authors",
-  "    whose work you can see the history of.",
-  "  - A mod is pinned to the repository it came from on first install, so a",
-  "    later update can only come from that same place.",
-  "  - Look at what it ships. The manager lists every file it stored and can",
-  "    tell you whether those files have changed since.",
-  "  - A mod's code runs only while it is ENABLED. Turning one off is the fastest",
-  "    thing you can do if the game starts misbehaving.",
-  "  - Back your characters up before trying something new. Death is permanent",
-  "    here, and a broken mod is not a reason the game will forgive.",
-  "",
-  "You can turn this off again at any time. Doing so does not uninstall or",
-  "delete anything you have already chosen to add.",
-];
+export const CONSENT_DISCLAIMER: readonly string[] = MOD_PERMISSION_TEXT.installNotice;

@@ -38,6 +38,7 @@
  * docs/modding/WORKER_ISOLATION.md describes what this does and does not stop.
  */
 
+import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installModWorkerBootstrap } from "./bootstrap";
 import type { ModWorkerLike } from "./host";
 import type { HostToModWorker } from "./protocol";
@@ -244,7 +245,7 @@ export function isolatedWorkerSource(protocolVersion: string, options: { readonl
     `  if (data === null || typeof data !== "object" || data.type !== ${JSON.stringify(MOD_WORKER_PORT)} || typeof data.entryUrl !== "string" || data.port === undefined) return;`,
     "  self.onmessage = null;",
     "  const entryUrl = data.entryUrl;",
-    `  install(data.port, ${JSON.stringify(protocolVersion)}, () => import(entryUrl));`,
+    `  install(data.port, ${JSON.stringify(protocolVersion)}, () => import(entryUrl), ${JSON.stringify(MOD_PERMISSION_TEXT)});`,
     "};",
     "",
   ].join("\n");

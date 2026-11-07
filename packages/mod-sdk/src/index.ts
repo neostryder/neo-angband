@@ -445,3 +445,4 @@ export type {
   ScreenValues,
   ScreenView,
 } from "./screen.js";
+export { MOD_PERMISSION_TEXT } from "./mod-permission-text.js";

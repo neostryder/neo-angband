@@ -74,6 +74,8 @@ import { NO_DISK_PACKS, readModDir, resetDiskPacks, setDiskPacks } from "../disk
 import type { DiskPackReport, ModDirSource } from "../disk-packs";
 import { reportEventFault } from "../first-level";
 import { MenuRegistry } from "../menu-registry";
+import { assignTier, resetModTiers, setModGrants, setModTiers } from "../mod-tier";
+import { executionOf, settledGrants } from "../mod-code";
 import { loadModCode, resetModCode, setModCode } from "../mod-code";
 import type { LoadedModWorker, ModCodeReport } from "../mod-code";
 import { modOwnFiles, modPluginContext, setModCharacterStoreControl, setModComposedRecords, setModDriverControl, setModRegistries } from "../mod-context";
@@ -119,6 +121,8 @@ export interface HeadlessWorkerHost {
 export interface HeadlessRunOptions {
   /** The mods to load. `nodeModsSource` reads local folders. */
   readonly source: ModDirSource;
+  /** Code receives Node privileges. This option is never used by the player host. */
+  readonly unsafeInProcess?: boolean;
   /** Ids to turn on, in load order. Defaults to every mod the source lists. */
   readonly enable?: readonly string[];
   readonly seed?: number;
@@ -206,6 +210,7 @@ interface Collected {
 
 /** Back to a fresh page: every latch, store and registry the boot path reads. */
 function resetHost(): void {
+  resetModTiers();
   setModDriverControl(undefined);
   setModRegistries(undefined);
   setModComposedRecords(undefined);
@@ -645,7 +650,14 @@ async function runWithImporter(
   } else {
     setDiskPacks(report);
     defaultModStore().setEnabled(enabled);
+    const tiers = new Map(report.packs.map((pack) => [pack.manifest.id, {
+      ...assignTier({ id: pack.manifest.id, source: "folder", execution: executionOf(pack) }),
+      ...(options.unsafeInProcess ? { developerInProcess: true } : {}),
+    }]));
+    setModTiers(tiers);
     code = await loadModCode({
+      tier: (pack) => tiers.get(pack.manifest.id)!,
+      unsafeInProcess: options.unsafeInProcess === true,
       packs: enabled.flatMap((id) => report.packs.filter((pack) => pack.manifest.id === id)),
       codeUrl: report.codeUrl,
       enabled: (id) => enabled.includes(id),
@@ -656,6 +668,7 @@ async function runWithImporter(
       ...(options.importer ? { importer: options.importer } : {}),
     });
     setModCode(code);
+    setModGrants(settledGrants(code));
     const problems = report.problems.filter((p) => p.id === null || enabled.includes(p.id));
     loadPhase.push(problems.length > 0
       ? { name: "load", outcome: "failed", detail: problems.map((p) => p.why).join("; ") }
@@ -699,7 +712,7 @@ async function runWithImporter(
   }
 
   /* Loading. */
-  for (const problem of [...report.problems, ...status.problems, ...code.problems]) {
+  for (const problem of [...report.problems, ...status.problems, ...code.problems, ...code.skipped]) {
     if (problem.id === null || !findings.has(problem.id)) continue;
     const list = findings.get(problem.id)!;
     if (list.some((f) => f.rule === "runner/load-problem" && f.message === problem.why)) continue;

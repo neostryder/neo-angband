@@ -92,6 +92,9 @@ export const WORKER_CALLS = [
   "content.activations",
   "content.activation",
   "content.lookup",
+  "ui.title.registerRow",
+  "ui.title.removeRow",
+  "ui.title.choose",
   "ui.mount",
   "ui.patch",
   "ui.unmount",
@@ -139,6 +142,7 @@ export interface WorkerMeta {
   readonly tier: "public";
   readonly flags: Readonly<Record<string, boolean>>;
   readonly newCharacter: boolean;
+  readonly controllerArmed?: boolean;
   /** The permissions granted, under their API 2 names. Never "*". */
   readonly granted: readonly string[];
   /** Whether the mod has a `net` domain (it names at least one network host). */
@@ -162,6 +166,9 @@ export interface WorkerDefinitionSummary {
   readonly prefsVersion: number | null;
   readonly installVersion?: number | null;
   readonly start: boolean;
+  readonly controller?: boolean;
+  readonly armed?: boolean;
+  readonly onKey?: boolean;
   readonly stop: boolean;
 }
 
@@ -170,6 +177,8 @@ export type WorkerQuestion =
   | { readonly kind: "migrateBag"; readonly data: WorkerJson; readonly fromSchema: number }
   | { readonly kind: "prefs.migrate"; readonly value: WorkerJson; readonly fromVersion: number }
   | { readonly kind: "install.migrate"; readonly value: WorkerJson; readonly fromVersion: number }
+  | { readonly kind: "controller"; readonly input: WorkerJson }
+  | { readonly kind: "controller.key"; readonly press: WorkerJson }
   | { readonly kind: "ping" };
 
 interface Addressed {

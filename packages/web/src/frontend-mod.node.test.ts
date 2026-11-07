@@ -90,7 +90,8 @@ async function bootDiskFrontendCode() {
   const store = defaultModStore();
   setModCode(
     await loadModCode({
-      acknowledged: () => true,
+      tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }),
+    acknowledged: () => true,
       packs: disk.packs,
       codeUrl: disk.codeUrl,
       enabled: (id) => enabledModIds().includes(id),

@@ -24,12 +24,14 @@
  *   and the host's `net` domain puts the value into the request.
  */
 
+import { decideAutoplayerKey } from "../autoplayer-keys";
 import { disposeApi2Host } from "../mod-api2-host";
 import {
   API2_HOOK_NAMES,
   CAPABILITY_VOCABULARY,
   CapabilitySet,
   api2PolicyEffects,
+  MOD_PERMISSION_TEXT,
   api2NotGranted,
   api2Refused,
   api2Unavailable,
@@ -38,6 +40,9 @@ import {
   MOD_API2_VERSION,
   type Api2HookName,
   type Api2Hooks,
+  type Api2InputState,
+  type Api2ControllerKey,
+  type Api2ControllerKeyAnswer,
   type Api2Policies,
   type Api2PolicyRegistrations,
   type Api2Result,
@@ -59,6 +64,8 @@ import {
 
 /** The largest message a Worker may send, in bytes. */
 export const MAX_MESSAGE_BYTES = 64 * 1024;
+export const MAX_REPLY_BYTES = 4 * 1024 * 1024;
+export const MAX_REPLY_BYTES_PER_SECOND = 16 * 1024 * 1024;
 /** Calls a Worker may make in one second before the rest are refused. */
 export const MAX_CALLS_PER_SECOND = 200;
 /** How long the host waits for an answer before it takes the neutral one. */
@@ -102,6 +109,7 @@ export interface ModWorkerHostDeps {
   readonly flags: Readonly<Record<string, boolean>>;
   readonly engine: string;
   readonly newCharacter: boolean;
+  readonly controllerArmed?: boolean;
   /** Whether the mod has a `net` domain. */
   readonly net: boolean;
   /** Build the host-side API for this mod, once, when the Worker is ready. */
@@ -139,6 +147,11 @@ export interface StartedModWorker {
   /** Settles once the Worker has loaded the mod and the host accepted what it holds. */
   readonly ready: Promise<WorkerReady>;
   canMigrateBag(): boolean;
+  hasController(): boolean;
+  controllerArmed(): boolean;
+  hasKeyHandler(): boolean;
+  key(press: Api2ControllerKey): Promise<Api2ControllerKeyAnswer>;
+  decide(input: Api2InputState, host: ModApi2): Promise<void>;
   /** Ask the Worker to migrate its bag. Rejects on failure or timeout, and the caller keeps the old bag. */
   migrateBag(data: unknown, fromSchema: number): Promise<JsonValue>;
   /** Run the mod's `start` with its API, after any bag migration (the in-process order). */
@@ -178,6 +191,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   const implied = CAPABILITY_VOCABULARY.filter((entry) => entry.args.length === 0 && capabilities.has(entry.capability))
     .map((entry) => entry.capability);
   const workerGrants = [...new Set([...grants, ...implied])];
+  const controllerPermitted = (): boolean => summary?.controller === true && capabilities.has("input:controller") && capabilities.has("input:intent") && capabilities.has("state:interaction.read");
   const now = (): number => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
   let state: Lifecycle = "starting";
@@ -187,6 +201,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   let summary: WorkerDefinitionSummary | null = null;
   let policyHooks: Api2HookName[] = [];
   let api: ModApi2 | null = null;
+  let controllerApi: ModApi2 | null = null;
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let pinging = false;
   const asks = new Map<number, PendingAsk>();
@@ -194,6 +209,8 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   const keySubscriptions = new Map<number, { readonly id: string }>();
   const backupSubscriptions = new Map<number, { readonly id: string }>();
   const callTimes: number[] = [];
+  const receivedTimes: number[] = [];
+  const replySizes: { time: number; bytes: number }[] = [];
 
   let resolveReady: (value: WorkerReady) => void = () => undefined;
   let rejectReady: (reason: Error) => void = () => undefined;
@@ -297,6 +314,14 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   };
 
   const admit = (raw: unknown): ModWorkerToHost | null => {
+    const time = now();
+    while (receivedTimes[0] !== undefined && receivedTimes[0] < time - 1000) receivedTimes.shift();
+    if (receivedTimes.length >= maxCalls * 4) {
+      health.switchOff(deps.id, "messages", new Error(MOD_PERMISSION_TEXT.quota));
+      stop();
+      return null;
+    }
+    receivedTimes.push(time);
     let bytes: number;
     try {
       cloneWorkerJson(raw);
@@ -414,6 +439,16 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       post({ type: "reply", pluginId: deps.id, epoch: calledIn, requestId, ok: false, error: `the answer could not be copied: ${messageOf(err)}`.slice(0, 4096) });
       return;
     }
+    const time = now();
+    while (replySizes[0] && replySizes[0].time < time - 1000) replySizes.shift();
+    const bytes = payloadBytes(json);
+    if (bytes > MAX_REPLY_BYTES || replySizes.reduce((total, reply) => total + reply.bytes, bytes) > MAX_REPLY_BYTES_PER_SECOND) {
+      post({ type: "reply", pluginId: deps.id, epoch: calledIn, requestId, ok: false, error: MOD_PERMISSION_TEXT.quota });
+      health.switchOff(deps.id, "replies", new Error(MOD_PERMISSION_TEXT.quota));
+      stop();
+      return;
+    }
+    replySizes.push({ time, bytes });
     post({ type: "reply", pluginId: deps.id, epoch: calledIn, requestId, ok: true, result: json });
   };
 
@@ -430,6 +465,15 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
 
   /** Serve one call. Every path answers with an Api2Result or an error. */
   const serve = async (host: ModApi2, method: string, args: readonly WorkerJson[]): Promise<Api2Result<unknown>> => {
+    if ((method === "events.on" || method === "ui.onKey" || method === "backupFolder.onSave") && subscriptions.size + keySubscriptions.size + backupSubscriptions.size >= 64) return api2Refused("quota", MOD_PERMISSION_TEXT.quota);
+    if (method === "ui.title.registerRow") {
+      const row = args[0] as { id?: unknown; label?: unknown; callbackId?: unknown } | null;
+      if (!row || typeof row.id !== "string" || typeof row.label !== "string" || !Number.isSafeInteger(row.callbackId) || (row.callbackId as number) <= 0) return api2NotGranted("ui:title");
+      if (!host.ui.title) return api2NotGranted("ui:title");
+      return host.ui.title.registerRow({ id: row.id, label: row.label, run: () => {
+        if (state === "running") post({ type: "ui.action", ...envelope(), callbackId: row.callbackId as number, action: row.id as string });
+      } });
+    }
     if (method === "ui.onKey") {
       const listenerId = args[0] as number;
       if (!Number.isSafeInteger(listenerId) || listenerId <= 0 || keySubscriptions.has(listenerId)) return api2Refused("bad-call", "ui.onKey takes a fresh listener id");
@@ -568,7 +612,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       return;
     }
     callTimes.push(t);
-    const host = api;
+    const host = controllerApi && (message.method === "act.submit" || message.method === "act.answer") ? controllerApi : api;
     let pending: Promise<Api2Result<unknown>>;
     try {
       pending = health.run(deps.id, `Worker ${message.method}`, () => serve(host, message.method, message.args));
@@ -661,6 +705,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       api: MOD_API2_VERSION,
       engine: deps.engine,
       tier: "public",
+      controllerArmed: deps.controllerArmed === true,
       flags: { ...deps.flags },
       newCharacter: deps.newCharacter,
       granted: workerGrants,
@@ -676,6 +721,24 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       if (state !== "ready" && state !== "running") throw new Error("the mod's Worker is not ready to migrate its bag");
       if (!Number.isInteger(fromSchema) || fromSchema < 0) throw new Error("bag schema must be a non-negative integer");
       return (await ask({ kind: "migrateBag", data: toWorkerJson(data), fromSchema }, "its bag migration")) as JsonValue;
+    },
+    hasController: controllerPermitted,
+    controllerArmed: () => summary?.armed !== false,
+    hasKeyHandler: () => controllerPermitted() && summary?.onKey === true && capabilities.has("input:observe"),
+    async key(press): Promise<Api2ControllerKeyAnswer> {
+      if (state !== "running" || !controllerPermitted() || !capabilities.has("input:observe") || !summary?.onKey ||
+        press.key === "Escape" || (press.ctrl && !press.alt && !press.meta && press.key.toLowerCase() === "z")) return { kind: "release" };
+      const reply = await ask({ kind: "controller.key", press: toWorkerJson(press) }, MOD_PERMISSION_TEXT.keySource);
+      const outcome = decideAutoplayerKey(press, () => reply as unknown as Api2ControllerKeyAnswer);
+      if (outcome.kind === "release" && outcome.fault) health.recordFault(deps.id, MOD_PERMISSION_TEXT.keySource, new Error(outcome.fault));
+      if (outcome.kind === "keep") return { kind: "keep", ...(outcome.message !== undefined ? { message: outcome.message } : {}) };
+      return { kind: "release", ...(outcome.kind === "release" && outcome.reason !== undefined ? { reason: outcome.reason } : {}) };
+    },
+    async decide(input, host): Promise<void> {
+      if (state !== "running" || controllerApi || !controllerPermitted() || health.isOff(deps.id)) return;
+      controllerApi = host;
+      try { await ask({ kind: "controller", input: toWorkerJson(input) }, "controller"); }
+      finally { if (controllerApi === host) controllerApi = null; }
     },
     start(): void {
       if (state !== "ready") return;

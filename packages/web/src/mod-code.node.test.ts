@@ -20,7 +20,6 @@
  */
 
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -118,7 +117,7 @@ import type {
   Player,
 } from "@rpgm-tools/neo-angband-core";
 import { readModDir, type ModDirEntry, type ModDirSource } from "./disk-packs";
-import { loadModCode, PLUGIN_FILE } from "./mod-code";
+import { loadModCode as loadCode, PLUGIN_FILE } from "./mod-code";
 import { MOD_API_VERSION, type ModPlugin } from "./mod-plugin";
 import { buildModuleGraph } from "./mod-modules";
 
@@ -131,6 +130,10 @@ function loadPackJson<T>(name: string): T {
 }
 function loadPackRecords<T>(name: string): T[] {
   return loadPackJson<{ records: T[] }>(name).records;
+}
+
+function loadModCode(options: Parameters<typeof loadCode>[0]) {
+  return loadCode({ tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }), ...options });
 }
 
 /** The real object kinds, for the two tval dispatches that read a kind. */
@@ -224,7 +227,7 @@ function runeWorld(): {
   };
 }
 
-const root = mkdtempSync(join(tmpdir(), "neo-mods-"));
+const root = mkdtempSync(join(fileURLToPath(new URL("../../../", import.meta.url)), ".neo-mods-test-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 /**

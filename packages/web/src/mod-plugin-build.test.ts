@@ -27,7 +27,6 @@
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -44,9 +43,10 @@ const ID = "ok-mod";
 let outDir: string;
 
 beforeAll(() => {
-  outDir = mkdtempSync(join(tmpdir(), "neo-mod-plugin-"));
+  outDir = mkdtempSync(join(import.meta.dirname, "../../..", ".neo-mod-plugin-test-"));
   execFileSync(process.execPath, [BUILDER, "--root", FIXTURE, "--out", outDir], {
     encoding: "utf8",
+    windowsHide: true,
     /* The builder exits non-zero on a surviving bare import, an inlined package or a
      * bad default export, so a throw here IS the assertion for those - and the message
      * it prints is the one a mod author would need. Its own failure paths are proven
@@ -66,6 +66,7 @@ async function loadBuilt(): Promise<ModPlugin> {
   ) as DiskPack["manifest"];
   const packs: DiskPack[] = [{ manifest, code: [PLUGIN_FILE], files: {}, assets: [] }];
   const report = await loadModCode({
+    tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }),
     acknowledged: () => true,
     packs,
     codeUrl: Object.assign(

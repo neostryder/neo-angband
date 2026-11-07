@@ -713,3 +713,14 @@ describe("digest-mismatch reporting when a present pack's content changed (issue
     expect(restored.manifest.packs).toEqual(hashedManifest.packs);
   });
 });
+
+it("preserves host controller attribution through a save reload", () => {
+  const game = startGame(pack, { seed: 20260716, depth: 5 });
+  game.manifest.autoplayers = [{ id: "mandos", name: "Mandos", version: "1.0.0", digest: "abc", firstParty: false }];
+  game.manifest.determinism = "nondeterministic";
+  const saved = clone(saveGame(game));
+  const restored = loadGame(pack, saved, new Set(["core"]));
+  expect(restored.manifest.autoplayers).toEqual(game.manifest.autoplayers);
+  expect(saveGame(restored).manifest?.autoplayers).toEqual(game.manifest.autoplayers);
+  expect(restored.manifest.determinism).toBe("nondeterministic");
+});

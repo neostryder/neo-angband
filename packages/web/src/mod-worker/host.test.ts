@@ -39,7 +39,7 @@ import {
   type ModNetResponse,
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
-import { API2_POLICY_KINDS, CapabilitySet, type Api2ModDefinition, type Api2Policies, type Api2PolicyRegistrations, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
+import { API2_POLICY_KINDS, CapabilitySet, MOD_PERMISSION_TEXT, type Api2ModDefinition, type Api2Policies, type Api2PolicyRegistrations, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { api2Plugin, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "../mod-api2-shim";
 import { createApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
@@ -152,7 +152,7 @@ class InThreadWorker implements ModWorkerLike {
         queueMicrotask(() => this.onmessage?.({ data: copy } as MessageEvent<unknown>));
       },
     };
-    installModWorkerBootstrap(this.scope, MOD_WORKER_PROTOCOL_VERSION, () => Promise.resolve({ default: definition }));
+    installModWorkerBootstrap(this.scope, MOD_WORKER_PROTOCOL_VERSION, () => Promise.resolve({ default: definition }), MOD_PERMISSION_TEXT);
   }
 
   postMessage(message: HostToModWorker): void {
@@ -323,7 +323,7 @@ describe("the broker's grants", () => {
     expect(absent).toBe(true);
   });
 
-  it.each(["ui.title.registerRow", "ui.mountPage", "ui.overlay", "presentation.cancelInput"])("refuses the first-party method %s", async (method) => {
+  it.each(["ui.mountPage", "ui.overlay", "presentation.cancelInput"])("refuses the first-party method %s", async (method) => {
     const wired = wire({ api: API });
     await wired.session.ready;
     wired.session.start();
@@ -371,11 +371,12 @@ describe("the broker's grants", () => {
     await expect(wired.session.ready).rejects.toThrow(/presentation/);
   });
 
-  it("refuses Worker birth and title action declarations", async () => {
-    for (const declaration of [{ birth: () => undefined }, { titleActions: [] }]) {
+  it("refuses live callbacks and accepts declarative title actions", async () => {
+    for (const declaration of [{ birth: () => undefined }, { engineHooks: () => ({}) }]) {
       const wired = wire({ api: API, ...declaration });
-      await expect(wired.session.ready).rejects.toThrow(/birth or title/);
+      await expect(wired.session.ready).rejects.toThrow(MOD_PERMISSION_TEXT.unsupported);
     }
+    await expect(wire({ api: API, titleActions: [] }).session.ready).resolves.toBeDefined();
   });
   it("never passes a wildcard grant to the Worker", async () => {
     const wired = wire({ api: API }, { grants: ["*", "state:player.read"] });
@@ -888,4 +889,95 @@ describe("a Worker mod that fails to load", () => {
     const wired = wire((() => undefined) as unknown as Api2ModDefinition);
     await expect(wired.session.ready).rejects.toThrow(/not an API 2 mod definition/u);
   });
+});
+
+describe("isolated controller broker", () => {
+  it("requires every declared controller grant before offering a controller", async () => {
+    const required = ["input:controller", "input:intent", "state:interaction.read"];
+    for (const omitted of required) {
+      const grants = required.filter((cap) => cap !== omitted);
+      const wired = wire({ api: API, controller: () => undefined }, { grants, api: hostApi({ grants }) });
+      await wired.session.ready; expect(wired.session.hasController()).toBe(false);
+    }
+    const wired = wire({ api: API, controller: () => undefined }, { grants: required, api: hostApi({ grants: required }) });
+    await wired.session.ready; expect(wired.session.hasController()).toBe(true);
+  });
+
+  it("passes copied input to a decision and routes its intent to the decision host", async () => {
+    const grants = ["input:controller", "input:intent", "state:interaction.read"];
+    let armedAtStart: boolean | undefined; let received: unknown; let response: unknown;
+    const wired = wire({ api: API, start: (mod) => { armedAtStart = mod.meta.controllerArmed; }, controller: async (mod, input) => {
+      received = { input, frozen: Object.isFrozen(input), armed: mod.meta.controllerArmed };
+      response = await mod.act.submit(input.token, { kind: "command", command: { code: "hold" } });
+    } }, { grants, api: hostApi({ grants }) });
+    await started(wired, () => armedAtStart);
+    expect(armedAtStart).toBe(false);
+    const submit = vi.fn(async () => ({ ok: true, value: null }));
+    const decisionHost = { act: { submit } } as unknown as ModApi2;
+    const input = { token: { epoch: 0, revision: 1 }, driver: { kind: "controller", owner: "probe" }, phase: "play", messagePending: false, prompt: null } as never;
+    await wired.session.decide(input, decisionHost);
+    expect(received).toMatchObject({ input, frozen: true, armed: false });
+    expect(response).toEqual({ ok: true, value: null }); expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("times out a decision that never returns and terminates a message flood", async () => {
+    const grants = ["input:controller", "input:intent", "state:interaction.read"];
+    const wired = wire({ api: API, controller: () => new Promise(() => undefined) }, { grants, api: hostApi({ grants }), timing: { askMs: 20, heartbeatMs: 1000 } });
+    await wired.session.ready; wired.session.start();
+    await expect(wired.session.decide({} as never, {} as ModApi2)).rejects.toBeInstanceOf(WorkerTimeoutError);
+    const flood = wire({ api: API }, { timing: { maxCallsPerSecond: 2 } });
+    await flood.session.ready; flood.session.start();
+    for (let i = 0; i < 12; i++) flood.worker.scope.postMessage({ type: "log", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1, level: "info", message: "flood" });
+    await vi.waitFor(() => expect(flood.worker.terminated).toBe(true));
+    expect(flood.health.isOff("probe")).toBe(true);
+  });
+});
+
+it("keeps a Worker's arming decision separate from controller availability", async () => {
+  const grants = ["input:controller", "input:intent", "state:interaction.read"];
+  const definition: Api2ModDefinition = { api: API, armed: ({ armed }) => armed, controller: () => undefined };
+  const idle = wire(definition, { grants, api: hostApi({ grants }) });
+  await idle.session.ready;
+  expect(idle.session.hasController()).toBe(true); expect(idle.session.controllerArmed()).toBe(false);
+  const armed = wire(definition, { grants, controllerArmed: true, api: hostApi({ grants }) });
+  await armed.session.ready;
+  expect(armed.session.controllerArmed()).toBe(true);
+});
+
+it("runs a declarative Worker title action through the host's row", async () => {
+  const grants = ["ui:title"]; let row: { run(): void } | undefined; let clicks = 0;
+  const capabilities = CapabilitySet.fromManifest({ id: "probe", name: "Probe", version: "1.0.0", shape: "plugin", capabilities: grants });
+  const api = () => createApi2Host({ ...modPluginContext("probe", {}), title: { registerRow: (value: { run(): void }) => { row = value; return () => { row = undefined; }; } } as never }, { grants: capabilities, execution: "worker" });
+  const wired = wire({ api: API, titleActions: [{ id: "open", label: "Open", run: () => { clicks += 1; } }] }, { grants, api });
+  await wired.session.ready; wired.session.start();
+  await vi.waitFor(() => expect(row).toBeDefined()); row!.run();
+  await vi.waitFor(() => expect(clicks).toBe(1));
+  wired.session.teardown(); expect(row).toBeUndefined();
+});
+
+it("stops oversized host replies before transferring them", async () => {
+  const wired = wire({ api: API }, { api: () => ({ meta: { settings: async () => ({ ok: true, value: { text: "x".repeat(4 * 1024 * 1024) } }) } }) as unknown as ModApi2 });
+  await wired.session.ready; wired.session.start();
+  wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1, requestId: 88, method: "meta.settings", args: [] });
+  await vi.waitFor(() => expect(wired.worker.terminated).toBe(true));
+  expect(wired.worker.sent.find((message) => message.type === "reply" && message.requestId === 88)).toMatchObject({ ok: false, error: MOD_PERMISSION_TEXT.quota });
+});
+
+it("gates controller key observation and never sends emergency keys to the Worker", async () => {
+  const required = ["input:controller", "input:intent", "state:interaction.read"];
+  const onKey = vi.fn(() => ({ kind: "keep" as const, message: "Continuing" }));
+  const definition: Api2ModDefinition = { api: API, controller: () => undefined, onKey };
+  const press = { key: "a", ctrl: false, alt: false, shift: false, meta: false, repeat: false };
+  const denied = wire(definition, { grants: required, api: hostApi({ grants: required }) });
+  await denied.session.ready; denied.session.start();
+  expect(denied.session.hasKeyHandler()).toBe(false);
+  expect(await denied.session.key(press)).toEqual({ kind: "release" });
+  expect(onKey).not.toHaveBeenCalled();
+  const grants = [...required, "input:observe"];
+  const allowed = wire(definition, { grants, api: hostApi({ grants }) });
+  await allowed.session.ready; allowed.session.start();
+  expect(await allowed.session.key(press)).toEqual({ kind: "keep", message: "Continuing" });
+  expect(await allowed.session.key({ ...press, key: "Escape" })).toEqual({ kind: "release" });
+  expect(await allowed.session.key({ ...press, key: "z", ctrl: true })).toEqual({ kind: "release" });
+  expect(onKey).toHaveBeenCalledTimes(1);
 });

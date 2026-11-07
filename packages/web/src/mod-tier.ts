@@ -28,6 +28,7 @@
 
 import {
   CapabilitySet,
+  MOD_PERMISSION_TEXT,
   matchCapability,
   type CapabilityEntry,
   type CapabilityTier,
@@ -113,6 +114,7 @@ export interface ModTierFacts {
 /** A mod's tier, with the reason in words for the manager. */
 export interface ModTier {
   readonly trust: ModTrust;
+  readonly developerInProcess?: boolean;
   readonly execution: ModExecution;
   /** The vocabulary tier its capabilities are checked against. */
   readonly capabilityTier: CapabilityTier;
@@ -194,7 +196,7 @@ export function capabilityTierFor(trust: ModTrust, execution: ModExecution): Cap
 
 /** True when a mod's listings should carry the "unreviewed" badge. */
 export function isUnreviewed(tier: Pick<ModTier, "trust" | "execution">): boolean {
-  return tier.trust === "sideloaded" || (tier.trust === "listed" && tier.execution === "in-process");
+  return tier.trust !== "first-party" && tier.execution !== "data";
 }
 
 /** The tier for a mod nothing has been measured about. */
@@ -303,6 +305,7 @@ export function needsOwnConfirmation(capability: string): boolean {
  */
 export function tierRefusal(capability: string, tier: ModTier): string | null {
   if (capability === "engine:access" && tier.execution === "worker") return "Worker mods cannot have live engine access";
+  if (capability === "engine:access" && tier.trust !== "first-party" && !tier.developerInProcess) return MOD_PERMISSION_TEXT.isolated;
   const entry = entryOf(capability);
   if (!entry) return "the game does not know this permission";
   if (entry.namespace !== "public") return seamRefusal(entry, capability, tier);

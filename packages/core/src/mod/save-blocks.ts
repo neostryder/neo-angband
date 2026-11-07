@@ -122,6 +122,8 @@ export interface SaveManifest {
   determinism: DeterminismMode;
   /** True once a gameplay-affecting mod has made this save permanently non-scoring. */
   modNoscore: boolean;
+  /** The host records controller identity independently of mod-owned save bags. */
+  autoplayers?: { id: string; name: string; version: string; digest: string | null; firstParty: boolean }[];
 }
 
 /**

@@ -35,6 +35,7 @@
 import {
   modSettingValuesFormat,
   modStateFormat,
+  MOD_PERMISSION_TEXT,
   parseDocument,
   serializeDocument,
   type ModState,
@@ -45,6 +46,7 @@ import {
 import { fieldDocument, legacyJson, type LegacyField } from "./field-document";
 import { readSetting, writeSetting } from "./settings-store";
 import { safeLaunch } from "./safe-launch";
+import { consentBinding, consentMatches, invalidateModConsent } from "./mod-consent-binding";
 import { effectiveGrants, isUnreviewed, type ModTier, type TierRefusal } from "./mod-tier";
 
 /** Where the mod manager's state is kept, one `neo-angband/web/mod-state` document per profile (#288). */
@@ -103,6 +105,7 @@ const modState = fieldDocument<ModState>({
   storageKey: MOD_STATE_STORAGE_KEY,
   empty: {},
   legacy: {
+    consentBindings: null,
     revision: null,
     setRevision: null,
     conflictOverrides: null,
@@ -526,6 +529,7 @@ export interface CatalogMod {
 export interface ConsentRecord {
   readonly granted: readonly string[];
   readonly refused: readonly string[];
+  readonly binding?: string;
 }
 
 export interface ModConfiguration {
@@ -610,7 +614,7 @@ export class ModStore {
     try {
       const current = this.captureConfiguration(snapshot.ids, snapshot.ruleFlags);
       const state = { ...current.state };
-      const fields = ["choices", "consents", "refusals", "consentVersions", "unreviewedNotices", "pins", "sectionChoices"] as const;
+      const fields = ["choices", "consents", "refusals", "consentVersions", "consentBindings", "unreviewedNotices", "pins", "sectionChoices"] as const;
       for (const field of fields) {
         const values: Record<string, unknown> = { ...state[field] };
         for (const id of snapshot.ids) {
@@ -657,6 +661,7 @@ export class ModStore {
       state.setRevision = Math.max(current.state.setRevision ?? 0, snapshot.state.setRevision ?? 0) + 1;
       this.storage.setItem(MOD_STATE_STORAGE_KEY, serializeDocument(modStateFormat, state, { compact: true }));
       this.storage.setItem(MOD_SETTINGS_STORAGE_KEY, serializeDocument(modSettingValuesFormat, { values: settings }, { compact: true }));
+      for (const id of snapshot.ids) invalidateModConsent(id);
       return true;
     } catch {
       return false;
@@ -691,7 +696,9 @@ export class ModStore {
         out.push(id);
       }
     }
+    const removed = this.getEnabled().filter((id) => !out.includes(id));
     writeField(this.storage, "enabled", out);
+    for (const id of removed) invalidateModConsent(id);
   }
 
   isEnabled(id: string): boolean {
@@ -733,6 +740,7 @@ export class ModStore {
   }
 
   setModChoice(id: string, on: boolean): void {
+    if (!on) invalidateModConsent(id);
     writeField(this.storage, "choices", { ...this.getModChoices(), [id]: on });
   }
 
@@ -916,7 +924,8 @@ export class ModStore {
     const out: Record<string, string[]> = {};
     for (const [id, caps] of Object.entries(obj)) {
       if (Array.isArray(caps)) {
-        out[id] = caps.filter((c): c is string => typeof c === "string");
+        out[id] = consentMatches(id, readField(this.storage, "consentBindings", {})[id])
+          ? caps.filter((c): c is string => typeof c === "string") : [];
       }
     }
     return out;
@@ -932,34 +941,40 @@ export class ModStore {
      * Read HERE rather than at each caller because there are several - the plugin
      * loader, the manager's row, the conflict report - and one of them missing it
      * would be a mod whose code is refused for want of a consent the player gave. */
+    if (consentBinding(id) === null) return [];
+    if (consentBinding(id) !== undefined && consentMatches(id, readField(this.storage, "consentBindings", {})[id])) return this.getConsents()[id] ?? [];
     return sessionConsents[id]?.slice() ?? this.getConsents()[id] ?? [];
   }
 
   /** Record that the user approved exactly `caps` for `id` (replaces prior). */
   setConsent(id: string, caps: readonly string[]): void {
     const all = this.getConsents();
+    const before = this.getConsent(id);
     all[id] = [...caps];
     writeField(this.storage, "consents", all);
+    if (before.some((cap) => !caps.includes(cap))) invalidateModConsent(id);
   }
 
   /** Drop a mod's consent entirely (e.g. on remove): grants, refusals and their version. */
   clearConsent(id: string): void {
-    const all = this.getConsents();
-    if (id in all) {
-      delete all[id];
-      writeField(this.storage, "consents", all);
-    }
-    const refusals = this.getRefusals();
-    if (id in refusals) {
+    invalidateModConsent(id);
+    const binding = consentBinding(id);
+    if (id in sessionConsents) sessionConsents = { ...sessionConsents, [id]: [] };
+    if (id in sessionRefusals) sessionRefusals = { ...sessionRefusals, [id]: [] };
+    if (id in sessionNotices) sessionNotices = { ...sessionNotices, [id]: false };
+    const saved = modState.update(this.storage, (data) => {
+      const consents = { ...data.consents };
+      const refusals = { ...data.refusals };
+      const consentVersions = { ...data.consentVersions };
+      const unreviewedNotices = { ...data.unreviewedNotices };
+      delete consents[id];
       delete refusals[id];
-      writeField(this.storage, "refusals", refusals);
-    }
-    const versions = readField(this.storage, "consentVersions", {});
-    if (id in versions) {
-      const next = { ...versions };
-      delete next[id];
-      writeField(this.storage, "consentVersions", next);
-    }
+      delete consentVersions[id];
+      delete unreviewedNotices[id];
+      return { ...data, consents, refusals, consentVersions, unreviewedNotices,
+        ...(binding ? { consentBindings: { ...data.consentBindings, [id]: binding } } : {}) };
+    }, ["consents"]);
+    if (!saved && binding) throw new Error(MOD_PERMISSION_TEXT.storageFailed);
   }
 
   /** Record that the player allowed one more capability while the game was running, and drop any earlier refusal of it. */
@@ -977,13 +992,15 @@ export class ModStore {
     const obj = readField(this.storage, "refusals", {});
     const out: Record<string, string[]> = {};
     for (const [id, caps] of Object.entries(obj)) {
-      if (Array.isArray(caps)) out[id] = caps.filter((c): c is string => typeof c === "string");
+      if (Array.isArray(caps) && consentMatches(id, readField(this.storage, "consentBindings", {})[id])) out[id] = caps.filter((c): c is string => typeof c === "string");
     }
     return out;
   }
 
   /** The capabilities the player refused for this mod. */
   getRefusal(id: string): string[] {
+    if (consentBinding(id) !== undefined && consentMatches(id, readField(this.storage, "consentBindings", {})[id])) return this.getRefusals()[id] ?? [];
+    if (consentBinding(id) === null) return [];
     return sessionRefusals[id]?.slice() ?? this.getRefusals()[id] ?? [];
   }
 
@@ -998,16 +1015,23 @@ export class ModStore {
    * so an update that asks about one new capability leaves the rest alone.
    */
   setDecisions(id: string, decided: ConsentRecord, version: string): void {
+    const currentBinding = consentBinding(id);
+    if (decided.binding !== undefined && decided.binding !== currentBinding) throw new Error(MOD_PERMISSION_TEXT.changed);
+    if (currentBinding !== undefined && decided.binding === undefined && decided.granted.some((capability) => !this.getConsent(id).includes(capability))) return;
     const touched = new Set([...decided.granted, ...decided.refused]);
     const before = this.getDecisions(id);
     const granted = [...before.granted.filter((c) => !touched.has(c)), ...decided.granted];
     const refused = [...before.refused.filter((c) => !touched.has(c)), ...decided.refused.filter((c) => !decided.granted.includes(c))];
-    this.setConsent(id, [...new Set(granted)]);
-    const refusals = this.getRefusals();
-    if (refused.length > 0) refusals[id] = [...new Set(refused)];
-    else delete refusals[id];
-    writeField(this.storage, "refusals", refusals);
-    writeField(this.storage, "consentVersions", { ...readField(this.storage, "consentVersions", {}), [id]: version });
+    const saved = modState.update(this.storage, (data) => {
+      const refusals = { ...data.refusals };
+      if (refused.length > 0) refusals[id] = [...new Set(refused)];
+      else delete refusals[id];
+      return { ...data, consents: { ...data.consents, [id]: [...new Set(granted)] }, refusals,
+        consentVersions: { ...data.consentVersions, [id]: version },
+        ...(currentBinding ? { consentBindings: { ...data.consentBindings, [id]: currentBinding } } : {}) };
+    }, ["consents"]);
+    if (!saved && currentBinding) throw new Error(MOD_PERMISSION_TEXT.storageFailed);
+    if (saved && before.granted.some((capability) => !granted.includes(capability))) invalidateModConsent(id);
   }
 
   /** The mod version the player last made permission decisions at, if any. */
@@ -1017,13 +1041,27 @@ export class ModStore {
 
   /** Whether the player has read the unreviewed-mod notice for this mod. */
   sawUnreviewedNotice(id: string): boolean {
-    if (id in sessionNotices) return sessionNotices[id] === true;
-    return id in readField(this.storage, "unreviewedNotices", {});
+    if (consentBinding(id) !== undefined && consentMatches(id, readField(this.storage, "consentBindings", {})[id])) return id in readField(this.storage, "unreviewedNotices", {});
+    if (id in sessionNotices) return consentBinding(id) !== null && sessionNotices[id] === true;
+    return consentMatches(id, readField(this.storage, "consentBindings", {})[id]) && id in readField(this.storage, "unreviewedNotices", {});
   }
 
   /** Record that the player read the unreviewed-mod notice for this mod, at this version. */
   markUnreviewedNotice(id: string, version: string): void {
-    writeField(this.storage, "unreviewedNotices", { ...readField(this.storage, "unreviewedNotices", {}), [id]: version });
+    const binding = consentBinding(id);
+    if (binding === null) return;
+    const saved = modState.update(this.storage, (data) => {
+      const consents = { ...data.consents };
+      const refusals = { ...data.refusals };
+      if (binding && data.consentBindings?.[id] !== binding) {
+        delete consents[id];
+        delete refusals[id];
+      }
+      return { ...data, consents, refusals,
+        ...(binding ? { consentBindings: { ...data.consentBindings, [id]: binding } } : {}),
+        unreviewedNotices: { ...data.unreviewedNotices, [id]: version } };
+    }, ["consents"]);
+    if (!saved && binding) throw new Error(MOD_PERMISSION_TEXT.storageFailed);
   }
 
   /* --- Setting values (numeric mod settings) ------------------------ */

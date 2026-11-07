@@ -687,3 +687,17 @@ describe("Core-private confirmations and the first-party adapter", () => {
     expect(listener).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("content-bound manager confirmations", () => {
+  it("refuses an approval when the payload changes while the question is open", async () => {
+    const { setConsentBindings } = await import("../mod-consent-binding");
+    const f = fixture([manifest("a", { capabilities: ["input:controller"] })]);
+    setConsentBindings(new Map([["a", "old-digest"]]));
+    try {
+      const pending = f.service.recordConsent("a", { granted: ["input:controller"], refused: [] });
+      setConsentBindings(new Map([["a", "new-digest"]]));
+      expect(await accept(f.core, pending)).toMatchObject({ status: "refused", code: "changed" });
+      expect(f.store.getConsent("a")).toEqual([]);
+    } finally { setConsentBindings(new Map()); }
+  });
+});

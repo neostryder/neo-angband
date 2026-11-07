@@ -1,3 +1,4 @@
+import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModWorkerPanel, ModWorkerPanelNode, ModWorkerPanelPatch, WorkerJson } from "./protocol";
 import { panelDescription, panelPatch } from "./panel-schema";
 import { closeTopModPanel, createModUi, modPanelsSuspended, onModPanelSuspension, topModPanelId } from "../panel-runtime";
@@ -30,6 +31,7 @@ export function createModWorkerPanelRenderer(doc: Document = document): ModWorke
 
   const mount = (pluginId: string, panel: ModWorkerPanel, emit: (panelId: string, action: string, value?: string | boolean) => void, onDismiss?: () => void): WorkerJson => {
     const panelKey = key(pluginId, panel.id);
+    if ([...panels.keys()].filter((name) => name.startsWith(pluginId + ":")).length >= 8) throw new Error(MOD_PERMISSION_TEXT.quota);
     if (panels.has(panelKey)) throw new Error(`panel ${panel.id} is already mounted`);
     const root = doc.createElement("div");
     const title = doc.createElement("div");

@@ -101,7 +101,9 @@ describe("the capability vocabulary", () => {
       expect(capabilityTiers(cap), cap).toContain("worker");
       expect(granting(cap).has(cap), cap).toBe(true);
     }
-    expect(capabilityTiers("command:add")).not.toContain("worker");
+    for (const cap of ["command:add", "ui:title", "ui:menu.row", "input:controller", "input:observe"]) expect(capabilityTiers(cap), cap).toContain("worker");
+    expect(granting("input:intent").has("input:controller")).toBe(false);
+    expect(granting("keymap:write").has("input:observe")).toBe(false);
   });
 
   it("refuses what it does not know, and a malformed argument", () => {

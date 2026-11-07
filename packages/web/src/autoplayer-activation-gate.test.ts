@@ -63,7 +63,7 @@ function releaseHost(controller: AgentController) {
   findStop(declaration("finishAutoplayerInstall"));
   if (!stop || !release) throw new Error("main.ts no longer declares controller release or teardown");
   const emitted = ts.transpileModule(`
-    let { installedController, modTimer, state, say, render, reportModFault, hideAutoplayerBanner, log } = env;
+    let { installedController, modTimer, state, say, render, reportModFault, hideAutoplayerBanner, log, workerPlugins } = env;
     const loaded = { id: installedController.id };
     const modName = "Squire";
     const coreAgentSession = null;
@@ -95,8 +95,10 @@ function releaseHost(controller: AgentController) {
   const render = vi.fn();
   const reportModFault = vi.fn();
   const log = { info: vi.fn() };
+  const stopWorker = vi.fn();
+  const workerPlugins = new Map([["squire", { teardown: stopWorker }]]);
   const host = new Function("env", emitted)({
-    installedController: { id: "squire", session }, modTimer, state, say, render, reportModFault, hideAutoplayerBanner, log,
+    installedController: { id: "squire", session }, modTimer, state, say, render, reportModFault, hideAutoplayerBanner, log, workerPlugins,
   }) as {
     release(id: string, reason?: string): void;
     current(): InputDriver;
@@ -114,7 +116,7 @@ function releaseHost(controller: AgentController) {
     body: { append: (node: NonNullable<typeof banner>) => { banner = node; } },
   });
   showAutoplayerBanner("Squire");
-  return { host, state, uninstall, tick, say, render, reportModFault, log, playerInput, playerMessage };
+  return { host, state, uninstall, tick, say, render, reportModFault, log, playerInput, playerMessage, stopWorker };
 }
 
 describe("a controller releases the keyboard", () => {
@@ -145,6 +147,7 @@ describe("a controller releases the keyboard", () => {
     expect(setAutoplaying).toHaveBeenCalledExactlyOnceWith(false);
     expect(ctx.controller).toBeUndefined();
     expect(rig.uninstall).toHaveBeenCalledOnce();
+    expect(rig.stopWorker).toHaveBeenCalledOnce();
     expect(rig.state.nextCommand).toBe(rig.playerInput);
     expect(rig.state.msg).toBe(rig.playerMessage);
     expect(changes).toEqual([{ kind: "player" }]);
@@ -216,7 +219,7 @@ function bodyOf(startMarker: string, endMarker: string, label: string, from = 0)
 /**
  * Where finishAutoplayerInstall (the extracted install-and-pump helper, #125)
  * starts. There is exactly one function of this name, so this is unambiguous
- * even though "for (const loaded of activeModCode().plugins) {" on its own
+ * even though "for (const loaded of controllerCandidates()) {" on its own
  * matches twice in the file - once for an unrelated register() loop above
  * this point, once for the controller-install loop below it.
  */
@@ -230,7 +233,7 @@ function finishInstallAt(): number {
 function finishBody(): string {
   return bodyOf(
     "function finishAutoplayerInstall(",
-    "for (const loaded of activeModCode().plugins) {",
+    "for (const loaded of controllerCandidates()) {",
     "finishAutoplayerInstall",
     finishInstallAt(),
   );
@@ -239,7 +242,7 @@ function finishBody(): string {
 /** The boot-time controller-install loop's body - the one AFTER finishAutoplayerInstall. */
 function installLoop(): string {
   return bodyOf(
-    "for (const loaded of activeModCode().plugins) {",
+    "for (const loaded of controllerCandidates()) {",
     'window as unknown as { __neo?: unknown }',
     "the controller-install loop",
     finishInstallAt(),
@@ -254,7 +257,7 @@ describe("the boot-time install loop no longer installs unconditionally", () => 
      * autoplayer on every unrelated future boot. Only the reload that
      * activateAutoplayerCmd itself just triggered may skip the prompt. */
     const body = installLoop();
-    expect(body).toMatch(/if \(justConfirmedAutoplayerId === loaded\.id\) \{/u);
+    expect(body).toMatch(/if \(justConfirmedAutoplayerId === autoplayerConfirmationKey\(loaded\.id\)\) \{/u);
     expect(body).not.toMatch(
       /if \(\(state\.actor\.player\.noscore & NOSCORE\.BORG\) !== 0\) \{/u,
     );
@@ -262,7 +265,7 @@ describe("the boot-time install loop no longer installs unconditionally", () => 
 
   it("finishes the install at once only inside that gate", () => {
     const body = installLoop();
-    const gateAt = body.indexOf("justConfirmedAutoplayerId === loaded.id");
+    const gateAt = body.indexOf("justConfirmedAutoplayerId === autoplayerConfirmationKey(loaded.id)");
     expect(gateAt).toBeGreaterThan(-1);
     const finishAt = body.indexOf("finishAutoplayerInstall(loaded, install);");
     expect(finishAt, "finishAutoplayerInstall is still called from the loop").toBeGreaterThan(-1);
@@ -272,10 +275,10 @@ describe("the boot-time install loop no longer installs unconditionally", () => 
   it("skips the prompt for a roll-on only on the first boot after birth", () => {
     const body = installLoop();
     const rollAt = body.indexOf("rollOnAutoplayerId === loaded.id");
-    expect(rollAt).toBeGreaterThan(body.indexOf("justConfirmedAutoplayerId === loaded.id"));
+    expect(rollAt).toBeGreaterThan(body.indexOf("justConfirmedAutoplayerId === autoplayerConfirmationKey(loaded.id)"));
     expect(body).toMatch(/if \(rollOnHeldForBirth === loaded\.id\) continue;/u);
     const at = NO_COMMENTS.indexOf("let rollOnAutoplayerId");
-    const loopAt = NO_COMMENTS.indexOf("for (const loaded of activeModCode().plugins) {", at);
+    const loopAt = NO_COMMENTS.indexOf("for (const loaded of controllerCandidates()) {", at);
     const setup = NO_COMMENTS.slice(at, loopAt);
     expect(setup).toMatch(/if \(birthPending\) \{\s*rollOnHeldForBirth = armed;/u);
     expect(setup).toMatch(/reloadStorage\.removeItem\(AUTOPLAYER_ROLL_ON_KEY\);\s*if \(sessionFacts\.newCharacter\) rollOnAutoplayerId = armed;/u);
@@ -288,7 +291,7 @@ describe("the boot-time install loop no longer installs unconditionally", () => 
      * outlive the one boot it was written for. */
     const at = NO_COMMENTS.indexOf("let justConfirmedAutoplayerId");
     expect(at, "the one-shot flag is read into a local before the loop").toBeGreaterThan(-1);
-    const loopAt = NO_COMMENTS.indexOf("for (const loaded of activeModCode().plugins) {", at);
+    const loopAt = NO_COMMENTS.indexOf("for (const loaded of controllerCandidates()) {", at);
     expect(loopAt).toBeGreaterThan(at);
     const setup = NO_COMMENTS.slice(at, loopAt);
     expect(setup).toMatch(/reloadStorage\.getItem\(AUTOPLAYER_JUST_CONFIRMED_KEY\)/u);
@@ -314,7 +317,7 @@ describe("the boot-time install loop no longer installs unconditionally", () => 
 describe("finishAutoplayerInstall shows the on-screen indicator", () => {
   it("shows the banner as part of installing, not as an afterthought bolted on", () => {
     const body = finishBody();
-    const markAt = body.indexOf("takenOver.noscore = markNoscore(takenOver.noscore, NOSCORE.BORG)");
+    const markAt = body.indexOf("recordControllerUse(game.manifest, takenOver, identity)");
     const bannerAt = body.indexOf("showAutoplayerBanner(modName");
     expect(markAt).toBeGreaterThan(-1);
     expect(bannerAt, "finishAutoplayerInstall still shows the banner").toBeGreaterThan(-1);
@@ -350,7 +353,7 @@ describe("the confirm gate itself", () => {
      * belt and suspenders alongside reloadAfterModChange's own clear. */
     const body = confirmPendingBody();
     const clearAt = body.indexOf("pendingAutoplayerInstall = null;");
-    const confirmAt = body.indexOf("confirmBorgActivation()");
+    const confirmAt = body.indexOf("confirmControllerActivation(pending.loaded.id)");
     expect(clearAt).toBeGreaterThan(-1);
     expect(confirmAt).toBeGreaterThan(-1);
     expect(clearAt).toBeLessThan(confirmAt);
@@ -358,7 +361,7 @@ describe("the confirm gate itself", () => {
 
   it("only installs after the player says yes", () => {
     const body = confirmPendingBody();
-    const declineAt = body.indexOf("if (!(await confirmBorgActivation())) {");
+    const declineAt = body.indexOf("if (!(await confirmControllerActivation(pending.loaded.id))) {");
     const finishAt = body.indexOf("finishAutoplayerInstall(pending.loaded, pending.install);");
     expect(declineAt).toBeGreaterThan(-1);
     expect(finishAt, "still calls finishAutoplayerInstall on acceptance").toBeGreaterThan(-1);
@@ -367,7 +370,7 @@ describe("the confirm gate itself", () => {
 
   it("does not mark or install anything on decline", () => {
     const body = confirmPendingBody();
-    const declineAt = body.indexOf("if (!(await confirmBorgActivation())) {");
+    const declineAt = body.indexOf("if (!(await confirmControllerActivation(pending.loaded.id))) {");
     const declineEnd = body.indexOf("}", body.indexOf("return;", declineAt));
     const declineBranch = body.slice(declineAt, declineEnd);
     expect(declineBranch).not.toMatch(/finishAutoplayerInstall/u);
@@ -413,7 +416,7 @@ describe("activateAutoplayerCmd (Ctrl-Z) marks the save before reloading", () =>
      * gave ten seconds ago on this exact click. */
     const body = cmdBody();
     const armAt = body.indexOf(
-      "reloadStorage.setItem(AUTOPLAYER_JUST_CONFIRMED_KEY, modId)",
+      "reloadStorage.setItem(AUTOPLAYER_JUST_CONFIRMED_KEY, autoplayerConfirmationKey(modId))",
     );
     const reloadAt = body.indexOf("reloadAfterModChange({ resume: true })");
     expect(armAt, "activateAutoplayerCmd arms the one-shot flag").toBeGreaterThan(-1);
@@ -423,11 +426,11 @@ describe("activateAutoplayerCmd (Ctrl-Z) marks the save before reloading", () =>
 
   it("still asks before doing anything at all", () => {
     const body = cmdBody();
-    expect(body).toMatch(/if \(!\(await confirmBorgActivation\(\)\)\) return;/u);
+    expect(body).toMatch(/if \(!\(await confirmControllerActivation\(modId\)\)\) return;/u);
   });
 
   it("shares its warning text with the boot-time gate, not a second copy", () => {
-    /* One shared helper (confirmBorgActivation) means the two entrances a
+    /* One shared helper (confirmControllerActivation) means the two entrances a
      * player can reach an autoplayer through cannot drift into saying
      * different things for the same decision. */
     const occurrences =

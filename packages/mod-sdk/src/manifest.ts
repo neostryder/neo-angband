@@ -5,6 +5,7 @@
  * record composition, and savefile provenance all key off it.
  */
 
+import { MOD_PERMISSION_TEXT } from "./mod-permission-text.js";
 import { FIELD_TYPES } from "./fields.js";
 import type { FieldDecl, FieldType } from "./fields.js";
 import { resourceComplaint } from "./resources.js";
@@ -735,6 +736,7 @@ function readFields(raw: unknown): ReadFields {
       const who = typeof data?.id === "string" ? `manifest ${data.id}` : "manifest";
       return { schema: 0, why: `${who}: ${parsed.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ")}` };
     }
+    if ((parsed.data.capabilities?.length ?? 0) > 256) return { schema: 0, why: MOD_PERMISSION_TEXT.quota };
     return { schema: 2, fields: normalizeManifestV2(parsed.data) as unknown as Record<string, unknown> };
   }
   const data = root["data"];
@@ -813,6 +815,7 @@ export function validateManifest(value: unknown, options: ManifestReadOptions = 
       );
     }
   }
+  if (Array.isArray(m["capabilities"]) && m["capabilities"].length > 256) throw new ManifestError(MOD_PERMISSION_TEXT.quota);
   if (m["capabilities"] !== undefined) {
     if (
       !Array.isArray(m["capabilities"]) ||

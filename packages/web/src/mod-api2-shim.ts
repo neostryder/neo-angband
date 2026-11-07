@@ -38,6 +38,7 @@ import { bootPhase } from "./presentation-phase";
 import { api2Engine, createApi2Host, disposeApi2Host, type Api2HostOptions } from "./mod-api2-host";
 import type { ModPlugin } from "./mod-plugin";
 import { createIntentGate } from "./intent-gate";
+import { gameplayIntents } from "./mod-gameplay-intents";
 
 /** The API 1 plugin version an API 2 mod presents to the loader. */
 const SHIM_PLUGIN_API = 1;
@@ -579,7 +580,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
       const mod = build(ctx, { registry: host });
 
       for (const row of definition.titleActions ?? []) {
-        if (!mod.ui.title || !mod.meta.granted("profiles:manage") || !mod.meta.granted("saves:manage")) {
+        if (!mod.ui.title || (options().tier === "first-party" && (!mod.meta.granted("profiles:manage") || !mod.meta.granted("saves:manage")))) {
           ctx.log(`title action "${row.id}" needs title, profile and save grants`);
           continue;
         }
@@ -604,7 +605,10 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
     const decide = definition.controller.bind(definition);
     plugin.controller = (ctx) => {
       const opts = options();
-      if (opts.tier !== "first-party" || opts.execution === "worker" || !ctx.state) return undefined;
+      if (!ctx.state) return undefined;
+      if (opts.tier !== "first-party" && (!opts.grants.has("input:controller") || !opts.grants.has("input:intent") ||
+        !(opts.grants.has("state:interaction.read") || opts.grants.has("state:*.read")) ||
+        (opts.execution !== "worker" && !opts.developerInProcess))) return undefined;
       const engine = api2Engine(ctx, opts);
       if (definition.armed && !definition.armed({ id: ctx.id, flags: plain({ ...ctx.flags }), armed: ctx.controllerArmed === true, ...(engine ? { engine } : {}) })) return undefined;
       const lacking = [
@@ -638,7 +642,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
         if (stopped || installedGeneration !== generation || !deciding || queued) return { accepted: false, reason: "this controller decision has ended" };
         const driver = ctx.driver?.();
         if (driver && (driver.kind !== "controller" || driver.owner !== ctx.id)) return { accepted: false, code: "controller-owned", reason: "this mod does not hold the keyboard" };
-        return gate.submit(token, intent);
+        return opts.tier === "first-party" ? gate.submit(token, intent) : gameplayIntents(gate).submit(token, intent);
       } } });
       const drive = (): PlayerCommand | null => {
         if (stopped || installedGeneration !== generation) return null;
@@ -672,7 +676,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
         }
         return takeAnswer();
       };
-      const onKey = definition.onKey?.bind(definition);
+      const onKey = opts.tier === "first-party" || opts.grants.has("input:observe") ? definition.onKey?.bind(definition) : undefined;
       const onDeath = definition.onDeath;
       if (onKey === undefined && onDeath === undefined) return drive;
       return {
@@ -738,7 +742,7 @@ export const API1_CONTEXT_MAP: Readonly<Record<keyof ModPluginContext, string>> 
   saves: "manage.saves (first-party only)",
   session: "manage.session (first-party only)",
   shared: "not yet in API 2: values shared between mods",
-  title: "ui.title, presentation.title (first-party only)",
+  title: "ui.title; presentation.title (first-party only)",
   profiles: "manage.profiles (first-party only)",
   controllerArmed: "meta.controllerArmed",
   character: "view.character, view.player().key, events.on(\"run-end\")",

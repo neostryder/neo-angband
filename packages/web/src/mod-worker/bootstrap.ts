@@ -31,6 +31,7 @@ export function installModWorkerBootstrap(
   scope: WorkerScope,
   protocolVersion: string,
   importEntry: (hostEntryUrl: string) => Promise<unknown>,
+  wording: { readonly unsupported: string; readonly denied: string } = { unsupported: "", denied: "" },
 ): void {
   type Pending = { readonly epoch: number; resolve(value: unknown): void; reject(reason: Error): void };
   type Listener = (payload: unknown) => void;
@@ -41,6 +42,7 @@ export function installModWorkerBootstrap(
   let definition: Api2ModDefinition | null = null;
   let declared: Record<string, unknown> = {};
   let started = false;
+  let mod: ModApi2 | null = null;
   let nextRequest = 0;
   let nextListener = 0;
   let nextCallback = 0;
@@ -103,7 +105,7 @@ export function installModWorkerBootstrap(
         tier: m.tier,
         flags: m.flags,
         newCharacter: m.newCharacter,
-        controllerArmed: false,
+        controllerArmed: m.controllerArmed === true,
         granted,
         log: (message: string): void => send({ type: "log", level: "info", message: String(message) }),
         settings: method("meta.settings"),
@@ -175,6 +177,15 @@ export function installModWorkerBootstrap(
         lookup: method("content.lookup"),
       },
       ui: {
+        ...(m.granted.includes("ui:title") ? { title: {
+          registerRow: (row: { id: string; label: string; run: () => void }) => {
+            const callbackId = ++nextCallback;
+            callbacks.set(callbackId, () => row.run());
+            return call("ui.title.registerRow", [{ id: row.id, label: row.label, callbackId }]);
+          },
+          removeRow: method("ui.title.removeRow"),
+          choose: method("ui.title.choose"),
+        } } : {}),
         onKey: async (listener: Listener): Promise<unknown> => {
           const listenerId = ++nextListener;
           listeners.set(listenerId, listener);
@@ -273,6 +284,9 @@ export function installModWorkerBootstrap(
       prefsVersion: d.prefs !== undefined && typeof d.prefs.version === "number" ? d.prefs.version : null,
       installVersion: d.install !== undefined && typeof d.install.version === "number" ? d.install.version : null,
       start: typeof d.start === "function",
+      controller: typeof d.controller === "function",
+      armed: d.armed?.(freeze({ ...context, armed: m.controllerArmed === true })) !== false,
+      onKey: typeof d.onKey === "function",
       stop: typeof d.stop === "function",
     };
   };
@@ -290,7 +304,7 @@ export function installModWorkerBootstrap(
       }
       definition = candidate as Api2ModDefinition;
       if (definition.presentation !== undefined) throw new Error("Worker mods cannot declare presentation");
-      if (definition.birth !== undefined || definition.titleActions !== undefined) throw new Error("Worker mods cannot declare birth or title actions");
+      if (definition.birth !== undefined || definition.engineHooks !== undefined || definition.engineTiles !== undefined) throw new Error(wording.unsupported);
       send({ type: "ready", summary: summarize(definition, meta) });
     } catch (err) {
       fault("boot", err);
@@ -311,6 +325,11 @@ export function installModWorkerBootstrap(
       } else if (q.kind === "prefs.migrate") {
         if (!definition?.prefs) throw new Error("this mod declares no prefs migration");
         value = await definition.prefs.migrate(q.value as never, q.fromVersion);
+      } else if (q.kind === "controller.key") {
+        value = definition?.onKey?.(freeze(q.press) as unknown as Parameters<NonNullable<Api2ModDefinition["onKey"]>>[0]);
+      } else if (q.kind === "controller") {
+        if (!mod || !definition?.controller) throw new Error(wording.denied);
+        await definition.controller(mod, freeze(q.input) as unknown as Parameters<NonNullable<Api2ModDefinition["controller"]>>[1]);
       } else if (q.kind === "install.migrate") {
         if (!definition?.install) throw new Error("this mod declares no install migration");
         value = await definition.install.migrate(q.value as never, q.fromVersion);
@@ -397,9 +416,11 @@ export function installModWorkerBootstrap(
         started = true;
         const active = [...Object.keys(declared), ...message.policyHooks];
         try {
-          const mod = buildApi(meta, active);
+          mod = buildApi(meta, active);
+          const api = mod;
+          for (const row of definition.titleActions ?? []) void api.ui.title?.registerRow({ ...row, run: () => row.run() });
           for (const action of definition.actions ?? []) {
-            void mod.ui.gameMenu.register(action.action, action.label, () => action.run(mod));
+            void mod.ui.gameMenu.register(action.action, action.label, () => action.run(api));
           }
           const result = definition.start?.(mod);
           if (result && typeof (result as Promise<void>).then === "function") {

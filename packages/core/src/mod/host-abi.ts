@@ -2673,6 +2673,7 @@ export interface RunBelonging {
 }
 
 export interface RunReport {
+  readonly autoplayers?: readonly { readonly id: string; readonly name: string; readonly version: string; readonly digest: string | null; readonly firstParty: boolean }[];
   readonly outcome: RunOutcome;
   /** The killer's name, "Ripe Old Age" for a winner, or "Retiring". */
   readonly cause: string;

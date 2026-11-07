@@ -222,3 +222,11 @@ describe("createRunReports", () => {
     error.mockRestore();
   });
 });
+
+it("keeps host controller attribution in the immutable run report", () => {
+  const autoplayers = [{ id: "mandos", name: "Mandos", version: "1.0.0", digest: "abc", firstParty: false }];
+  const report = buildRunReport({ state, view: createAgentView(state), messages: [], key: null, sheet: null, scored: false, endedAt: 0, autoplayers });
+  autoplayers[0]!.name = "Changed";
+  expect(report.autoplayers?.[0]?.name).toBe("Mandos");
+  expect(Object.isFrozen(report.autoplayers?.[0])).toBe(true);
+});

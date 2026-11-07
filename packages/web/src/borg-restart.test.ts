@@ -22,6 +22,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { NOSCORE, type SaveManifest } from "@rpgm-tools/neo-angband-core";
+import { recordControllerUse } from "./mod-controller-record";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SRC = readFileSync(resolve(here, "main.ts"), "utf8");
@@ -167,7 +169,12 @@ describe("the activation gate marks the savefile", () => {
     const at = NO_COMMENTS.indexOf("installedController = { id: loaded.id, session");
     expect(at, "the host still records the autoplayer slot").toBeGreaterThan(-1);
     const nearby = NO_COMMENTS.slice(at, at + 500);
-    expect(nearby).toMatch(/markNoscore\([^)]*noscore,\s*NOSCORE\.BORG\)/u);
+    /* The mark moved into recordControllerUse, which also records the
+     * controller's identity and digest; the activation gate must still call it. */
+    expect(nearby).toMatch(/recordControllerUse\(/u);
+    const player = { noscore: 0 };
+    recordControllerUse({} as SaveManifest, player, { id: "x", name: "X", version: "1.0.0", digest: null, firstParty: true });
+    expect(player.noscore & NOSCORE.BORG, "the helper sets the permanent bit").toBe(NOSCORE.BORG);
   });
 
   it("still reads that same bit at the score gate", () => {

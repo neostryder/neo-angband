@@ -48,7 +48,8 @@ describe("engine consent", () => {
     for (const trust of ["sideloaded", "reviewed"] as const) {
       const tier = { ...assignTier({ id: "probe", source: "folder", execution: "in-process" }), trust };
       expect(effectiveGrants(["engine:access"], tier, { granted: [], refused: [] }).granted).toEqual([]);
-      expect(effectiveGrants(["engine:access"], tier, { granted: ["engine:access"], refused: [] }).granted).toEqual(["engine:access"]);
+      expect(effectiveGrants(["engine:access"], tier, { granted: ["engine:access"], refused: [] }).granted).toEqual([]);
+      expect(effectiveGrants(["engine:access"], { ...tier, developerInProcess: true }, { granted: ["engine:access"], refused: [] }).granted).toEqual(["engine:access"]);
     }
     expect(tierRefusal("engine:access", assignTier(installed({ execution: "worker" })))).toContain("Worker");
   });
@@ -355,17 +356,17 @@ describe("per-permission consent", () => {
     setModTiers(new Map([["p", tier]]));
     const report = await loadModCode({
       acknowledged: () => true,
-      packs: [codePack("p", ["state:monsters.read", "command:add"])],
+      packs: [codePack("p", ["state:monsters.read", "command:add", "engine:access"])],
       codeUrl,
       enabled: () => true,
-      consented: () => ["command:add"],
+      consented: () => ["command:add", "engine:access"],
       refused: () => ["state:monsters.read"],
-      tier: () => tier,
+      tier: () => ({ ...tier, developerInProcess: true }),
       importer: () => Promise.resolve(plugin),
     });
     const loaded = report.plugins[0];
-    expect(loaded?.declared).toEqual(["state:monsters.read", "command:add"]);
-    expect(loaded?.manifest.capabilities).toEqual(["command:add"]);
+    expect(loaded?.declared).toEqual(["state:monsters.read", "command:add", "engine:access"]);
+    expect(loaded?.manifest.capabilities).toEqual(["command:add", "engine:access"]);
     const caps = CapabilitySet.fromManifest(loaded!.manifest);
     expect(caps.has("state:monsters.read")).toBe(false);
     const host = createApi2Host({ state: {} } as unknown as ModPluginContext, { grants: caps });
@@ -393,7 +394,7 @@ describe("per-permission consent", () => {
     ]);
   });
 
-  it("reports a permission the tier withholds and loads the mod without it", async () => {
+  it("reports a reserved permission and refuses API 1 page execution", async () => {
     const report = await loadModCode({
       acknowledged: () => true,
       packs: [codePack("p", ["profiles:manage", "command:add"])],
@@ -403,7 +404,8 @@ describe("per-permission consent", () => {
       tier: () => tier,
       importer: () => Promise.resolve(plugin),
     });
-    expect(report.plugins[0]?.manifest.capabilities).toEqual(["command:add"]);
+    expect(report.plugins).toEqual([]);
+    expect(report.skipped).toHaveLength(1);
     expect(report.problems.map((p) => p.why)).toContain(
       "runs without profiles:manage: only the game's own mods can have it",
     );
@@ -464,7 +466,7 @@ describe("the unreviewed notice and badge", () => {
   it("badges unreviewed mods wherever the manager lists them", () => {
     expect(isUnreviewed(sideloaded)).toBe(true);
     expect(isUnreviewed(assignTier({ id: "l", source: "installed", execution: "in-process", listing: "community" }))).toBe(true);
-    expect(isUnreviewed(assignTier({ id: "l", source: "installed", execution: "worker", listing: "community" }))).toBe(false);
+    expect(isUnreviewed(assignTier({ id: "l", source: "installed", execution: "worker", listing: "community" }))).toBe(true);
     expect(isUnreviewed(firstParty)).toBe(false);
     expect(catalogRow(sideloaded).unreviewed).toBe(true);
     expect(rowLabel(catalogRow(sideloaded)).label).toContain("unreviewed");

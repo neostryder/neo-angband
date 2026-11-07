@@ -56,7 +56,7 @@ describe("the ctx.core surface does not move by accident", () => {
   it("pins engine.core to the same namespace and baseline as ctx.core", () => {
     const ctx = modPluginContext("probe", {});
     const grants = CapabilitySet.fromManifest({ id: "probe", name: "Probe", version: "1.0.0", shape: "plugin", capabilities: ["engine:access"] });
-    const engine = api2Engine(ctx, { grants });
+    const engine = api2Engine(ctx, { grants, tier: "first-party" });
     expect(engine?.core).toBe(ctx.core);
     expect(Object.keys(engine!.core).sort()).toEqual(surface());
   });

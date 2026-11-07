@@ -31,6 +31,8 @@ const validator = json.object({
   refusals: json.optional(byName(json.array(json.string))),
   /** Mod id to the mod version its permission decisions were last made at. */
   consentVersions: json.optional(byName(json.string)),
+  /** Permission decisions name both the retained payload and its declared grants. */
+  consentBindings: json.optional(byName(json.string)),
   /** Mod id to the mod version at which the player read the unreviewed-mod notice. */
   unreviewedNotices: json.optional(byName(json.string)),
   /** Rule flag to the player's explicit on or off. */

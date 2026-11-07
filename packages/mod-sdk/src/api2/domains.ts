@@ -745,7 +745,7 @@ export interface Api2EngineTiles {
 export interface Api2ModDefinition {
   /** The mod API range this code was written for, such as ">=2.0.0 <3.0.0". */
   readonly api: string;
-  /** First-party input decisions submit actions under the current input token. */
+  /** Input decisions require controller consent and submit gameplay intents under the current input token. */
   controller?(mod: ModApi2, input: Api2InputState): void | Promise<void>;
   /** Birth consent is independent of current keyboard ownership. Core still confirms takeover. */
   armed?(context: Api2ControllerContext): boolean;

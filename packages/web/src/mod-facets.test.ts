@@ -106,6 +106,7 @@ function pluginModule(): unknown {
 
 async function loadOne(pack: DiskPack) {
   return loadModCode({
+    tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }),
     acknowledged: () => true,
     packs: [pack],
     codeUrl: resolver(),

@@ -2154,6 +2154,7 @@ describe("an INSTALLED mod's plugin.js actually runs", () => {
     expect(report.packs).toHaveLength(1);
 
     return await loadModCode({
+      tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }),
       acknowledged: () => true,
       packs: report.packs,
       codeUrl: report.codeUrl!,

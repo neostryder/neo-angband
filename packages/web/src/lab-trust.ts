@@ -18,6 +18,13 @@
 declare const __NEO_LAB_BUILD__: boolean | undefined;
 
 export const LAB_TRUST_PARAM = "labtrust";
+export const LAB_IN_PROCESS_PARAM = "labprocess";
+
+/** A folder author can opt into page execution without acquiring first-party identity. */
+export function labInProcess(search = location.search, compiledForLab = labBuild()): ReadonlySet<string> {
+  if (!compiledForLab) return new Set();
+  return new Set((new URLSearchParams(search).get(LAB_IN_PROCESS_PARAM) ?? "").split(",").map((id) => id.trim()).filter(Boolean));
+}
 
 /** True only in a build compiled for the lab. */
 export function labBuild(): boolean {

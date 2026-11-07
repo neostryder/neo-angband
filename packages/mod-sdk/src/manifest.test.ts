@@ -18,3 +18,10 @@ describe("manifestFields", () => {
     expect(manifestFields({ format: "neo-angband/mod/manifest", schemaVersion: 1, data: [] })).toBeUndefined();
   });
 });
+
+it("bounds declared permissions before normalization or consent rendering", () => {
+  const capabilities = Array.from({ length: 257 }, (_, index) => "event:test-" + index);
+  expect(() => validateManifest({ ...bare, capabilities })).toThrow();
+  expect(() => validateManifest({ format: "neo-angband/mod/manifest", schemaVersion: 2,
+    data: { ...bare, shape: "plugin", api: ">=2.0.0 <3.0.0", runtime: "worker", entry: "worker.js", capabilities } })).toThrow();
+});

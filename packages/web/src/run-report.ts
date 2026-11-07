@@ -82,6 +82,7 @@ export interface RunReportInput {
   readonly sheet: CharacterSheetData | null;
   readonly scored: boolean;
   readonly endedAt: number;
+  readonly autoplayers?: RunReport["autoplayers"];
 }
 
 export function buildRunReport(input: RunReportInput): RunReport {
@@ -136,6 +137,7 @@ export function buildRunReport(input: RunReportInput): RunReport {
     score: totalPoints(p),
     scored: input.scored,
     endedAt: input.endedAt,
+    ...(input.autoplayers ? { autoplayers: structuredClone(input.autoplayers) } : {}),
     history: characterHistory(state),
     messages: input.messages.slice(-RUN_REPORT_MESSAGES).map((m) => ({
       text: m.text,

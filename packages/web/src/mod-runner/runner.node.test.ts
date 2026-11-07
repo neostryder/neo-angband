@@ -7,7 +7,6 @@
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import { CapabilitySet, headlessRunFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -28,7 +27,7 @@ const fixture = (name: string): string => join(FIXTURES, name);
 async function run(paths: readonly string[]): Promise<HeadlessRunReport> {
   const quiet = vi.spyOn(log, "error").mockImplementation(() => {});
   try {
-    return await runHeadless({ source: nodeModsSource(paths) });
+    return await runHeadless({ unsafeInProcess: true, source: nodeModsSource(paths) });
   } finally {
     quiet.mockRestore();
   }
@@ -41,7 +40,7 @@ function findingsOf(report: HeadlessRunReport, id: string): readonly ModFinding[
 const rules = (findings: readonly ModFinding[]): string[] => findings.map((f) => f.rule);
 
 async function withPlugin(files: Record<string, string>, check: (folder: string) => Promise<void>): Promise<void> {
-  const folder = mkdtempSync(join(tmpdir(), "neo-runner-"));
+  const folder = mkdtempSync(join(REPO, ".neo-runner-test-"));
   try {
     writeFileSync(join(folder, "manifest.json"), JSON.stringify({
       format: "neo-angband/mod/manifest", schemaVersion: 1,
@@ -55,7 +54,7 @@ async function withPlugin(files: Record<string, string>, check: (folder: string)
 }
 
 async function probe(plugin: ModPlugin): Promise<HeadlessRunReport> {
-  return await runHeadless({ source: nodeModsSource([fixture("counter")]), importer: async () => ({ default: plugin }) });
+  return await runHeadless({ unsafeInProcess: true, source: nodeModsSource([fixture("counter")]), importer: async () => ({ default: plugin }) });
 }
 
 describe("the headless runner", () => {
@@ -63,7 +62,7 @@ describe("the headless runner", () => {
     const source = nodeModsSource([fixture("counter")]);
     let compositions = 0;
     let starts = 0;
-    const report = await runHeadless({ source: { ...source, readJson: async (id, file) => file === "manifest.json" ? {
+    const report = await runHeadless({ unsafeInProcess: true, source: { ...source, readJson: async (id, file) => file === "manifest.json" ? {
       format: "neo-angband/mod/manifest", schemaVersion: 2,
       data: { id, name: "Engine probe", version: "1.0.0", facets: ["plugin"], runtime: "in-process", api: ">=2.0.0 <3.0.0", capabilities: ["engine:access"] },
     } : source.readJson(id, file) }, importer: async () => ({ default: {
@@ -92,7 +91,7 @@ describe("the headless runner", () => {
       void mod.act.submit(input.token, { kind: "command", command: { code: "hold" } });
     } }, () => ({ grants: caps, tier: "first-party" }));
     const source = nodeModsSource([fixture("counter")]);
-    const report = await runHeadless({ source: { ...source, readJson: async (id, file) => {
+    const report = await runHeadless({ unsafeInProcess: true, source: { ...source, readJson: async (id, file) => {
       const value = await source.readJson(id, file);
       return file === "manifest.json" ? { ...(value as Record<string, unknown>), affectsGameplay: true,
         capabilities: ["command:add", "input:intent", "state:*.read"] } : value;
@@ -103,7 +102,7 @@ describe("the headless runner", () => {
   });
   it("retains invalid manifest candidates", async () => {
     const source = nodeModsSource([fixture("counter")]);
-    const report = await runHeadless({ source: { ...source, readJson: async () => ({}) } });
+    const report = await runHeadless({ unsafeInProcess: true, source: { ...source, readJson: async () => ({}) } });
     expect(report.mods).toContainEqual({ id: "runner-counter", runtime: "data", loaded: false });
     expect(rules(findingsOf(report, "runner-counter"))).toContain("runner/load-problem");
     expect(report.passed).toBe(false);
@@ -111,7 +110,7 @@ describe("the headless runner", () => {
 
   it("fails unreadable directories and retains the load error", async () => {
     const source = nodeModsSource([]);
-    const report = await runHeadless({ source: { ...source, list: async () => { throw new Error("directory denied"); } } });
+    const report = await runHeadless({ unsafeInProcess: true, source: { ...source, list: async () => { throw new Error("directory denied"); } } });
     expect(report.phases).toContainEqual({ name: "load", outcome: "failed", detail: expect.stringContaining("directory denied") });
     expect(report.passed).toBe(false);
   });
@@ -123,7 +122,7 @@ describe("the headless runner", () => {
     ["after a delayed callback", 'export default { api: 1, register() { setTimeout(() => Promise.reject("broken delay"), 500); } };'],
   ])("fails unattributed rejections %s", async (_when, content) => {
     await withPlugin({ "plugin.js": content }, async (folder) => {
-      const result = spawnSync(process.execPath, [join(REPO, "packages/web/scripts/mod-runner.mjs"), folder], {
+      const result = spawnSync(process.execPath, [join(REPO, "packages/web/scripts/mod-runner.mjs"), folder, "--unsafe-in-process"], {
         cwd: REPO, encoding: "utf8", windowsHide: true, timeout: 90000,
       });
       expect(result.error).toBeUndefined();
@@ -150,7 +149,7 @@ describe("the headless runner", () => {
   });
 
   it.each(["throws", "omits a result"])("fails a Worker host that %s", async (failure) => {
-    const report = await runHeadless({ source: nodeModsSource([fixture("worker")]), workerHost: {
+    const report = await runHeadless({ unsafeInProcess: true, source: nodeModsSource([fixture("worker")]), workerHost: {
       check: async () => {
         if (failure === "throws") throw new Error("Worker check failed");
         return new Map();
@@ -161,7 +160,7 @@ describe("the headless runner", () => {
   });
 
   it("accepts an explicit result for every Worker", async () => {
-    const report = await runHeadless({ source: nodeModsSource([fixture("worker")]), workerHost: {
+    const report = await runHeadless({ unsafeInProcess: true, source: nodeModsSource([fixture("worker")]), workerHost: {
       check: async () => new Map([["runner-worker", []]]),
     } });
     expect(report.phases).toContainEqual({ name: "worker", outcome: "passed" });
@@ -170,7 +169,7 @@ describe("the headless runner", () => {
 
   it("registers plugins in enabled order", async () => {
     const registered: string[] = [];
-    await runHeadless({
+    await runHeadless({ unsafeInProcess: true,
       source: nodeModsSource([fixture("counter"), fixture("thrower")]),
       enable: ["runner-thrower", "runner-counter"],
       importer: async (url) => ({ default: { api: 1, register() { registered.push(url.includes("thrower") ? "thrower" : "counter"); } } }),
@@ -325,4 +324,11 @@ describe("the headless runner", () => {
     expect(read.ok).toBe(true);
     if (read.ok) expect(read.data).toEqual(report);
   });
+});
+
+it("refuses Node page execution without the explicit developer opt-in", async () => {
+  const importer = vi.fn();
+  const report = await runHeadless({ source: nodeModsSource([fixture("counter")]), importer });
+  expect(importer).not.toHaveBeenCalled();
+  expect(report.reports.some((entry) => entry.findings.some((finding) => finding.rule === "runner/load-problem"))).toBe(true);
 });

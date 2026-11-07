@@ -300,6 +300,7 @@ describe("door 2 - a plugin written for another build", () => {
     );
     const report = await loadModCode({
       acknowledged: () => true,
+      tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }),
       packs: [codePack("current", `>=${ENGINE_VERSION}`)],
       codeUrl: resolver,
       enabled: () => true,
