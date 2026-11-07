@@ -97,8 +97,8 @@ describe("the disclaimer", () => {
      * protections, which is worse than none: it spends trust the project has not
      * earned, on exactly the screen where a player decides how much to extend. */
     const text = CONSENT_DISCLAIMER.join(" ");
-    expect(text).toMatch(/does not certify a code audit/u);
-    expect(text).toMatch(/Public code runs in isolation/u);
+    expect(text).toMatch(/does not mean a mod's code was audited/u);
+    expect(text).toMatch(/Public mod code runs separately from the game page/u);
   });
 
   it("says turning it off does not delete anything", () => {
@@ -108,7 +108,7 @@ describe("the disclaimer", () => {
 
   it("gives safety recommendations, not just warnings", () => {
     const text = CONSENT_DISCLAIMER.join(" ");
-    for (const advice of [/pinned to the repository/u, /ENABLED/u, /back up your characters/u]) {
+    for (const advice of [/stays tied to the repository/u, /only while the mod is enabled/u, /back up your characters/u]) {
       expect(text, String(advice)).toMatch(advice);
     }
   });

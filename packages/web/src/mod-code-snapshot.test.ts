@@ -134,16 +134,31 @@ describe("execution policy", () => {
     const manifest = { ...f.raw, data: { ...f.raw.data, runtime: "in-process", entry: "plugin.js" } };
     const pack = { ...f.report.packs[0]!, manifest: validateManifest(manifest, { code: ["plugin.js"] }), code: ["plugin.js"] };
     const importer = vi.fn();
+    setConsentBindings(new Map([[pack.manifest.id, "bound"]]));
     const loaded = await loadModCode({ packs: [pack], codeUrl: async () => "staged:entry", enabled: () => true, consented: () => caps, acknowledged: () => true, importer });
     expect(importer).not.toHaveBeenCalled();
     expect(loaded.workers).toHaveLength(1);
     expect(loaded.plugins).toEqual([]);
   });
 
+  it("refuses public code whose bytes were never measured", async () => {
+    const f = fixture();
+    const manifest = { ...f.raw, data: { ...f.raw.data, runtime: "in-process", entry: "plugin.js" } };
+    const pack = { ...f.report.packs[0]!, manifest: validateManifest(manifest, { code: ["plugin.js"] }), code: ["plugin.js"] };
+    const importer = vi.fn();
+    setConsentBindings(new Map());
+    const loaded = await loadModCode({ packs: [pack], codeUrl: async () => "staged:entry", enabled: () => true, consented: () => caps, acknowledged: () => true, importer });
+    expect(importer).not.toHaveBeenCalled();
+    expect(loaded.workers).toEqual([]);
+    expect(loaded.plugins).toEqual([]);
+    expect(loaded.problems.map((problem) => problem.why)).toEqual([MOD_PERMISSION_TEXT.unavailable]);
+  });
+
   it("refuses API 1 before importing code, including a legacy controller", async () => {
     const f = fixture();
     const pack = { ...f.report.packs[0]!, manifest: validateManifest({ id: "probe", name: "Legacy Probe", version: "1.0.0", shape: "plugin", modApi: 1, capabilities: caps }), code: ["plugin.js"] };
     const importer = vi.fn();
+    setConsentBindings(new Map([["probe", "bound"]]));
     const loaded = await loadModCode({ packs: [pack], codeUrl: async () => "unused", enabled: () => true, consented: () => caps, acknowledged: () => true, importer });
     expect(importer).not.toHaveBeenCalled(); expect(loaded.plugins).toEqual([]); expect(loaded.skipped).toHaveLength(1);
   });

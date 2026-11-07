@@ -312,6 +312,13 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
      * ABI that schema 1 called `modApi: 2` is retired: its manifest still
      * reads, and its code is refused with what to do about it. */
     const measuredTier = opts.tier?.(pack) ?? assignTier({ id, source: "folder", execution: executionOf(pack) });
+    /* Public code in the game page is always measured: a missing binding means
+     * its bytes were never hashed, so no consent can describe what would run.
+     * The headless runner sets unsafeInProcess itself and has no page to measure. */
+    if (measuredTier.trust !== "first-party" && typeof binding !== "string" && opts.unsafeInProcess === undefined) {
+      problems.push({ id, why: MOD_PERMISSION_TEXT.unavailable });
+      continue;
+    }
     const isolate = measuredTier.trust !== "first-party" && !measuredTier.developerInProcess &&
       pack.manifest.manifestSchema === 2 && typeof pack.manifest.api === "string" && apiRangeVerdict(pack.manifest.api).ok;
     if (pack.manifest.runtime === "worker" || isolate) {

@@ -29,6 +29,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-core";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { NO_DISK_PACKS, resetDiskPacks, setDiskPacks, type DiskPack } from "./disk-packs";
+import { setConsentBindings } from "./mod-consent-binding";
 import { loadModCode, PLUGIN_FILE, resetModCode } from "./mod-code";
 import { engineAllows, engineBlocksCode, engineProblem } from "./mod-engine";
 import { MOD_API_VERSION } from "./mod-plugin";
@@ -278,6 +279,8 @@ describe("door 2 - a plugin written for another build", () => {
     const goodApiBadEngine = codePack("a", NEVER);
     const badApi = codePack("b");
     (badApi.manifest as { modApi?: number }).modApi = MOD_API_VERSION + 7;
+    /* Public code is measured before it loads; bind both fixtures so the loader reaches the version gates. */
+    setConsentBindings(new Map([["a", "bound"], ["b", "bound"]]));
     const report = await loadModCode({
       acknowledged: () => true,
       packs: [goodApiBadEngine, badApi],
@@ -292,6 +295,7 @@ describe("door 2 - a plugin written for another build", () => {
     expect(why.get("a")).not.toContain("mod API");
     expect(why.get("b")).toContain("mod API");
     expect(why.get("b")).not.toContain(NEVER);
+    setConsentBindings(new Map());
   });
 
   it("still imports a plugin whose range covers this build", async () => {

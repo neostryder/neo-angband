@@ -58,7 +58,7 @@ A call never throws for a missing permission. `isNotGranted(result)` tells a mis
 | --- | --- | --- |
 | `meta` | The mod's `id`, `flags` and `tier`, the API and game versions (`api`, `engine`), `newCharacter`, `granted(capability)`, `log`, its numeric settings (`settings`, `setSetting`), and the enabled mods (`mods`). | None |
 | `view` | The known world: `world()`, `player()`, `monsters()`, `level()`, `input()`, and `isCurrent(token)`. | `state:player.read`, `state:monsters.read`, `state:map.read` and `state:interaction.read` for the single parts, or `state:*.read`; none for `world()` and `isCurrent` |
-| `act` | `submit(token, intent)`, `answer(promptId, answer)`, and `controller`, which works only while the mod holds the keyboard. | `input:intent`, `input:prompt.reply`; none for `controller` |
+| `act` | `submit(token, intent)`, `answer(promptId, answer)`, and `controller`, which works only while the mod holds the keyboard. | `input:intent`, `input:prompt.reply`. `controller` needs `input:controller` and `state:interaction.read` as well as `input:intent`. `onKey` needs `input:observe`. |
 | `events` | `on(name, listener)` and `off(subscription)`. | `event:<name>` |
 | `hooks` | The hooks this game runs (`available`) and the ones this mod declared (`active`). | None |
 | `content` | The mod's own files (`own`, `asset`), the running game's records (`records(file)`), and `lookup({ file, key })` by the key `recordKey` derives. | None |
@@ -79,7 +79,7 @@ A monster's `visible` means eyesight: blindness, darkness and invisibility can l
 Shop visits and shop knowledge screens record stock and owner observations, and known-world reads at a shop's entrance refresh that shop. Other shops retain their last observations for the session, or return empty stock and an unnamed owner if they have not been inspected. Loading a game starts with unknown shop observations. A host that draws a shop screen calls `observeKnownStore(state, store)` to record the stock it shows.
 ### The controller
 
-`act.controller` has `owns()`, `setStatus(status)`, `markNondeterministic()` and `release(reason)`. Every call but `owns()` answers `refused` with the code `not-owner` unless the mod holds the keyboard. An API 2 definition takes the keyboard with its `controller` member, which needs `state:interaction.read`, `input:intent` and `input:prompt.reply` in the manifest. `onKey` hears each key the player presses while the mod holds the keyboard and answers `{ kind: "keep" }` or `{ kind: "release" }`. `onDeath: "end"` lets an ordinary death end the run instead of starting the next character.
+`act.controller` has `owns()`, `setStatus(status)`, `markNondeterministic()`, and `release(reason)`. Every call except `owns()` returns `refused` with the code `not-owner` unless the mod holds the keyboard. An API 2 definition takes the keyboard with its `controller` member, which needs `input:controller` and `state:interaction.read` in the manifest along with `input:intent`. One controller holds the keyboard at a time. `onKey` receives each key the player presses while the mod holds the keyboard and returns `{ kind: "keep" }` or `{ kind: "release" }`, and it needs `input:observe`. Answering prompts needs `input:prompt.reply`. `onDeath: "end"` lets an ordinary death end the run instead of starting the next character.
 
 A controller can act in an open store. The host asks it for a decision at phase `store` and passes the `shop-buy`, `shop-sell` or `shop-exit` intent it returns to the shop screen.
 
@@ -226,6 +226,26 @@ The broker refuses a message over 64 KB and any call past 200 in one second. It 
 The Worker proxy rejects an oversized call before sending it, and the broker returns a bounded error for an identifiable oversized or malformed call. A migration timeout starts a new epoch: the broker refuses calls from earlier epochs before running them and keeps each pending call's original epoch on its reply. When the Worker learns of a new epoch, it rejects its superseded pending calls, so an old reply cannot resolve a call in the new epoch.
 
 The preview Worker ABI (`modApi: 2` with `workerEntry`) is retired. Its manifest still reads, and the loader refuses its code with a note to rebuild it against API 2. Its Worker-only permission names convert to API 2 names: `ui:panel` becomes `ui:panel.mount` and `state:model.read` becomes `state:player.read`. `prefs:read`, `prefs:write` and `asset:read` become nothing, since API 2 asks no permission for a mod's own preferences and files, and so do `command:submit`, `ui:region`, `query:snapshot`, `registry:declare`, `policy:install` and `hook:respond`, which have no API 2 form. `WORKER_CAPABILITY_ALIASES` in the SDK holds the whole table.
+
+### Third-party mods and consent
+
+A third-party (public) mod can use the features marked Yes in the table once the player grants the permissions its manifest declares. `input:intent` and `keymap:write` do not imply any of them. Mods that need a feature marked No must be first-party. Public API 2 code always runs in an isolated Worker, even when the manifest asks for page execution. The host checks each message against the mod's identity and grants, and it caps message and reply sizes, message rate, subscriptions, and UI count, such as eight panel mounts per mod. Public API 1 code is refused. For development, a lab build accepts `?labprocess=<mod-id>` to run a named folder mod in the game page if the mod declares and is granted `engine:access` and its content is approved. Under Node, the headless runner's `--unsafe-in-process` option does the same, and mod code then runs with the process's privileges. Neither opt-in makes a mod first-party.
+
+| Feature | Permissions | Available to public mods |
+|---|---|---|
+| Autoplayer controller | `input:controller`, `input:intent`, `state:interaction.read` | Yes |
+| Watching gameplay keys (`onKey`) | `input:observe` | Yes |
+| Commands | `command:add` | Yes |
+| Rows on the title screen | `ui:title` | Yes |
+| Rows in the game menu | `ui:menu.row` | Yes |
+| Profile and session management | `profiles:manage`, `session:control` | No |
+| Hidden state (truth) reads | Separate grants of their own; a public Worker gets no truth domain | No |
+| Raw engine access | none | No |
+| Raw presentation replacement | none | No |
+
+The game page draws the consent dialog itself as a native modal with system fonts and fixed wording, and a mod's locale cannot replace it. The dialog names the mod by its manifest name, with control characters and bidirectional marks removed and cut to 120 characters. The player's decision is bound to a SHA-256 digest of every file the mod ships, from the manifest through its code and assets, and to the set of permissions it requests. Changing a file or the permission set calls for a new decision, even at the same version. The code that runs is the same bytes that were hashed. Decisions save atomically, and if saving fails the mod does not run. Players can review and revoke grants on the Mods permission screen, and revoking stops the running code.
+
+A public controller also needs a second, separate dialog before it starts playing, every time a save is loaded or resumed. Escape or Ctrl-Z takes the keyboard back before any mod code sees the key. The controller can submit gameplay commands only, covering movement, running, resting, stairs, doors and traps, tunneling, item use, spells, looking and searching, shopping, targeting, and travel, as well as ignore rules. The host refuses quit and retire, profile and session management, install, and unknown commands, along with any command belonging to another mod. Input from the mod outside the controller is accepted only shortly after an actual player action. Starting a public controller permanently marks the character unscorable with the borg noscore mark and marks the save nondeterministic. Saves and run reports list the controller in `SaveManifest.autoplayers` with its id, version, content digest, and first-party flag.
 
 ## Seams outside the public API
 
