@@ -24,12 +24,6 @@ const granting = (...capabilities: string[]): CapabilitySet =>
   CapabilitySet.fromManifest({ id: "m", name: "M", version: "1.0.0", shape: "plugin", capabilities });
 
 describe("the capability vocabulary", () => {
-  it("opens only the implemented simple option, keybinding, and filter grants", () => {
-    for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create"]) expect(capabilityTiers(capability)).toContain("worker");
-    for (const capability of ["options:manage", "display:replace", "ui:*.replace", "debug:wizard", "engine:access"]) expect(capabilityTiers(capability)).not.toContain("worker");
-    expect(consentText(matchCapability("options:write")!)).toContain("birth, cheat, or score");
-    expect(consentText(matchCapability("keymap:edit")!)).toContain("permission-dialog input");
-  });
   it("discloses unseen monsters, race truth, and permanent scoring consequences without opening Workers", () => {
     const map = consentText(matchCapability("state:map-actual.read")!);
     const monsters = consentText(matchCapability("state:monsters-actual.read")!);
@@ -81,11 +75,12 @@ describe("the capability vocabulary", () => {
     for (const cap of MANAGEMENT) {
       expect(publicSpellings).not.toContain(cap);
       expect(isPublicCapability(cap)).toBe(false);
-      expect(capabilityTiers(cap)).toEqual(cap === "mod:authoring" ? ["first-party", "worker"] : ["first-party"]);
+      expect(capabilityTiers(cap)).toEqual(["profiles:manage", "session:control", "options:manage"].includes(cap) ? CAPABILITY_TIERS : ["first-party"]);
       expect(matchCapability(cap)?.entry.namespace).toBe("manage");
     }
     expect(CAPABILITY_VOCABULARY.filter((entry) => entry.namespace === "manage").map((entry) => entry.capability).sort())
       .toEqual([...MANAGEMENT].sort());
+    expect(capabilityTiers("saves:manage")).toContain("worker");
   });
 
   it("puts true map state in its own namespace, held by first-party mods only", () => {

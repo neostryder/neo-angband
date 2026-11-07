@@ -8,6 +8,16 @@ import type { ProfileStorage, ProfileStore } from "./profiles";
 const OWNER_KEY = "neo-angband:profile-owner";
 export const PROFILE_ACTION_KEY = "neo-angband:profile-action";
 
+const workerProfiles = new WeakMap<ModProfiles, {
+  list(): ModProfile[];
+  fingerprint(profileId?: string): string;
+  rename(profileId: string, name: string): ProfileResult;
+}>();
+
+export function workerProfileAccess(profiles: ModProfiles) {
+  return workerProfiles.get(profiles);
+}
+
 export interface PendingProfileAction {
   readonly profileId: string | null;
   readonly modId: string;
@@ -48,7 +58,7 @@ export function createModProfiles(id: string, caps: CapabilitySet, deps: Profile
       if (!manifest) return refused(`Mod "${modId}" is not installed.`);
       /* A refusal is a decision as much as a grant is (mod-store.ts setDecisions). */
       const decided = (d: ConsentRecord): readonly string[] => [...d.granted, ...d.refused];
-      if (!consentSatisfied(manifest.capabilities ?? [], decided(store.getDecisions(modId)))) {
+      if (!consentSatisfied(manifest.capabilities ?? [], decided({ granted: store.getConsents()[modId] ?? [], refused: store.getRefusals()[modId] ?? [] }))) {
         return refused(`Mod "${manifest.name}" needs your permission in the Mods screen first.`);
       }
     }
@@ -62,7 +72,7 @@ export function createModProfiles(id: string, caps: CapabilitySet, deps: Profile
     if (JSON.stringify(store.getEnabled()) !== JSON.stringify(enabled)) return refused(failStorage);
     return { ok: true, value: undefined };
   };
-  return Object.freeze({
+  const api: ModProfiles = Object.freeze({
     list: () => {
       caps.check("profiles:manage");
       return { ok: true as const, value: list() };
@@ -104,7 +114,8 @@ export function createModProfiles(id: string, caps: CapabilitySet, deps: Profile
         if (!caps.has("saves:manage")) return refused('Character creation needs capability "saves:manage".');
         if (!new ModStore(scopedStorage(deps.storage, profileId)).isEnabled(id)) return refused("This mod is disabled in the destination profile.");
         const manifest = deps.installed().find((mod) => mod.id === id);
-        const decisions = new ModStore(scopedStorage(deps.storage, profileId)).getDecisions(id);
+        const target = new ModStore(scopedStorage(deps.storage, profileId));
+        const decisions = { granted: target.getConsents()[id] ?? [], refused: target.getRefusals()[id] ?? [] };
         if (!manifest || !consentSatisfied(manifest.capabilities ?? [], [...decisions.granted, ...decisions.refused])) return refused("This mod needs your permission in the destination profile first.");
         if (action.armController && !deps.hasController(id)) return refused("This mod has no controller to arm.");
       }
@@ -132,6 +143,23 @@ export function createModProfiles(id: string, caps: CapabilitySet, deps: Profile
       }
     },
   });
+  const owned = () => list().filter((profile) => {
+    if (profile.id === null || !deps.storage) return false;
+    const owner = parseDocument(scopedStorage(deps.storage, profile.id).getItem(OWNER_KEY), profileOwnerFormat);
+    return owner.ok && owner.data.profileId === profile.id && owner.data.modId === id;
+  });
+  workerProfiles.set(api, {
+    list: owned,
+    fingerprint: (profileId) => JSON.stringify([list(), deps.installed(), profileId !== undefined && deps.storage ? new ModStore(scopedStorage(deps.storage, profileId)).configurationRevision() : null]),
+    rename: (profileId, name) => {
+      caps.check("profiles:manage");
+      if (!owned().some((profile) => profile.id === profileId)) return refused("This mod did not create that profile.");
+      deps.store.rename(profileId, name);
+      return owned().some((profile) => profile.id === profileId && profile.name === name)
+        ? { ok: true, value: undefined } : refused(failStorage);
+    },
+  });
+  return api;
 }
 
 export function consumeProfileAction(

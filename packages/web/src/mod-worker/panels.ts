@@ -1,12 +1,9 @@
 import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModWorkerPanel, ModWorkerPanelNode, ModWorkerPanelPatch, WorkerJson } from "./protocol";
 import { panelDescription, panelPatch } from "./panel-schema";
-import { closeTopModPanel, createModUi, modPresentationSuspended as modPanelsSuspended, onModPanelSuspension, topModPanelId } from "../panel-runtime";
+import { closeTopModPanel, createModUi, modPanelsSuspended, onModPanelSuspension, topModPanelId } from "../panel-runtime";
 import { addControlDomOwner, inputEvents } from "../input-door";
 import type { ModPanel } from "../mod-plugin";
-import type { ModDisplay } from "../mod-plugin";
-import type { WorkerTextLine, WorkerTextRegion } from "./protocol";
-import { cloneWorkerJson } from "./clone";
 
 interface MountedPanel {
   readonly root: HTMLDivElement;
@@ -216,104 +213,4 @@ function renderNode(doc: Document, panelId: string, node: ModWorkerPanelNode, em
   layout.style.cssText = `display:flex;${node.type === "row" ? "flex-direction:row;flex-wrap:wrap" : "flex-direction:column"};gap:8px`;
   layout.append(...node.children.map((child) => renderNode(doc, panelId, child, emit)));
   return layout;
-}
-
-type TextRegionName = "messages" | "sidebar" | "status";
-const TEXT_COLORS = { normal: "#c0c0c0", muted: "#808080", warning: "#ffff00", danger: "#ff0000", good: "#00ff00" } as const;
-
-function textLines(value: unknown): readonly WorkerTextLine[] {
-  const json = cloneWorkerJson(value);
-  if (!Array.isArray(json) || json.length > 64) throw new Error("text output takes at most 64 lines");
-  let length = 0;
-  for (const line of json) {
-    if (line === null || typeof line !== "object" || Array.isArray(line) ||
-      Object.keys(line).some((key) => key !== "text" && key !== "style") || typeof line["text"] !== "string" ||
-      line["text"].length > 512 || (line["style"] !== undefined && (typeof line["style"] !== "string" || !Object.hasOwn(TEXT_COLORS, line["style"])))) {
-      throw new Error("a text line needs bounded text and a fixed style token");
-    }
-    length += line["text"].length;
-  }
-  if (length > 4096) throw new Error("text output exceeds 4096 characters");
-  return json as unknown as readonly WorkerTextLine[];
-}
-
-/** Text stays below host dialogs and cannot take focus or receive input. */
-export function createModWorkerTextRenderer(display: ModDisplay, held: (capability: string) => boolean, doc: Document = document) {
-  type Entry = { root: HTMLDivElement; capability: string; name?: TextRegionName; rect?: WorkerTextRegion["rect"] };
-  const entries = new Map<string, Entry>();
-  let closed = false;
-  const draw = (): void => {
-    if (closed) return;
-    const snapshot = display.snapshot();
-    for (const entry of entries.values()) {
-      const { root, rect } = entry;
-      const named = entry.name ? snapshot.regions[entry.name] : undefined;
-      const valid = !rect || (rect.col + rect.cols <= snapshot.grid.cols && rect.row + rect.rows <= snapshot.grid.rows);
-      const pixels = named?.pixels ?? (rect && snapshot.surface ? {
-        x: snapshot.surface.x + rect.col * snapshot.grid.cellWidth, y: snapshot.surface.y + rect.row * snapshot.grid.cellHeight,
-        width: rect.cols * snapshot.grid.cellWidth, height: rect.rows * snapshot.grid.cellHeight,
-      } : undefined);
-      root.hidden = modPanelsSuspended() || snapshot.mode !== "play" || !valid || !pixels || !held(entry.capability);
-      root.inert = true;
-      if (!pixels) continue;
-      root.style.left = `${pixels.x}px`;
-      root.style.top = `${pixels.y}px`;
-      root.style.width = `${pixels.width}px`;
-      root.style.height = `${pixels.height}px`;
-      root.style.fontSize = `${Math.max(1, snapshot.grid.cellHeight - 2)}px`;
-      root.style.lineHeight = `${snapshot.grid.cellHeight}px`;
-    }
-  };
-  const offSuspension = onModPanelSuspension(draw);
-  const offFrame = display.onFrame?.(draw);
-  const put = (id: string, lines: readonly WorkerTextLine[], capability: string, location: { name?: TextRegionName; rect?: WorkerTextRegion["rect"] }): void => {
-    if (closed || modPanelsSuspended() || !held(capability)) throw new Error("this text region is suspended or revoked");
-    if (!entries.has(id) && entries.size >= 8) throw new Error("a Worker may draw at most eight text regions");
-    const body = doc.createDocumentFragment();
-    for (const line of lines) {
-      const row = doc.createElement("div");
-      row.textContent = line.text;
-      row.style.color = TEXT_COLORS[line.style ?? "normal"];
-      body.append(row);
-    }
-    let entry = entries.get(id);
-    if (!entry) {
-      const root = doc.createElement("div");
-      root.setAttribute("role", "region");
-      root.style.cssText = "position:fixed;z-index:10;overflow:hidden;pointer-events:none;white-space:pre;background:#000000;font-family:monospace"; // palette-exempt: fixed host text styles cannot accept mod CSS.
-      entry = { root, capability, ...location };
-      entries.set(id, entry);
-      doc.body.append(root);
-    }
-    if (location.rect) entry.rect = location.rect;
-    entry.root.replaceChildren(body);
-    draw();
-  };
-  const remove = (id: string): void => { entries.get(id)?.root.remove(); entries.delete(id); };
-  return {
-    replace(name: TextRegionName, value: WorkerJson): void {
-      if (value === null) { remove(name); return; }
-      put(name, textLines(value), `ui:${name}.replace`, { name });
-    },
-    create(value: WorkerJson): void {
-      const json = cloneWorkerJson(value);
-      if (json === null || typeof json !== "object" || Array.isArray(json) || Object.keys(json).some((key) => !["id", "rect", "lines"].includes(key)) ||
-        typeof json["id"] !== "string" || !/^[a-z][a-z0-9-]{0,63}$/.test(json["id"])) throw new Error("a region needs an owned id, a grid rectangle, and text lines");
-      const rect = json["rect"];
-      if (!rect || typeof rect !== "object" || Array.isArray(rect) || Object.keys(rect).length !== 4 ||
-        !["col", "row", "cols", "rows"].every((key) => Number.isSafeInteger(rect[key]) && (rect[key] as number) >= (key === "col" || key === "row" ? 0 : 1))) throw new Error("the region rectangle must use nonnegative grid coordinates and positive dimensions");
-      const snapshot = display.snapshot();
-      if ((rect["col"] as number) + (rect["cols"] as number) > snapshot.grid.cols ||
-        (rect["row"] as number) + (rect["rows"] as number) > snapshot.grid.rows) throw new Error("the region must fit within the game's character grid");
-      put(`region:${json["id"]}`, textLines(json["lines"]), "ui:region.create", { rect: rect as unknown as WorkerTextRegion["rect"] });
-    },
-    remove(id: string): void { remove(`region:${id}`); },
-    teardown(): void {
-      closed = true;
-      offSuspension();
-      offFrame?.();
-      for (const entry of entries.values()) entry.root.remove();
-      entries.clear();
-    },
-  };
 }

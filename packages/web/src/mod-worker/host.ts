@@ -25,7 +25,7 @@
  */
 
 import { decideAutoplayerKey } from "../autoplayer-keys";
-import { disposeApi2Host, serveSimpleWorkerCall } from "../mod-api2-host";
+import { callWorkerManage, disposeApi2Host } from "../mod-api2-host";
 import {
   API2_HOOK_NAMES,
   CAPABILITY_VOCABULARY,
@@ -50,12 +50,12 @@ import {
   type ModApi2,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modHealth } from "../mod-health";
-import { modPanelsSuspended } from "../panel-runtime";
 import { cloneWorkerJson, payloadBytes, toWorkerJson } from "./clone";
 import {
   MOD_WORKER_PROTOCOL_VERSION,
   WORKER_CALLS,
-  SIMPLE_WORKER_CALLS,
+  WORKER_MANAGE_CALLS,
+  validWorkerManageCall,
   type HostToModWorker,
   type ModWorkerToHost,
   type WorkerDefinitionSummary,
@@ -466,12 +466,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   };
 
   /** Serve one call. Every path answers with an Api2Result or an error. */
-  const serve = async (host: ModApi2, method: string, args: readonly WorkerJson[], current: () => boolean): Promise<Api2Result<unknown>> => {
-    if (Object.hasOwn(SIMPLE_WORKER_CALLS, method)) {
-      const capability = SIMPLE_WORKER_CALLS[method as keyof typeof SIMPLE_WORKER_CALLS];
-      if (!capabilities.has(capability) || !host.meta.granted(capability)) return api2NotGranted(capability);
-      return await serveSimpleWorkerCall(host, method, args, current);
-    }
+  const serve = async (host: ModApi2, method: string, args: readonly WorkerJson[]): Promise<Api2Result<unknown>> => {
     if ((method === "events.on" || method === "ui.onKey" || method === "backupFolder.onSave") && subscriptions.size + keySubscriptions.size + backupSubscriptions.size >= 64) return api2Refused("quota", MOD_PERMISSION_TEXT.quota);
     if (method === "ui.title.registerRow") {
       const row = args[0] as { id?: unknown; label?: unknown; callbackId?: unknown } | null;
@@ -607,9 +602,9 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       respond(api2NotGranted("engine:access"));
       return;
     }
-    if (!(WORKER_CALLS as readonly string[]).includes(message.method) && !Object.hasOwn(SIMPLE_WORKER_CALLS, message.method)) {
+    if (!(WORKER_CALLS as readonly string[]).includes(message.method) && !Object.hasOwn(WORKER_MANAGE_CALLS, message.method)) {
       fail(`refused call to "${message.method}", which a Worker mod cannot make`);
-      respond(new Error(`"${message.method}" is not part of the API a Worker mod holds`));
+      respond(new Error(`"${message.method}" is not part of the API a Worker mod holds${message.method.startsWith("manage.") ? "; this operation has no isolated Worker mechanism, and exit, quit, and wizard require proven detachment from saves" : ""}`));
       return;
     }
     const t = now();
@@ -622,8 +617,9 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     const host = controllerApi && (message.method === "act.submit" || message.method === "act.answer") ? controllerApi : api;
     let pending: Promise<Api2Result<unknown>>;
     try {
-      pending = health.run(deps.id, `Worker ${message.method}`, () => serve(host, message.method, message.args,
-        () => state === "running" && message.epoch === epoch));
+      pending = health.run(deps.id, `Worker ${message.method}`, () => message.method.startsWith("manage.")
+        ? serveWorkerManage(host, message.method, message.args, capabilities, () => state === "running" && epoch === message.epoch)
+        : serve(host, message.method, message.args));
     } catch (err) {
       respond(err instanceof Error ? err : new Error(messageOf(err)));
       return;
@@ -735,7 +731,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     hasKeyHandler: () => controllerPermitted() && summary?.onKey === true && capabilities.has("input:observe"),
     async key(press): Promise<Api2ControllerKeyAnswer> {
       if (state !== "running" || !controllerPermitted() || !capabilities.has("input:observe") || !summary?.onKey ||
-        modPanelsSuspended() || ["Escape", "F5", "F11", "F12"].includes(press.key) || (press.ctrl && !press.alt && !press.meta && press.key.toLowerCase() === "z")) return { kind: "release" };
+        press.key === "Escape" || (press.ctrl && !press.alt && !press.meta && press.key.toLowerCase() === "z")) return { kind: "release" };
       const reply = await ask({ kind: "controller.key", press: toWorkerJson(press) }, MOD_PERMISSION_TEXT.keySource);
       const outcome = decideAutoplayerKey(press, () => reply as unknown as Api2ControllerKeyAnswer);
       if (outcome.kind === "release" && outcome.fault) health.recordFault(deps.id, MOD_PERMISSION_TEXT.keySource, new Error(outcome.fault));
@@ -743,7 +739,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       return { kind: "release", ...(outcome.kind === "release" && outcome.reason !== undefined ? { reason: outcome.reason } : {}) };
     },
     async decide(input, host): Promise<void> {
-      if (state !== "running" || controllerApi || !controllerPermitted() || health.isOff(deps.id) || modPanelsSuspended()) return;
+      if (state !== "running" || controllerApi || !controllerPermitted() || health.isOff(deps.id)) return;
       controllerApi = host;
       try { await ask({ kind: "controller", input: toWorkerJson(input) }, "controller"); }
       finally { if (controllerApi === host) controllerApi = null; }
@@ -767,6 +763,13 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     staleCount: (): number => stale,
     teardown: stop,
   };
+}
+
+async function serveWorkerManage(host: ModApi2, method: string, args: readonly WorkerJson[], capabilities: CapabilitySet, current: () => boolean): Promise<Api2Result<unknown>> {
+  const capability = Object.hasOwn(WORKER_MANAGE_CALLS, method) ? WORKER_MANAGE_CALLS[method] : undefined;
+  if (!capability || !capabilities.has(capability) || !host.meta.granted(capability)) return api2NotGranted(capability ?? "profiles:manage");
+  if (!validWorkerManageCall(method, args)) return api2Refused("bad-call", "The management request has invalid arguments.");
+  return callWorkerManage(host, method, args, current);
 }
 
 /** The API method at `path` on `api`, bound, or null when the domain is absent. */

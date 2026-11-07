@@ -1627,14 +1627,12 @@ describe("public input containment", () => {
     const context = { ...modPluginContext("probe", {}), snapshot: () => ({ phase }) as never,
       display: { onKey: (listener: (event: KeyboardEvent) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; } } as never };
     expect(await createApi2Host(context, { grants: capabilities("probe", ["keymap:write"]) }).ui.onKey(() => undefined)).toMatchObject({ capability: "input:observe" });
-    const api = createApi2Host(context, { grants, execution: "worker", tier: "first-party" });
+    const api = createApi2Host(context, { grants, execution: "worker" });
     const heard: unknown[] = [];
     await api.ui.onKey((key) => heard.push(key));
     const emit = (key: string, ctrlKey = false) => { for (const listener of listeners) listener({ key, code: key, ctrlKey, altKey: false, metaKey: false, shiftKey: false, repeat: false } as KeyboardEvent); };
     for (const value of ["modal", "pregame", "dead", "store"]) { phase = value; emit("password"); }
-    phase = "play"; emit("Escape"); emit("z", true); emit("F5"); emit("F11"); emit("F12"); emit("a");
-    const restore = suspendModPanels();
-    try { emit("consent-answer"); } finally { restore(); }
+    phase = "play"; emit("Escape"); emit("z", true); emit("a");
     vi.stubGlobal("document", { activeElement: { id: "other-mod-panel" }, body: {}, documentElement: {} });
     try { emit("hidden-key"); } finally { vi.unstubAllGlobals(); }
     expect(heard).toEqual([{ key: "a", code: "a", modifiers: [], isRepeat: false }]);

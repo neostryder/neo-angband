@@ -86,10 +86,10 @@ import {
   type ModApi2,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPluginContext } from "./mod-plugin";
-import { createModWorkerPanelRenderer, createModWorkerTextRenderer, type ModWorkerPanelRenderer } from "./mod-worker/panels";
-import type { WorkerJson } from "./mod-worker/protocol";
+import { createModWorkerPanelRenderer, type ModWorkerPanelRenderer } from "./mod-worker/panels";
+import { WORKER_MANAGE_CALLS, validWorkerManageCall, type WorkerJson } from "./mod-worker/protocol";
 import { modInstallPrefs, modKeyValueStore, type ModPrefs, type PrefsStorage } from "./mod-prefs";
-import { createManageAdapter, type ManageAdapter } from "./mod-manager/manage-adapter";
+import { createManageAdapter, workerManageOperation, type ManageAdapter } from "./mod-manager/manage-adapter";
 import type { ModManagerService } from "./mod-manager/service";
 import type { ManagerResult } from "./mod-manager/types";
 import type { Api2ManagedMods, Api2ManagerConfirmation, Api2ScreenKey } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -99,12 +99,14 @@ import { OPTION_ENTRIES } from "@rpgm-tools/neo-angband-core";
 import { bootPhase, onBootPhaseChanged } from "./presentation-phase";
 import { menuRegistry } from "./menu-registry";
 import { clearQueuedUiInputs, enqueueUiInputs, inputEvents } from "./input-door";
-import { closeTopModPanel, modPanelsSuspended, modPresentationSuspended, onModPanelSuspension, topModPanelId } from "./panel-runtime";
+import { closeTopModPanel, modPanelsSuspended, topModPanelId } from "./panel-runtime";
 import { removeBackupSink } from "./mod-backup";
 import { prepareTruthRead } from "./mod-truth-consent";
+import { consentBinding } from "./mod-consent-binding";
+import { modHolds } from "./mod-tier";
+import { workerProfileAccess } from "./profile-runtime";
+import { workerSaveAccess } from "./saves-facade";
 import { createModOptions } from "./mod-options";
-import { isWorkerBindingKey } from "./mod-keybindings";
-import { workerVisualFilter } from "./visual-filter";
 
 /** Asks the player for the real map on behalf of a mod; the game wires it at boot (main.ts). */
 type TruthConsentAsk = (modId: string, reason: string) => Promise<"granted" | "declined" | "unavailable">;
@@ -134,6 +136,7 @@ export interface Api2HostOptions {
   readonly kvStorage?: PrefsStorage | null;
   readonly sessionStorage?: PrefsStorage | null;
   readonly management?: () => Promise<ModManagerService>;
+  readonly workerManagement?: WorkerManagementHost;
   readonly commands?: {
     readonly registry: Pick<ActionRegistry, "has" | "register" | "unregister">;
     readonly verbs?: CommandVerbTable;
@@ -925,13 +928,11 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ui: frozen({
       onKey: (listener) => guarded(() => {
         if (stopped) return api2Unavailable("this mod has stopped");
-        const observe = publicMod || options.execution === "worker";
-        if (!granted(observe ? "input:observe" : "keymap:write")) return api2NotGranted(observe ? "input:observe" : "keymap:write");
+        if (!granted(publicMod ? "input:observe" : "keymap:write")) return api2NotGranted(publicMod ? "input:observe" : "keymap:write");
         if (!ctx.display) return api2Unavailable("this front end sends no key events");
         const id = `${ctx.id}:key:${nextSubscription++}`;
         const off = ctx.display.onKey((event) => {
-          if (observe && (!granted("input:observe") || !api2MayObserveKeys(ctx) || event.ctrlKey || event.altKey || event.metaKey || event.key === "Escape" ||
-            (options.execution === "worker" && ["F5", "F11", "F12"].includes(event.key)))) return;
+          if (publicMod && (!api2MayObserveKeys(ctx) || event.ctrlKey || event.altKey || event.metaKey || event.key === "Escape")) return;
           if (!stopped) listener(data({ key: event.key, code: event.code, modifiers: [
             ...(event.shiftKey ? ["shift" as const] : []), ...(event.ctrlKey ? ["ctrl" as const] : []),
             ...(event.altKey ? ["alt" as const] : []), ...(event.metaKey ? ["meta" as const] : []),
@@ -1137,16 +1138,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       }),
     } : {}),
   };
-  if (options.execution === "worker") {
-    const simple: SimpleWorkerHost = { ctx, held: (capability) => !stopped && granted(capability), capturing: false, filter: null };
-    simpleWorkerHosts.set(api, simple);
-    const off = onModPanelSuspension((suspended) => {
-      if (simple.filter !== null) ctx.display?.setVisualFilter(suspended || !simple.held("display:filter") ? null : simple.filter, { scope: "canvas" });
-    });
-    cleanups.add(() => { off(); if (simple.filter !== null) ctx.display?.setVisualFilter(null); });
-    cleanups.add(() => { simple.text?.teardown(); });
-    cleanups.add(() => { ctx.keybindings?.cancelCapture(); });
-  }
+  if (options.execution === "worker") workerManagementCalls.set(api, workerManageDomain(ctx, options, () => stopped));
   disposers.set(api, () => {
     stopped = true;
     panels?.teardown(ctx.id);
@@ -1160,116 +1152,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     cleanups.clear();
   });
   return Object.freeze(api);
-}
-
-interface SimpleWorkerHost {
-  readonly ctx: ModPluginContext;
-  readonly held: (capability: string) => boolean;
-  capturing: boolean;
-  filter: string | null;
-  text?: ReturnType<typeof createModWorkerTextRenderer>;
-}
-
-const simpleWorkerHosts = new WeakMap<ModApi2, SimpleWorkerHost>();
-
-/** The broker supplies liveness; this table supplies the connection's context. */
-export function serveSimpleWorkerCall(api: ModApi2, method: string, args: readonly WorkerJson[], current: () => boolean): Api2Call<unknown> {
-  return guarded<unknown>(async () => {
-    const host = simpleWorkerHosts.get(api);
-    if (!host || !current()) return api2Unavailable("this Worker call has expired");
-    if (method === "options.set") {
-      if (!host.held("options:write")) return api2NotGranted("options:write");
-      if (args.length !== 1 || !plainRecord(args[0])) return api2Refused("bad-call", "options.set takes one options change");
-      const change = args[0];
-      if (Object.keys(change).some((key) => !["values", "hitpointWarn", "delayFactor", "lazymoveDelay"].includes(key)) ||
-        (change["values"] !== undefined && !plainRecord(change["values"]))) return api2Refused("bad-call", "the options change has unknown fields or invalid values");
-      const { ctx } = host;
-      if (!ctx.state) return api2Unavailable(NO_GAME);
-      const entries = change["values"] ?? {};
-      if (Object.keys(entries).length > 128) return api2Refused("quota", MOD_PERMISSION_TEXT.quota);
-      for (const [name, value] of Object.entries(entries)) {
-        if (typeof value !== "boolean" || OPTION_ENTRIES.find((entry) => entry.name === name)?.type !== "INTERFACE") {
-          return api2Refused("options", "this permission changes only interface options and delays");
-        }
-      }
-      const editor = ctx.options?.set ? ctx.options : createModOptions(ctx.state, { writable: true });
-      const result = editor.set!(change as import("./mod-options").ModOptionsChange);
-      return result.ok ? api2Ok(data(result.changed)) : api2Refused("options", result.reason);
-    }
-    if (method.startsWith("keybindings.")) {
-      if (!host.held("keymap:edit")) return api2NotGranted("keymap:edit");
-      if (modPresentationSuspended()) return api2Refused("input", "the host is asking the player a question");
-      const keys = host.ctx.keybindings;
-      if (!keys) return api2Unavailable("the keybinding editor is unavailable");
-      const operation = method.slice("keybindings.".length);
-      if (operation === "set") {
-        const [trigger, action, replace] = args;
-        if (args.length < 2 || args.length > 3 || typeof trigger !== "string" || !isWorkerBindingKey(trigger) ||
-          typeof action !== "string" || action.length < 1 || action.length > 256 ||
-          (replace !== undefined && typeof replace !== "boolean")) return api2Refused("bad-call", "a binding needs a permitted key, a bounded action, and an optional replacement flag");
-        const previous = keys.list().find((entry) => entry.trigger === trigger);
-        if (previous && previous.action !== action && replace !== true) return api2Refused("key-conflict", "the key already has a binding");
-        return keys.set(trigger, action) ? api2Ok(null) : api2Refused("keymap", "the binding is invalid");
-      }
-      if (operation === "remove") {
-        const trigger = args[0];
-        if (args.length !== 1 || typeof trigger !== "string" || !isWorkerBindingKey(trigger)) return api2Refused("bad-call", "remove takes one permitted trigger key");
-        return api2Ok(keys.remove(trigger));
-      }
-      if (args.length !== 0) return api2Refused("bad-call", "this operation takes no arguments");
-      if (operation === "keyset") return api2Ok(keys.keyset());
-      if (operation === "list") return api2Ok(data(keys.list()));
-      if (operation === "commands") return api2Ok(data(keys.commands()));
-      if (operation === "cancelCapture") return api2Ok(keys.cancelCapture());
-      if (operation === "capture") {
-        if (host.capturing) return api2Refused("busy", "this mod is already capturing a key");
-        host.capturing = true;
-        const timer = setTimeout(() => keys.cancelCapture(), 10000);
-        try {
-          const key = await keys.capture();
-          if (!current() || !host.held("keymap:edit")) return api2NotGranted("keymap:edit");
-          return api2Ok(key !== null && isWorkerBindingKey(key) ? key : null);
-        } finally {
-          clearTimeout(timer);
-          host.capturing = false;
-        }
-      }
-    }
-    if (method === "display.filter") {
-      if (!host.held("display:filter")) return api2NotGranted("display:filter");
-      if (args.length !== 1) return api2Refused("bad-call", "display.filter takes one filter choice or null");
-      let filter: string | null;
-      try { filter = workerVisualFilter(args[0]); }
-      catch (error) { return api2Refused("bad-filter", error instanceof Error ? error.message : String(error)); }
-      if (!host.ctx.display) return api2Unavailable("this front end has no display");
-      if (modPresentationSuspended()) return api2Refused("input", "the host is asking the player a question");
-      host.ctx.display.setVisualFilter(filter, { scope: "canvas" });
-      host.filter = filter;
-      return api2Ok(null);
-    }
-    if (["ui.messages.replace", "ui.sidebar.replace", "ui.status.replace", "ui.region.create", "ui.region.remove"].includes(method)) {
-      const name = method.split(".")[1]!;
-      const capability = name === "region" ? "ui:region.create" : `ui:${name}.replace`;
-      if (!host.held(capability)) return api2NotGranted(capability);
-      if (args.length !== 1) return api2Refused("bad-call", "text output takes one data value");
-      if (modPresentationSuspended()) return api2Refused("input", "the host is asking the player a question");
-      if (!host.ctx.display || typeof document === "undefined") return api2Unavailable("this front end draws no text regions");
-      if (method === "ui.region.remove" && (typeof args[0] !== "string" || !/^[a-z][a-z0-9-]{0,63}$/.test(args[0]))) return api2Refused("bad-call", "remove takes one owned region id");
-      host.text ??= createModWorkerTextRenderer(host.ctx.display, host.held);
-      try {
-        if (method === "ui.region.create") host.text.create(args[0]!);
-        else if (method === "ui.region.remove") host.text.remove(args[0] as string);
-        else host.text.replace(name as "messages" | "sidebar" | "status", args[0]!);
-      } catch (error) { return api2Refused("bad-region", error instanceof Error ? error.message : String(error)); }
-      return api2Ok(null);
-    }
-    return api2Refused("bad-call", "this simple Worker method is unavailable");
-  });
-}
-
-function plainRecord(value: unknown): value is Record<string, WorkerJson> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) &&
-    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 }
 
 function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModApi2["net"]> {
@@ -1619,4 +1501,134 @@ function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps, granted: (capab
       return api2Ok(data(real));
     }),
   });
+}
+
+export interface WorkerManagementHost {
+  confirm(id: string, plan: string): Promise<boolean>;
+  pickSaves(id: string, entries: readonly import("./mod-plugin").SaveEntry[]): Promise<readonly string[] | null>;
+  scope(): string;
+  markCheat(id: string, state: GameState): boolean;
+  saveOptions(): void;
+}
+
+let workerManagementHost: WorkerManagementHost | undefined;
+let workerManagementBusy = false;
+type WorkerManagementCall = (method: string, args: readonly WorkerJson[], current: () => boolean) => Promise<Api2Result<unknown>>;
+const workerManagementCalls = new WeakMap<ModApi2, WorkerManagementCall>();
+
+export function setApi2WorkerManagementHost(host: WorkerManagementHost | undefined): void {
+  workerManagementHost = host;
+}
+
+export async function callWorkerManage(api: ModApi2, method: string, args: readonly WorkerJson[], current: () => boolean): Promise<Api2Result<unknown>> {
+  return workerManagementCalls.get(api)?.(method, args, current) ?? api2Unavailable("Worker management is unavailable.");
+}
+
+function workerManageDomain(ctx: ModPluginContext, options: Api2HostOptions, stopped: () => boolean): WorkerManagementCall {
+  const binding = consentBinding(ctx.id);
+  const tokens = new Map<string, { id: string; scope: string }>();
+  const requests: number[] = [];
+  const host = options.workerManagement ?? workerManagementHost;
+  const scope = host?.scope();
+  const saved = (result: { ok: boolean; reason?: string }) => result.ok ? api2Ok(null) : api2Refused("management", result.reason ?? "The operation failed.");
+  return async (method, args, epochCurrent) => {
+    const capability = Object.hasOwn(WORKER_MANAGE_CALLS, method) ? WORKER_MANAGE_CALLS[method] : undefined;
+    const current = () => !stopped() && epochCurrent() && typeof binding === "string" && binding === consentBinding(ctx.id) && !!host && scope === host.scope() && !!capability && options.grants.has(capability) && modHolds(ctx.id, capability);
+    if (!capability || !options.grants.has(capability)) return api2NotGranted(capability ?? "profiles:manage");
+    if (!validWorkerManageCall(method, args)) return api2Refused("bad-call", "The management request has invalid arguments.");
+    if (!current() || !host) return api2Refused("revoked", "The management request is no longer authorized.");
+    if (workerManagementBusy) return api2Refused("busy", "The host is handling another management request.");
+    const now = Date.now();
+    while (requests[0] !== undefined && requests[0] < now - 60000) requests.shift();
+    if (requests.length >= 32) return api2Refused("rate", "A Worker can request management at most 32 times per minute.");
+    requests.push(now);
+    workerManagementBusy = true;
+    try {
+      const confirm = async (plan: string, fingerprint: () => string): Promise<boolean> => {
+        const before = fingerprint();
+        return await host.confirm(ctx.id, plan) && current() && before === fingerprint();
+      };
+      if (method.startsWith("manage.mods.")) {
+        const provider = options.management ?? managementHost;
+        if (!provider) return api2Unavailable("The mod manager is unavailable.");
+        const service = await provider();
+        const result = await workerManageOperation(service, ctx.id, method.slice("manage.mods.".length), args, (plan) => host.confirm(ctx.id, plan), current);
+        return result.status === "ok" ? api2Ok(data(result.value)) : result.status === "refused" ? api2Refused(result.code, result.reason) : api2Refused("confirmation", "The operation needs a player decision.");
+      }
+      if (method.startsWith("manage.profiles.")) {
+        const profiles = ctx.profiles;
+        const access = profiles && workerProfileAccess(profiles);
+        if (!profiles || !access) return api2Unavailable("The profile manager is unavailable.");
+        const list = () => access.list();
+        if (method === "manage.profiles.list") return api2Ok(data(list()));
+        if (method !== "manage.profiles.create" && !list().some((profile) => profile.id === args[0])) return api2Refused("profile", "This mod did not create that profile.");
+        if (method === "manage.profiles.create" && list().length >= 64) return api2Refused("quota", "A mod can create at most 64 profiles.");
+        if (method === "manage.profiles.switchTo" && args[1] !== undefined && (!options.grants.has("saves:manage") || !modHolds(ctx.id, "saves:manage"))) return api2NotGranted("saves:manage");
+        if (!(await confirm(JSON.stringify({ operation: method, args }), () => access.fingerprint(method === "manage.profiles.create" ? undefined : args[0] as string)))) return api2Refused("changed", "The profile request was declined or changed.");
+        if (method === "manage.profiles.switchTo" && args[1] !== undefined && !modHolds(ctx.id, "saves:manage")) return api2NotGranted("saves:manage");
+        if (method === "manage.profiles.create") {
+          const result = profiles.create(args[0] as string);
+          return result.ok ? api2Ok(data(result.value)) : api2Refused("profile", result.reason);
+        }
+        return saved(method === "manage.profiles.rename" ? access.rename(args[0] as string, args[1] as string) : profiles.switchTo(args[0] as string, args[1] as unknown as import("./mod-plugin").ModProfileAction));
+      }
+      if (method.startsWith("manage.saves.")) {
+        const saves = ctx.saves;
+        const access = saves && workerSaveAccess(saves);
+        if (!saves || !access) return api2Unavailable("The character roster is unavailable.");
+        const roster = () => access.listRoster();
+        if (method === "manage.saves.list") {
+          const result = await saves.list();
+          if (!result.ok) return api2Refused("save", result.reason);
+          if (!current() || result.entries.length > 128) return api2Refused("quota", "The character selection is unavailable or too large.");
+          const before = JSON.stringify(roster());
+          const selected = await host.pickSaves(ctx.id, result.entries);
+          if (!selected || !current() || before !== JSON.stringify(roster()) || selected.length > 128 || new Set(selected).size !== selected.length || selected.some((id) => !result.entries.some((entry) => entry.id === id))) return api2Refused("changed", "The character selection was declined or changed.");
+          tokens.clear();
+          return api2Ok(data(result.entries.filter((entry) => selected.includes(entry.id)).map((entry) => {
+            const token = crypto.randomUUID();
+            tokens.set(token, { id: entry.id, scope: host.scope() });
+            return { ...entry, id: token };
+          })));
+        }
+        const selected = tokens.get(args[0] as string);
+        if (!selected || selected.scope !== host.scope()) return api2Refused("save", "The player has not selected that character.");
+        const meta = roster().find((entry) => entry.id === selected.id);
+        if (!meta) return api2Refused("save", "The selected character no longer exists.");
+        const fingerprint = () => JSON.stringify([roster(), access.activeSlot(), access.namePinned(), access.fingerprint?.(selected.id)]);
+        if (!(await confirm(JSON.stringify({ operation: method, character: meta.name, args: args.slice(1) }), fingerprint))) return api2Refused("changed", "The character request was declined or changed.");
+        if (method === "manage.saves.delete") {
+          if (access.activeSlot() === selected.id) return api2Refused("save", "The active character cannot be deleted.");
+          access.deleteSlot(selected.id);
+          tokens.delete(args[0] as string);
+          return api2Ok(null);
+        }
+        if (method === "manage.saves.rename") return saved(await saves.rename(selected.id, args[1] as string));
+        if (!meta.alive) return api2Refused("save", "This character has died.");
+        const request = args[1] as { resumeAutoplayer?: boolean } | undefined;
+        const before = fingerprint();
+        return saved(await access.load(selected.id, () => current() && before === fingerprint(), request?.resumeAutoplayer ? ctx.id : undefined));
+      }
+      if (method.startsWith("manage.options.")) {
+        if (!ctx.state) return api2Unavailable(NO_GAME);
+        const editor = createModOptions(ctx.state, { writable: true, management: true, beforeCheat: () => current() && host.markCheat(ctx.id, ctx.state!), afterChange: () => host.saveOptions() });
+        if (method === "manage.options.get") return api2Ok(data(editor.get()));
+        const change = args[0] as unknown as import("@rpgm-tools/neo-angband-mod-sdk").Api2OptionsChange;
+        const cheat = Object.keys(change.values ?? {}).some((name) => OPTION_ENTRIES.some((entry) => entry.name === name && entry.type === "CHEAT"));
+        if (!(await confirm(JSON.stringify({ operation: method, change, ...(cheat ? { consequence: "Cheat changes permanently make this character unscorable." } : {}) }), () => JSON.stringify(editor.get())))) return api2Refused("changed", "The options request was declined or changed.");
+        const result = editor.set!(change);
+        return result.ok ? api2Ok(data(result.changed)) : api2Refused("options", result.reason);
+      }
+      if (method === "manage.session.save") {
+        if (!ctx.session) return api2Unavailable(NO_GAME);
+        if (!(await confirm("Save the current character.", () => host.scope()))) return api2Refused("changed", "The save request was declined or changed.");
+        return saved(ctx.session.save());
+      }
+      return api2Refused("mechanism", "This operation requires a host mechanism Workers do not have; exit, quit, and wizard require proven detachment from saves.");
+    } catch {
+      return api2Refused("management", "The management request failed.");
+    } finally {
+      workerManagementBusy = false;
+    }
+  };
 }

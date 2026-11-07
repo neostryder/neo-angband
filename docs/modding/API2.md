@@ -65,7 +65,7 @@ A call never throws for a missing permission. `isNotGranted(result)` tells a mis
 | `ui` | Host-drawn panels (`mount`, `patch`) and the mod's key bindings (`keys`). | `ui:panel.mount`, `keymap:write` |
 | `store` | `prefs`, kept apart from any character, and `character`, kept in the current character's save. | None |
 | `net` | Requests to the hosts the manifest names, with credentials passed by reference. Present only when the manifest asks for a `network:` permission. | `network:<host>` |
-| `manage` | Profiles and session control. First-party mods only. | `profiles:manage`, `session:control` |
+| `manage` | Host-confirmed profile, save, option, and character operations for Workers; broader legacy management for first-party in-process mods. | `profiles:manage`, `session:control`, `options:manage`, `saves:manage` |
 | `truth` | Every monster and the real map. Any in-process mod the player allows it. | `state:map-actual.read`, or `state:monsters-actual.read` for monsters and races only |
 
 ### What `view` shows
@@ -209,18 +209,6 @@ A request to a host the manifest does not name answers `not-granted` with `netwo
 
 ## In a Worker
 
-Workers granted `mod:authoring` can import `@rpgm-tools/neo-angband-mod-sdk/authoring`. The host stages the fixed authoring, blueprint, field, provenance, and reference modules as source alongside the mod's own modules. Functions such as `templateRecord`, `suggestFields`, and `checkRecords` execute inside the Worker on data the mod supplies. This library provides no installation, session-loading, or host-call path. The staging size and module limits include the library, and the host rechecks the grant before releasing the staged graph. Revocation stops the Worker; the library's local computation has the same CPU and memory limits as other Worker code.
-
-Workers with `ui:messages.replace`, `ui:sidebar.replace`, or `ui:status.replace` can call the matching `mod.ui.messages.replace(lines)`, `mod.ui.sidebar.replace(lines)`, or `mod.ui.status.replace(lines)`. A line is `{ text, style? }`, with `style` from `normal`, `muted`, `warning`, `danger`, and `good`. The host draws text with `textContent`, accepts at most 64 lines, 512 characters per line, and 4096 characters per output, and accepts `null` to restore the game's region. The text can hide warnings or misstate character status.
-
-Workers with `ui:region.create` can call `mod.ui.region.create({ id, rect: { col, row, cols, rows }, lines })` and `mod.ui.region.remove(id)`. Reusing an owned id updates its text and rectangle. The host validates the rectangle against the current character grid and allows at most eight text outputs per Worker, including named replacements. Output cannot receive input, choose a layer, or cover host dialogs. The broker's message and call-rate limits apply to every update. The host removes output on teardown and hides it on revocation, modal screens, or a host dialog.
-
-Workers with `options:write` can call `await mod.options.set({ values, hitpointWarn, delayFactor, lazymoveDelay })`. The host accepts interface booleans and bounded delays only, validates the entire change before mutation, and rejects birth, cheat, score, and unknown options. This path does not expose `manage`.
-
-Workers with `keymap:edit` get asynchronous `mod.keybindings.keyset()`, `list()`, `commands()`, `set(trigger, action, replace?)`, `remove(trigger)`, `capture()`, and `cancelCapture()`. Every operation uses the current keyset. Actions hold at most 256 characters. Replacing a conflicting binding requires `replace: true`. The host reserves Escape, control characters, modifier chords, F5, F11, and F12. Capture ends on a host dialog, cancellation, teardown, or a ten-second timeout. Revocation or an expired broker epoch drops a pending capture result.
-
-Workers with `display:filter` can call `await mod.display.filter({ name, amount })` or pass `null` to clear their filter. The host accepts `grayscale`, `sepia`, and `invert` from 0 to 1, `brightness` and `contrast` from 0.25 to 2, and `saturate` from 0 to 2. The host constructs the filter, applies it to the game canvas, and suspends it during host dialogs. CSS text, resource URLs, and functions are not accepted. These Worker additions use serialized data and do not expose live presentation objects.
-
 Running in a Worker is a choice a mod makes for isolation. Its code runs apart from the game, and the game reaches it only through messages. It is not the only way for a mod to change the game, and nothing here limits what an in-process mod can do.
 
 A mod with `"runtime": "worker"` default-exports the same definition and gets the same domains, results and known-only data as an in-process mod. Its manifest names an `api` range that API 2 satisfies and the module to start in `entry`. Each call becomes a message to the game's broker (`packages/web/src/mod-worker/host.ts`), which serves it with the in-process host and posts back a copy of the answer. The Worker runs in a sandbox with no network and none of the game's storage ([WORKER_ISOLATION.md](WORKER_ISOLATION.md)).
@@ -250,7 +238,9 @@ A third-party (public) mod can use the features marked Yes in the table once the
 | Commands | `command:add` | Yes |
 | Rows on the title screen | `ui:title` | Yes |
 | Rows in the game menu | `ui:menu.row` | Yes |
-| Profile and session management | `profiles:manage`, `session:control` | No |
+| Profile and session management | `profiles:manage`, `session:control` | Yes, mod-owned profiles and host-confirmed saving only |
+| Game option management | `options:manage` | Yes, host-confirmed changes; birth and score options stay locked, and cheat changes persist an unscorable mark first |
+| Character management | `saves:manage` | Yes, player-selected characters with opaque ids and host confirmation on load, rename, and delete |
 | Hidden state (truth) reads | Either truth grant permanently makes affected characters unscorable, for every author; a public Worker gets no truth domain | No |
 | Raw engine access | none | No |
 | Raw presentation replacement | none | No |
@@ -271,9 +261,15 @@ A first-party in-process mod that the game lets see the real map can ask for it 
 
 `meta.tier` reports measured identity separately from these permissions. A public mod with consent to `truth` still reports `"public"`.
 
-`truth` is built for any in-process mod the player has allowed `state:map-actual.read`. `manage` is built only for a first-party mod whose `FIRST_PARTY_ORIGINS` entry names the capability (see section 4 of `MOD_LIFECYCLE.md`). A mod that declares one it may not hold loads without it, and the Mods screen says why.
+`truth` is built for any in-process mod the player has allowed `state:map-actual.read`. A Worker can hold `profiles:manage`, `session:control`, `options:manage`, and `saves:manage`, regardless of author, after separate Core confirmation. Its `manage` proxy contains only the operations below. Broader in-process management still requires a first-party mod whose `FIRST_PARTY_ORIGINS` entry names the capability. A mod that declares a permission it cannot hold loads without it, and the Mods screen says why.
 
-`manage.profiles` lists and creates player profiles, sets which mods a profile enables, and switches profile, under `profiles:manage`. A mod-created copy carries only enabled-mod selections, with no consent decisions, pins, settings, or private preferences. Permission decisions must belong to the destination profile before the mod changes its enabled set or requests character creation there. Existing profiles are unchanged. `manage.session` saves, exits to the title screen or quits under `session:control`, without asking the player to confirm, so a mod asks first in its own panel.
+The in-process `manage.profiles` lists and creates player profiles, sets which mods a profile enables, and switches profile, under `profiles:manage`. A mod-created copy carries only enabled-mod selections, with no consent decisions, pins, settings, or private preferences. Permission decisions must belong to the destination profile before the mod changes its enabled set or requests character creation there. Existing profiles are unchanged. `manage.session` saves, exits to the title screen or quits under `session:control`, without asking the player to confirm, so a mod asks first in its own panel.
+
+Worker management calls are bounded JSON requests and allow one host operation at a time, with at most 32 requests per mod per minute. `manage.profiles.list/create/switchTo/rename` access only profiles the caller created, with a maximum of 64 profiles per mod. Creation accepts only a name, with no copy source. The SDK's current profile type does not declare the Worker `rename` method; TypeScript callers need a local type for that runtime method. A character-creation switch requires the destination profile's own stored permission decisions and `saves:manage`; session decisions from another profile do not qualify. `manage.session.save` asks the player to save. Worker exit-to-title, quit, wizard, install, session-pack loading, screen replacement, engine access, and presentation remain refused because their isolated mechanisms are absent; leaving or wizard operation also needs proven detachment from saves.
+
+`manage.options.get/set` reads options and proposes a validated transaction. Every change asks the player, cheat changes disclose their permanent scoring consequence, and the host persists `NOSCORE.DEBUG` and `modNoscore` before changing a cheat option. Birth and score options remain locked. `manage.saves.list` opens a host-drawn picker with unchecked character choices, limited to 128 roster entries. Only selected entries return, with fresh opaque ids that expire on the next selection or profile/session change. A raw slot id never works. `load`, `rename`, and `delete` each ask again; active-slot deletion remains refused after confirmation. `load(id, { resumeAutoplayer: true })` still waits for the separate controller consent dialog at the resumed character's boot.
+
+Under `profiles:manage`, a Worker can read `manage.mods.snapshot()`, which returns only its own `{ id, name }`. It can request `disable`, `setSettingValue`, or `setSectionChoice` for its own id, select itself with `setConflictOverride`, or withdraw third-party consent with `setThirdPartyConsent(false)`. Every mutation uses a host-drawn confirmation naming the caller and changes. The host binds approval to the current measured payload and configuration; a changed plan, revoked grant, or stale epoch refuses the operation. No Worker method records permissions, resolves confirmation ids, enables code, copies scoped storage, or installs mods.
 
 The mod-facing management snapshot, subscription, and refresh responses omit stored consent, settings, payload digests, and pending confirmations. Mods cannot resolve confirmations or change the third-party consent switch. Recording permissions always requests a host decision, even when every requested grant is already held; a session grant never becomes a stored decision through that request alone.
 
@@ -296,4 +292,4 @@ Most of the API 1 context has a direct home in API 2. `API1_CONTEXT_MAP` in `pac
 | `ctx.prefs`, `ctx.characterStore` | `store.prefs`, `store.character` |
 | `ctx.data`, `ctx.assetUrl`, `ctx.composedRecords` | `content.own`, `content.asset`, `content.records` |
 | `ctx.net` | `net`, with credentials by reference |
-| `ctx.profiles`, `ctx.session` | `manage`, first-party only |
+| `ctx.profiles`, `ctx.session` | `manage`; Workers receive the bounded operations below |

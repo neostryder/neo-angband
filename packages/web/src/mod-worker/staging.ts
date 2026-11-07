@@ -13,8 +13,7 @@
  * index. Dependencies come first and the entry is last, so every index points
  * backwards.
  *
- * The host's fixed pure authoring graph is the sole library exception, gated by
- * mod:authoring. Every other specifier must resolve to a blob: URL
+ * Only the mod's own files are staged. A specifier must resolve to a blob: URL
  * of the game's own origin (a folder picked in a browser, already resolved by
  * mod-modules.ts) or to a file under the entry's own folder on the game's origin
  * (the desktop shell and a served mods directory). A bare package name, another
@@ -23,13 +22,6 @@
  */
 
 import { findSpecifiers } from "../mod-modules";
-
-const AUTHORING_IMPORT = "@rpgm-tools/neo-angband-mod-sdk/authoring";
-const AUTHORING_PREFIX = "neo-authoring:///";
-/* The fixed pure graph has no host service, installation, or session dependency. */
-const authoringSources = import.meta.glob<string>("../../../mod-sdk/dist/{authoring,blueprints,fields,provenance,references}.js", {
-  query: "?raw", import: "default", eager: true,
-});
 
 /** One staged module: source text runs, and earlier-module indexes where a specifier stood. */
 export interface StagedModule {
@@ -55,7 +47,6 @@ export interface StageOptions {
   readonly origin: string;
   /** One module's text, or null when it cannot be read. */
   readonly read: (url: string) => Promise<string | null>;
-  readonly authoring?: () => boolean;
 }
 
 /**
@@ -75,15 +66,14 @@ export async function stageModuleGraph(entryUrl: string, options: StageOptions):
   const chain: string[] = [];
   let size = 0;
 
-  let usesAuthoring = false;
-  const build = async (url: URL, label: string, library = false): Promise<number> => {
+  const build = async (url: URL, label: string): Promise<number> => {
     const already = done.get(url.href);
     if (already !== undefined) return already;
     if (chain.includes(url.href)) {
       const importer = chain.at(-1);
       throw new Error(`${importer === undefined ? label : labelFor(new URL(importer), folder)} and ${label} import each other, and a Worker mod's modules cannot form a cycle`);
     }
-    const text = library ? authoringSources[`../../../mod-sdk/dist/${url.pathname.slice(1)}`] ?? null : await options.read(url.href);
+    const text = await options.read(url.href);
     if (text === null) throw new Error(`${label} could not be read`);
     size += text.length;
     if (size > MAX_STAGED_SOURCE) throw new Error(`the Worker mod's scripts are larger than ${String(MAX_STAGED_SOURCE)} characters`);
@@ -91,16 +81,11 @@ export async function stageModuleGraph(entryUrl: string, options: StageOptions):
     const parts: (string | number)[] = [];
     let last = 0;
     for (const found of findSpecifiers(text)) {
-      const authoring = found.spec === AUTHORING_IMPORT;
-      if (authoring && options.authoring?.() !== true) throw new Error("this mod lacks mod:authoring");
-      const target = authoring ? new URL(`${AUTHORING_PREFIX}authoring.js`) : resolveSpecifier(found.spec, url);
-      const trusted = authoring || library;
-      if (target === null || (trusted ? target.protocol !== "neo-authoring:" || target.host !== "" || target.search !== "" || target.hash !== "" ||
-        !Object.hasOwn(authoringSources, `../../../mod-sdk/dist/${target.pathname.slice(1)}`) : !ownUrl(target, options.origin, folder))) {
+      const target = resolveSpecifier(found.spec, url);
+      if (target === null || !ownUrl(target, options.origin, folder)) {
         throw new Error(`${label} imports "${found.spec}", which is not one of the mod's own files`);
       }
-      if (authoring) usesAuthoring = true;
-      const index = await build(target, trusted ? `host authoring/${target.pathname.slice(1)}` : labelFor(target, folder), trusted);
+      const index = await build(target, labelFor(target, folder));
       parts.push(text.slice(last, found.start), index);
       last = found.end;
     }
@@ -113,7 +98,6 @@ export async function stageModuleGraph(entryUrl: string, options: StageOptions):
   };
 
   await build(entry, labelFor(entry, folder));
-  if (usesAuthoring && options.authoring?.() !== true) throw new Error("mod:authoring was revoked while staging");
   return { modules, size };
 }
 

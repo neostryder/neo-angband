@@ -6,7 +6,7 @@ API 1 plugins are not covered. They run in the game's page with the game's own a
 
 ## How a Worker mod starts
 
-1. The game reads every module named by literal imports reachable from the mod's entry (`packages/web/src/mod-worker/staging.ts`). The mod's own files qualify: a file under the entry's folder on the game's origin, or a blob: URL the game made for a mod folder picked in a browser. The sole package exception is `@rpgm-tools/neo-angband-mod-sdk/authoring`, which stages a fixed pure library only with `mod:authoring`. Every other bare package name, another origin, a data: URL, a path out of the folder, a query string or fragment, or a cycle is refused before any code runs, and the message names the file at fault. A graph, including the authoring library, holds at most 256 files and 16,777,216 characters of source (16 Mi).
+1. The game reads every module named by literal imports reachable from the mod's entry (`packages/web/src/mod-worker/staging.ts`). Only the mod's own files qualify: a file under the entry's folder on the game's origin, or a blob: URL the game made for a mod folder picked in a browser. A bare package name, another origin, a data: URL, a path out of the folder, a query string or fragment, or a cycle is refused before any code runs, and the message names the file at fault. A graph holds at most 256 files and 16,777,216 characters of source (16 Mi).
 2. The game adds a hidden `<iframe sandbox="allow-scripts">` whose document comes from `srcdoc` (`packages/web/src/mod-worker/isolation.ts`). Without `allow-same-origin` the frame's origin is opaque. Its document sets a Content Security Policy before its one script runs.
 3. The game transfers a control MessagePort in a hello message with a fresh nonce embedded in the frame. The frame checks the parent and nonce, accepts one hello, and echoes the nonce on the port. Only after that acknowledgment does the game send the module text and a second port, over the control port. A wrong nonce, wrong source, or replay cannot start another Worker. No module source is sent to the frame window.
 4. The frame turns each module into a `data:` URL, writing each import's own `data:` URL where the import stood, and starts a classic Worker from a `data:` URL. The Worker inherits the opaque origin and the frame's policy.
@@ -17,10 +17,6 @@ From then on the frame retains both page-facing ports. The Worker sends JSON tex
 A mod that fails any step fails to start, with a problem line on the Mods screen. So does a Worker that has not answered as ready within 3 seconds. Nothing falls back to an unisolated Worker.
 
 ## The three layers
-
-Worker text replacements and grid regions carry only bounded line records, fixed style tokens, and grid coordinates. The host draws them with `textContent`, clips them to validated geometry, caps them at eight outputs, and hides them whenever a host dialog or another modal screen owns the display. Workers receive no DOM, canvas, callback, or transferable handle for these regions.
-
-The simple Worker grants add bounded data paths for interface options, edits in the current keyset, and named visual filters. The broker checks its connection's grants and the host's current grants before dispatch. The host rechecks a pending key capture before returning it. Host dialogs cancel capture and suspend mod panels and filters; permission dialogs also prevent Worker controller key and decision delivery. A Worker never supplies CSS for a filter or receives a live key event through these paths. [API2.md](API2.md) lists the methods and bounds.
 
 | Layer | What it stops | Where |
 |---|---|---|
@@ -73,6 +69,14 @@ Run them with `pnpm exec playwright test tests/e2e/mod-worker-isolation.spec.ts`
 - **BroadcastChannel without the lockdown.** It opens, scoped to the frame's opaque origin, which each sandboxed frame gets afresh. Two mods running at once were not tested against each other; the lockdown removes the API in any case.
 - **Empty stores of its own.** WebKit gives the Worker an empty Cache Storage of its own. It holds nothing of the game's and is gone with the frame.
 - **Engine bugs.** This is not a VM or a process boundary. It depends on Chromium, Gecko and WebKit enforcing the sandbox and the policy, and on the desktop app's Electron being kept current.
+
+## Worker management operations
+
+The broker permits `manage.profiles.list/create/switchTo/rename` under `profiles:manage`, `manage.session.save` under `session:control`, `manage.options.get/set` under `options:manage`, and `manage.saves.list/load/rename/delete` under `saves:manage`, for every author after player consent. Profiles are limited to the caller's own creations; creation accepts no copy source, and character creation requires destination-local stored consent. The character picker returns only player-selected entries with host-issued opaque ids, never raw slot ids. Every mutation has a host-drawn confirmation, and deletion refuses the active character after confirmation too. Cheat changes persist an unscorable mark before applying the option. Birth and score options stay locked.
+
+`profiles:manage` also permits an identity-only `manage.mods.snapshot`, changes to the caller's own disable, setting, section, and conflict choices, and withdrawal of third-party consent. These mutations require a host confirmation and do not write capability consent. The broker validates exact argument shapes and sizes, keeps one management operation in flight globally, and permits 32 management requests per mod per minute. It checks caller identity, epoch, current grant, measured payload binding, profile/session scope, and plan stability before committing. A new character selection invalidates earlier opaque ids. Worker controller resume retains its separate consent dialog.
+
+Workers cannot resolve confirmations, write permission decisions, enable or install code, load session packs, replace management screens, or invoke engine or presentation objects through this surface. Quit, exit-to-title, and wizard remain refused until detachment from saves is proven.
 
 ## Refused permissions
 

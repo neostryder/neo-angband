@@ -460,7 +460,8 @@ import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
 import { MOD_WORKER_PROTOCOL_VERSION } from "./mod-worker/protocol";
 import { openTakenScreen } from "./mod-screens";
-import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2CommandPusher, setApi2DirectionPrompt, setApi2ManagementHost, setApi2TruthConsent } from "./mod-api2-host";
+import { createApi2Host, runApi2KeymapCommand, setApi2CommandHost, setApi2CommandPusher, setApi2DirectionPrompt, setApi2ManagementHost, setApi2TruthConsent, setApi2WorkerManagementHost } from "./mod-api2-host";
+import { suspendModPanels } from "./panel-runtime";
 import { classicManager } from "./mod-manager/classic-service";
 import { C_FG, C_WARN } from "./mod-manager/classic-colors";
 import { recordTruthUse, requestTruthConsent, setTruthSaveWriter, type TruthCapability } from "./mod-truth-consent";
@@ -485,7 +486,6 @@ import {
   revokeModPanels,
   setModPanelVisualFilter,
   setPanelGameSurface,
-  setModHostDialogOpen,
 } from "./panel-runtime";
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
 import type { SessionTaint } from "./mod-taint";
@@ -3265,7 +3265,6 @@ let modalDepth = 0;
  */
 function adjustModalDepth(delta: 1 | -1): void {
   modalDepth += delta;
-  setModHostDialogOpen(modalDepth > 0);
   subwindowShell.setModalActive(modalDepth > 0);
 }
 
@@ -7475,6 +7474,7 @@ setModSavesControl(createModSaves({
   activeSlot: attachedSlot,
   namePinned: argForceName,
   confirmDelete: (meta) => openModal(() => confirmDelete(term, meta, true)),
+  fingerprint: readSlotSave,
   deleteSlot,
   rename: (_id, name) => renamePlayer(name)
     ? { ok: true }
@@ -7502,36 +7502,111 @@ setModSavesControl(createModSaves({
     newGame();
     return { ok: true };
   },
-  load: async (id) => {
+  load: async (id, authorized, resumeModId) => {
     if (!readSlotSave(id)) return { ok: false, reason: "This character has no save to load." };
     if (await refusedAsPlayedElsewhere(id)) {
       return { ok: false, reason: "This character is open in another window." };
     }
-    if (attachedSlot() && !persistSave()) {
-      return { ok: false, reason: "The current character could not be saved." };
-    }
-    detachSlot();
-    /* #430: a load armed by its autoplayer (savesFor's arm, which sets
-     * rollOnRequest) is carried across the reload to this character's boot. */
-    const loadOn = rollOnRequest;
-    rollOnRequest = null;
-    try {
-      if (loadOn) reloadStorage.setItem(AUTOPLAYER_LOAD_ON_KEY, JSON.stringify({ mod: loadOn, slot: id }));
-      else reloadStorage.removeItem(AUTOPLAYER_LOAD_ON_KEY);
-    } catch {
-      /* storage disabled: the load boot asks, which is the safe direction */
-    }
-    if (!(await resumeSelected(id))) {
+    let refusal = "The character load was canceled.";
+    const commit = (): boolean => {
+      if (authorized && !authorized()) { refusal = "The character load is no longer authorized."; return false; }
+      if (resumeModId !== undefined && installedController?.id !== resumeModId) { refusal = "Only the current controller can request resume."; return false; }
+      if (attachedSlot() && !persistSave()) {
+        refusal = "The current character could not be saved.";
+        return false;
+      }
+      detachSlot();
+      /* #430: a load armed by its autoplayer (savesFor's arm, which sets
+       * rollOnRequest) is carried across the reload to this character's boot. */
+      const loadOn = resumeModId ?? rollOnRequest;
+      rollOnRequest = null;
+      try {
+        if (loadOn) reloadStorage.setItem(AUTOPLAYER_LOAD_ON_KEY, JSON.stringify({ mod: loadOn, slot: id }));
+        else reloadStorage.removeItem(AUTOPLAYER_LOAD_ON_KEY);
+      } catch {
+        /* storage disabled: the load boot asks, which is the safe direction */
+      }
+      return true;
+    };
+    if (!(authorized ? await resumeSelected(id, commit) : commit() && await resumeSelected(id))) {
       try {
         reloadStorage.removeItem(AUTOPLAYER_LOAD_ON_KEY);
       } catch {
         /* nothing to release without storage */
       }
-      return { ok: false, reason: "The character load was canceled." };
+      return { ok: false, reason: refusal };
     }
     return { ok: true };
   },
 }));
+
+setApi2WorkerManagementHost({
+  scope: () => JSON.stringify([profileStore.activeId(), attachedSlot()]),
+  confirm: async (id, plan) => (await drawWorkerManagement(id, plan)) !== null,
+  pickSaves: (id, entries) => drawWorkerManagement(id, "Choose the characters this mod can manage. Each later load, rename, or deletion asks again.", entries),
+  markCheat: (_id, current) => {
+    if (current !== state || birthPending || suppressSave || !attachedSlot() || dead || sessionTaint()) return false;
+    state.actor.player.noscore = markNoscore(state.actor.player.noscore, NOSCORE.DEBUG);
+    game.manifest.modNoscore = true;
+    return persistSave(true, true);
+  },
+  saveOptions: () => autosave(true),
+});
+
+async function drawWorkerManagement(id: string, plan: string, entries?: readonly import("./mod-plugin").SaveEntry[]): Promise<readonly string[] | null> {
+  const mod = activeModCode().plugins.find((loaded) => loaded.id === id);
+  if (!mod || typeof HTMLDialogElement.prototype.showModal !== "function") return null;
+  const restore = suspendModPanels();
+  const dialog = document.createElement("dialog");
+  const clean = (value: string) => value.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, "").slice(0, 120);
+  const heading = document.createElement("h2");
+  heading.textContent = `Mod request: ${clean(mod.manifest.name)} (${clean(id)})`;
+  const identity = document.createElement("p");
+  identity.textContent = `SHA-256: ${modPayloadDigest(id) ?? "unavailable"}`;
+  const description = document.createElement("p");
+  description.textContent = plan;
+  dialog.append(heading, identity, description);
+  dialog.style.cssText = "color:#fff;background:#000;max-width:42rem;max-height:85vh;overflow:auto;white-space:pre-wrap";
+  const choices = new Map<string, HTMLInputElement>();
+  for (const entry of entries ?? []) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.checked = false;
+    const name = document.createElement("span");
+    name.textContent = `${clean(entry.name)} - ${clean(entry.race)} ${clean(entry.cls)}, level ${entry.level}, last played ${entry.lastPlayed}`;
+    label.append(input, name);
+    label.style.display = "block";
+    dialog.append(label);
+    choices.set(entry.id, input);
+  }
+  const accept = document.createElement("button");
+  accept.textContent = "Apply";
+  const decline = document.createElement("button");
+  decline.textContent = "Cancel";
+  dialog.append(accept, decline);
+  try {
+    document.body.append(dialog);
+    return await new Promise<readonly string[] | null>((resolve) => {
+      let done = false;
+      const finish = (accepted: boolean) => {
+        if (done) return;
+        done = true;
+        resolve(accepted ? [...choices].filter(([, input]) => input.checked).map(([slot]) => slot) : null);
+      };
+      accept.addEventListener("click", () => finish(true));
+      decline.addEventListener("click", () => finish(false));
+      dialog.addEventListener("cancel", (event) => { event.preventDefault(); finish(false); });
+      dialog.addEventListener("close", () => finish(false));
+      dialog.addEventListener("keydown", (event) => event.stopPropagation());
+      dialog.showModal();
+      decline.focus();
+    });
+  } finally {
+    dialog.remove();
+    restore();
+  }
+}
 
 /**
  * Rename a character that is not in play: its stored save (stored-rename.ts)
@@ -13357,11 +13432,12 @@ async function refusedAsPlayedElsewhere(id: string): Promise<boolean> {
 }
 
 /** Reload to resume the chosen character (clears the fresh-start params). */
-async function resumeSelected(id: string): Promise<boolean> {
+async function resumeSelected(id: string, beforeCommit?: () => boolean): Promise<boolean> {
   const stored = readSlotSave(id);
   const saved = stored ? decodeSavedGame(b64ToBytes(stored), undefined, SAVE_CODECS).save?.modList : undefined;
   const decision = await prepareSaveModList(term, await modManagerDeps(), saved);
   if (!decision.load) return false;
+  if (beforeCommit && !beforeCommit()) return false;
   reloadStorage.setItem(MOD_SAVE_APPROVAL_KEY, serializeDocument(modSaveApprovalFormat, { slot: id, revision: defaultModStore().configurationRevision(), allowOverwrite: decision.allowOverwrite }, { compact: true }));
   setActiveId(id);
   try {
@@ -13732,7 +13808,7 @@ async function confirmBorgActivation(): Promise<boolean> {
 async function confirmControllerActivation(id: string): Promise<boolean> {
   const loaded = controllerCandidates().find((candidate) => candidate.id === id);
   if (!loaded) return false;
-  if (loaded.tier.trust === "first-party") return confirmBorgActivation();
+  if (loaded.tier.trust === "first-party" && loaded.tier.execution !== "worker") return confirmBorgActivation();
   return await drawModControllerConsent(id, loaded.manifest.name) && controllerCandidates().some((candidate) => candidate.id === id);
 }
 
@@ -16265,7 +16341,6 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
        * load the game's URLs. */
       const graph = await stageModuleGraph(loaded.entryUrl, {
         origin: location.origin,
-        authoring: () => modHolds(loaded.id, "mod:authoring") && loaded.permissionBinding === consentBinding(loaded.id) && defaultModStore().getConsent(loaded.id).includes("mod:authoring"),
         read: async (url) => {
           const response = await fetch(url);
           return response.ok ? await response.text() : null;

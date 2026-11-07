@@ -236,6 +236,7 @@ const TIER_WORDS: Readonly<Record<CapabilityTier, string>> = {
 
 /** Who may hold the capabilities of one namespace outside the public one. */
 interface SeamRule {
+  readonly worker?: readonly string[];
   /** Any mod running code in the page may hold it, with the player's consent. */
   readonly inProcess: boolean;
   /** A first-party mod whose FIRST_PARTY_ORIGINS entry names the capability may hold it. */
@@ -252,16 +253,13 @@ interface SeamRule {
  *
  * What an in-process mod may do in the game is not narrowed by its tier:
  * review, the unreviewed notice and the Worker sandbox are where safety comes
- * from. The one exception is a capability that is an escape route out of the
- * mod's own reach: `manage` can install or turn on other code, so it stays with
- * the game's own mods, each named for it in FIRST_PARTY_ORIGINS, and is
- * confirmed on its own Core-drawn question. `truth` (the real map) goes to any
- * in-process mod the player allows; its consent sentence says the mod sees what
- * the character has not found. A Worker mod gets either only when it is a
- * listed first-party mod. A namespace missing from this table is held by nobody.
+ * from. Workers of every author can request the named serialized management
+ * operations after a separate Core-drawn question. Broader management still
+ * requires a listed first-party in-process mechanism. Truth requires its own
+ * mechanism. A namespace missing from this table is held by nobody.
  */
 const SEAM_POLICY: Readonly<Record<string, SeamRule>> = Object.freeze({
-  manage: Object.freeze({ inProcess: false, originListed: true, confirm: true }),
+  manage: Object.freeze({ inProcess: false, originListed: true, confirm: true, worker: ["profiles:manage", "session:control", "options:manage", "saves:manage"] }),
   truth: Object.freeze({ inProcess: true, originListed: true, confirm: false }),
 });
 
@@ -276,9 +274,10 @@ function entryOf(capability: string): CapabilityEntry | undefined {
 
 /** Why the seam policy keeps `capability` from a mod of this tier, or null when it does not. */
 function seamRefusal(entry: CapabilityEntry, capability: string, tier: ModTier): string | null {
-  if (entry.namespace === "manage" && tier.execution !== "in-process") return "this needs an in-process management mechanism Workers do not have yet";
+  if (entry.namespace === "manage" && tier.execution === "data") return "this management operation requires executable mod code";
   const rule = SEAM_POLICY[entry.namespace];
   if (!rule) return "this capability has no host mechanism yet";
+  if (entry.namespace === "manage" && tier.execution === "worker") return rule.worker?.includes(capability) ? null : "this management operation has no isolated Worker mechanism yet";
   if (rule.inProcess && tier.execution === "in-process") return null;
   if (!rule.originListed || tier.trust !== "first-party") return "this needs a brokered mechanism Workers do not have yet";
   if (!tier.seams.includes(capability)) return "this capability has no enabled host mechanism for this mod";
@@ -290,6 +289,7 @@ function seamRefusal(entry: CapabilityEntry, capability: string, tier: ModTier):
  * before it is granted (SEAM_POLICY `confirm`).
  */
 export function needsOwnConfirmation(capability: string): boolean {
+  if (capability === "saves:manage") return true;
   const entry = entryOf(capability);
   return entry !== undefined && SEAM_POLICY[entry.namespace]?.confirm === true;
 }
@@ -307,7 +307,6 @@ export function tierRefusal(capability: string, tier: ModTier): string | null {
   if (capability === "engine:access" && tier.trust !== "first-party" && !tier.developerInProcess) return "this needs a live engine mechanism Workers do not have yet";
   const entry = entryOf(capability);
   if (!entry) return "the game does not know this permission";
-  if (capability === "mod:authoring" && tier.execution === "worker" && entry.tiers.includes("worker")) return null;
   if (entry.namespace !== "public") return seamRefusal(entry, capability, tier);
   if (tier.execution !== "worker") return null;
   if (!entry.tiers.includes(tier.capabilityTier)) {

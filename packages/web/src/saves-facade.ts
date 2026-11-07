@@ -7,7 +7,8 @@ import type { ModSaves, SaveEntry, SaveListResult, SaveResult } from "./mod-plug
 export interface SavesDoorDeps {
   onChange?: (listener: Parameters<NonNullable<ModSaves["onChange"]>>[0]) => () => void;
   listRoster(): CharMeta[];
-  load(id: string): Promise<SaveResult>;
+  load(id: string, authorized?: () => boolean, resumeModId?: string): Promise<SaveResult>;
+  fingerprint?(id: string): string | null;
   rename(id: string, name: string): SaveResult;
   /** Rename a character that is not in play by rewriting its stored save. */
   renameStored?(id: string, name: string): SaveResult;
@@ -24,9 +25,16 @@ export type CreateLike = NonNullable<Parameters<NonNullable<ModSaves["create"]>>
 const refused = (reason: string): SaveResult => ({ ok: false, reason });
 const listRefused = (reason: string): SaveListResult => ({ ok: false, reason });
 
+const WORKER_SAVES = Symbol("worker-saves");
+
+export function workerSaveAccess(saves: ModSaves): SavesDoorDeps | undefined {
+  return (saves as ModSaves & { [WORKER_SAVES]?: SavesDoorDeps })[WORKER_SAVES];
+}
+
 export function createModSaves(deps: SavesDoorDeps): ModSaves {
   const find = (id: string): CharMeta | undefined => deps.listRoster().find((meta) => meta.id === id);
   return Object.freeze({
+    [WORKER_SAVES]: deps,
     ...(deps.onChange ? { onChange: (listener: Parameters<NonNullable<ModSaves["onChange"]>>[0]) => deps.onChange!(listener) } : {}),
     async list() {
       try {
