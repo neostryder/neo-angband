@@ -8,6 +8,8 @@ Core is a faithful reproduction of Angband 4.2.6: everything in official Angband
 
 ## 0. Grid rendering is a surface contract
 
+The Worker broker exposes `options:write`, `keymap:edit`, and `display:filter` through serialized calls. The options path rejects birth, cheat, and score options. The keybinding path edits only the current keyset, reserves host recovery controls, and cancels capture when a host dialog opens. Filters come from a fixed host set with bounded numeric parameters. Host dialogs suspend mod panels and filters. These mechanisms do not expose the management domain, DOM objects, canvas handles, or host functions; [API2.md](API2.md) documents their call shapes.
+
 The web shell's 80x24 renderer is now consumed as `GridSurface`
 (`packages/web/src/term.ts`), rather than as the canvas-specific `GlyphTerm`.
 It carries the operations a text grid actually needs: drawing cells and strings,

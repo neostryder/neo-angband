@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+- [Visible] [Security] **Worker mods can request interface options, keybinding edits, and named visual filters.** The broker rejects birth, cheat, and score option changes, limits keybinding edits to the current keyset, protects recovery keys, and cancels capture and hides mod presentation during host dialogs.
+
 - [Visible] [Security] **Controller and hidden-information marks apply to every mod author.** Every mod controller makes its character permanently unscorable and its save nondeterministic. Either truth grant permanently marks affected characters unscorable, and truth reads require the mark to be saved before a reply. Saves and run reports retain capability-use provenance independently of truncated controller history and mod-owned bags. Consent text discloses unseen creatures and the map grant's monster and race access. Worker capability eligibility is unchanged.
 - [Visible] [Security] **First-party API 2 engine and presentation access now honors declared permissions and player refusals.** Live presentation facilities require their own grants, and profile roll-on waits for controller confirmation for every author. Worker capabilities and execution tiers stay unchanged.
 - [Visible] [Security] **Desktop network and backup access now require native consent for each installation.** The main process binds authority to the mod id and payload digest, approves network destinations, cancels revoked requests, and isolates backup files in per-installation subfolders. Backup listing returns names and sizes, and reading file text requires a separate native confirmation. The game asks again after restart; existing backup folders and credential records do not grant the new installation access.

@@ -24,6 +24,12 @@ const granting = (...capabilities: string[]): CapabilitySet =>
   CapabilitySet.fromManifest({ id: "m", name: "M", version: "1.0.0", shape: "plugin", capabilities });
 
 describe("the capability vocabulary", () => {
+  it("opens only the implemented simple option, keybinding, and filter grants", () => {
+    for (const capability of ["options:write", "keymap:edit", "display:filter"]) expect(capabilityTiers(capability)).toContain("worker");
+    for (const capability of ["options:manage", "display:replace", "ui:*.replace", "debug:wizard", "engine:access"]) expect(capabilityTiers(capability)).not.toContain("worker");
+    expect(consentText(matchCapability("options:write")!)).toContain("birth, cheat, or score");
+    expect(consentText(matchCapability("keymap:edit")!)).toContain("permission-dialog input");
+  });
   it("discloses unseen monsters, race truth, and permanent scoring consequences without opening Workers", () => {
     const map = consentText(matchCapability("state:map-actual.read")!);
     const monsters = consentText(matchCapability("state:monsters-actual.read")!);

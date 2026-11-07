@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MFLAG,
+  OPTION_ENTRIES,
   composeModHooks,
   loc,
   GlyphTable,
@@ -43,6 +44,10 @@ import { API2_POLICY_KINDS, CapabilitySet, MOD_PERMISSION_TEXT, type Api2ModDefi
 import { api2Plugin, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "../mod-api2-shim";
 import { createApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
+import { browserKeydown } from "../input-door";
+import { clearKeymaps, keymapEntries } from "../keymap-store";
+import { suspendModPanels } from "../panel-runtime";
+import { createModOptions } from "../mod-options";
 import { ModHealthMonitor, type ModSwitchOff } from "../mod-health";
 import type { ModPrefs } from "../mod-prefs";
 import { installModWorkerBootstrap, type WorkerScope } from "./bootstrap";
@@ -115,6 +120,7 @@ interface HostSetup {
   readonly prefs?: ModPrefs;
   readonly net?: ModNet;
   readonly options?: Partial<import("../mod-api2-host").Api2HostOptions>;
+  readonly context?: Partial<import("../mod-plugin").ModPluginContext>;
 }
 
 /** The broker's `api` dependency: the in-process host over the mod's own context, as main.ts builds it. */
@@ -129,7 +135,7 @@ function hostApi(setup: HostSetup = {}): (options: WorkerApiOptions) => ModApi2 
       prefs: setup.prefs ?? memoryPrefs(),
       ...(setup.net ? { net: setup.net } : {}),
     });
-    return createApi2Host(ctx, { grants: capabilities, ...setup.options, ...options, execution: "worker" });
+    return createApi2Host({ ...ctx, ...setup.context }, { grants: capabilities, ...setup.options, ...options, execution: "worker" });
   };
 }
 
@@ -979,5 +985,152 @@ it("gates controller key observation and never sends emergency keys to the Worke
   expect(await allowed.session.key(press)).toEqual({ kind: "keep", message: "Continuing" });
   expect(await allowed.session.key({ ...press, key: "Escape" })).toEqual({ kind: "release" });
   expect(await allowed.session.key({ ...press, key: "z", ctrl: true })).toEqual({ kind: "release" });
+  for (const key of ["F5", "F11", "F12"]) expect(await allowed.session.key({ ...press, key })).toEqual({ kind: "release" });
+  const restore = suspendModPanels();
+  try { expect(await allowed.session.key(press)).toEqual({ kind: "release" }); }
+  finally { restore(); }
   expect(onKey).toHaveBeenCalledTimes(1);
+});
+
+describe("Worker interface options", () => {
+  it("writes interface options through the bootstrap as plain JSON", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grants = ["options:write"];
+    let seen: unknown;
+    const wired = wire({ api: API, start: async (api) => {
+      seen = await (api as unknown as { options: { set(change: unknown): Promise<unknown> } }).options.set({ delayFactor: 17 });
+    } }, { grants, api: hostApi({ game, grants }) });
+    expect(await started(wired, () => seen)).toEqual({ ok: true, value: ["delayFactor"] });
+    expect(game.state.options!.delayFactor).toBe(17);
+    expect(wired.worker.sent.every((message) => JSON.stringify(JSON.parse(JSON.stringify(message))) === JSON.stringify(message))).toBe(true);
+  });
+
+  it.each(["BIRTH", "CHEAT", "SCORE"])("refuses %s and leaves the whole change unapplied", async (page) => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const entry = OPTION_ENTRIES.find((option) => option.type === page)!;
+    const before = game.state.options!.snapshot();
+    const grants = ["options:write"];
+    let seen: unknown;
+    const wired = wire({ api: API, start: async (api) => {
+      seen = await (api as unknown as { options: { set(change: unknown): Promise<unknown> } }).options.set({ values: { [entry.name]: !game.state.options!.get(entry.name) }, delayFactor: 17 });
+    } }, { grants, api: hostApi({ game, grants }) });
+    expect(await started(wired, () => seen)).toMatchObject({ ok: false });
+    expect(game.state.options!.snapshot()).toEqual(before);
+    expect(createModOptions(game.state, { writable: true }).set!({ values: { [entry.name]: true }, delayFactor: 17 }).ok).toBe(false);
+    expect(game.state.options!.snapshot()).toEqual(before);
+  });
+
+  describe.each([
+    { capability: "options:write", method: "options.set", args: [{ delayFactor: 17 }] },
+    { capability: "keymap:edit", method: "keybindings.set", args: ["F2", "h"] },
+    { capability: "display:filter", method: "display.filter", args: [{ name: "contrast", amount: 1.25 }] },
+  ])("$capability admission", (domain) => {
+  it.each([
+    { name: "ungranted", held: false },
+    { name: "revoked", revoke: true },
+    { name: "wrong identity", pluginId: "victim" },
+    { name: "stale epoch", epoch: 0 },
+    { name: "malformed", args: [false] },
+    { name: "oversized", args: [{ values: { padding: "x".repeat(MAX_MESSAGE_BYTES) } }] },
+    { name: "over rate", overRate: true },
+    { name: "self widening", args: [{ delayFactor: 17, granted: ["options:manage"] }] },
+  ])("refuses $name without changing options", async (attack) => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const before = game.state.options!.snapshot();
+    let held = attack.held !== false;
+    clearKeymaps();
+    const grants = [domain.capability];
+    const filter = vi.fn();
+    const wired = wire({ api: API }, { grants, api: hostApi({ game, grants, options: { grants: { has: () => held } }, context: { display: { setVisualFilter: filter } as never } }),
+      ...(attack.overRate ? { timing: { maxCallsPerSecond: 1 } } : {}) });
+    await wired.session.ready;
+    wired.session.start();
+    if (attack.revoke) held = false;
+    if (attack.overRate) {
+      wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1, requestId: 400, method: "meta.settings", args: [] });
+    }
+    wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION,
+      pluginId: attack.pluginId ?? "probe", epoch: attack.epoch ?? 1, requestId: 401, method: domain.method,
+      args: (attack.args ?? domain.args) as import("./protocol").WorkerJson[] });
+    await vi.waitFor(() => {
+      if (attack.pluginId) expect(wired.problems.some((problem) => problem.includes("plugin id"))).toBe(true);
+      else expect(wired.worker.sent.find((message) => message.type === "reply" && message.requestId === 401)).toBeDefined();
+    });
+    const reply = wired.worker.sent.find((message) => message.type === "reply" && message.requestId === 401);
+    if (reply?.type === "reply" && reply.ok) expect(reply.result).toMatchObject({ ok: false });
+    expect(game.state.options!.snapshot()).toEqual(before);
+    expect(keymapEntries("orig")).toEqual([]);
+    expect(keymapEntries("rogue")).toEqual([]);
+    expect(filter).not.toHaveBeenCalled();
+  });
+  });
+});
+
+describe("Worker keybinding editor", () => {
+  it("edits only the current keyset and refuses reserved triggers", async () => {
+    clearKeymaps();
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grants = ["keymap:edit"];
+    const wired = wire({ api: API }, { grants, api: hostApi({ game, grants }) });
+    await wired.session.ready;
+    wired.session.start();
+    const send = async (requestId: number, args: import("./protocol").WorkerJson[]) => {
+      wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1,
+        requestId, method: "keybindings.set", args });
+      await vi.waitFor(() => expect(wired.worker.sent.find((message) => message.type === "reply" && message.requestId === requestId)).toBeDefined());
+      return wired.worker.sent.find((message) => message.type === "reply" && message.requestId === requestId);
+    };
+    expect(await send(300, ["F2", "h"])).toMatchObject({ result: { ok: true } });
+    expect(await send(301, ["F2", "l", "roguelike"])).toMatchObject({ result: { ok: false } });
+    for (const [index, key] of ["Escape", "F5", "F11", "F12", "\u001a"].entries()) {
+      expect(await send(302 + index, [key, "h"])).toMatchObject({ result: { ok: false } });
+    }
+    expect(keymapEntries("orig")).toEqual([["F2", "h"]]);
+    expect(keymapEntries("rogue")).toEqual([]);
+    clearKeymaps();
+  });
+
+  it("ends capture when a host dialog opens and drops a revoked capture result", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grants = ["keymap:edit"];
+    let held = true;
+    let keys: { capture(): Promise<unknown> } | undefined;
+    const wired = wire({ api: API, start: (api) => { keys = (api as unknown as { keybindings: typeof keys }).keybindings; } },
+      { grants, api: hostApi({ game, grants, options: { grants: { has: () => held } } }) });
+    await started(wired, () => keys);
+    const capture = keys!.capture();
+    await vi.waitFor(() => expect(wired.health).toBeDefined());
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    const restore = suspendModPanels();
+    expect(await capture).toEqual({ ok: true, value: null });
+    browserKeydown({ key: "y", ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {}, stopImmediatePropagation() {} } as KeyboardEvent);
+    restore();
+    const revoked = keys!.capture();
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    held = false;
+    browserKeydown({ key: "a", ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {}, stopImmediatePropagation() {} } as KeyboardEvent);
+    expect(await revoked).toMatchObject({ reason: "not-granted" });
+  });
+});
+
+it("accepts named visual filters, rejects CSS and URLs, and suspends the filter for host consent", async () => {
+  const grants = ["display:filter"];
+  const filter = vi.fn();
+  let display: { filter(value: unknown): Promise<unknown> } | undefined;
+  const wired = wire({ api: API, start: (api) => { display = (api as unknown as { display: typeof display }).display; } },
+    { grants, api: hostApi({ grants, context: { display: { setVisualFilter: filter } as never } }) });
+  await started(wired, () => display);
+  for (const value of ["url(https://example.test)", { name: "url", amount: 1 }, { name: "contrast", amount: 1000 }, { name: "sepia", amount: 1, css: "x" }]) {
+    expect(await display!.filter(value)).toMatchObject({ ok: false });
+  }
+  expect(filter).not.toHaveBeenCalled();
+  expect(await display!.filter({ name: "contrast", amount: 1.25 })).toEqual({ ok: true, value: null });
+  expect(filter).toHaveBeenLastCalledWith("contrast(1.25)", { scope: "canvas" });
+  const restore = suspendModPanels();
+  expect(filter).toHaveBeenLastCalledWith(null, { scope: "canvas" });
+  expect(await display!.filter({ name: "invert", amount: 1 })).toMatchObject({ ok: false });
+  restore();
+  expect(filter).toHaveBeenLastCalledWith("contrast(1.25)", { scope: "canvas" });
+  wired.session.teardown();
+  expect(filter).toHaveBeenLastCalledWith(null);
 });

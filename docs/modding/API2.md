@@ -209,6 +209,12 @@ A request to a host the manifest does not name answers `not-granted` with `netwo
 
 ## In a Worker
 
+Workers with `options:write` can call `await mod.options.set({ values, hitpointWarn, delayFactor, lazymoveDelay })`. The host accepts interface booleans and bounded delays only, validates the entire change before mutation, and rejects birth, cheat, score, and unknown options. This path does not expose `manage`.
+
+Workers with `keymap:edit` get asynchronous `mod.keybindings.keyset()`, `list()`, `commands()`, `set(trigger, action, replace?)`, `remove(trigger)`, `capture()`, and `cancelCapture()`. Every operation uses the current keyset. Actions hold at most 256 characters. Replacing a conflicting binding requires `replace: true`. The host reserves Escape, control characters, modifier chords, F5, F11, and F12. Capture ends on a host dialog, cancellation, teardown, or a ten-second timeout. Revocation or an expired broker epoch drops a pending capture result.
+
+Workers with `display:filter` can call `await mod.display.filter({ name, amount })` or pass `null` to clear their filter. The host accepts `grayscale`, `sepia`, and `invert` from 0 to 1, `brightness` and `contrast` from 0.25 to 2, and `saturate` from 0 to 2. The host constructs the filter, applies it to the game canvas, and suspends it during host dialogs. CSS text, resource URLs, and functions are not accepted. These Worker additions use serialized data and do not expose live presentation objects.
+
 Running in a Worker is a choice a mod makes for isolation. Its code runs apart from the game, and the game reaches it only through messages. It is not the only way for a mod to change the game, and nothing here limits what an in-process mod can do.
 
 A mod with `"runtime": "worker"` default-exports the same definition and gets the same domains, results and known-only data as an in-process mod. Its manifest names an `api` range that API 2 satisfies and the module to start in `entry`. Each call becomes a message to the game's broker (`packages/web/src/mod-worker/host.ts`), which serves it with the in-process host and posts back a copy of the answer. The Worker runs in a sandbox with no network and none of the game's storage ([WORKER_ISOLATION.md](WORKER_ISOLATION.md)).

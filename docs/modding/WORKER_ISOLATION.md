@@ -18,6 +18,8 @@ A mod that fails any step fails to start, with a problem line on the Mods screen
 
 ## The three layers
 
+The simple Worker grants add bounded data paths for interface options, edits in the current keyset, and named visual filters. The broker checks its connection's grants and the host's current grants before dispatch. The host rechecks a pending key capture before returning it. Host dialogs cancel capture and suspend mod panels and filters; permission dialogs also prevent Worker controller key and decision delivery. A Worker never supplies CSS for a filter or receives a live key event through these paths. [API2.md](API2.md) lists the methods and bounds.
+
 | Layer | What it stops | Where |
 |---|---|---|
 | Opaque origin | IndexedDB, Cache Storage and the origin-private file system refuse an opaque origin or give it an empty store of its own. Nothing in it is same-origin with the game, so the game's URLs and blob: URLs are out of reach. | the frame's `sandbox` attribute; the `data:` Worker |

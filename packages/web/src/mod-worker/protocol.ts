@@ -211,3 +211,16 @@ export type ModWorkerToHost =
   | (FromWorker & { readonly type: "answer"; readonly askId: number; readonly ok: false; readonly error: string })
   | (FromWorker & { readonly type: "log"; readonly level: WorkerLogLevel; readonly message: string })
   | (FromWorker & { readonly type: "fault"; readonly site: string; readonly message: string });
+
+/** Simple grants use separate paths so they never open the management domain. */
+export const SIMPLE_WORKER_CALLS = {
+  "options.set": "options:write",
+  "keybindings.keyset": "keymap:edit",
+  "keybindings.list": "keymap:edit",
+  "keybindings.commands": "keymap:edit",
+  "keybindings.set": "keymap:edit",
+  "keybindings.remove": "keymap:edit",
+  "keybindings.capture": "keymap:edit",
+  "keybindings.cancelCapture": "keymap:edit",
+  "display.filter": "display:filter",
+} as const;

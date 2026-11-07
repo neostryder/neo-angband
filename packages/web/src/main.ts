@@ -485,6 +485,7 @@ import {
   revokeModPanels,
   setModPanelVisualFilter,
   setPanelGameSurface,
+  setModHostDialogOpen,
 } from "./panel-runtime";
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
 import type { SessionTaint } from "./mod-taint";
@@ -3264,6 +3265,7 @@ let modalDepth = 0;
  */
 function adjustModalDepth(delta: 1 | -1): void {
   modalDepth += delta;
+  setModHostDialogOpen(modalDepth > 0);
   subwindowShell.setModalActive(modalDepth > 0);
 }
 

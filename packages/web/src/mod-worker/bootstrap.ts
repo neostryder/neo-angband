@@ -98,6 +98,13 @@ export function installModWorkerBootstrap(
 
   const buildApi = (m: WorkerMeta, active: readonly string[]): ModApi2 => {
     const api = {
+      options: { set: method("options.set") },
+      display: { filter: method("display.filter") },
+      keybindings: {
+        keyset: method("keybindings.keyset"), list: method("keybindings.list"), commands: method("keybindings.commands"),
+        set: method("keybindings.set"), remove: method("keybindings.remove"),
+        capture: method("keybindings.capture"), cancelCapture: method("keybindings.cancelCapture"),
+      },
       meta: {
         id: m.id,
         api: m.api,
