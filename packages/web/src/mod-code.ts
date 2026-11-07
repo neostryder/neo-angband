@@ -271,7 +271,9 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       skipped.push({ id, why: "not enabled" });
       continue;
     }
-    if (typeof binding !== "string") {
+    /* The headless runner sets unsafeInProcess itself and has no page to measure; every
+     * other load needs a measured binding, first-party included. */
+    if (typeof binding !== "string" && opts.unsafeInProcess === undefined) {
       problems.push({ id, why: MOD_PERMISSION_TEXT.unavailable });
       continue;
     }
