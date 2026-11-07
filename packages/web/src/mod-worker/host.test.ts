@@ -1914,3 +1914,265 @@ it("accepts named visual filters, rejects CSS and URLs, and suspends the filter 
   wired.session.teardown();
   expect(filter).toHaveBeenLastCalledWith(null);
 });
+
+import { recordCapabilityUse } from "../mod-controller-record";
+import { resetSharedValues, sharedValuesFor } from "../mod-shared-values";
+import { spawnWorkerContent, WORKER_SHARED_ENTRY_BYTES, WORKER_SHARED_ENTRY_COUNT, WORKER_SHARED_CALLS_PER_SECOND, type WorkerSpawnSharedHost } from "../mod-api2-host";
+import { ContentIdResolver } from "@rpgm-tools/neo-angband-core";
+
+afterEach(() => resetSharedValues());
+
+async function spawnSharedProbe(grants = ["debug:spawn", "shared:read", "shared:publish"], timing?: ModWorkerHostDeps["timing"]) {
+  resetSharedValues();
+  const game = startGame(pack, { seed: SEED, depth: DEPTH });
+  const authorize = (held: readonly string[]) => setModGrants(new Map([["probe", { granted: held, refusedByTier: [], refusedByPlayer: [], undecided: [], blocking: [] }]]));
+  authorize(grants);
+  setConsentBindings(new Map([["probe", "spawn-shared-binding"]]));
+  const saved: ReturnType<typeof saveGame>[] = [];
+  const host: WorkerSpawnSharedHost = {
+    confirm: vi.fn(async () => true),
+    mark: vi.fn((id, capability, current, authorized) => {
+      if (current !== game.state || !authorized()) return false;
+      if (capability === "debug:spawn") game.state.actor.player.noscore |= NOSCORE.DEBUG;
+      recordCapabilityUse(game.manifest, { installation: "spawn-shared-binding", id, version: "1.0.0", digest: "measured",
+        capability, activation: { turn: game.state.turn, depth: game.state.chunk.depth }, consequence: capability === "debug:spawn" ? "spawn" : "shared-write" });
+      saved.push(structuredClone(saveGame(game)));
+      return true;
+    }),
+    spawn: vi.fn((state, request) => {
+      expect(saved.at(-1)?.manifest?.capabilityUse?.entries.some((entry) => entry.consequence === "spawn")).toBe(true);
+      expect((saved.at(-1)?.player.noscore ?? 0) & NOSCORE.DEBUG).not.toBe(0);
+      const deps = { ...game.wizardBundles, wizard: false, debug: true, races: game.booted.registries.monsters.races };
+      return spawnWorkerContent(state, request, deps);
+    }),
+  };
+  let proxy: ModApi2 | undefined;
+  const wired = wire({ api: API, start: (api) => { proxy = api; } }, { grants, ...(timing ? { timing } : {}), api: hostApi({ game, grants, options: { workerSpawnShared: host } }) });
+  const api = await started(wired, () => proxy);
+  let next = 6000;
+  const send = (method: string, args: WorkerJson[] = [], overrides: { pluginId?: string; epoch?: number } = {}) => {
+    const requestId = ++next;
+    wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1, requestId, method, args, ...overrides });
+    return requestId;
+  };
+  const reply = async (requestId: number) => {
+    await vi.waitFor(() => expect(wired.worker.sent.some((message) => message.type === "reply" && message.requestId === requestId)).toBe(true));
+    return wired.worker.sent.find((message) => message.type === "reply" && message.requestId === requestId);
+  };
+  const raw = async (method: string, args: WorkerJson[] = [], overrides: { pluginId?: string; epoch?: number } = {}) => reply(send(method, args, overrides));
+  const caps = CapabilitySet.fromManifest({ id: "victim", name: "Victim", version: "1.0.0", shape: "plugin", capabilities: ["shared:read", "shared:publish"] });
+  const victim = sharedValuesFor("victim", caps)!;
+  return { ...wired, game, api, host, saved, authorize, raw, send, reply, victim };
+}
+
+const spawnSharedCases = [
+  { capability: "debug:spawn", method: "debug.spawnObject", args: [1] },
+  { capability: "debug:spawn", method: "debug.spawnMonster", args: [1] },
+  { capability: "shared:read", method: "shared.read", args: ["victim", "entry"] },
+  { capability: "shared:publish", method: "shared.publish", args: ["entry", 1, { data: true }] },
+  { capability: "shared:publish", method: "shared.withdraw", args: ["entry"] },
+] as const;
+
+for (const operation of spawnSharedCases) {
+  describe(`Worker guard for ${operation.method}`, () => {
+    for (const attack of ["ungranted", "revoked", "identity", "epoch", "malformed", "oversized", "rate"] as const) {
+      it(`refuses ${attack} without mutation`, async () => {
+        const p = await spawnSharedProbe(attack === "ungranted" ? [] : [operation.capability], attack === "rate" ? { maxCallsPerSecond: 1 } : undefined);
+        p.victim.publish("entry", 1, { private: false });
+        const before = structuredClone(saveGame(p.game));
+        if (attack === "revoked") p.authorize([]);
+        if (attack === "rate") await p.raw("meta.settings");
+        const args = attack === "malformed" ? [] : attack === "oversized" ? ["x".repeat(MAX_MESSAGE_BYTES)] : structuredClone(operation.args) as unknown as WorkerJson[];
+        if (attack === "identity") {
+          p.send(operation.method, args, { pluginId: "victim" });
+          await vi.waitFor(() => expect(p.problems.some((problem) => problem.includes("plugin id"))).toBe(true));
+        } else {
+          const answer = await p.raw(operation.method, args, attack === "epoch" ? { epoch: 0 } : {});
+          if (answer?.type === "reply" && answer.ok) expect(answer.result).toMatchObject({ ok: false });
+        }
+        expect(saveGame(p.game)).toEqual(before);
+        expect(p.victim.read("probe", "entry")).toBeNull();
+        expect(p.victim.read("victim", "entry")?.value).toEqual({ private: false });
+        expect(p.host.confirm).not.toHaveBeenCalled();
+        expect(p.host.mark).not.toHaveBeenCalled();
+        expect(p.host.spawn).not.toHaveBeenCalled();
+      });
+    }
+  });
+}
+
+it("confirms resolved content and saves the spawn consequence before real items and creatures appear", async () => {
+  const p = await spawnSharedProbe();
+  const ids = new ContentIdResolver(p.game.booted.registries);
+  const kind = p.game.booted.registries.objects.kinds.find((entry) => entry.name.includes("Dagger"))!;
+  expect(await p.api.debug!.spawnObject(ids.kindId(kind.kidx), 2)).toEqual({ ok: true, value: { spawned: 2 } });
+  expect(p.host.confirm).toHaveBeenCalledWith("probe", { kind: "object", index: kind.kidx, name: kind.name, count: 2 });
+  const race = p.game.booted.registries.monsters.races.find((entry) => entry.name === "orc shaman")!;
+  const before = liveMonsters(p.game.state).length;
+  expect(await p.api.debug!.spawnMonster(ids.raceId(race.ridx))).toEqual({ ok: true, value: { spawned: 1 } });
+  expect(liveMonsters(p.game.state).length).toBeGreaterThan(before);
+  expect(p.game.manifest.capabilityUse?.entries).toHaveLength(1);
+});
+
+it("leaves no mark or spawn after decline, invalid content, or invalid counts", async () => {
+  const p = await spawnSharedProbe();
+  vi.mocked(p.host.confirm).mockResolvedValue(false);
+  const before = structuredClone(saveGame(p.game));
+  expect(await p.raw("debug.spawnObject", [1])).toMatchObject({ result: { ok: false, code: "declined" } });
+  for (const args of [["missing:object"], [1, 17], [1, 0]]) expect(await p.raw("debug.spawnObject", args)).toMatchObject({ result: { ok: false } });
+  expect(saveGame(p.game)).toEqual(before);
+  expect(p.host.mark).not.toHaveBeenCalled();
+  expect(p.host.spawn).not.toHaveBeenCalled();
+});
+
+it("fails closed when the durable writer fails or throws", async () => {
+  const p = await spawnSharedProbe();
+  vi.mocked(p.host.mark).mockReturnValueOnce(false).mockRejectedValueOnce(new Error("disk failed"));
+  expect(await p.raw("debug.spawnObject", [1])).toMatchObject({ result: { ok: false, code: "save" } });
+  expect(await p.raw("debug.spawnMonster", [1])).toMatchObject({ result: { ok: false } });
+  expect(p.host.spawn).not.toHaveBeenCalled();
+  expect(p.game.manifest.capabilityUse).toBeUndefined();
+});
+
+it("rechecks authorization after the spawn dialog and after a pending save", async () => {
+  for (const stage of ["dialog", "save"] as const) {
+    const p = await spawnSharedProbe();
+    let finish: (result: boolean) => void = () => {};
+    const gate = new Promise<boolean>((resolve) => { finish = resolve; });
+    if (stage === "dialog") vi.mocked(p.host.confirm).mockReturnValue(gate);
+    else vi.mocked(p.host.mark).mockReturnValue(gate);
+    const requestId = p.send("debug.spawnObject", [1]);
+    await vi.waitFor(() => expect(stage === "dialog" ? p.host.confirm : p.host.mark).toHaveBeenCalled());
+    p.authorize([]);
+    finish(true);
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    expect(p.worker.sent.some((message) => message.type === "reply" && message.requestId === requestId)).toBe(false);
+    expect(p.host.spawn).not.toHaveBeenCalled();
+    expect(p.game.manifest.capabilityUse).toBeUndefined();
+  }
+});
+
+it("shares copies of explicit publications, records one shared-write, and cannot forge a publisher or read private storage", async () => {
+  const p = await spawnSharedProbe();
+  const value = { nested: { number: 1 } };
+  expect(await p.api.shared!.publish("entry", 1, value)).toEqual({ ok: true, value: null });
+  value.nested.number = 99;
+  expect(p.victim.read("probe", "entry")?.value).toEqual({ nested: { number: 1 } });
+  p.victim.publish("entry", 1, { nested: { number: 2 } });
+  const read = await p.api.shared!.read("victim", "entry");
+  expect(read).toMatchObject({ ok: true, value: { mod: "victim", value: { nested: { number: 2 } } } });
+  if (read.ok && read.value) expect(() => { (read.value!.value as { nested: { number: number } }).nested.number = 50; }).toThrow();
+  expect(p.victim.read("victim", "entry")?.value).toEqual({ nested: { number: 2 } });
+  expect(await p.api.shared!.read("victim", "private-preferences")).toEqual({ ok: true, value: null });
+  expect(await p.api.shared!.read("probe", "entry")).toMatchObject({ ok: false });
+  expect(await p.raw("shared.publish", ["victim", "entry", 1, "forged"])).toMatchObject({ result: { ok: false } });
+  expect(await p.api.shared!.publish("entry", 2, null)).toEqual({ ok: true, value: null });
+  expect(p.host.mark).toHaveBeenCalledTimes(1);
+  expect(p.saved[0]?.manifest?.capabilityUse?.entries[0]?.consequence).toBe("shared-write");
+  expect(p.game.manifest.modNoscore).toBe(false);
+  expect(await p.api.shared!.withdraw("entry")).toEqual({ ok: true, value: null });
+  expect(p.victim.read("probe", "entry")).toBeNull();
+});
+
+it("bounds shared entry size, entry count, and read and write frequency", async () => {
+  const clock = vi.spyOn(Date, "now");
+  let time = 100000;
+  clock.mockImplementation(() => time);
+  try {
+    const p = await spawnSharedProbe();
+    expect(await p.api.shared!.publish("large", 1, "x".repeat(WORKER_SHARED_ENTRY_BYTES))).toMatchObject({ ok: false });
+    expect(p.host.mark).not.toHaveBeenCalled();
+    for (let index = 0; index < WORKER_SHARED_ENTRY_COUNT; index++) {
+      time += 1001;
+      expect(await p.api.shared!.publish(`quota-${index}`, 1, index)).toEqual({ ok: true, value: null });
+    }
+    time += 1001;
+    expect(await p.api.shared!.publish("quota-extra", 1, null)).toMatchObject({ ok: false });
+    for (let index = 0; index < WORKER_SHARED_ENTRY_COUNT; index++) { time += 1001; await p.api.shared!.withdraw(`quota-${index}`); }
+    time += 1001;
+    for (let index = 0; index < WORKER_SHARED_CALLS_PER_SECOND; index++) expect(await p.api.shared!.read("victim", "none")).toEqual({ ok: true, value: null });
+    expect(await p.api.shared!.read("victim", "none")).toMatchObject({ ok: false });
+    expect(await p.api.shared!.publish("over-rate", 1, null)).toMatchObject({ ok: false });
+    expect(p.victim.read("probe", "over-rate")).toBeNull();
+  } finally { clock.mockRestore(); }
+});
+
+it("drops a shared publication revoked while its mark is pending", async () => {
+  const p = await spawnSharedProbe();
+  let finish: (result: boolean) => void = () => {};
+  vi.mocked(p.host.mark).mockReturnValue(new Promise<boolean>((resolve) => { finish = resolve; }));
+  const requestId = p.send("shared.publish", ["entry", 1, "secret"]);
+  await vi.waitFor(() => expect(p.host.mark).toHaveBeenCalled());
+  p.authorize([]);
+  finish(true);
+  await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  expect(p.victim.read("probe", "entry")).toBeNull();
+  expect(p.worker.sent.some((message) => message.type === "reply" && message.requestId === requestId)).toBe(false);
+});
+
+it("preserves prototype-shaped JSON keys without changing any prototype", async () => {
+  const p = await spawnSharedProbe();
+  const value = JSON.parse('{"__proto__":{"polluted":true},"constructor":{"prototype":{"other":true}}}') as WorkerJson;
+  expect(await p.api.shared!.publish("prototype-keys", 1, value)).toEqual({ ok: true, value: null });
+  expect(p.victim.read("probe", "prototype-keys")?.value).toEqual(value);
+  p.victim.publish("prototype-keys", 1, value);
+  expect(await p.api.shared!.read("victim", "prototype-keys")).toMatchObject({ ok: true, value: { value } });
+  expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+  expect(await p.api.shared!.withdraw("prototype-keys")).toEqual({ ok: true, value: null });
+});
+
+it("rejects non-JSON publication and malformed publisher arguments without marking", async () => {
+  const p = await spawnSharedProbe();
+  for (const value of [NaN, Infinity, new Date(), new Map(), new Array(1)]) {
+    const requestId = p.send("shared.publish", ["bad-json", 1, value as unknown as WorkerJson]);
+    expect(await p.reply(requestId)).toMatchObject({ ok: false });
+  }
+  for (const args of [["other/mod", "entry"], ["victim", "../private"], ["victim", "entry", "private"], ["victim", { key: "entry" }]]) {
+    expect(await p.raw("shared.read", args as WorkerJson[])).toMatchObject({ result: { ok: false } });
+  }
+  expect(p.host.mark).not.toHaveBeenCalled();
+  expect(p.victim.read("probe", "bad-json")).toBeNull();
+});
+
+it("drops shared reads when authorization is revoked before reply delivery", async () => {
+  const p = await spawnSharedProbe();
+  p.victim.publish("entry", 1, { information: "published" });
+  const run = p.health.run.bind(p.health);
+  vi.spyOn(p.health, "run").mockImplementationOnce((...args) => {
+    const result = run(...args);
+    p.authorize([]);
+    return result;
+  });
+  const requestId = p.send("shared.read", ["victim", "entry"]);
+  await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  expect(p.worker.sent.some((message) => message.type === "reply" && message.requestId === requestId)).toBe(false);
+  expect(p.host.mark).not.toHaveBeenCalled();
+});
+
+it("rejects changed bindings, concurrent spawn requests, and the fifth spawn request", async () => {
+  const p = await spawnSharedProbe();
+  let finish: (result: boolean) => void = () => {};
+  vi.mocked(p.host.confirm).mockReturnValueOnce(new Promise<boolean>((resolve) => { finish = resolve; }));
+  const pending = p.send("debug.spawnObject", [1]);
+  await vi.waitFor(() => expect(p.host.confirm).toHaveBeenCalled());
+  expect(await p.raw("debug.spawnMonster", [1])).toMatchObject({ result: { ok: false, code: "busy" } });
+  setConsentBindings(new Map([["probe", "changed-binding"]]));
+  finish(true);
+  await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  expect(p.worker.sent.some((message) => message.type === "reply" && message.requestId === pending)).toBe(false);
+  expect(p.host.mark).not.toHaveBeenCalled();
+  expect(p.host.spawn).not.toHaveBeenCalled();
+  expect(await p.raw("shared.publish", ["changed-binding", 1, null])).toMatchObject({ result: { ok: false, reason: "not-granted" } });
+  setConsentBindings(new Map([["probe", "spawn-shared-binding"]]));
+  vi.mocked(p.host.confirm).mockResolvedValue(false);
+  expect(await p.raw("debug.spawnObject", [1])).toMatchObject({ result: { ok: false } });
+  expect(await p.raw("debug.spawnObject", [1])).toMatchObject({ result: { ok: false } });
+  expect(await p.raw("debug.spawnObject", [1])).toMatchObject({ result: { ok: false, code: "rate" } });
+});
+
+it("refuses legacy publications above the Worker entry limit without exposing the value", async () => {
+  const p = await spawnSharedProbe();
+  p.victim.publish("large", 1, "x".repeat(WORKER_SHARED_ENTRY_BYTES));
+  expect(await p.api.shared!.read("victim", "large")).toMatchObject({ ok: false, code: "quota" });
+  expect(p.host.mark).not.toHaveBeenCalled();
+});

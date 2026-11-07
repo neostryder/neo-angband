@@ -292,6 +292,14 @@ export interface WorkerTextRegion {
   readonly lines: readonly WorkerTextLine[];
 }
 
+export const SPAWN_SHARED_WORKER_CALLS: Readonly<Record<string, string>> = Object.freeze({
+  "debug.spawnObject": "debug:spawn",
+  "debug.spawnMonster": "debug:spawn",
+  "shared.read": "shared:read",
+  "shared.publish": "shared:publish",
+  "shared.withdraw": "shared:publish",
+});
+
 /** Content plans contain no consent decisions or reusable confirmations. */
 export const CONTENT_WORKER_CALLS: Readonly<Record<string, string>> = Object.freeze({
   "manage.content.planInstall": "mod:install",

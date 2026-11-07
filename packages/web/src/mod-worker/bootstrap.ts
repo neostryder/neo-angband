@@ -256,6 +256,12 @@ export function installModWorkerBootstrap(
           ...contentManage(m),
         },
       } : {}),
+      ...(m.granted.includes("debug:spawn") ? {
+        debug: { spawnObject: method("debug.spawnObject"), spawnMonster: method("debug.spawnMonster") },
+      } : {}),
+      ...(m.granted.includes("shared:read") || m.granted.includes("shared:publish") ? {
+        shared: { read: method("shared.read"), publish: method("shared.publish"), withdraw: method("shared.withdraw") },
+      } : {}),
       ...(m.net ? {
         net: {
           request: method("net.request"),

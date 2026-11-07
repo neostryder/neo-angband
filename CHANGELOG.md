@@ -48,6 +48,7 @@ still calls itself.
 
 ## [Unreleased]
 
+- [Visible] [Security] **Workers can request bounded spawning and share published JSON after consent.** Each spawn asks the player and persists its permanent scoring consequence before creation. Shared publication uses the host-owned publisher id, JSON copies, quotas, and a permanent publication record. Saves and run reports retain both consequences, and the SDK now types the Worker profile rename method.
 - [Visible] [Security] **Workers can request confirmed content installs, session packs, repository lookups, exits, and detached wizard testing.** The host binds single-use content plans to measured bytes, refuses code and capability grants, keeps installs switched off, and prevents session archives from sharing installed ids. Repository lookups return metadata and file names only. Wizard commands require proven permanent save detachment and an unscorable character.
 
 - [Visible] [Security] **Worker mods can read hidden state with player consent.** Either explicit truth grant opens bounded truth snapshots for every mod author. The host saves permanent unscorable marking and provenance before building a snapshot, refuses reads when persistence fails, and drops replies after revocation. The map grant includes monster and race truth; the monsters grant does not open the map.

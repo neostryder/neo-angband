@@ -3,7 +3,7 @@ import { advanceDeterminism, markNoscore, NOSCORE, type CapabilityUseEntry, type
 type ControllerIdentity = NonNullable<SaveManifest["autoplayers"]>[number];
 
 export function recordCapabilityUse(manifest: SaveManifest, entry: CapabilityUseEntry): void {
-  manifest.modNoscore = true;
+  if (entry.consequence !== "shared-write") manifest.modNoscore = true;
   /* An older host must preserve a future summary without interpreting or replacing it. */
   if (manifest.capabilityUse && manifest.capabilityUse.schema !== 1) return;
   const summary = manifest.capabilityUse ??= { schema: 1, entries: [] };

@@ -305,7 +305,7 @@ export function needsOwnConfirmation(capability: string): boolean {
  * A capability the vocabulary does not know is never granted. One outside the
  * public namespace follows SEAM_POLICY. A public capability is never withheld
  * from code in the page; a Worker mod is held to the vocabulary's Worker tier,
- * which is what its runtime provides.
+ * which is what its runtime provides, including bounded spawning and published JSON.
  */
 export function tierRefusal(capability: string, tier: ModTier): string | null {
   if (capability === "engine:access" && tier.execution === "worker") return "this needs a live engine mechanism Workers do not have yet";

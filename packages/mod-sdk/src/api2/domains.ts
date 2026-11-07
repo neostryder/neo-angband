@@ -552,6 +552,8 @@ export interface Api2Manage {
     create(name: string, copyFrom?: string | null): Api2Call<Api2Profile>;
     setEnabledMods(id: string, mods: readonly string[]): Api2Call<null>;
     switchTo(id: string | null, action?: Api2ProfileAction): Api2Call<null>;
+    /** Only the Worker proxy offers profile renaming. */
+    rename?(id: string, name: string): Api2Call<null>;
   };
   readonly saves: Api2Saves;
   readonly options: Api2ManagedOptions;
@@ -693,6 +695,15 @@ export interface ModApi2 {
   readonly permissions?: Api2Permissions;
   readonly presentation?: Api2Presentation;
   readonly backupFolder?: Api2BackupFolder;
+  readonly debug?: {
+    spawnObject(kind: number | string, count?: number): Api2Call<{ readonly spawned: number }>;
+    spawnMonster(race: number | string, count?: number): Api2Call<{ readonly spawned: number }>;
+  };
+  readonly shared?: {
+    read(mod: string, name: string): Api2Call<{ readonly mod: string; readonly name: string; readonly version: number; readonly value: JsonValue } | null>;
+    publish(name: string, version: number, value: JsonValue): Api2Call<null>;
+    withdraw(name: string): Api2Call<null>;
+  };
 }
 
 /** What `hooks` is told when the host asks a mod for its hooks. */
