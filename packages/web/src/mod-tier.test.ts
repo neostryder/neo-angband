@@ -40,6 +40,7 @@ import { askInstalledPresenter, setMenuPresenter, type InstalledMenu } from "./m
 import { enterSafeLaunch, resetSafeLaunch } from "./safe-launch";
 import { parseRegistry } from "./mod-curated";
 import { createApi2Host } from "./mod-api2-host";
+import { modPluginContext } from "./mod-context";
 import type { ModPluginContext } from "./mod-plugin";
 
 const ANYBANDUI = "neostryder/neo-angband-mod-anybandui";
@@ -55,6 +56,33 @@ describe("engine consent", () => {
       expect(effectiveGrants(["engine:access"], { ...tier, developerInProcess: true }, { granted: ["engine:access"], refused: [] }).granted).toEqual(["engine:access"]);
     }
     expect(tierRefusal("engine:access", assignTier(installed({ execution: "worker" })))).toContain("Worker");
+  });
+
+  it("honors an engine refusal even when first-party code declares it and the store also grants it", () => {
+    const tier = assignTier(installed());
+    const grants = effectiveGrants(["engine:access"], tier, { granted: ["engine:access"], refused: ["engine:access"] });
+    expect(grants.granted).toEqual([]);
+    expect(grants.refusedByPlayer).toEqual(["engine:access"]);
+    expect(effectiveGrants([], tier, { granted: ["engine:access"], refused: [] }).granted).toEqual([]);
+  });
+
+  it("requires declared presentation grants and lets a refusal override defaults and wildcards", () => {
+    const tier = assignTier(installed());
+    setModTiers(new Map([["anybandui", tier]]));
+    const settle = (declared: string[], refused: string[] = []) => {
+      const grants = effectiveGrants(declared, tier, { granted: declared, refused });
+      setModGrants(new Map([["anybandui", grants]]));
+      return modStartGrants("anybandui");
+    };
+    expect(settle([]).firstParty?.presentation).toBeUndefined();
+    for (const capability of ["display:replace", "ui:*.replace", "ui:region.create", "keymap:edit"]) {
+      expect(effectiveGrants([capability], tier, { granted: [], refused: [] }).granted).toEqual([capability]);
+      expect(settle([capability]).firstParty?.presentation).toBe(true);
+      expect(settle([capability], [capability]).firstParty?.presentation).toBeUndefined();
+    }
+    expect(settle(["ui:*.replace"], ["ui:sidebar.replace"]).granted).toEqual([]);
+    expect(effectiveGrants(["profiles:manage"], tier, { granted: [], refused: [] }).undecided).toEqual(["profiles:manage"]);
+    expect(settle(["command:add"]).firstParty?.presentation).toBeUndefined();
   });
 
   it("requires recorded digests for each of the nine named first-party repos", () => {
@@ -224,7 +252,7 @@ describe("the seam policy", () => {
   const squire = assignTier(installed({ id: "squire", repo: "neostryder/neo-angband-mod-squire" }));
 
   it("refuses manage to a mod that is not first-party, visibly", () => {
-    expect(tierRefusal("profiles:manage", sideloaded)).toBe("only the game's own mods can have it");
+    expect(tierRefusal("profiles:manage", sideloaded)).toBe("this needs a brokered mechanism Workers do not have yet");
     const grants = effectiveGrants(["profiles:manage", "command:add"], sideloaded, {
       granted: ["profiles:manage", "command:add"],
       refused: [],
@@ -234,7 +262,7 @@ describe("the seam policy", () => {
   });
 
   it("refuses manage to a first-party mod its entry does not name", () => {
-    expect(tierRefusal("screens:manage", squire)).toBe("this version of the game does not give it to this mod");
+    expect(tierRefusal("screens:manage", squire)).toBe("this capability has no enabled host mechanism for this mod");
     expect(tierRefusal("profiles:manage", squire)).toBeNull();
   });
 
@@ -258,7 +286,7 @@ describe("the seam policy", () => {
 
   it("lets any in-process mod hold the real map with consent, but not a sideloaded Worker", () => {
     expect(tierRefusal(TRUTH_MAP, sideloaded)).toBeNull();
-    expect(tierRefusal(TRUTH_MAP, worker)).toBe("only the game's own mods can have it");
+    expect(tierRefusal(TRUTH_MAP, worker)).toBe("this needs a brokered mechanism Workers do not have yet");
     const held = effectiveGrants([TRUTH_MAP], sideloaded, { granted: [TRUTH_MAP], refused: [] });
     expect(held.granted).toEqual([TRUTH_MAP]);
   });
@@ -267,7 +295,7 @@ describe("the seam policy", () => {
     for (const cap of ["registry:effect", "registry:*", "state:*.read", "network:*", "command:add"]) {
       expect(tierRefusal(cap, sideloaded)).toBeNull();
     }
-    expect(tierRefusal("registry:effect", worker)).toBe("Worker mods cannot have it");
+    expect(tierRefusal("registry:effect", worker)).toBe("this needs a mechanism Worker mods do not have yet");
   });
 
   it("never grants a capability the vocabulary does not know", () => {
@@ -282,7 +310,7 @@ describe("the seam policy", () => {
         ["s", effectiveGrants([TRUTH_MAP], sideloaded, { granted: [TRUTH_MAP], refused: [] })],
       ]),
     );
-    expect(modStartGrants("anybandui").firstParty).toEqual({ manage: true, truth: true, presentation: true });
+    expect(modStartGrants("anybandui").firstParty).toEqual({ manage: true, truth: true });
     expect(modStartGrants("s").firstParty).toEqual({ truth: true });
     expect(modStartGrants("unknown")).toMatchObject({ granted: [] });
     expect(modStartGrants("unknown").firstParty).toBeUndefined();
@@ -303,6 +331,36 @@ describe("the seam policy", () => {
 });
 
 describe("per-permission consent", () => {
+  it("rechecks first-party loader refusals and rejects an earlier payload binding", async () => {
+    vi.spyOn(snapshots, "modPayloadUrl").mockImplementation(codeUrl);
+    const tier = assignTier(installed());
+    const pack: DiskPack = { ...codePack("anybandui", []), manifest: {
+      id: "anybandui", name: "AnybandUI", version: "1.0.0", shape: "plugin", facets: ["plugin"],
+      manifestSchema: 2, runtime: "in-process", api: ">=2.0.0 <3.0.0", capabilities: ["engine:access", "keymap:edit"],
+    } };
+    const refused: string[] = [];
+    let api: ReturnType<typeof createApi2Host> | undefined;
+    measured("anybandui");
+    setModTiers(new Map([["anybandui", tier]]));
+    const report = await loadModCode({ packs: [pack], codeUrl, enabled: () => true, consented: () => [],
+      refused: () => refused, tier: () => tier, importer: async () => ({ default: { api: ">=2.0.0 <3.0.0", start: (host: ReturnType<typeof createApi2Host>) => { api = host; } } }) });
+    expect(report.problems).toEqual([]);
+    expect(report.skipped).toEqual([]);
+    setModGrants(settledGrants(report));
+    const loaded = report.plugins[0]!;
+    loaded.plugin.register?.({} as Parameters<NonNullable<typeof loaded.plugin.register>>[0], modPluginContext("anybandui", {}));
+    expect(api?.meta.granted("engine:access")).toBe(true);
+    const engine = api!.engine!;
+    refused.push("engine:access");
+    expect(api?.meta.granted("engine:access")).toBe(false);
+    expect(() => engine.core).toThrow(/engine:access/);
+    expect(api?.meta.granted("keymap:edit")).toBe(true);
+    setConsentBindings(new Map([["anybandui", "replacement"]]));
+    expect(api?.meta.granted("keymap:edit")).toBe(false);
+    expect(await api!.presentation!.cancelInput()).toMatchObject({ reason: "not-granted" });
+    loaded.plugin.uninstall?.();
+  });
+
   /* Public code in the game page is always measured before it loads. */
   const measured = (id: string): void => setConsentBindings(new Map([[id, "bound"]]));
   afterEach(() => setConsentBindings(new Map()));
@@ -425,7 +483,7 @@ describe("per-permission consent", () => {
     expect(report.plugins).toEqual([]);
     expect(report.skipped).toHaveLength(1);
     expect(report.problems.map((p) => p.why)).toContain(
-      "runs without profiles:manage: only the game's own mods can have it",
+      "runs without profiles:manage: this needs a brokered mechanism Workers do not have yet",
     );
   });
 

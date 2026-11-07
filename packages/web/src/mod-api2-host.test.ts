@@ -43,6 +43,7 @@ import { TitleRuntime } from "./title-runtime";
 import { clearBackupSinks, createBackupFolder, notifyBackupSinks } from "./mod-backup";
 import { browserKeydown, clearInputDoor, enqueueUiInputs, inputEvents } from "./input-door";
 import { modPluginContext } from "./mod-context";
+import { suspendModPanels } from "./panel-runtime";
 import type { ModPrefs } from "./mod-prefs";
 import { api2Plugin } from "./mod-api2-shim";
 import { createModOptions } from "./mod-options";
@@ -718,11 +719,18 @@ describe("the first-party seams", () => {
       const heard: string[] = [];
       inputEvents.addEventListener("keydown", (event) => heard.push(event.key), true);
       enqueueUiInputs([{ key: { key: "x", modifiers: { ctrl: false, shift: false, alt: false, meta: false }, repeat: false } }]);
-      const api = host(startGame(pack, { seed: SEED, depth: DEPTH }), [], { tier: "first-party", firstParty: { presentation: true } });
+      const api = host(startGame(pack, { seed: SEED, depth: DEPTH }), ["keymap:edit"], { tier: "first-party", firstParty: { presentation: true } });
       expect(await api.presentation!.cancelInput()).toEqual({ ok: true, value: null });
       await vi.runAllTimersAsync();
       expect(heard).toEqual(["Escape", "Escape", "Escape"]);
       expect(await api.presentation!.cancelInput(0)).toMatchObject({ code: "bad-count" });
+      expect(await api.presentation!.cancelInput(33)).toMatchObject({ code: "bad-count" });
+      expect(await api.presentation!.cancelInput(Number.MAX_SAFE_INTEGER)).toMatchObject({ code: "bad-count" });
+      const resume = suspendModPanels();
+      expect(await api.presentation!.cancelInput()).toMatchObject({ ok: false, code: "input" });
+      resume();
+      await vi.runAllTimersAsync();
+      expect(heard).toEqual(["Escape", "Escape", "Escape"]);
     } finally {
       clearInputDoor();
       vi.useRealTimers();
@@ -754,7 +762,79 @@ describe("the first-party seams", () => {
   it("refuses presentation to a public mod even with a namespace flag", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     expect(host(game, [], { tier: "public", firstParty: { presentation: true } }).presentation).toBeUndefined();
-    expect(host(game, [], { tier: "first-party", firstParty: { presentation: true } }).presentation).toBeDefined();
+    expect(host(game, [], { tier: "first-party", firstParty: { presentation: true } }).presentation).toBeUndefined();
+    expect(host(game, ["keymap:edit"], { tier: "first-party", firstParty: { presentation: true } }).presentation).toBeDefined();
+  });
+  it("does not expose live presentation facilities through a first-party identity or a different grant", async () => {
+    const onKey = vi.fn();
+    const sidebar = {};
+    vi.stubGlobal("document", { getElementById: () => sidebar });
+    try {
+      const ctx = { ...modPluginContext("probe", {}), display: { onKey }, keyRepeat: vi.fn(),
+        subwindows: {}, tiles: {}, ui: {} } as unknown as ReturnType<typeof modPluginContext>;
+      const build = (held: string[]) => createApi2Host(ctx, { grants: capabilities("probe", held),
+        tier: "first-party", execution: "in-process", firstParty: { presentation: true } });
+      expect(build([]).presentation).toBeUndefined();
+      const keys = build(["keymap:edit"]).presentation!;
+      expect(keys.display).toBeUndefined();
+      expect(keys.sidebarHost).toBeUndefined();
+      expect(keys.subwindows).toBeUndefined();
+      expect(keys.tiles).toBeUndefined();
+      expect(keys.panels).toBeUndefined();
+      const ui = build(["ui:sidebar.replace"]).presentation!;
+      expect(ui.sidebarHost).toBe(sidebar);
+      expect(ui.display).toBeUndefined();
+      expect(ui.keyRepeat).toBeUndefined();
+      expect(await ui.cancelInput()).toMatchObject({ reason: "not-granted", capability: "keymap:edit" });
+      const display = build(["display:replace"]).presentation!.display!;
+      expect(() => display.onKey(() => undefined)).toThrow("this mod needs capability \"keymap:edit\"");
+      expect(onKey).not.toHaveBeenCalled();
+      const worker = createApi2Host(ctx, { grants: capabilities("probe", ["display:replace", "keymap:edit", "ui:region.create", "ui:sidebar.replace"]),
+        tier: "first-party", execution: "worker", firstParty: { presentation: true } });
+      expect(worker.presentation).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("rechecks retained presentation operations and listeners after refusal and stop", async () => {
+    const held = new Set(["display:replace", "keymap:edit", "ui:region.create", "ui:sidebar.replace"]);
+    let key: (event: KeyboardEvent) => void = () => undefined;
+    const repaint = vi.fn(); const setLayout = vi.fn(); const drawMonster = vi.fn(); const openPanel = vi.fn();
+    const off = vi.fn(); const listener = vi.fn();
+    const ctx = { ...modPluginContext("probe", {}),
+      display: { repaint, onKey: (fn: typeof key) => { key = fn; return off; } },
+      subwindows: Object.freeze({ setLayout }), tiles: Object.freeze({ drawMonster }), ui: Object.freeze({ openPanel }),
+    } as unknown as ReturnType<typeof modPluginContext>;
+    const api = createApi2Host(ctx, { tier: "first-party", execution: "in-process", firstParty: { presentation: true }, grants: { has: (cap) => held.has(cap) } });
+    const presentation = api.presentation!;
+    const paint = presentation.display!.repaint;
+    const layout = presentation.subwindows!.setLayout;
+    const draw = presentation.tiles!.drawMonster;
+    const mount = presentation.panels!.openPanel;
+    const overlay = api.ui.overlay!;
+    presentation.display!.onKey(listener);
+    key({ key: "x" } as KeyboardEvent);
+    expect(listener).toHaveBeenCalledTimes(1);
+    const resume = suspendModPanels();
+    key({ key: "y" } as KeyboardEvent);
+    expect(await presentation.cancelInput()).toMatchObject({ ok: false, code: "input" });
+    resume();
+    held.clear();
+    key({ key: "z" } as KeyboardEvent);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(() => paint()).toThrow(/display:replace/);
+    expect(() => layout("{}")).toThrow(/ui:region.create/);
+    expect(() => draw({} as CanvasRenderingContext2D, 1, 0, 0, 1, 1)).toThrow(/display:replace/);
+    expect(() => mount({ id: "attack" })).toThrow(/ui:region.create/);
+    expect(await presentation.cancelInput()).toMatchObject({ reason: "not-granted" });
+    expect(await overlay()).toMatchObject({ reason: "not-granted", capability: "ui:region.create" });
+    expect(repaint).not.toHaveBeenCalled(); expect(setLayout).not.toHaveBeenCalled();
+    expect(drawMonster).not.toHaveBeenCalled(); expect(openPanel).not.toHaveBeenCalled();
+    held.add("display:replace");
+    stopApi2Host(api);
+    expect(() => paint()).toThrow(/display:replace/);
+    expect(off).toHaveBeenCalledTimes(1);
   });
   it("are absent without an allowlist, whatever the grants", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
@@ -1060,7 +1140,7 @@ describe("API 2 storage", () => {
 });
 
 describe("API 2 engine and content", () => {
-  it("keeps engine access live and requires consent outside first-party", () => {
+  it("keeps engine access live and requires the grant for every author", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const caps = capabilities("probe", ["engine:access"]);
     const ctx = modPluginContext("probe", {}, game.state, {}, { capabilities: caps, registries: game.booted.registries });
@@ -1072,10 +1152,32 @@ describe("API 2 engine and content", () => {
     expect(api.engine?.registries).toBe(game.booted.registries);
     expect(Object.isFrozen(api.engine)).toBe(true);
     expect(host(game, []).engine).toBeUndefined();
-    expect(host(game, [], { tier: "first-party" }).engine?.state).toBe(game.state);
+    expect(host(game, [], { tier: "first-party" }).engine).toBeUndefined();
+    expect(host(game, ["engine:access"], { tier: "first-party" }).engine?.state).toBe(game.state);
     const worker = createApi2Host(ctx, { grants: caps, tier: "first-party", execution: "worker" });
     expect(worker.engine).toBeUndefined();
     expect(worker.meta.granted("engine:access")).toBe(false);
+  });
+
+  it("withholds the engine after a first-party refusal and rechecks retained domain reads", () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const tier = assignTier({ id: "anybandui", source: "installed", execution: "in-process", repo: "neostryder/neo-angband-mod-anybandui", listing: "curated", digestsMatch: true });
+    const refused = effectiveGrants(["engine:access"], tier, { granted: ["engine:access"], refused: ["engine:access"] });
+    const denied = host(game, [...refused.granted], { tier: "first-party", execution: "in-process" });
+    expect(denied.engine).toBeUndefined();
+    expect(denied.meta.granted("engine:access")).toBe(false);
+    let held = true;
+    const ctx = modPluginContext("probe", {}, game.state);
+    const api = createApi2Host(ctx, { tier: "first-party", execution: "in-process", grants: { has: () => held } });
+    const engine = api.engine!;
+    const turn = game.state.turn;
+    held = false;
+    expect(() => api.engine!.state).toThrow(/engine:access/);
+    for (const member of ["api", "core", "state", "registries", "registry"] as const) {
+      expect(() => engine[member]).toThrow("this mod needs capability \"engine:access\"");
+    }
+    expect(api.meta.granted("engine:access")).toBe(false);
+    expect(game.state.turn).toBe(turn);
   });
 
   it("reads options and static categories without constructing an option state", async () => {

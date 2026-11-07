@@ -45,6 +45,57 @@ return { install: finishAutoplayerInstall, stop: () => stopInstalledController("
 }
 
 describe("main controller boundaries", () => {
+  it.each(["sideloaded", "first-party"])("checks consent and binding for a %s controller candidate", (trust) => {
+    const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
+    const candidates = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "controllerCandidates")!;
+    const loaded = { id: "probe", tier: { trust }, permissionBinding: "bound" };
+    let consent = ["input:controller", "input:intent"];
+    let binding = "bound";
+    const deps = { activeModCode: () => ({ plugins: [loaded] }), workerControllers: new Map(),
+      consentBinding: () => binding, defaultModStore: () => ({ getConsent: () => consent }) };
+    const emitted = ts.transpileModule(`${candidates.getText(source)}; return controllerCandidates;`, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
+    const read = new Function(...Object.keys(deps), emitted)(...Object.values(deps)) as () => unknown[];
+    expect(read()).toEqual([loaded]);
+    consent = ["input:intent"];
+    expect(read()).toEqual([]);
+    consent = ["input:controller", "input:intent"];
+    binding = "changed";
+    expect(read()).toEqual([]);
+  });
+
+  it.each([true, false])("asks the public controller dialog on profile roll-on and honors its answer %s", async (accepted) => {
+    const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
+    const functions = ["controllerCandidates", "confirmControllerActivation", "confirmPendingAutoplayerInstall"].map((name) =>
+      source.statements.find((statement): statement is ts.FunctionDeclaration => ts.isFunctionDeclaration(statement) && statement.name?.text === name)!);
+    const loop = source.statements.find((statement) => ts.isForOfStatement(statement) && statement.expression.getText(source) === "controllerCandidates()")!;
+    const loaded = { id: "probe", manifest: { name: "Probe" }, tier: { trust: "sideloaded" }, permissionBinding: "bound",
+      plugin: { controller: () => () => null } };
+    const drawModControllerConsent = vi.fn(async () => accepted);
+    const finishAutoplayerInstall = vi.fn(); const reportModFault = vi.fn();
+    const deps = { activeModCode: () => ({ plugins: [loaded] }), workerControllers: new Map(),
+      consentBinding: () => "bound", defaultModStore: () => ({ getConsent: () => ["input:controller", "input:intent"] }),
+      drawModControllerConsent, finishAutoplayerInstall, reportModFault, confirmBorgActivation: vi.fn(),
+      currentOrPendingAutoplayerId: () => null, modHealth: () => ({ run: (_id: string, _site: string, run: () => unknown) => run() }),
+      modPluginContext: () => ({}), folderRuleFlags: new Map(), state: {}, modOwnFiles: () => ({}), sessionFacts: {},
+      CapabilitySet: { fromManifest: () => ({}) }, controllerInstallOf: (controller: unknown) => ({ controller }),
+      rollOnHeldForBirth: null, rollOnAutoplayerId: "probe", justConfirmedAutoplayerId: null, autoplayerConfirmationKey: () => "probe",
+      openModal: (run: () => unknown) => run(), say: vi.fn(), t: (_key: string, fallback: string) => fallback, render: vi.fn(),
+      log: { error: vi.fn() }, faultMessage: String };
+    const emitted = ts.transpileModule(`let pendingAutoplayerInstall = null;
+${functions.map((fn) => fn.getText(source)).join("\n")}
+${loop.getText(source)}
+return { pending: () => pendingAutoplayerInstall, confirm: confirmPendingAutoplayerInstall };`, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
+    const runtime = new Function(...Object.keys(deps), emitted)(...Object.values(deps)) as { pending: () => unknown; confirm: () => Promise<void> };
+    expect(runtime.pending()).toMatchObject({ loaded });
+    expect(finishAutoplayerInstall).not.toHaveBeenCalled();
+    await runtime.confirm();
+    expect(drawModControllerConsent).toHaveBeenCalledExactlyOnceWith("probe", "Probe");
+    expect(finishAutoplayerInstall).toHaveBeenCalledTimes(accepted ? 1 : 0);
+    expect(reportModFault).not.toHaveBeenCalled();
+    expect(runtime.pending()).toBeNull();
+  });
+
   it("releases the keyboard while the Worker's other registrations remain alive", () => {
     const h = controllerHarness();
     expect(h.runtime.installed()).not.toBeNull();

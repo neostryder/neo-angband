@@ -28,7 +28,6 @@
 
 import {
   CapabilitySet,
-  MOD_PERMISSION_TEXT,
   matchCapability,
   type CapabilityEntry,
   type CapabilityTier,
@@ -240,7 +239,7 @@ interface SeamRule {
   /** Any mod running code in the page may hold it, with the player's consent. */
   readonly inProcess: boolean;
   /** A first-party mod whose FIRST_PARTY_ORIGINS entry names the capability may hold it. */
-  readonly firstPartyListed: boolean;
+  readonly originListed: boolean;
   /**
    * The player confirms it on its own Core-drawn question, separately from
    * the other permissions, because it can install or turn on other code.
@@ -262,8 +261,8 @@ interface SeamRule {
  * listed first-party mod. A namespace missing from this table is held by nobody.
  */
 const SEAM_POLICY: Readonly<Record<string, SeamRule>> = Object.freeze({
-  manage: Object.freeze({ inProcess: false, firstPartyListed: true, confirm: true }),
-  truth: Object.freeze({ inProcess: true, firstPartyListed: true, confirm: false }),
+  manage: Object.freeze({ inProcess: false, originListed: true, confirm: true }),
+  truth: Object.freeze({ inProcess: true, originListed: true, confirm: false }),
 });
 
 /** The vocabulary entry for a capability string, or undefined when it does not know it. */
@@ -277,12 +276,12 @@ function entryOf(capability: string): CapabilityEntry | undefined {
 
 /** Why the seam policy keeps `capability` from a mod of this tier, or null when it does not. */
 function seamRefusal(entry: CapabilityEntry, capability: string, tier: ModTier): string | null {
-  if (entry.namespace === "manage" && tier.execution !== "in-process") return "Only in-process first-party mods can manage the game.";
+  if (entry.namespace === "manage" && tier.execution !== "in-process") return "this needs an in-process management mechanism Workers do not have yet";
   const rule = SEAM_POLICY[entry.namespace];
-  if (!rule) return "only the game's own mods can have it";
+  if (!rule) return "this capability has no host mechanism yet";
   if (rule.inProcess && tier.execution === "in-process") return null;
-  if (!rule.firstPartyListed || tier.trust !== "first-party") return "only the game's own mods can have it";
-  if (!tier.seams.includes(capability)) return "this version of the game does not give it to this mod";
+  if (!rule.originListed || tier.trust !== "first-party") return "this needs a brokered mechanism Workers do not have yet";
+  if (!tier.seams.includes(capability)) return "this capability has no enabled host mechanism for this mod";
   return null;
 }
 
@@ -304,14 +303,14 @@ export function needsOwnConfirmation(capability: string): boolean {
  * which is what its runtime provides.
  */
 export function tierRefusal(capability: string, tier: ModTier): string | null {
-  if (capability === "engine:access" && tier.execution === "worker") return "Worker mods cannot have live engine access";
-  if (capability === "engine:access" && tier.trust !== "first-party" && !tier.developerInProcess) return MOD_PERMISSION_TEXT.isolated;
+  if (capability === "engine:access" && tier.execution === "worker") return "this needs a live engine mechanism Workers do not have yet";
+  if (capability === "engine:access" && tier.trust !== "first-party" && !tier.developerInProcess) return "this needs a live engine mechanism Workers do not have yet";
   const entry = entryOf(capability);
   if (!entry) return "the game does not know this permission";
   if (entry.namespace !== "public") return seamRefusal(entry, capability, tier);
   if (tier.execution !== "worker") return null;
   if (!entry.tiers.includes(tier.capabilityTier)) {
-    return `${TIER_WORDS[tier.capabilityTier]} mods cannot have it`;
+    return `this needs a mechanism ${TIER_WORDS[tier.capabilityTier]} mods do not have yet`;
   }
   return null;
 }
@@ -369,10 +368,6 @@ export function effectiveGrants(
   const yes = new Set(decisions.granted);
   const no = new Set(decisions.refused);
   for (const capability of new Set(declared)) {
-    if (capability === "engine:access" && tier.trust === "first-party" && tier.execution === "in-process") {
-      granted.push(capability);
-      continue;
-    }
     const why = tierRefusal(capability, tier);
     if (why !== null) {
       refusedByTier.push({ capability, why });
@@ -382,7 +377,8 @@ export function effectiveGrants(
     if (no.has(capability) || overridesRefusal(capability, decisions.refused)) {
       refusedByPlayer.push(capability);
       if (!canRunWithout(capability)) blocking.push(capability);
-    } else if (yes.has(capability)) {
+    } else if (yes.has(capability) || (tier.trust === "first-party" && tier.execution === "in-process" &&
+      (capability === "engine:access" || PRESENTATION_CAPABILITIES.includes(capability)))) {
       granted.push(capability);
     } else {
       undecided.push(capability);
@@ -488,14 +484,20 @@ export function modTiers(): ReadonlyMap<string, ModTier> {
   return tiers;
 }
 
-/** The seams outside the public API the API 2 host may build for a mod (SEAM_POLICY). The name predates the policy. */
+/** The seams outside the public API the API 2 host may build for a mod (SEAM_POLICY). The exported name remains for compatibility. */
 export interface FirstPartyAllowlist {
   readonly manage?: boolean;
   readonly truth?: boolean;
   readonly presentation?: boolean;
 }
 
-/** What a runtime needs to start one mod: its tier, what it holds, and its first-party seams. */
+/** Declarations keep bundled presentation code subject to player refusals. */
+const PRESENTATION_CAPABILITIES: readonly string[] = [
+  "display:replace", "ui:*.replace", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace",
+  "ui:menu.replace", "ui:screen.replace", "ui:birth.replace", "ui:region.create", "keymap:edit", "ui:title",
+];
+
+/** What a runtime needs to start one mod: its tier, what it holds, and its seams. */
 export interface ModStartGrants {
   readonly tier: ModTier;
   /** Exactly the capabilities the mod is handed. Empty for a mod the loader did not settle. */
@@ -515,7 +517,8 @@ export function modStartGrants(id: string): ModStartGrants {
    * capability is the whole test; `manage` is first-party only by that policy. */
   const truth = granted.includes(TRUTH_MAP) || granted.includes(TRUTH_MONSTERS);
   const manage = tier.trust === "first-party" && tier.execution === "in-process" && granted.some((cap) => tier.seams.includes(cap) && entryOf(cap)?.namespace === "manage");
-  const presentation = tier.trust === "first-party" && tier.execution === "in-process";
+  const presentation = tier.trust === "first-party" && tier.execution === "in-process" &&
+    granted.some((cap) => PRESENTATION_CAPABILITIES.includes(cap) || cap === "screens:manage");
   if (!truth && !manage && !presentation) return Object.freeze({ tier, granted });
   return Object.freeze({ tier, granted, firstParty: Object.freeze({ ...(manage ? { manage } : {}), ...(truth ? { truth } : {}), ...(presentation ? { presentation } : {}) }) });
 }

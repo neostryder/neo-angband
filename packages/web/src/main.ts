@@ -16170,7 +16170,7 @@ setModControllerArmedControl((id) =>
 const workerPlugins = new Map<string, StartedModWorker>();
 const workerControllers = new Map<string, LoadedModPlugin>();
 function controllerCandidates(): readonly LoadedModPlugin[] {
-  return [...activeModCode().plugins, ...workerControllers.values()].filter((loaded) => loaded.tier.trust === "first-party" ||
+  return [...activeModCode().plugins, ...workerControllers.values()].filter((loaded) =>
     (loaded.permissionBinding === consentBinding(loaded.id) && ["input:controller", "input:intent"].every((capability) => defaultModStore().getConsent(loaded.id).includes(capability))));
 }
 /* What each Worker mod's policy tables install beside hooks, once it settles. */
@@ -16911,14 +16911,13 @@ try {
 } catch {
   /* best-effort; worst case this boot asks, which is the safe direction */
 }
-/* The other boot that may skip the prompt (#300): the first boot of a character
+/* The boot that may carry an armed controller (#300): the first boot of a character
  * whose predecessor's autoplayer asked to carry on (AUTOPLAYER_ROLL_ON_KEY). The
  * birth screen's boot keeps the flag for the boot after it and installs nothing,
  * since its character is the throwaway behind the birth screen. Any other boot
  * clears it, so a player who backs out of birth and loads someone else is asked. */
 let rollOnAutoplayerId: string | null = null;
 let rollOnHeldForBirth: string | null = null;
-let rollOnLoaded = false;
 try {
   const armed = reloadStorage.getItem(AUTOPLAYER_ROLL_ON_KEY);
   if (birthPending) {
@@ -16929,7 +16928,6 @@ try {
     /* #430: the loaded character's own boot, armed by its load. */
     else if (loadRolledOnId) {
       rollOnAutoplayerId = loadRolledOnId;
-      rollOnLoaded = true;
     }
   }
 } catch {
@@ -16990,11 +16988,9 @@ for (const loaded of controllerCandidates()) {
      * gets, every single boot. */
     if (justConfirmedAutoplayerId === autoplayerConfirmationKey(loaded.id)) {
       finishAutoplayerInstall(loaded, install);
-    } else if (loaded.tier.trust === "first-party" && rollOnAutoplayerId === loaded.id) {
-      finishAutoplayerInstall(loaded, install);
-      say(rollOnLoaded
-        ? t("main.autoplayer.load-on", "{name} carries on with the loaded character.", { name: loaded.manifest.name })
-        : t("main.autoplayer.roll-on", "{name} carries on with the new character.", { name: loaded.manifest.name }));
+    } else if (rollOnAutoplayerId === loaded.id) {
+      /* A profile can arm a controller, but it cannot accept the session dialog. */
+      pendingAutoplayerInstall = { loaded, install };
     } else {
       pendingAutoplayerInstall = { loaded, install };
     }
