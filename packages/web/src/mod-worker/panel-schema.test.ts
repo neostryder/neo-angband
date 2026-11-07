@@ -3,30 +3,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { panelDescription, panelPatch } from "./panel-schema";
 import { createModWorkerPanelRenderer } from "./panels";
-import { resetModPanels, setModHostDialogOpen, suspendModPanels } from "../panel-runtime";
+import { resetModPanels, suspendModPanels } from "../panel-runtime";
 import { dispatchUiInput } from "../input-door";
 import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { api2Plugin } from "../mod-api2-shim";
 import { createApi2Host, disposeApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
 
-afterEach(() => { setModHostDialogOpen(false); resetModPanels(); });
+afterEach(() => { resetModPanels(); });
 
 describe("API-2 declarative panel schema", () => {
-  it("keeps Worker panels hidden and inert during ordinary host dialogs", () => {
-    const renderer = createModWorkerPanelRenderer();
-    const action = vi.fn();
-    renderer.apply("probe", "mount", { id: "panel", root: { type: "button", label: "Run", action: "run" } }, undefined, action);
-    setModHostDialogOpen(true);
-    const root = document.querySelector<HTMLElement>('[role="region"]')!;
-    root.querySelector("button")!.click();
-    expect(root.style.visibility).toBe("hidden");
-    expect(root.inert).toBe(true);
-    expect(action).not.toHaveBeenCalled();
-    setModHostDialogOpen(false);
-    expect(root.style.visibility).toBe("");
-    renderer.teardown("probe");
-  });
   it("hands first-party pages a host-owned root and releases them on dismissal and teardown", async () => {
     const caps = CapabilitySet.fromManifest({ id: "pages", name: "Pages", version: "1.0.0", shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: ["ui:panel.mount", "ui:region.create"] });
     const ctx = modPluginContext("pages", {}, undefined, {}, { capabilities: caps });

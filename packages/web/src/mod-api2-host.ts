@@ -10,10 +10,7 @@
  * and a permission the player refused answers `not-granted` instead of
  * throwing.
  *
- * `manage` and `truth` are built only when the caller says this mod is
- * allowlisted for them. The real allowlist (the build's first-party origins
- * plus a digest check of the installed bytes) belongs to the loader; this
- * module takes the answer as an argument.
+ * Management eligibility belongs to the loader's allowlist. Truth also opens for Workers holding either explicit truth grant, with a durable consequence before each snapshot.
  */
 
 import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -99,12 +96,10 @@ import { OPTION_ENTRIES } from "@rpgm-tools/neo-angband-core";
 import { bootPhase, onBootPhaseChanged } from "./presentation-phase";
 import { menuRegistry } from "./menu-registry";
 import { clearQueuedUiInputs, enqueueUiInputs, inputEvents } from "./input-door";
-import { closeTopModPanel, modPanelsSuspended, modPresentationSuspended, onModPanelSuspension, topModPanelId } from "./panel-runtime";
+import { closeTopModPanel, modPanelsSuspended, topModPanelId } from "./panel-runtime";
 import { removeBackupSink } from "./mod-backup";
 import { prepareTruthRead } from "./mod-truth-consent";
-import { createModOptions } from "./mod-options";
-import { isWorkerBindingKey } from "./mod-keybindings";
-import { workerVisualFilter } from "./visual-filter";
+import { modHolds } from "./mod-tier";
 
 /** Asks the player for the real map on behalf of a mod; the game wires it at boot (main.ts). */
 type TruthConsentAsk = (modId: string, reason: string) => Promise<"granted" | "declined" | "unavailable">;
@@ -925,13 +920,11 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ui: frozen({
       onKey: (listener) => guarded(() => {
         if (stopped) return api2Unavailable("this mod has stopped");
-        const observe = publicMod || options.execution === "worker";
-        if (!granted(observe ? "input:observe" : "keymap:write")) return api2NotGranted(observe ? "input:observe" : "keymap:write");
+        if (!granted(publicMod ? "input:observe" : "keymap:write")) return api2NotGranted(publicMod ? "input:observe" : "keymap:write");
         if (!ctx.display) return api2Unavailable("this front end sends no key events");
         const id = `${ctx.id}:key:${nextSubscription++}`;
         const off = ctx.display.onKey((event) => {
-          if (observe && (!granted("input:observe") || !api2MayObserveKeys(ctx) || event.ctrlKey || event.altKey || event.metaKey || event.key === "Escape" ||
-            (options.execution === "worker" && ["F5", "F11", "F12"].includes(event.key)))) return;
+          if (publicMod && (!api2MayObserveKeys(ctx) || event.ctrlKey || event.altKey || event.metaKey || event.key === "Escape")) return;
           if (!stopped) listener(data({ key: event.key, code: event.code, modifiers: [
             ...(event.shiftKey ? ["shift" as const] : []), ...(event.ctrlKey ? ["ctrl" as const] : []),
             ...(event.altKey ? ["alt" as const] : []), ...(event.metaKey ? ["meta" as const] : []),
@@ -1082,7 +1075,8 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     ...(ctx.net ? { net: netDomain(ctx.net) } : {}),
     ...(backupFolder ? { backupFolder } : {}),
     ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && seams?.manage ? { manage: manageDomain(ctx, options, cleanups, () => stopped) } : {}),
-    ...(seams?.truth ? { truth: truthDomain(ctx, options.viewDeps ?? {}, (capability) => !stopped && granted(capability)) } : {}),
+    ...(seams?.truth || (options.execution === "worker" && (granted("state:map-actual.read") || granted("state:monsters-actual.read")))
+      ? { truth: truthDomain(ctx, options.viewDeps ?? {}, (capability) => !stopped && granted(capability) && (options.execution !== "worker" || modHolds(ctx.id, capability))) } : {}),
     ...(options.tier === "first-party" && options.execution !== "worker" && options.execution !== "data" && truthConsentAsk
       ? { permissions: permissionsDomain(ctx, options, granted, truthConsentAsk, () => stopped) } : {}),
     ...(presentation ? {
@@ -1137,15 +1131,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       }),
     } : {}),
   };
-  if (options.execution === "worker") {
-    const simple: SimpleWorkerHost = { ctx, held: (capability) => !stopped && granted(capability), capturing: false, filter: null };
-    simpleWorkerHosts.set(api, simple);
-    const off = onModPanelSuspension((suspended) => {
-      if (simple.filter !== null) ctx.display?.setVisualFilter(suspended || !simple.held("display:filter") ? null : simple.filter, { scope: "canvas" });
-    });
-    cleanups.add(() => { off(); if (simple.filter !== null) ctx.display?.setVisualFilter(null); });
-    cleanups.add(() => { ctx.keybindings?.cancelCapture(); });
-  }
   disposers.set(api, () => {
     stopped = true;
     panels?.teardown(ctx.id);
@@ -1159,99 +1144,6 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     cleanups.clear();
   });
   return Object.freeze(api);
-}
-
-interface SimpleWorkerHost {
-  readonly ctx: ModPluginContext;
-  readonly held: (capability: string) => boolean;
-  capturing: boolean;
-  filter: string | null;
-}
-
-const simpleWorkerHosts = new WeakMap<ModApi2, SimpleWorkerHost>();
-
-/** The broker supplies liveness; this table supplies the connection's context. */
-export function serveSimpleWorkerCall(api: ModApi2, method: string, args: readonly WorkerJson[], current: () => boolean): Api2Call<unknown> {
-  return guarded<unknown>(async () => {
-    const host = simpleWorkerHosts.get(api);
-    if (!host || !current()) return api2Unavailable("this Worker call has expired");
-    if (method === "options.set") {
-      if (!host.held("options:write")) return api2NotGranted("options:write");
-      if (args.length !== 1 || !plainRecord(args[0])) return api2Refused("bad-call", "options.set takes one options change");
-      const change = args[0];
-      if (Object.keys(change).some((key) => !["values", "hitpointWarn", "delayFactor", "lazymoveDelay"].includes(key)) ||
-        (change["values"] !== undefined && !plainRecord(change["values"]))) return api2Refused("bad-call", "the options change has unknown fields or invalid values");
-      const { ctx } = host;
-      if (!ctx.state) return api2Unavailable(NO_GAME);
-      const entries = change["values"] ?? {};
-      if (Object.keys(entries).length > 128) return api2Refused("quota", MOD_PERMISSION_TEXT.quota);
-      for (const [name, value] of Object.entries(entries)) {
-        if (typeof value !== "boolean" || OPTION_ENTRIES.find((entry) => entry.name === name)?.type !== "INTERFACE") {
-          return api2Refused("options", "this permission changes only interface options and delays");
-        }
-      }
-      const editor = ctx.options?.set ? ctx.options : createModOptions(ctx.state, { writable: true });
-      const result = editor.set!(change as import("./mod-options").ModOptionsChange);
-      return result.ok ? api2Ok(data(result.changed)) : api2Refused("options", result.reason);
-    }
-    if (method.startsWith("keybindings.")) {
-      if (!host.held("keymap:edit")) return api2NotGranted("keymap:edit");
-      if (modPresentationSuspended()) return api2Refused("input", "the host is asking the player a question");
-      const keys = host.ctx.keybindings;
-      if (!keys) return api2Unavailable("the keybinding editor is unavailable");
-      const operation = method.slice("keybindings.".length);
-      if (operation === "set") {
-        const [trigger, action, replace] = args;
-        if (args.length < 2 || args.length > 3 || typeof trigger !== "string" || !isWorkerBindingKey(trigger) ||
-          typeof action !== "string" || action.length < 1 || action.length > 256 ||
-          (replace !== undefined && typeof replace !== "boolean")) return api2Refused("bad-call", "a binding needs a permitted key, a bounded action, and an optional replacement flag");
-        const previous = keys.list().find((entry) => entry.trigger === trigger);
-        if (previous && previous.action !== action && replace !== true) return api2Refused("key-conflict", "the key already has a binding");
-        return keys.set(trigger, action) ? api2Ok(null) : api2Refused("keymap", "the binding is invalid");
-      }
-      if (operation === "remove") {
-        const trigger = args[0];
-        if (args.length !== 1 || typeof trigger !== "string" || !isWorkerBindingKey(trigger)) return api2Refused("bad-call", "remove takes one permitted trigger key");
-        return api2Ok(keys.remove(trigger));
-      }
-      if (args.length !== 0) return api2Refused("bad-call", "this operation takes no arguments");
-      if (operation === "keyset") return api2Ok(keys.keyset());
-      if (operation === "list") return api2Ok(data(keys.list()));
-      if (operation === "commands") return api2Ok(data(keys.commands()));
-      if (operation === "cancelCapture") return api2Ok(keys.cancelCapture());
-      if (operation === "capture") {
-        if (host.capturing) return api2Refused("busy", "this mod is already capturing a key");
-        host.capturing = true;
-        const timer = setTimeout(() => keys.cancelCapture(), 10000);
-        try {
-          const key = await keys.capture();
-          if (!current() || !host.held("keymap:edit")) return api2NotGranted("keymap:edit");
-          return api2Ok(key !== null && isWorkerBindingKey(key) ? key : null);
-        } finally {
-          clearTimeout(timer);
-          host.capturing = false;
-        }
-      }
-    }
-    if (method === "display.filter") {
-      if (!host.held("display:filter")) return api2NotGranted("display:filter");
-      if (args.length !== 1) return api2Refused("bad-call", "display.filter takes one filter choice or null");
-      let filter: string | null;
-      try { filter = workerVisualFilter(args[0]); }
-      catch (error) { return api2Refused("bad-filter", error instanceof Error ? error.message : String(error)); }
-      if (!host.ctx.display) return api2Unavailable("this front end has no display");
-      if (modPresentationSuspended()) return api2Refused("input", "the host is asking the player a question");
-      host.ctx.display.setVisualFilter(filter, { scope: "canvas" });
-      host.filter = filter;
-      return api2Ok(null);
-    }
-    return api2Refused("bad-call", "this simple Worker method is unavailable");
-  });
-}
-
-function plainRecord(value: unknown): value is Record<string, WorkerJson> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) &&
-    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 }
 
 function netDomain(net: NonNullable<ModPluginContext["net"]>): NonNullable<ModApi2["net"]> {
@@ -1537,24 +1429,27 @@ function permissionsDomain(ctx: ModPluginContext, options: Api2HostOptions, held
 }
 
 function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps, granted: (capability: string) => boolean): Api2Truth {
-  /* A trusted view (no capability set) reads the real map, and
-   * trueMonsterViews lists every monster, perceived or not. Only an
-   * allowlisted mod reaches this. */
+  /* A view without a capability set reads truth, so the durable mark must precede its construction even when the caller only wants one race. */
   const view = (state: GameState) => createAgentView(state, undefined, deps);
   /* Exact monsters and race records have a narrower permission of their own; the level and the shops need the real map. */
-  const mapOpen = () => granted("state:map-actual.read") && (!ctx.state || prepareTruthRead(ctx.id, "state:map-actual.read", ctx.state)) && granted("state:map-actual.read");
-  const monstersOpen = () => mapOpen() || (granted("state:monsters-actual.read") && (!ctx.state || prepareTruthRead(ctx.id, "state:monsters-actual.read", ctx.state)) && granted("state:monsters-actual.read"));
+  const open = async (capability: "state:map-actual.read" | "state:monsters-actual.read"): Promise<boolean> => {
+    if (!granted(capability)) return false;
+    const state = ctx.state;
+    return (!state || await prepareTruthRead(ctx.id, capability, state)) && state === ctx.state && granted(capability);
+  };
+  const mapOpen = () => open("state:map-actual.read");
+  const monstersOpen = async () => await mapOpen() || await open("state:monsters-actual.read");
   return frozen({
-    monsters: () => guarded(() => {
-      if (!monstersOpen()) return api2NotGranted("state:monsters-actual.read");
+    monsters: () => guarded(async () => {
+      if (!await monstersOpen()) return api2NotGranted("state:monsters-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       return api2Ok(data(trueMonsterViews(ctx.state, deps).map((mon) => ({
         ...mon,
         perceived: monsterIsObvious(ctx.state!.monsters[mon.id]!),
       }))) as readonly Api2TrueMonster[]);
     }),
-    race: (index: number) => guarded(() => {
-      if (!monstersOpen()) return api2NotGranted("state:monsters-actual.read");
+    race: (index: number) => guarded(async () => {
+      if (!await monstersOpen()) return api2NotGranted("state:monsters-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       if (!ctx.registries) return api2Unavailable("there are no monster races yet");
       const race = ctx.registries.monsters.races.find((race) => race.ridx === index);
@@ -1575,13 +1470,13 @@ function truthDomain(ctx: ModPluginContext, deps: AgentViewDeps, granted: (capab
         hasFriends: race.friends.length > 0 || race.friendsBase.length > 0,
       }));
     }),
-    storeKnowledge: () => guarded(() => {
-      if (!mapOpen()) return api2NotGranted("state:map-actual.read");
+    storeKnowledge: () => guarded(async () => {
+      if (!await mapOpen()) return api2NotGranted("state:map-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       return api2Ok(data(storeKnowledge(ctx.state)));
     }),
-    level: () => guarded(() => {
-      if (!mapOpen()) return api2NotGranted("state:map-actual.read");
+    level: () => guarded(async () => {
+      if (!await mapOpen()) return api2NotGranted("state:map-actual.read");
       if (!ctx.state) return api2Unavailable(NO_GAME);
       const level = view(ctx.state).knownLevel?.() ?? null;
       if (!level) return api2Unavailable("there is no level yet");

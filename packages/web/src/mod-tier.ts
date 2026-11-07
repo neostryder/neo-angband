@@ -240,6 +240,8 @@ interface SeamRule {
   readonly inProcess: boolean;
   /** A first-party mod whose FIRST_PARTY_ORIGINS entry names the capability may hold it. */
   readonly originListed: boolean;
+  /** A Worker may hold it through the broker, with the player's consent. */
+  readonly brokered?: boolean;
   /**
    * The player confirms it on its own Core-drawn question, separately from
    * the other permissions, because it can install or turn on other code.
@@ -257,12 +259,12 @@ interface SeamRule {
  * the game's own mods, each named for it in FIRST_PARTY_ORIGINS, and is
  * confirmed on its own Core-drawn question. `truth` (the real map) goes to any
  * in-process mod the player allows; its consent sentence says the mod sees what
- * the character has not found. A Worker mod gets either only when it is a
- * listed first-party mod. A namespace missing from this table is held by nobody.
+ * the character has not found. Any Worker may hold truth through the broker.
+ * A namespace missing from this table is held by nobody.
  */
 const SEAM_POLICY: Readonly<Record<string, SeamRule>> = Object.freeze({
   manage: Object.freeze({ inProcess: false, originListed: true, confirm: true }),
-  truth: Object.freeze({ inProcess: true, originListed: true, confirm: false }),
+  truth: Object.freeze({ inProcess: true, originListed: false, brokered: true, confirm: false }),
 });
 
 /** The vocabulary entry for a capability string, or undefined when it does not know it. */
@@ -280,6 +282,7 @@ function seamRefusal(entry: CapabilityEntry, capability: string, tier: ModTier):
   const rule = SEAM_POLICY[entry.namespace];
   if (!rule) return "this capability has no host mechanism yet";
   if (rule.inProcess && tier.execution === "in-process") return null;
+  if (rule.brokered && tier.execution === "worker") return null;
   if (!rule.originListed || tier.trust !== "first-party") return "this needs a brokered mechanism Workers do not have yet";
   if (!tier.seams.includes(capability)) return "this capability has no enabled host mechanism for this mod";
   return null;

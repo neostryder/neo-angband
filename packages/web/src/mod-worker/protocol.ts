@@ -44,8 +44,8 @@ export interface ModWorkerPanelPatch {
 
 /**
  * The `ModApi2` methods a Worker may call, by path. Anything else is refused
- * before it reaches the host's domains. `manage` and `truth` are absent: a
- * Worker mod never holds them.
+ * before it reaches the host's domains. Truth reads require a durable mark;
+ * management still needs an in-process mechanism.
  */
 export const WORKER_CALLS = [
   "meta.settings",
@@ -76,6 +76,10 @@ export const WORKER_CALLS = [
   "view.inspect.tileActions",
   "view.input",
   "view.isCurrent",
+  "truth.level",
+  "truth.monsters",
+  "truth.race",
+  "truth.storeKnowledge",
   "act.submit",
   "act.answer",
   "act.controller.owns",
@@ -211,16 +215,3 @@ export type ModWorkerToHost =
   | (FromWorker & { readonly type: "answer"; readonly askId: number; readonly ok: false; readonly error: string })
   | (FromWorker & { readonly type: "log"; readonly level: WorkerLogLevel; readonly message: string })
   | (FromWorker & { readonly type: "fault"; readonly site: string; readonly message: string });
-
-/** Simple grants use separate paths so they never open the management domain. */
-export const SIMPLE_WORKER_CALLS = {
-  "options.set": "options:write",
-  "keybindings.keyset": "keymap:edit",
-  "keybindings.list": "keymap:edit",
-  "keybindings.commands": "keymap:edit",
-  "keybindings.set": "keymap:edit",
-  "keybindings.remove": "keymap:edit",
-  "keybindings.capture": "keymap:edit",
-  "keybindings.cancelCapture": "keymap:edit",
-  "display.filter": "display:filter",
-} as const;

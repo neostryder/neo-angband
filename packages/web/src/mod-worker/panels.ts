@@ -1,7 +1,7 @@
 import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModWorkerPanel, ModWorkerPanelNode, ModWorkerPanelPatch, WorkerJson } from "./protocol";
 import { panelDescription, panelPatch } from "./panel-schema";
-import { closeTopModPanel, createModUi, modPresentationSuspended as modPanelsSuspended, onModPanelSuspension, topModPanelId } from "../panel-runtime";
+import { closeTopModPanel, createModUi, modPanelsSuspended, onModPanelSuspension, topModPanelId } from "../panel-runtime";
 import { addControlDomOwner, inputEvents } from "../input-door";
 import type { ModPanel } from "../mod-plugin";
 

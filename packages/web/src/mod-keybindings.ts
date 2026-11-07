@@ -13,7 +13,6 @@
 import type { GameState } from "@rpgm-tools/neo-angband-core";
 import { keyForKeyset, type KeypressCommandRow } from "./command-menu";
 import { inputEvents } from "./input-door";
-import { modPresentationSuspended as modPanelsSuspended, onModPanelSuspension } from "./panel-runtime";
 import {
   isBindableTriggerKey,
   keymapAdd,
@@ -28,11 +27,6 @@ import type { ModGameCommand, ModKeybindings } from "@rpgm-tools/neo-angband-cor
 export type { ModGameCommand, ModKeybinding, ModKeybindings } from "@rpgm-tools/neo-angband-core";
 
 type Keyset = "original" | "roguelike";
-
-/** Browser recovery controls and control characters belong to the host. */
-export function isWorkerBindingKey(key: string): boolean {
-  return isBindableTriggerKey(key) && !/[\p{Cc}\p{Cf}]/u.test(key) && !["F5", "F11", "F12"].includes(key);
-}
 
 let commandRows: () => readonly (KeypressCommandRow & { readonly id?: string })[] = () => [];
 
@@ -82,21 +76,13 @@ export function createModKeybindings(state: GameState): ModKeybindings {
     commands: gameCommands,
     capture: (): Promise<string | null> => {
       pending?.(null);
-      if (modPanelsSuspended()) return Promise.resolve(null);
       return new Promise<string | null>((resolve) => {
-        let offSuspension = () => {};
         const finish = (key: string | null): void => {
           inputEvents.removeEventListener("keydown", onKey, true);
-          offSuspension();
           if (pending === finish) pending = null;
           resolve(key);
         };
         const onKey = (ev: KeyboardEvent): void => {
-          if (modPanelsSuspended() || ev.key === "Escape" || ev.ctrlKey || ev.altKey || ev.metaKey) {
-            finish(null);
-            return;
-          }
-          if (ev.isComposing || ev.repeat || !isWorkerBindingKey(ev.key)) return;
           if (ev.key !== "Escape" && !isBindableTriggerKey(ev.key)) return;
           ev.preventDefault();
           ev.stopImmediatePropagation();
@@ -104,7 +90,6 @@ export function createModKeybindings(state: GameState): ModKeybindings {
         };
         pending = finish;
         inputEvents.addEventListener("keydown", onKey, true);
-        offSuspension = onModPanelSuspension((suspended) => { if (suspended) finish(null); });
       });
     },
     cancelCapture: (): boolean => {

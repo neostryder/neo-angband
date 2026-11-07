@@ -485,7 +485,6 @@ import {
   revokeModPanels,
   setModPanelVisualFilter,
   setPanelGameSurface,
-  setModHostDialogOpen,
 } from "./panel-runtime";
 import { onSessionTaint, sessionTaint, taintNotice, taintSession } from "./mod-taint";
 import type { SessionTaint } from "./mod-taint";
@@ -2127,7 +2126,9 @@ setApi2CommandPusher((code, dir) => {
   advance();
 });
 function saveTruthUse(id: string, capability: TruthCapability): boolean {
-  const loaded = activeModCode().plugins.find((mod) => mod.id === id);
+  if (suppressSave || birthPending || !attachedSlot()) return false;
+  const code = activeModCode();
+  const loaded = code.plugins.find((mod) => mod.id === id) ?? code.workers.find((mod) => mod.id === id);
   if (!loaded || !loaded.permissionBinding || loaded.permissionBinding !== consentBinding(id)) return false;
   recordTruthUse(game.manifest, game.state.actor.player,
     { installation: loaded.permissionBinding, id, version: loaded.manifest.version, digest: loaded.contentDigest ?? null },
@@ -3265,7 +3266,6 @@ let modalDepth = 0;
  */
 function adjustModalDepth(delta: 1 | -1): void {
   modalDepth += delta;
-  setModHostDialogOpen(modalDepth > 0);
   subwindowShell.setModalActive(modalDepth > 0);
 }
 

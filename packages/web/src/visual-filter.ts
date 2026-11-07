@@ -1,20 +1,6 @@
 /** The explicit consent a mod needs before it filters game pixels or panels. */
 export const VISUAL_FILTER_CAPABILITY = "display:filter";
 
-/** Worker choices cannot name CSS resources or filter host permission dialogs. */
-export function workerVisualFilter(value: unknown): string | null {
-  if (value === null) return null;
-  if (typeof value !== "object" || Array.isArray(value)) throw new Error("a filter needs a name and an amount");
-  const spec = value as Record<string, unknown>;
-  if (Object.keys(spec).length !== 2 || typeof spec["name"] !== "string" || typeof spec["amount"] !== "number" || !Number.isFinite(spec["amount"])) throw new Error("a filter needs only a name and a finite amount");
-  const bounds: Readonly<Record<string, readonly [number, number]>> = {
-    grayscale: [0, 1], sepia: [0, 1], invert: [0, 1], brightness: [0.25, 2], contrast: [0.25, 2], saturate: [0, 2],
-  };
-  const range = Object.hasOwn(bounds, spec["name"]) ? bounds[spec["name"]] : undefined;
-  if (!range || spec["amount"] < range[0] || spec["amount"] > range[1]) throw new Error("the filter name or amount is outside the host's fixed set");
-  return `${spec["name"]}(${spec["amount"]})`;
-}
-
 /** Route one filter choice to the canvas and the optional game panel layers. */
 export function applyScopedVisualFilter(
   filter: string | null,
