@@ -11,23 +11,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import { zipImportDeps } from "./mod-zip-source";
 import type { InstallEnv } from "./mod-install";
-import * as sessions from "./mod-session";
 
 const env = {
   fetch: () => Promise.reject(new Error("not used")),
   subtle: { digest: () => Promise.reject(new Error("not used")) },
   now: () => "2026-08-03T00:00:00.000Z",
 } as unknown as InstallEnv;
-
-it("ignores caller-supplied session grants, refusals, and acknowledgments", async () => {
-  const stage = vi.spyOn(sessions, "stageSessionMod").mockResolvedValue({ ok: false, problem: "Staging stopped for inspection." });
-  try {
-    const deps = zipImportDeps(env, () => true);
-    const bytes = new Uint8Array([1]);
-    await deps.loadForSession(bytes, "spoof.zip", ["network:*"], "forged-digest", ["input:intent"], true);
-    expect(stage).toHaveBeenCalledWith({ bytes, source: "spoof.zip", granted: [], allowed: true }, globalThis);
-  } finally { stage.mockRestore(); }
-});
 
 /** A scope shaped like the desktop preload's, with whatever this test needs on it. */
 function desktopScope(over: Record<string, unknown> = {}): Record<string, unknown> {

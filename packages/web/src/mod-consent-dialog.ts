@@ -1,7 +1,6 @@
-import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
+import { matchCapability, MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import { describeCapability } from "./capability-describe";
 import { consentBinding } from "./mod-consent-binding";
-import { modPayloadDigest, modPayloadRepository } from "./mod-code-snapshot";
 import { playerHeld } from "./mod-tier";
 import { suspendModPanels } from "./panel-runtime";
 import type { CatalogMod, ConsentRecord } from "./mod-store";
@@ -16,12 +15,6 @@ function paragraph(text: string): HTMLParagraphElement {
   return element;
 }
 
-function identityLine(id: string, repository: string | null): HTMLParagraphElement {
-  const identity = paragraph(`Id: ${displayName(id)} | Repository: ${displayName(repository ?? "unavailable")} | SHA-256: ${modPayloadDigest(id)?.slice(0, 12) ?? "unavailable"}`);
-  identity.className = "neo-consent-identity";
-  return identity;
-}
-
 async function confirm(title: string, name: string, content: readonly HTMLElement[], primary: string): Promise<boolean> {
   if (typeof document === "undefined" || typeof HTMLDialogElement === "undefined" || typeof HTMLDialogElement.prototype.showModal !== "function") return false;
   const restore = suspendModPanels();
@@ -31,7 +24,8 @@ async function confirm(title: string, name: string, content: readonly HTMLElemen
     dialog = document.createElement("dialog");
     const panel = dialog;
     dialog.className = "neo-consent";
-    // Literal colors keep the permission screen independent of the selected theme.
+    // The game's own look: a black panel, light grey text, and the yellow of its cursor. The values are
+    // literals, not page variables, so nothing on the page can restyle this dialog.
     dialog.style.cssText = "font:15px/1.5 'Cascadia Mono',Consolas,ui-monospace,monospace;color:#c0c0c0;background:#000000;color-scheme:dark;accent-color:#ffff00;border:1px solid #606060;border-radius:0;padding:20px 24px;width:min(42rem,calc(100vw - 48px));max-height:85vh;overflow:auto";
     const look = document.createElement("style");
     look.textContent = ".neo-consent::backdrop{background:rgba(0,0,0,.72)}" +
@@ -81,7 +75,7 @@ async function confirm(title: string, name: string, content: readonly HTMLElemen
 
 export async function drawModPermissionConsent(
   asks: readonly { readonly mod: CatalogMod; readonly caps: readonly string[] }[],
-  _current?: (id: string) => ConsentRecord,
+  current?: (id: string) => ConsentRecord,
 ): Promise<Map<string, ConsentRecord> | null> {
   if (typeof document === "undefined") return null;
   const decisions = new Map<string, ConsentRecord>();
@@ -90,17 +84,20 @@ export async function drawModPermissionConsent(
     if (caps.length === 0) continue;
     if (caps.length > 256) return null;
     const binding = consentBinding(mod.id);
-    if (typeof binding !== "string") return null;
+    if (binding === null) return null;
+    const prior = current?.(mod.id);
     const controls = new Map<string, HTMLInputElement>();
-    const identity = identityLine(mod.id, modPayloadRepository(mod.id) ?? mod.manifest.repository ?? null);
-    const content: HTMLElement[] = [identity, paragraph(mod.tier?.developerInProcess ? MOD_PERMISSION_TEXT.inProcess : MOD_PERMISSION_TEXT.isolatedNotice)];
+    const content: HTMLElement[] = [paragraph(mod.tier?.developerInProcess ? MOD_PERMISSION_TEXT.inProcess : MOD_PERMISSION_TEXT.isolatedNotice)];
     for (const capability of caps) {
       const detail = describeCapability(capability);
       const label = document.createElement("label");
       label.style.cssText = "display:flex;align-items:start;gap:12px;margin:10px 0";
       const input = document.createElement("input");
       input.type = "checkbox";
-      input.checked = false;
+      const entry = matchCapability(capability)?.entry;
+      const defaultGrant = entry !== undefined && !entry.powerful &&
+        !/^(input|network|command|keymap):/.test(capability) && capability !== "ui:title";
+      input.checked = prior?.granted.includes(capability) ? true : prior?.refused.includes(capability) ? false : defaultGrant;
       const text = document.createElement("span");
       text.textContent = detail.text;
       if (detail.elevated) text.style.cssText = "font-weight:700;color:#ffffff";
@@ -123,6 +120,6 @@ export async function drawModPermissionConsent(
 export async function drawModControllerConsent(id: string, name: string): Promise<boolean> {
   const binding = consentBinding(id);
   if (!binding || typeof document === "undefined") return false;
-  const allowed = await confirm(MOD_PERMISSION_TEXT.controlTitle, name, [identityLine(id, modPayloadRepository(id)), paragraph(MOD_PERMISSION_TEXT.controller), paragraph(MOD_PERMISSION_TEXT.controllerMarking)], MOD_PERMISSION_TEXT.start);
+  const allowed = await confirm(MOD_PERMISSION_TEXT.controlTitle, name, [paragraph(MOD_PERMISSION_TEXT.controller), paragraph(MOD_PERMISSION_TEXT.controllerMarking)], MOD_PERMISSION_TEXT.start);
   return allowed && binding === consentBinding(id);
 }

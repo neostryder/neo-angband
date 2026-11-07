@@ -13,16 +13,15 @@
  *   - a grant made for one session does not become a standing grant;
  *   - a staged mod is on whatever else says, including over a stored "off" and over
  *     a `?mods=` override, because staging is the gesture and there is no row;
- *   - an archive cannot share an installed mod's private namespace;
+ *   - a staged copy of an installed id shadows it rather than losing to it, and the
+ *     collision is reported;
  *   - the mod-facing door refuses code and the player's door does not, which is the
  *     one asymmetry the whole design rests on;
  *   - and a session mod cannot be quietly resident: it is in the list, marked, and
  *     droppable.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as installs from "./mod-install";
-import { setConsentBindings } from "./mod-consent-binding";
+import { beforeEach, describe, expect, it } from "vitest";
 import { zipSync } from "fflate";
 import {
   dropSessionMods,
@@ -108,11 +107,8 @@ function scopeWith(s: SessionStorageLike): unknown {
   return { sessionStorage: s, crypto: globalThis.crypto };
 }
 
-beforeEach(() => { resetDiskPacks(); setConsentBindings(new Map([["draft", "measured-draft"]])); });
-afterEach(() => { resetDiskPacks(); setConsentBindings(new Map()); vi.restoreAllMocks(); });
-
 describe("staging an archive", () => {
-  it("ignores stored session decisions and notice acknowledgments", async () => {
+  it("keeps session refusals and notice acknowledgment apart from installed decisions", async () => {
     const bytes = WITH_CODE();
     const scope = scopeWith(store());
     const preview = await previewSessionArchive(bytes, scope);
@@ -122,23 +118,10 @@ describe("staging an archive", () => {
     expect((await stageSessionMod(opts, scope)).ok).toBe(true);
     await loadSessionMods(scope);
     const persisted = new ModStore(store());
-    expect(persisted.getDecisions("draft")).toEqual({ granted: [], refused: [] });
-    expect(persisted.sawUnreviewedNotice("draft")).toBe(false);
-    expect(persisted.getConsents()).toEqual({});
-  });
-
-  it("refuses a same-repository installed id at staging and on a forged reload", async () => {
-    const s = store(); const scope = scopeWith(s);
-    await stageSessionMod({ bytes: WITH_CODE(), source: "draft.zip", allowed: true }, scope);
-    const before = s.getItem(SESSION_MODS_KEY);
-    vi.spyOn(installs, "installedMods").mockResolvedValue([{ id: "draft", name: "Installed draft", repo: "a-player/draft", tag: "v0.1.0", sha: "installed", files: [], installedAt: "today" }]);
-    const persisted = new ModStore(store());
-    persisted.setDecisions("draft", { granted: ["command:add"], refused: [], binding: "measured-draft" }, "0.1.0");
-    expect(await stageSessionMod({ bytes: WITH_CODE(), source: "spoof.zip", allowed: true }, scope)).toMatchObject({ ok: false, problem: expect.stringContaining("is installed") });
-    expect(s.getItem(SESSION_MODS_KEY)).toBe(before);
-    expect((await loadSessionMods(scope)).packs).toEqual([]);
-    expect(sessionPacks().packs).toEqual([]);
-    expect(persisted.getConsent("draft")).toEqual(["command:add"]);
+    persisted.setConsent("draft", ["command:add"]);
+    expect(persisted.getDecisions("draft")).toEqual({ granted: [], refused: ["command:add"] });
+    expect(persisted.sawUnreviewedNotice("draft")).toBe(true);
+    expect(persisted.getConsents()).toEqual({ draft: ["command:add"] });
   });
   it("holds a content pack and can read it back", async () => {
     const s = store();
@@ -269,7 +252,7 @@ describe("the code asymmetry, which is the whole design", () => {
     expect(staged.mod.granted).toEqual(["command:add"]);
   });
 
-  it("ignores a self-consistent stored grant before and after restaging", async () => {
+  it("requires a fresh grant when re-staging changes the archive digest", async () => {
     const s = store();
     const scope = scopeWith(s);
     const firstBytes = WITH_CODE();
@@ -290,7 +273,7 @@ describe("the code asymmetry, which is the whole design", () => {
     expect(first.ok).toBe(true);
     if (!first.ok) return;
     await loadSessionMods(scope);
-    expect(new ModStore(null).getConsent("draft")).toEqual([]);
+    expect(new ModStore(null).getConsent("draft")).toEqual(["command:add"]);
 
     const changedBytes = archive({
       "manifest.json": manifest({
@@ -333,7 +316,7 @@ describe("the code asymmetry, which is the whole design", () => {
     );
     expect(approvedAgain.ok).toBe(true);
     await loadSessionMods(scope);
-    expect(new ModStore(null).getConsent("draft")).toEqual([]);
+    expect(new ModStore(null).getConsent("draft")).toEqual(["command:add"]);
   });
 
   it("the MOD's door refuses one, and names the file", async () => {
@@ -497,18 +480,21 @@ describe("the report, fused into the boot report", () => {
     origins: [{ kind, dir: null, count: ids.length }],
   });
 
-  it("refuses an installed id discovered in the boot report", async () => {
+  it("is absent until something is staged, and then leads", async () => {
     setDiskPacks(report("installed", ["draft", "other"]));
     expect(diskPacks().kind).toBe("installed");
 
     const s = store();
-    expect(await stageSessionMod({ bytes: CONTENT(), source: "draft.zip", allowed: true }, scopeWith(s))).toMatchObject({ ok: false });
+    await stageSessionMod({ bytes: CONTENT(), source: "draft.zip", allowed: true }, scopeWith(s));
     await loadSessionMods(scopeWith(s));
 
     const fused = diskPacks();
-    expect(fused.kind).toBe("installed");
+    /* THE SESSION COPY SHADOWS THE INSTALLED ONE, which is the point of staging a
+     * draft of a mod you already have. */
+    expect(fused.kind).toBe("session");
     expect(fused.packs.map((p) => p.manifest.id)).toEqual(["draft", "other"]);
-    expect(sessionPacks().packs).toEqual([]);
+    /* And the collision is REPORTED rather than resolved in silence. */
+    expect(fused.problems.some((p) => p.id === "draft")).toBe(true);
   });
 
   it("returns the same object until an input changes, so the composer does not recompose", async () => {

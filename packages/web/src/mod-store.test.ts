@@ -6,8 +6,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setConsentBindings } from "./mod-consent-binding";
+import { describe, expect, it, vi } from "vitest";
 import { resolveSectionState, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   ModStore,
@@ -31,9 +30,6 @@ import {
 import { confirmGameplayNoscore, needsGameplayNoscoreWarning } from "./mods";
 import { discoverContentModManifests, loadEnabledModRuleDecls } from "./pack";
 
-beforeEach(() => { setConsentBindings(new Map([["a", "measured-a"], ["p", "measured-p"]])); });
-afterEach(() => { setConsentBindings(new Map()); });
-
 function fakeStorage(): StorageLike & { map: Map<string, string> } {
   const map = new Map<string, string>();
   return {
@@ -52,7 +48,7 @@ describe("ModStore configuration retention", () => {
   it("restores one mod's settings, permissions, pins, sections, and custom flags", () => {
     const store = new ModStore(fakeStorage());
     store.setEnabled(["b", "a"]);
-    store.setDecisions("a", { granted: ["ui:sidebar.replace"], refused: [], binding: "measured-a" }, "1.0.0");
+    store.setDecisions("a", { granted: ["ui:sidebar.replace"], refused: [] }, "1.0.0");
     store.setSettingValue("a", "amount", 7);
     store.setRuleChoice("customRule", true);
     store.setSectionChoice("a", "part", false);
@@ -327,7 +323,7 @@ describe("resolveEnabledIds + hasStoredEnabled", () => {
 describe("ModStore - consent", () => {
   it("records and reads per-mod consent", () => {
     const store = new ModStore(fakeStorage());
-    store.setDecisions("p", { granted: ["registry:effect", "registry:vocab"], refused: [], binding: "measured-p" }, "1.0.0");
+    store.setConsent("p", ["registry:effect", "registry:vocab"]);
     expect(store.getConsent("p")).toEqual(["registry:effect", "registry:vocab"]);
     store.clearConsent("p");
     expect(store.getConsent("p")).toEqual([]);

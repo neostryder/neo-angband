@@ -48,8 +48,6 @@ still calls itself.
 
 ## [Unreleased]
 
-- [Visible] [Security] **Mod permission decisions require measured payloads and fresh host choices.** First-party code loads retained measured bytes, permission checkboxes start unchecked, and dialogs show the mod id, repository, and digest. Profile copies carry only enabled-mod selections. Session archives cannot share installed ids or grant themselves permissions through page storage, and mod-facing management responses hide private decisions and settings. Executable session imports and headless runs without measured bindings are refused.
-
 ### Added
 
 - [Visible] [Modding-API] **Third-party mods can now play the game as autoplayer controllers once the player grants their permissions.** Public mods can also observe gameplay keys and register commands, and they can add rows to the title screen and the game menu. Before, only the game's own mods could take the keyboard as a controller. Public API 2 code always runs in an isolated Worker that the host checks on every message, and the game page draws its own consent dialog bound to a digest of the mod's files and requested permissions. A public controller needs a second dialog each time a save is loaded or resumed, and starting one marks the character unscorable and the save nondeterministic.
@@ -58,6 +56,7 @@ still calls itself.
 
 ### Changed
 
+- [Visible] [Security] **Desktop mod requests now refuse private and metadata destinations.** The relay checks DNS before each request and again when opening the connection, including redirects, caps request rates and headers, and removes raw authorization headers. Backup writes reject Windows device names and linked files, enforce file and byte limits, and ask before each replacement. Quit and update actions also ask in a native dialog. These checks do not authenticate individual mods in the shared game page.
 - [Visible] [Modding-API] **The game now implements mod API 2.1.0, up from 2.0.0.** The minor version rises because this release adds the `input:controller` and `input:observe` permissions that let third-party mods run controllers and watch gameplay keys, the `resumeAutoplayer` option on `saves.load`, and the `seed`, `birthRngState`, and `birthOptions` fields on the run report, and the `input-flush` event now fires. Mods that declare `">=2.0.0 <3.0.0"` keep loading unchanged. A mod that needs any of these additions should declare `">=2.1.0 <3.0.0"` so older games refuse it with a version message instead of failing at run time.
 - [Visible] [Compatibility] **The game page refuses public API 1 code.** Legacy in-process code runs only in a lab build with `?labprocess=<mod-id>`, and only if the mod declares and is granted `engine:access` and its content is approved. The headless runner runs folder mods with code only when started with `--unsafe-in-process`.
 - [Visible] [UI] **Mod consent dialogs now match the black Angband screen.** The permissions dialog and the "Automatic gameplay" dialog use a black panel with light grey monospace text, white bold headings, the mod's name in yellow, outlined buttons, and a yellow focus ring, and the page behind them is dimmed. Focus still starts on Cancel, and Escape still declines.

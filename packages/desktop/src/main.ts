@@ -57,12 +57,15 @@ import {
   CHARACTER_BACKUP_PURPOSE,
   backupFolderDisplayName,
   isBackupPurpose,
-  isHostFolderFileName,
   listBackupFiles,
   readBackupFolder,
   writeBackupFolder,
+  writeBackupFile,
 } from "./backup-folder.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
+import { capLogBatch, confirmHostAction, hostFsCallIsSafe, hostFsFailure, updateCallIsSafe } from "./bridge-guard.js";
+import { createCheckedFetch } from "./net-guard.js";
+import * as dns from "node:dns";
 import { LOG_DIRNAME, openLogFile, writeReportFile } from "./log-file.js";
 import { describeValue, formatLogLine } from "@rpgm-tools/neo-angband-core/log";
 import type { LogLevel } from "@rpgm-tools/neo-angband-core/log";
@@ -87,6 +90,7 @@ import {
   APP_SCHEME_PRIVILEGES,
   appRequestPath,
   isGameUrl,
+  isGameBridgeFrame,
   isLegacyProbe,
   legacyOrigin,
 } from "./app-origin.js";
@@ -568,14 +572,13 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
   const serve = serveRawFs(new NodeRawFs(USER_BASE, dirs));
   ipcMain.on(HOST_BRIDGE_CHANNEL, (event, op: unknown, args: unknown) => {
     try {
-      event.returnValue = serve(
-        typeof op === "string" ? op : "",
-        Array.isArray(args) ? (args as unknown[]) : [],
-      );
+      event.returnValue = isGameBridgeFrame(event.senderFrame, event.sender.mainFrame) && hostFsCallIsSafe(op, args)
+        ? serve(op as string, args as unknown[])
+        : hostFsFailure(op);
     } catch {
       /* serveRawFs is written not to throw; this is the belt to its braces,
        * because leaving returnValue unset hangs the calling renderer forever. */
-      event.returnValue = undefined;
+      event.returnValue = hostFsFailure(op);
     }
   });
 
@@ -597,13 +600,14 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
    * window-all-closed path - which on macOS deliberately keeps the app alive, so a
    * player there would have "exited" to nothing at all.
    *
-   * The renderer has already written and verified the save before it gets here
-   * (closeGameSave retries and reports), so this must not second-guess it: a shell
-   * that refused to quit on the game's behalf would be the same class of bug as the
-   * row that never quit in the first place.
+   * Every script in the page can call this channel, so the native dialog must
+   * confirm the request even after closeGameSave writes the save.
    */
-  ipcMain.on(HOST_QUIT_CHANNEL, () => {
-    app.quit();
+  ipcMain.on(HOST_QUIT_CHANNEL, (event) => {
+    if (!isGameBridgeFrame(event.senderFrame, event.sender.mainFrame)) return;
+    void confirmAction(event.sender, "Quit Neo Angband?", "Quit").then((yes) => {
+      if (yes) app.quit();
+    });
   });
 
   installLogging();
@@ -612,6 +616,13 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
   installModZipChannel();
   installBackupChannel();
   installNetChannel();
+}
+
+async function confirmAction(sender: Electron.WebContents, message: string, accept: string): Promise<boolean> {
+  const win = BrowserWindow.fromWebContents(sender);
+  if (!win || sender.isDestroyed()) return false;
+  const allowed = await confirmHostAction((options) => dialog.showMessageBox(win, options), message, accept);
+  return allowed && !sender.isDestroyed();
 }
 
 /**
@@ -623,7 +634,8 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
 function installNetChannel(): void {
   const file = path.join(USER_BASE, "mod-secrets.json");
   const relay = createNetRelay({
-    fetch: (input, init) => fetch(input, init),
+    fetch: createCheckedFetch(),
+    resolveHost: async (hostname) => (await dns.promises.lookup(hostname, { all: true })).map((record) => record.address),
     env: (name) => process.env[name],
     encryption: {
       available: () => safeStorage.isEncryptionAvailable(),
@@ -655,7 +667,10 @@ function installNetChannel(): void {
       return result.response === 0;
     },
   });
-  ipcMain.handle(NET_CHANNEL, (_event, op: unknown, arg: unknown) => relay.handle(op, arg));
+  ipcMain.handle(NET_CHANNEL, (event, op: unknown, arg: unknown) => {
+    if (!isGameBridgeFrame(event.senderFrame, event.sender.mainFrame)) return { ok: false, code: "not-declared", problem: "The caller is not the game frame." };
+    return relay.handle(op, arg, event.sender.id);
+  });
 }
 
 /**
@@ -676,6 +691,7 @@ function installNetChannel(): void {
  */
 function installBackupChannel(): void {
   ipcMain.handle(BACKUP_CHANNEL, async (event, op: unknown, arg: unknown) => {
+    if (!isGameBridgeFrame(event.senderFrame, event.sender.mainFrame)) return { ok: false };
     const a = (arg ?? {}) as { purpose?: unknown; ext?: unknown; name?: unknown; text?: unknown };
     const purpose = typeof a.purpose === "string" && a.purpose !== "" ? a.purpose : CHARACTER_BACKUP_PURPOSE;
     if (!isBackupPurpose(purpose)) throw new Error("the backup purpose is not a valid id");
@@ -709,18 +725,8 @@ function installBackupChannel(): void {
 
       case "write": {
         const { name, text } = a;
-        if (!isHostFolderFileName(name, ext) || typeof text !== "string") {
-          return { ok: false };
-        }
         if (folder === null) return { ok: false };
-        try {
-          fs.writeFileSync(path.join(folder, name), text, "utf8");
-          return { ok: true };
-        } catch {
-          /* Permission lapsed, folder removed, disk full: answered false, never
-           * thrown - the fault table's "write() resolves false without prompting". */
-          return { ok: false };
-        }
+        return { ok: await writeBackupFile(folder, name, text, ext, () => confirmAction(event.sender, `Replace backup ${String(name)}?`, "Replace")) };
       }
 
       default:
@@ -755,9 +761,10 @@ function installThrottleChannel(): void {
  * the main process down.
  */
 function installLogging(): void {
-  ipcMain.on(LOG_CHANNEL, (_event, payload: unknown) => {
-    if (!Array.isArray(payload)) return;
-    LOG_FILE.append((payload as unknown[]).filter((l): l is string => typeof l === "string"));
+  ipcMain.on(LOG_CHANNEL, (event, payload: unknown) => {
+    if (!isGameBridgeFrame(event.senderFrame, event.sender.mainFrame)) return;
+    const batch = capLogBatch(payload);
+    if (batch !== null) LOG_FILE.append(batch);
   });
 
   ipcMain.handle(REPORT_CHANNEL, (_event, text: unknown) => {
@@ -795,6 +802,8 @@ function installUpdater(): void {
   let staged: string | null = null;
 
   ipcMain.handle(UPDATE_CHANNEL, async (event, op: unknown, arg: unknown) => {
+    if (!isGameBridgeFrame(event.senderFrame, event.sender.mainFrame)) return { ok: false, error: "refused" };
+    if (!updateCallIsSafe(op, arg)) return { ok: false, error: "refused" };
     const shape = shapeOf({
       platform: process.platform,
       arch: process.arch,
@@ -812,6 +821,7 @@ function installUpdater(): void {
          * turn this capability into an arbitrary verified downloader. */
         const tag = releaseTagFromRenderer(arg);
         assertNewerThanInstalled(tag, app.getVersion());
+        if (!(await confirmAction(event.sender, `Download update ${tag}?`, "Download"))) return { ok: false, error: "The player declined." };
         const asset = await resolveReleaseAsset({
           tag,
           repo: UPDATE_REPO,
@@ -834,6 +844,9 @@ function installUpdater(): void {
       }
       if (op === "apply") {
         if (staged === null) return { ok: false, error: "nothing has been downloaded" };
+        const acceptedStaging = staged;
+        if (!(await confirmAction(event.sender, "Install the downloaded update and restart?", "Install"))) return { ok: false, error: "The player declined." };
+        if (staged !== acceptedStaging) return { ok: false, error: "The downloaded update changed." };
         /* AWAITED, and the quit is downstream of it. launchSwap rejects unless
          * the installer is confirmed running, and quitting anyway would put the
          * player back on the title screen of the old version with no error and
@@ -852,6 +865,7 @@ function installUpdater(): void {
         return { ok: true };
       }
       if (op === "reveal") {
+        if (!(await confirmAction(event.sender, "Open the release page in a browser?", "Open"))) return { ok: false, error: "The player declined." };
         const fallback = `https://github.com/${UPDATE_REPO}/releases`;
         /* `arg` reaches here from `window.neoDesktop.update("reveal", arg)`, a
          * bridge call any script in the renderer can make with any string - a

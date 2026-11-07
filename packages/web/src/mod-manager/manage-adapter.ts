@@ -2,7 +2,7 @@ import { modStartGrants } from "../mod-tier";
 import type { RepoRef } from "../mod-source";
 import type { ConsentRecord } from "../mod-store";
 import type { ModManagerService } from "./service";
-import { immutable, refused } from "./confirmation";
+import { refused } from "./confirmation";
 import type { Immutable, InstallPlan, ManagerResult, ManagerState } from "./types";
 
 export interface ManageAdapter {
@@ -31,12 +31,6 @@ export interface ManageAdapter {
 }
 
 export function createManageAdapter(service: ModManagerService, callerId: string): ManagerResult<ManageAdapter> {
-  const snapshot = (state: Immutable<ManagerState>): Immutable<ManagerState> => immutable({
-    ...state,
-    installed: state.installed.map((mod) => ({ ...mod, digests: null, settings: {}, sectionChoices: {}, pins: [], consent: { granted: [], refused: [] }, consentVersion: null,
-      catalogMod: { ...mod.catalogMod, granted: [], refused: [], consented: false } })),
-    orderPins: [], conflictOverrides: {}, ruleChoices: {}, pendingPlans: [], pendingConfirmation: null,
-  });
   const allowed = (): boolean => {
     const grants = modStartGrants(callerId);
     return grants.firstParty?.manage === true && grants.granted.includes("mod:install");
@@ -45,15 +39,12 @@ export function createManageAdapter(service: ModManagerService, callerId: string
   const check = <T>(body: () => ManagerResult<T>): ManagerResult<T> => allowed() ? body() : refused("first-party", "Only an allowlisted first-party mod can manage mods.");
   const checkAsync = async <T>(body: () => Promise<ManagerResult<T>>): Promise<ManagerResult<T>> => allowed() ? body() : refused("first-party", "Only an allowlisted first-party mod can manage mods.");
   return { status: "ok", value: Object.freeze<ManageAdapter>({
-    snapshot: () => snapshot(service.state),
-    subscribe: (listener) => service.subscribe((state) => { if (allowed()) listener(snapshot(state)); }),
+    snapshot: () => service.state,
+    subscribe: service.subscribe.bind(service),
     browse: service.browse.bind(service),
     search: service.search.bind(service),
     discover: (ref) => checkAsync(() => service.discover(ref)),
-    refresh: () => checkAsync(async () => {
-      const result = await service.refresh();
-      return result.status === "ok" ? { status: "ok", value: snapshot(result.value) } : result;
-    }),
+    refresh: () => checkAsync(() => service.refresh()),
     planInstall: (refs) => checkAsync(() => service.planCatalogInstall(refs)),
     applyPlan: (id) => check(() => service.applyPlan(id, callerId)),
     recordConsent: (id, decisions) => check(() => service.recordConsent(id, decisions, callerId)),
@@ -69,6 +60,6 @@ export function createManageAdapter(service: ModManagerService, callerId: string
     setConflictOverride: (slot, winner) => check(() => service.setConflictOverride(slot, winner)),
     setSectionChoice: (id, section, on) => check(() => service.setSectionChoice(id, section, on)),
     setSettingValue: (id, setting, value) => check(() => service.setSettingValue(id, setting, value)),
-    setThirdPartyConsent: () => refused("host-only", "Only the player can change third-party consent."),
+    setThirdPartyConsent: (allow) => check(() => service.setThirdPartyConsent(allow, callerId)),
   }) };
 }
