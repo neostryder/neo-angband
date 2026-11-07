@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setConsentBindings } from "./mod-consent-binding";
 import { ModStore, type StorageLike } from "./mod-store";
 import { TRUTH_MAP, modHolds, modStartGrants, resetModTiers, setModGrants, setModTiers, type ModTier } from "./mod-tier";
 import { markPlayerForTruth, mayAskForTruth, requestTruthConsent } from "./mod-truth-consent";
@@ -22,7 +23,8 @@ function deps(store: ModStore, answer: boolean) {
   return { store, ask: vi.fn(async () => answer), markSave: vi.fn() };
 }
 
-afterEach(() => resetModTiers());
+beforeEach(() => { setConsentBindings(new Map([["glow", "bound"], ["quiet", "bound"]])); });
+afterEach(() => { resetModTiers(); setConsentBindings(new Map()); });
 
 describe("requestTruthConsent", () => {
   it("grants, stores the choice, and marks the save on a yes", async () => {
@@ -80,7 +82,7 @@ describe("requestTruthConsent", () => {
     setModTiers(new Map([["glow", tier()]]));
     setModGrants(new Map([["glow", { granted: ["state:view.read"], refusedByTier: [], refusedByPlayer: [], undecided: [], blocking: [] }]]));
     const store = new ModStore(storage());
-    store.setConsent("glow", ["state:view.read"]);
+    store.setDecisions("glow", { granted: ["state:view.read"], refused: [], binding: "bound" }, "1.0.0");
     await requestTruthConsent("glow", "Why.", deps(store, true));
     expect(store.getConsent("glow")).toEqual(["state:view.read", TRUTH_MAP]);
     expect(modHolds("glow", "state:view.read")).toBe(true);

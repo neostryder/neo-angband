@@ -4,7 +4,7 @@ The headless runner boots the game under Node with one or more mods, plays a sho
 
 **WARNING: The runner imports mod code with the full privileges of the host process. It is not a sandbox. Untrusted mods must only run inside an ephemeral OS sandbox that restricts filesystem, network and process access.**
 
-A folder mod with code runs only when the runner is started with `--unsafe-in-process`, and its code then has the privileges of the Node process. Without the option, the runner skips the mod and prints "This runner gives mod code Node's privileges. Start it with --unsafe-in-process to run mod code."
+Every executable mod now needs a measured consent binding before the shared loader resolves its entry. The headless runner does not currently prepare that binding, so its executable path is blocked, including with `--unsafe-in-process`. Restoring that path requires host measurement and authorization wiring; the option alone supplies neither.
 
 ## Running it
 
