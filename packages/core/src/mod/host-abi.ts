@@ -2674,6 +2674,7 @@ export interface RunBelonging {
 }
 
 export interface RunReport {
+  /** Publication provenance survives alongside permanent gameplay consequences. */
   readonly capabilityUse?: CapabilityUseSummary;
   readonly autoplayers?: readonly { readonly id: string; readonly name: string; readonly version: string; readonly digest: string | null; readonly firstParty: boolean }[];
   readonly outcome: RunOutcome;

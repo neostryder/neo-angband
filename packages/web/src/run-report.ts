@@ -139,6 +139,7 @@ export function buildRunReport(input: RunReportInput): RunReport {
     scored: input.scored,
     endedAt: input.endedAt,
     ...(input.autoplayers ? { autoplayers: structuredClone(input.autoplayers) } : {}),
+    /* The summary cannot share references with the live manifest or its history. */
     ...(input.capabilityUse ? { capabilityUse: structuredClone(input.capabilityUse) } : {}),
     history: characterHistory(state),
     messages: input.messages.slice(-RUN_REPORT_MESSAGES).map((m) => ({

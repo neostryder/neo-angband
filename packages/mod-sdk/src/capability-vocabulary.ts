@@ -232,10 +232,10 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The mod's entries on the title screen do not appear.", { powerful: false, tiers: ALL_TIERS }),
   fixed("ui:menu.row", { kind: "menu-row", action: "add" }, "Add a row to the game menu",
     "The mod's row in the game menu does not appear.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("shared:read", { kind: "shared", action: "read" }, "Read data other mods share",
-    "The mod cannot see what other mods share with it.", { powerful: false }),
-  fixed("shared:publish", { kind: "shared", action: "publish" }, "Share data with other mods",
-    "Other mods cannot see what this mod shares.", { powerful: false }),
+  fixed("shared:read", { kind: "shared", action: "read" }, "Read JSON data other mods explicitly publish; this does not expose private mod storage",
+    "The mod cannot see what other mods share with it.", { powerful: false, tiers: ALL_TIERS }),
+  fixed("shared:publish", { kind: "shared", action: "publish" }, "Share selected JSON data with all other mods holding shared:read; recipients can keep or send that data elsewhere",
+    "Other mods cannot see what this mod shares.", { powerful: false, tiers: ALL_TIERS }),
   fixed("display:replace", { kind: "display", action: "replace" }, "Draw the dungeon with bounded grid glyphs and host color tokens; it can hide dangers or show a misleading map, while host dialogs remain protected",
     "The game draws the map itself and this mod's view is not used.", { powerful: true, canRunWithout: false, tiers: ALL_TIERS }),
   fixed("display:filter", { kind: "display", action: "filter" }, "Change how the game looks; it can make details difficult to see, while host permission dialogs keep their own appearance",
@@ -261,14 +261,14 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The panels this mod asks the game to draw do not appear.", { powerful: false, tiers: ALL_TIERS }),
   fixed("backup:folder", { kind: "backup", action: "folder" }, "Write files into a folder you pick (it never learns the folder's real path, only whether a write succeeded)",
     "The mod cannot write backups to a folder you pick.", { powerful: false }),
-  fixed("mod:read", { kind: "mod-read", action: "read" }, "Look up a mod at a repository address, the same way installing one does - its name, description, author, version and file listing - by reaching out to that repository on your behalf. Nothing is installed and nothing is added to your library",
-    "The mod cannot look up other mods by their repository address.", { powerful: true }),
+  fixed("mod:read", { kind: "mod-read", action: "read" }, "Ask the game to contact a GitHub repository to read public mod metadata and file names after your confirmation; GitHub learns about the lookup. This returns no file text and installs nothing",
+    "The mod cannot look up other mods by their repository address.", { powerful: true, tiers: ALL_TIERS }),
   fixed("debug:spawn", { kind: "debug", action: "spawn" }, "Conjure items and creatures into your game, the way the debug commands do - it asks first, and the character it happens to is marked for good and can no longer be scored",
-    "The mod cannot create items or creatures in your game.", { powerful: true }),
+    "The mod cannot create items or creatures in your game.", { powerful: true, tiers: ALL_TIERS }),
   /* The wizard grant costs the session rather than the score: it refuses to run
    * until the session is cut loose from its save. */
-  fixed("debug:wizard", { kind: "debug", action: "wizard" }, "Use the game's debug commands to test with - depth, experience, gold, items, creatures - after stopping this session from being saved at all. Your character on disk keeps whatever the last save left and nothing after that is written, which cannot be undone without reloading",
-    "The mod cannot use the game's debug commands.", { powerful: true }),
+  fixed("debug:wizard", { kind: "debug", action: "wizard" }, "Ask the game to use debug commands after your confirmation, marking this character unscorable and permanently stopping this session from saving. Your character on disk keeps its last save; progress after that is lost on reload",
+    "The mod cannot use the game's debug commands.", { powerful: true, tiers: ALL_TIERS }),
   fixed("keymap:write", { kind: "keymap", action: "write" }, "Create new shortcut keymaps in your current keyset without replacing your existing shortcuts",
     "The shortcut keys this mod offers to add are not created.", { powerful: false, tiers: ALL_TIERS }),
   fixed("keymap:edit", { kind: "keymap", action: "edit" }, "Change or remove shortcuts in your current keyset and request one key for binding; host recovery keys and permission-dialog input stay with the game",
@@ -313,7 +313,7 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
    * grants; broader mechanisms still require first-party page execution. */
   fixed("profiles:manage", { kind: "profiles", action: "manage" }, "Create profiles and switch between them",
     "The mod cannot create profiles or switch between them.", { powerful: true, tiers: ALL_TIERS, namespace: "manage" }),
-  fixed("session:control", { kind: "session", action: "control" }, "Save the game, return to the title screen, or quit",
+  fixed("session:control", { kind: "session", action: "control" }, "Ask the game to save your character, return to the title screen, or quit after your confirmation; leaving ends your current session",
     "The mod cannot save the game, leave it or quit for you.", { powerful: false, tiers: ALL_TIERS, namespace: "manage" }),
   fixed("screens:manage", { kind: "screens", action: "manage" }, "Replace the Mods screen with host-drawn text and choices; it can mislead you about mods and settings, while permissions and game controls remain available through the host",
     "The game's own management screens are shown instead.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "manage" }),
@@ -324,10 +324,10 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   /* Install and session loads are two grants: an install arrives switched off,
    * a session load is on as soon as the game reloads. The archive is forgotten
    * with the session; what its records did to a character is not. */
-  fixed("mod:install", { kind: "mod", action: "install" }, "Add content mods to your library - records and tweaks, never code, and they arrive switched off until you read what they ask for and turn them on yourself",
-    "The mod cannot add mods to your library.", { powerful: true, tiers: FIRST_PARTY, namespace: "manage" }),
-  fixed("mod:session", { kind: "mod", action: "session" }, "Put content mods into the game for the rest of this session - records and tweaks, never code - which start working as soon as the game reloads, without waiting to be switched on. The mod is forgotten when you close the game; what it did to a character is not",
-    "The mod cannot load test content into this session.", { powerful: true, tiers: FIRST_PARTY, namespace: "manage" }),
+  fixed("mod:install", { kind: "mod", action: "install" }, "Ask the game to install content mods after you confirm their identity and digest - records and tweaks, never code or capabilities. They arrive switched off and cannot replace an existing mod through the Worker door. Repository requests contact GitHub after your confirmation",
+    "The mod cannot add mods to your library.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "manage" }),
+  fixed("mod:session", { kind: "mod", action: "session" }, "Ask the game to load content after you confirm its identity and digest - records and tweaks, never code or capabilities. It starts on reload, cannot share an installed mod's id, and ends with this session; its effects on characters can remain. Repository requests contact GitHub after your confirmation",
+    "The mod cannot load test content into this session.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "manage" }),
 ];
 
 const KEBAB_ARG = "[a-z][a-z0-9-]*";

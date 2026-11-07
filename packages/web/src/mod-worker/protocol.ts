@@ -293,6 +293,60 @@ export interface WorkerTextRegion {
   readonly lines: readonly WorkerTextLine[];
 }
 
+export const SPAWN_SHARED_WORKER_CALLS: Readonly<Record<string, string>> = Object.freeze({
+  "debug.spawnObject": "debug:spawn",
+  "debug.spawnMonster": "debug:spawn",
+  "shared.read": "shared:read",
+  "shared.publish": "shared:publish",
+  "shared.withdraw": "shared:publish",
+});
+
+/** Content plans contain no consent decisions or reusable confirmations. */
+export const CONTENT_WORKER_CALLS: Readonly<Record<string, string>> = Object.freeze({
+  "manage.content.planInstall": "mod:install",
+  "manage.content.applyInstall": "mod:install",
+  "manage.content.planSession": "mod:session",
+  "manage.content.applySession": "mod:session",
+  "manage.readMod": "mod:read",
+  "manage.session.exitToTitle": "session:control",
+  "manage.session.quit": "session:control",
+  "manage.wizard": "debug:wizard",
+  ...Object.fromEntries([
+    "sandboxed", "attached", "sandbox", "catalogue", "where", "spawnItem", "spawnCreature", "spawnArtifact",
+    "goToDepth", "grantExperience", "setExperience", "setGold", "setStat", "maxOut", "heal", "rerollLife",
+    "acquire", "summonRandom", "banish", "killVisible", "teleport", "mapLevel", "lightLevel", "findCreatures", "learnItems", "learnCreatures",
+  ].map((name) => [`manage.wizard.${name}`, "debug:wizard"])),
+});
+
+export const MAX_WORKER_ARCHIVE_BYTES = 12 * 1024;
+export type WorkerContentSource = { readonly repo: string } | { readonly archive: readonly number[] };
+
+export function validWorkerContentCall(method: string, args: readonly WorkerJson[]): boolean {
+  const text = (v: unknown, max = 512): v is string => typeof v === "string" && v.length > 0 && v.length <= max && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v);
+  const integer = (v: unknown, max = 1000000000): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 && v <= max;
+  if (method === "manage.content.planInstall" || method === "manage.content.planSession") {
+    const source = args[0];
+    if (args.length !== 1 || !source || typeof source !== "object" || Array.isArray(source) || Object.keys(source).length !== 1) return false;
+    return Object.hasOwn(source, "repo") ? text(source.repo) : Object.hasOwn(source, "archive") && Array.isArray(source.archive) && source.archive.length > 0 && source.archive.length <= MAX_WORKER_ARCHIVE_BYTES && source.archive.every((byte) => integer(byte, 255));
+  }
+  if (method === "manage.content.applyInstall" || method === "manage.content.applySession") return args.length === 1 && text(args[0], 64);
+  if (method === "manage.readMod") return args.length === 1 && text(args[0]);
+  if (method === "manage.session.quit" || method === "manage.session.exitToTitle" || method === "manage.wizard") return args.length === 0;
+  if (!Object.hasOwn(CONTENT_WORKER_CALLS, method)) return false;
+  const command = method.slice("manage.wizard.".length);
+  if (["spawnItem", "spawnCreature"].includes(command)) return (args.length === 1 || args.length === 2) && (text(args[0], 120) || integer(args[0], 100000)) && (args.length === 1 || integer(args[1], 40) && args[1] !== 0);
+  if (command === "spawnArtifact") return args.length === 1 && (text(args[0], 120) || integer(args[0], 100000));
+  if (["goToDepth", "teleport"].includes(command)) return args.length === 1 && integer(args[0], 1000);
+  if (["grantExperience", "setExperience", "setGold"].includes(command)) return args.length === 1 && integer(args[0]);
+  switch (command) {
+    case "setStat": return args.length === 2 && text(args[0], 12) && integer(args[1], 118);
+    case "acquire": return (args.length === 1 || args.length === 2) && integer(args[0], 40) && args[0] !== 0 && (args.length === 1 || typeof args[1] === "boolean");
+    case "summonRandom": return args.length === 1 && integer(args[0], 40) && args[0] !== 0;
+    case "banish": case "learnItems": return args.length === 0 || args.length === 1 && integer(args[0], 1000);
+    default: return args.length === 0;
+  }
+}
+
 /** Presenter callbacks stay in the Worker; the host receives only their ids and JSON answers. */
 export interface WorkerPresenterQuestion {
   readonly kind: "presentation";

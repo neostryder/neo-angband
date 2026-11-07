@@ -17,9 +17,9 @@ describe("describeCapability", () => {
   it("describes title additions and profile changes separately", () => {
     expect(describeCapability("ui:title")).toEqual({ cap: "ui:title", text: "Add title screen actions", elevated: false });
     expect(describeCapability("profiles:manage")).toEqual({ cap: "profiles:manage", text: "Create profiles and switch between them", elevated: true });
-    expect(describeCapability("session:control")).toEqual({ cap: "session:control", text: "Save the game, return to the title screen, or quit", elevated: false });
-    expect(describeCapability("shared:read")).toEqual({ cap: "shared:read", text: "Read data other mods share", elevated: false });
-    expect(describeCapability("shared:publish")).toEqual({ cap: "shared:publish", text: "Share data with other mods", elevated: false });
+    expect(describeCapability("session:control")).toEqual({ cap: "session:control", text: "Ask the game to save your character, return to the title screen, or quit after your confirmation; leaving ends your current session", elevated: false });
+    expect(describeCapability("shared:read")).toEqual({ cap: "shared:read", text: "Read JSON data other mods explicitly publish; this does not expose private mod storage", elevated: false });
+    expect(describeCapability("shared:publish")).toEqual({ cap: "shared:publish", text: "Share selected JSON data with all other mods holding shared:read; recipients can keep or send that data elsewhere", elevated: false });
   });
   it("describes each registry override domain, flagging system override as elevated", () => {
     expect(describeCapability("registry:effect")).toMatchObject({ elevated: true });
@@ -102,8 +102,8 @@ describe("describeCapability", () => {
      * the exact laundering this separation exists to prevent. */
     expect(session.text).not.toMatch(/switched off/i);
     expect(session.text).toMatch(/never code/i);
-    expect(session.text).toMatch(/reloads/i);
-    expect(session.text).toMatch(/what it did to a character is not/i);
+    expect(session.text).toMatch(/on reload/i);
+    expect(session.text).toMatch(/effects on characters can remain/i);
   });
 
   it("gives mod:read its own sentence, distinct from install and session", () => {
@@ -115,8 +115,8 @@ describe("describeCapability", () => {
     expect(read.text).not.toBe(session.text);
     /* It reaches the network on the player's behalf, and it is proportionate
      * because nothing lands in the library and nothing is installed. */
-    expect(read.text).toMatch(/on your behalf/i);
-    expect(read.text).toMatch(/nothing is installed/i);
+    expect(read.text).toMatch(/GitHub learns about the lookup/i);
+    expect(read.text).toMatch(/installs nothing/i);
   });
 
   it("says what ui:panel.mount and debug:spawn actually are, not what they are called", () => {

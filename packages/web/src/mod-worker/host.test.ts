@@ -5,6 +5,8 @@
  * broker posts.
  */
 import { readFileSync } from "node:fs";
+import { webcrypto } from "node:crypto";
+import { zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MFLAG,
@@ -77,6 +79,12 @@ import { createModSaves, type SavesDoorDeps } from "../saves-facade";
 import type { CharMeta } from "../roster";
 import type { WorkerManagementHost } from "../mod-api2-host";
 import { createModManagerService } from "../mod-manager/service";
+import type { WorkerContentDeps } from "../install-runtime";
+import { sessionMods, SESSION_MODS_KEY } from "../mod-session";
+import { resetDiskPacks } from "../disk-packs";
+import { readSlotSave, resetSlotWriteSurrender, setRosterStorage, slotWritesSurrendered, writeSlot } from "../roster";
+import { attachSlot, attachedSlot, resetSlotAttachment } from "../slot-attach";
+import * as sandbox from "../test-sandbox";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(readFileSync(new URL(`../../../content/pack/${name}.json`, import.meta.url), "utf8")) as T;
@@ -205,6 +213,11 @@ afterEach(() => {
   resetModTiers();
   setTruthSaveWriter(undefined);
   setConsentBindings(new Map());
+  resetSlotAttachment();
+  resetSlotWriteSurrender();
+  setRosterStorage(null);
+  resetDiskPacks();
+  vi.restoreAllMocks();
 });
 
 function wire(definition: Api2ModDefinition, deps: Partial<ModWorkerHostDeps> = {}): Wired {
@@ -244,7 +257,7 @@ function liveMonsters(state: GameState): Monster[] {
   return state.monsters.filter((m): m is Monster => m !== null && m !== undefined);
 }
 
-async function managementProbe(grants = ["profiles:manage", "session:control", "options:manage", "saves:manage"]) {
+async function managementProbe(grants = ["profiles:manage", "session:control", "options:manage", "saves:manage"], extraHost: Partial<WorkerManagementHost> = {}, extraContext: Partial<import("../mod-plugin").ModPluginContext> = {}) {
   const values = new Map<string, string>();
   const storage: ScopedStorage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => { values.set(key, value); }, removeItem: (key) => { values.delete(key); }, get length() { return values.size; }, key: (index) => [...values.keys()][index] ?? null };
   const manifest = { id: "probe", name: "Probe", version: "1.0.0", shape: "plugin" as const, capabilities: grants, settings: [{ id: "amount", title: "Amount", description: "Amount", min: 0, max: 10, step: 1, default: 1 }], sections: [{ id: "part", title: "Part", flag: "probe.part" }] };
@@ -276,9 +289,12 @@ async function managementProbe(grants = ["profiles:manage", "session:control", "
   const host: WorkerManagementHost = {
     confirm: vi.fn(async () => true), pickSaves: vi.fn(async () => ["raw-a"]), scope: () => scope,
     markCheat: vi.fn(() => { expect(game.state.options!.get("cheat_live")).toBe(false); game.state.actor.player.noscore |= 2; return true; }), saveOptions: vi.fn(),
+    ...extraHost,
   };
   let proxy: ModApi2 | undefined;
-  const wired = wire({ api: API, start: (api) => { proxy = api; } }, { grants, api: () => createApi2Host({ ...modPluginContext("probe", {}, game.state, {}, { capabilities: caps }), profiles, saves, session: { save, exitToTitle: vi.fn(), quit: vi.fn() } }, { execution: "worker", grants: caps, workerManagement: host, management: async () => manager.service }) });
+  const exitToTitle = vi.fn(async () => ({ ok: true as const }));
+  const quit = vi.fn(async () => ({ ok: true as const }));
+  const wired = wire({ api: API, start: (api) => { proxy = api; } }, { grants, api: () => createApi2Host({ ...modPluginContext("probe", {}, game.state, {}, { capabilities: caps }), profiles, saves, session: { save, exitToTitle, quit }, ...extraContext }, { execution: "worker", grants: caps, workerManagement: host, management: async () => manager.service }) });
   const api = await started(wired, () => proxy);
   let requestId = 1000;
   const raw = async (method: string, args: import("./protocol").WorkerJson[] = [], epoch = 1) => {
@@ -294,7 +310,7 @@ async function managementProbe(grants = ["profiles:manage", "session:control", "
     if (!result.ok) throw new Error("The player selection failed.");
     return result.value[0]!.id;
   };
-  return { api, wired, raw, selected, host, load, rename, deleteSlot, save, authorize, profiles, profilesStore, storage, caps, game, reload, foreignProfile, consent, beforeConsent, setActive: (id: string | null) => { active = id; }, setScope: (value: string) => { scope = value; }, changeRoster: () => { roster = roster.map((entry) => ({ ...entry, updatedAt: entry.updatedAt + 1 })); } };
+  return { api, wired, raw, selected, host, load, rename, deleteSlot, save, exitToTitle, quit, authorize, profiles, profilesStore, storage, caps, game, reload, foreignProfile, consent, beforeConsent, setActive: (id: string | null) => { active = id; }, setScope: (value: string) => { scope = value; }, changeRoster: () => { roster = roster.map((entry) => ({ ...entry, updatedAt: entry.updatedAt + 1 })); } };
 }
 
 describe("Worker management", () => {
@@ -341,9 +357,10 @@ describe("Worker management", () => {
   it("refuses missing and revoked grants and does not expose install or consent writers", async () => {
     const f = await managementProbe(["profiles:manage"]);
     expect(await f.raw("manage.session.save")).toMatchObject({ reason: "not-granted" });
-    for (const method of ["manage.mods.recordConsent", "manage.mods.setDecisions", "manage.mods.resolveConfirmation", "manage.mods.copyScopedStorage", "manage.mods.enable", "manage.screens.take", "manage.loadForSession", "manage.wizard", "manage.session.quit", "manage.session.exitToTitle"]) {
+    for (const method of ["manage.mods.recordConsent", "manage.mods.setDecisions", "manage.mods.resolveConfirmation", "manage.mods.copyScopedStorage", "manage.mods.enable", "manage.screens.take", "manage.loadForSession"]) {
       expect(await f.raw(method)).toHaveProperty("error");
     }
+    for (const method of ["manage.wizard", "manage.session.quit", "manage.session.exitToTitle"]) expect(await f.raw(method)).toMatchObject({ reason: "not-granted" });
     f.authorize([]);
     expect(await f.raw("manage.profiles.create", ["Denied"])).toMatchObject({ ok: false, code: "revoked" });
     expect(f.profilesStore.list()).toHaveLength(2);
@@ -528,6 +545,207 @@ describe("Worker management", () => {
     expect(f.profilesStore.list()).toEqual(before);
     expect(f.host.confirm).not.toHaveBeenCalled();
     expect(f.consent()).toBe(f.beforeConsent);
+  });
+});
+
+function contentFixture() {
+  const values = new Map<string, string>();
+  const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
+  const manifest = { id: "worker-content", name: "Worker content", version: "1.0.0", shape: "content", modApi: 1, engine: ">=0.1.0", author: "A player", repository: "https://github.com/a-player/content", payload: { files: ["manifest.json", "monster.json"] } };
+  const files = { "manifest.json": JSON.stringify(manifest), "monster.json": "[]" };
+  const bytes = zipSync(Object.fromEntries(Object.entries(files).map(([path, body]) => [path, new TextEncoder().encode(body)])));
+  const fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("/tags?")) return new Response(JSON.stringify([{ name: "v1.0.0", commit: { sha: "abc" } }]));
+    if (url.includes("/git/trees/")) return new Response(JSON.stringify({ tree: Object.keys(files).map((path) => ({ path, type: "blob", size: 100 })) }));
+    return new Response(url.endsWith("manifest.json") ? files["manifest.json"] : files["monster.json"]);
+  });
+  const content: WorkerContentDeps = {
+    door: { env: { fetch: async () => { throw new Error("The unbounded fetch path must not run."); }, subtle: webcrypto.subtle as unknown as SubtleCrypto, scope: { sessionStorage: storage, crypto: webcrypto }, now: () => "2026-11-07T00:00:00Z" }, allowed: () => true, reload: () => {} },
+    discovery: () => ({ engineVersion: "9.9.9" }), fetch,
+  };
+  return { content, storage, bytes, fetch };
+}
+
+function contentPlanId(result: unknown): string {
+  expect(result).toMatchObject({ ok: true, value: { id: expect.any(String), digest: expect.stringMatching(/^[a-f0-9]{64}$/u), capabilities: [] } });
+  return (result as { value: { id: string } }).value.id;
+}
+
+describe("Worker content and session transactions", () => {
+  it("refuses malformed archive bytes and authority fields before opening a dialog", async () => {
+    const c = contentFixture(); const f = await managementProbe(["mod:session"], { content: c.content });
+    for (const source of [{ archive: Array(12289).fill(0) }, { archive: [-1] }, { archive: [256] }, { archive: [0.5] }, { archive: [...c.bytes], granted: ["engine:access"] }, { archive: [...c.bytes], confirmationId: "accepted" }]) {
+      expect(await f.raw("manage.content.planSession", [source])).toMatchObject({ ok: false, code: "bad-call" });
+    }
+    expect(f.host.confirm).not.toHaveBeenCalled(); expect(c.storage.getItem(SESSION_MODS_KEY)).toBeNull();
+  });
+
+  it("plans copied archive bytes and stages only content with no grants", async () => {
+    const c = contentFixture();
+    const f = await managementProbe(["mod:session"], { content: c.content });
+    const proxy = f.api.manage as unknown as { content: { planSession(bytes: Uint8Array): Promise<unknown>; applySession(id: string): Promise<unknown> } };
+    const id = contentPlanId(await proxy.content.planSession(c.bytes));
+    c.bytes.fill(0);
+    const applied = await proxy.content.applySession(id);
+    expect(applied).toEqual(expect.objectContaining({ ok: true, value: expect.objectContaining({ ok: true, id: "worker-content" }) }));
+    expect(f.host.confirm).toHaveBeenCalledWith("probe", expect.stringContaining("https://github.com/a-player/content"));
+    expect(f.host.confirm).toHaveBeenCalledWith("probe", expect.stringContaining("digest"));
+    expect(sessionMods(c.content.door.env.scope)[0]).toMatchObject({ granted: [], code: false });
+    expect(await proxy.content.applySession(id)).toMatchObject({ ok: false });
+    expect(f.host.confirm).toHaveBeenCalledTimes(1);
+    expect(f.consent()).toBe(f.beforeConsent);
+  });
+
+  it.each(["declined", "digest", "grant", "binding", "expired", "profile"])("refuses a %s change during a content dialog without staging", async (change) => {
+    const c = contentFixture();
+    const f = await managementProbe(["mod:session"], { content: c.content });
+    const id = contentPlanId(await f.raw("manage.content.planSession", [{ archive: [...c.bytes] }]));
+    vi.mocked(f.host.confirm).mockImplementation(async () => {
+      if (change === "digest") vi.spyOn(c.content.door.env.subtle, "digest").mockResolvedValue(new Uint8Array(32).buffer);
+      if (change === "grant") f.authorize([]);
+      if (change === "binding") setConsentBindings(new Map([["probe", "changed"]]));
+      if (change === "expired") vi.spyOn(Date, "now").mockReturnValue(Date.now() + 61000);
+      if (change === "profile") f.setScope("another-profile");
+      return change !== "declined";
+    });
+    expect(await f.raw("manage.content.applySession", [id])).toMatchObject({ ok: false });
+    expect(c.storage.getItem(SESSION_MODS_KEY)).toBeNull();
+    expect(await f.raw("manage.content.applySession", [id])).toMatchObject({ ok: false });
+  });
+
+  it("serializes content dialogs and refuses a second request while one is pending", async () => {
+    const c = contentFixture(); const f = await managementProbe(["mod:session", "mod:read"], { content: c.content });
+    const id = contentPlanId(await f.raw("manage.content.planSession", [{ archive: [...c.bytes] }]));
+    let finish: (accepted: boolean) => void = () => {};
+    vi.mocked(f.host.confirm).mockImplementation(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+    const applying = f.raw("manage.content.applySession", [id]);
+    await vi.waitFor(() => expect(f.host.confirm).toHaveBeenCalledTimes(1));
+    expect(await f.raw("manage.readMod", ["a-player/content"])).toMatchObject({ code: "busy" });
+    finish(false);
+    expect(await applying).toMatchObject({ ok: false });
+    expect(c.fetch).not.toHaveBeenCalled(); expect(c.storage.getItem(SESSION_MODS_KEY)).toBeNull();
+  });
+
+  it("shares the management rate ceiling with metadata requests", async () => {
+    const c = contentFixture(); const f = await managementProbe(["mod:read"], { content: c.content });
+    vi.mocked(f.host.confirm).mockResolvedValue(false);
+    for (let index = 0; index < 32; index++) expect(await f.raw("manage.readMod", ["a-player/content"])).toMatchObject({ ok: false });
+    expect(await f.raw("manage.readMod", ["a-player/content"])).toMatchObject({ code: "rate" });
+    expect(f.host.confirm).toHaveBeenCalledTimes(32); expect(c.fetch).not.toHaveBeenCalled();
+  });
+
+  it("confirms repository lookup, returns metadata without file text, and never installs", async () => {
+    const c = contentFixture();
+    const f = await managementProbe(["mod:read"], { content: c.content });
+    vi.mocked(f.host.confirm).mockResolvedValue(false);
+    expect(await f.raw("manage.readMod", ["a-player/content"])).toMatchObject({ ok: false });
+    expect(c.fetch).not.toHaveBeenCalled();
+    vi.mocked(f.host.confirm).mockResolvedValue(true);
+    const result = await f.raw("manage.readMod", ["a-player/content"]);
+    expect(result).toMatchObject({ ok: true, value: { id: "worker-content", payload: [{ kind: "file", path: "manifest.json" }, { kind: "file", path: "monster.json" }] } });
+    expect(JSON.stringify(result)).not.toContain('"monster.json":"[]"');
+    expect(c.fetch.mock.calls.some(([url]) => String(url).endsWith("/monster.json"))).toBe(false);
+    expect(c.fetch.mock.calls.every(([url]) => String(url).includes("api.github.com") || String(url).includes("raw.githubusercontent.com"))).toBe(true);
+    expect(c.storage.getItem(SESSION_MODS_KEY)).toBeNull();
+  });
+
+  it.each(["https://127.0.0.1/a/b", "https://169.254.169.254/a/b", "a/%2e%2e", "../b", "https://example.test/a/b"])("refuses destination %s before fetching", async (address) => {
+    const c = contentFixture();
+    const f = await managementProbe(["mod:read"], { content: c.content });
+    expect(await f.raw("manage.readMod", [address])).toMatchObject({ ok: false });
+    expect(c.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["redirect", "oversized", "revoked"])("refuses a %s repository response", async (attack) => {
+    const c = contentFixture();
+    const f = await managementProbe(["mod:read"], { content: c.content });
+    c.fetch.mockImplementation(async () => {
+      if (attack === "revoked") f.authorize([]);
+      return attack === "redirect" ? new Response(null, { status: 302, headers: { location: "http://127.0.0.1/" } }) : new Response("x".repeat(attack === "oversized" ? 1024 * 1024 + 1 : 1));
+    });
+    expect(await f.raw("manage.readMod", ["a-player/content"])).toMatchObject({ ok: false });
+    expect(c.fetch).toHaveBeenCalledTimes(1);
+    expect(c.fetch).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ credentials: "omit", redirect: "error" }));
+  });
+
+  it.each(["quit", "exitToTitle"])("confirms %s and refuses revocation during the dialog", async (operation) => {
+    const f = await managementProbe(["session:control"]);
+    vi.mocked(f.host.confirm).mockResolvedValue(false);
+    expect(await f.raw(`manage.session.${operation}`)).toMatchObject({ ok: false });
+    expect(f.quit).not.toHaveBeenCalled(); expect(f.exitToTitle).not.toHaveBeenCalled();
+    vi.mocked(f.host.confirm).mockImplementation(async () => { f.authorize([]); return true; });
+    expect(await f.raw(`manage.session.${operation}`)).toMatchObject({ ok: false });
+    expect(f.quit).not.toHaveBeenCalled(); expect(f.exitToTitle).not.toHaveBeenCalled();
+    f.authorize(["session:control"]);
+    vi.mocked(f.host.confirm).mockResolvedValue(true);
+    expect(await f.raw(`manage.session.${operation}`)).toMatchObject({ ok: true });
+    expect(operation === "quit" ? f.quit : f.exitToTitle).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks and detaches before wizard access and blocks every later roster save", async () => {
+    resetSlotAttachment(); resetSlotWriteSurrender();
+    const c = contentFixture(); setRosterStorage(c.storage);
+    const meta: CharMeta = { id: "wizard-save", name: "Saved", race: "Human", cls: "Mage", sex: "", level: 1, depth: 0, maxDepth: 0, turn: 0, alive: true, updatedAt: 1 };
+    expect(writeSlot(meta.id, "before-wizard", meta)).toBe(true);
+    attachSlot(meta.id);
+    const setGold = vi.fn(() => {
+      expect(attachedSlot()).toBeNull(); expect(slotWritesSurrendered()).toBe(true);
+      expect(writeSlot(meta.id, "after-wizard", meta)).toBe(true);
+      return { ok: true, did: "changed gold" };
+    });
+    const f = await managementProbe(["debug:wizard"], { scope: () => JSON.stringify(["profile", attachedSlot()]) }, { wizard: { setGold } as unknown as import("../mod-plugin").ModWizard });
+    vi.mocked(f.host.confirm).mockResolvedValue(false);
+    expect(await f.raw("manage.wizard.setGold", [100])).toMatchObject({ ok: false });
+    expect(slotWritesSurrendered()).toBe(false); expect(setGold).not.toHaveBeenCalled();
+    vi.mocked(f.host.confirm).mockResolvedValue(true);
+    expect(await f.api.manage!.wizard()).toMatchObject({ ok: true, value: { setGold: expect.any(Function) } });
+    expect(f.game.state.actor.player.noscore & NOSCORE.DEBUG).not.toBe(0);
+    expect(await f.raw("manage.wizard.setGold", [100])).toMatchObject({ ok: true });
+    attachSlot(meta.id);
+    expect(writeSlot(meta.id, "after-reattach", meta)).toBe(true);
+    expect(readSlotSave(meta.id)).toBe("before-wizard");
+  });
+
+  it("refuses wizard commands when detach cannot be proven", async () => {
+    resetSlotWriteSurrender(); attachSlot("still-attached");
+    vi.spyOn(sandbox, "sandboxSession").mockReturnValue({ ok: true, left: null });
+    const setGold = vi.fn();
+    const f = await managementProbe(["debug:wizard"], {}, { wizard: { setGold } as unknown as import("../mod-plugin").ModWizard });
+    expect(await f.raw("manage.wizard.setGold", [100])).toMatchObject({ code: "detach" });
+    expect(setGold).not.toHaveBeenCalled();
+    expect(f.game.state.actor.player.noscore & NOSCORE.DEBUG).toBe(0);
+  });
+
+  describe.each([
+    { cap: "mod:install", method: "manage.content.planInstall", args: [{ repo: "a-player/content" }] },
+    { cap: "mod:install", method: "manage.content.applyInstall", args: ["unissued"] },
+    { cap: "mod:session", method: "manage.content.planSession", args: [{ repo: "a-player/content" }] },
+    { cap: "mod:session", method: "manage.content.applySession", args: ["unissued"] },
+    { cap: "mod:read", method: "manage.readMod", args: ["a-player/content"] },
+    { cap: "session:control", method: "manage.session.quit", args: [] },
+    { cap: "session:control", method: "manage.session.exitToTitle", args: [] },
+    { cap: "debug:wizard", method: "manage.wizard", args: [] },
+    { cap: "debug:wizard", method: "manage.wizard.setGold", args: [10] },
+  ])("$method admission", (operation) => {
+    it.each(["ungranted", "revoked", "identity", "epoch", "malformed", "oversized", "rate", "widen"])("refuses %s without mutation", async (attack) => {
+      const c = contentFixture();
+      const f = await managementProbe(attack === "ungranted" ? [] : [operation.cap], { content: c.content });
+      if (attack === "revoked") f.authorize([]);
+      if (attack === "rate") for (let index = 0; index < 200; index++) f.wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1, requestId: 5000 + index, method: "meta.settings", args: [] });
+      const args = attack === "malformed" ? [false] : attack === "oversized" ? ["x".repeat(MAX_MESSAGE_BYTES)] : attack === "widen" ? [{ repo: "a-player/content", granted: ["engine:access"], contentOnly: false, confirmationId: 1 }] : operation.args;
+      if (attack === "identity") {
+        f.wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "victim", epoch: 1, requestId: 9999, method: operation.method, args: args as WorkerJson[] });
+        await vi.waitFor(() => expect(f.wired.problems.some((problem) => problem.includes("plugin id"))).toBe(true));
+        expect(f.wired.worker.sent.some((message) => message.type === "reply" && message.requestId === 9999)).toBe(false);
+      } else {
+        const result = await f.raw(operation.method, args as WorkerJson[], attack === "epoch" ? 0 : 1);
+        expect(result).not.toMatchObject({ ok: true });
+      }
+      expect(f.host.confirm).not.toHaveBeenCalled(); expect(c.fetch).not.toHaveBeenCalled();
+      expect(f.quit).not.toHaveBeenCalled(); expect(f.exitToTitle).not.toHaveBeenCalled();
+      expect(c.storage.getItem(SESSION_MODS_KEY)).toBeNull(); expect(f.consent()).toBe(f.beforeConsent);
+    });
   });
 });
 
@@ -952,9 +1170,9 @@ describe("the broker's grants", () => {
     wired.session.start();
     wired.worker.scope.postMessage({
       type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1,
-      requestId: 99, method: "manage.session.quit", args: [],
+      requestId: 99, method: "manage.screens.take", args: [],
     });
-    await vi.waitFor(() => expect(wired.problems.join("\n")).toMatch(/refused call to "manage\.session\.quit"/u));
+    await vi.waitFor(() => expect(wired.problems.join("\n")).toMatch(/refused call to "manage\.screens\.take"/u));
     await vi.waitFor(() => expect(wired.worker.sent.some((m) => m.type === "reply" && m.requestId === 99 && !m.ok)).toBe(true));
   });
 });
@@ -1695,4 +1913,266 @@ it("accepts named visual filters, rejects CSS and URLs, and suspends the filter 
   expect(filter).toHaveBeenLastCalledWith("contrast(1.25)", { scope: "canvas" });
   wired.session.teardown();
   expect(filter).toHaveBeenLastCalledWith(null);
+});
+
+import { recordCapabilityUse } from "../mod-controller-record";
+import { resetSharedValues, sharedValuesFor } from "../mod-shared-values";
+import { spawnWorkerContent, WORKER_SHARED_ENTRY_BYTES, WORKER_SHARED_ENTRY_COUNT, WORKER_SHARED_CALLS_PER_SECOND, type WorkerSpawnSharedHost } from "../mod-api2-host";
+import { ContentIdResolver } from "@rpgm-tools/neo-angband-core";
+
+afterEach(() => resetSharedValues());
+
+async function spawnSharedProbe(grants = ["debug:spawn", "shared:read", "shared:publish"], timing?: ModWorkerHostDeps["timing"]) {
+  resetSharedValues();
+  const game = startGame(pack, { seed: SEED, depth: DEPTH });
+  const authorize = (held: readonly string[]) => setModGrants(new Map([["probe", { granted: held, refusedByTier: [], refusedByPlayer: [], undecided: [], blocking: [] }]]));
+  authorize(grants);
+  setConsentBindings(new Map([["probe", "spawn-shared-binding"]]));
+  const saved: ReturnType<typeof saveGame>[] = [];
+  const host: WorkerSpawnSharedHost = {
+    confirm: vi.fn(async () => true),
+    mark: vi.fn((id, capability, current, authorized) => {
+      if (current !== game.state || !authorized()) return false;
+      if (capability === "debug:spawn") game.state.actor.player.noscore |= NOSCORE.DEBUG;
+      recordCapabilityUse(game.manifest, { installation: "spawn-shared-binding", id, version: "1.0.0", digest: "measured",
+        capability, activation: { turn: game.state.turn, depth: game.state.chunk.depth }, consequence: capability === "debug:spawn" ? "spawn" : "shared-write" });
+      saved.push(structuredClone(saveGame(game)));
+      return true;
+    }),
+    spawn: vi.fn((state, request) => {
+      expect(saved.at(-1)?.manifest?.capabilityUse?.entries.some((entry) => entry.consequence === "spawn")).toBe(true);
+      expect((saved.at(-1)?.player.noscore ?? 0) & NOSCORE.DEBUG).not.toBe(0);
+      const deps = { ...game.wizardBundles, wizard: false, debug: true, races: game.booted.registries.monsters.races };
+      return spawnWorkerContent(state, request, deps);
+    }),
+  };
+  let proxy: ModApi2 | undefined;
+  const wired = wire({ api: API, start: (api) => { proxy = api; } }, { grants, ...(timing ? { timing } : {}), api: hostApi({ game, grants, options: { workerSpawnShared: host } }) });
+  const api = await started(wired, () => proxy);
+  let next = 6000;
+  const send = (method: string, args: WorkerJson[] = [], overrides: { pluginId?: string; epoch?: number } = {}) => {
+    const requestId = ++next;
+    wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1, requestId, method, args, ...overrides });
+    return requestId;
+  };
+  const reply = async (requestId: number) => {
+    await vi.waitFor(() => expect(wired.worker.sent.some((message) => message.type === "reply" && message.requestId === requestId)).toBe(true));
+    return wired.worker.sent.find((message) => message.type === "reply" && message.requestId === requestId);
+  };
+  const raw = async (method: string, args: WorkerJson[] = [], overrides: { pluginId?: string; epoch?: number } = {}) => reply(send(method, args, overrides));
+  const caps = CapabilitySet.fromManifest({ id: "victim", name: "Victim", version: "1.0.0", shape: "plugin", capabilities: ["shared:read", "shared:publish"] });
+  const victim = sharedValuesFor("victim", caps)!;
+  return { ...wired, game, api, host, saved, authorize, raw, send, reply, victim };
+}
+
+const spawnSharedCases = [
+  { capability: "debug:spawn", method: "debug.spawnObject", args: [1] },
+  { capability: "debug:spawn", method: "debug.spawnMonster", args: [1] },
+  { capability: "shared:read", method: "shared.read", args: ["victim", "entry"] },
+  { capability: "shared:publish", method: "shared.publish", args: ["entry", 1, { data: true }] },
+  { capability: "shared:publish", method: "shared.withdraw", args: ["entry"] },
+] as const;
+
+for (const operation of spawnSharedCases) {
+  describe(`Worker guard for ${operation.method}`, () => {
+    for (const attack of ["ungranted", "revoked", "identity", "epoch", "malformed", "oversized", "rate"] as const) {
+      it(`refuses ${attack} without mutation`, async () => {
+        const p = await spawnSharedProbe(attack === "ungranted" ? [] : [operation.capability], attack === "rate" ? { maxCallsPerSecond: 1 } : undefined);
+        p.victim.publish("entry", 1, { private: false });
+        const before = structuredClone(saveGame(p.game));
+        if (attack === "revoked") p.authorize([]);
+        if (attack === "rate") await p.raw("meta.settings");
+        const args = attack === "malformed" ? [] : attack === "oversized" ? ["x".repeat(MAX_MESSAGE_BYTES)] : structuredClone(operation.args) as unknown as WorkerJson[];
+        if (attack === "identity") {
+          p.send(operation.method, args, { pluginId: "victim" });
+          await vi.waitFor(() => expect(p.problems.some((problem) => problem.includes("plugin id"))).toBe(true));
+        } else {
+          const answer = await p.raw(operation.method, args, attack === "epoch" ? { epoch: 0 } : {});
+          if (answer?.type === "reply" && answer.ok) expect(answer.result).toMatchObject({ ok: false });
+        }
+        expect(saveGame(p.game)).toEqual(before);
+        expect(p.victim.read("probe", "entry")).toBeNull();
+        expect(p.victim.read("victim", "entry")?.value).toEqual({ private: false });
+        expect(p.host.confirm).not.toHaveBeenCalled();
+        expect(p.host.mark).not.toHaveBeenCalled();
+        expect(p.host.spawn).not.toHaveBeenCalled();
+      });
+    }
+  });
+}
+
+it("confirms resolved content and saves the spawn consequence before real items and creatures appear", async () => {
+  const p = await spawnSharedProbe();
+  const ids = new ContentIdResolver(p.game.booted.registries);
+  const kind = p.game.booted.registries.objects.kinds.find((entry) => entry.name.includes("Dagger"))!;
+  expect(await p.api.debug!.spawnObject(ids.kindId(kind.kidx), 2)).toEqual({ ok: true, value: { spawned: 2 } });
+  expect(p.host.confirm).toHaveBeenCalledWith("probe", { kind: "object", index: kind.kidx, name: kind.name, count: 2 });
+  const race = p.game.booted.registries.monsters.races.find((entry) => entry.name === "orc shaman")!;
+  const before = liveMonsters(p.game.state).length;
+  expect(await p.api.debug!.spawnMonster(ids.raceId(race.ridx))).toEqual({ ok: true, value: { spawned: 1 } });
+  expect(liveMonsters(p.game.state).length).toBeGreaterThan(before);
+  expect(p.game.manifest.capabilityUse?.entries).toHaveLength(1);
+});
+
+it("leaves no mark or spawn after decline, invalid content, or invalid counts", async () => {
+  const p = await spawnSharedProbe();
+  vi.mocked(p.host.confirm).mockResolvedValue(false);
+  const before = structuredClone(saveGame(p.game));
+  expect(await p.raw("debug.spawnObject", [1])).toMatchObject({ result: { ok: false, code: "declined" } });
+  for (const args of [["missing:object"], [1, 17], [1, 0]]) expect(await p.raw("debug.spawnObject", args)).toMatchObject({ result: { ok: false } });
+  expect(saveGame(p.game)).toEqual(before);
+  expect(p.host.mark).not.toHaveBeenCalled();
+  expect(p.host.spawn).not.toHaveBeenCalled();
+});
+
+it("fails closed when the durable writer fails or throws", async () => {
+  const p = await spawnSharedProbe();
+  vi.mocked(p.host.mark).mockReturnValueOnce(false).mockRejectedValueOnce(new Error("disk failed"));
+  expect(await p.raw("debug.spawnObject", [1])).toMatchObject({ result: { ok: false, code: "save" } });
+  expect(await p.raw("debug.spawnMonster", [1])).toMatchObject({ result: { ok: false } });
+  expect(p.host.spawn).not.toHaveBeenCalled();
+  expect(p.game.manifest.capabilityUse).toBeUndefined();
+});
+
+it("rechecks authorization after the spawn dialog and after a pending save", async () => {
+  for (const stage of ["dialog", "save"] as const) {
+    const p = await spawnSharedProbe();
+    let finish: (result: boolean) => void = () => {};
+    const gate = new Promise<boolean>((resolve) => { finish = resolve; });
+    if (stage === "dialog") vi.mocked(p.host.confirm).mockReturnValue(gate);
+    else vi.mocked(p.host.mark).mockReturnValue(gate);
+    const requestId = p.send("debug.spawnObject", [1]);
+    await vi.waitFor(() => expect(stage === "dialog" ? p.host.confirm : p.host.mark).toHaveBeenCalled());
+    p.authorize([]);
+    finish(true);
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    expect(p.worker.sent.some((message) => message.type === "reply" && message.requestId === requestId)).toBe(false);
+    expect(p.host.spawn).not.toHaveBeenCalled();
+    expect(p.game.manifest.capabilityUse).toBeUndefined();
+  }
+});
+
+it("shares copies of explicit publications, records one shared-write, and cannot forge a publisher or read private storage", async () => {
+  const p = await spawnSharedProbe();
+  const value = { nested: { number: 1 } };
+  expect(await p.api.shared!.publish("entry", 1, value)).toEqual({ ok: true, value: null });
+  value.nested.number = 99;
+  expect(p.victim.read("probe", "entry")?.value).toEqual({ nested: { number: 1 } });
+  p.victim.publish("entry", 1, { nested: { number: 2 } });
+  const read = await p.api.shared!.read("victim", "entry");
+  expect(read).toMatchObject({ ok: true, value: { mod: "victim", value: { nested: { number: 2 } } } });
+  if (read.ok && read.value) expect(() => { (read.value!.value as { nested: { number: number } }).nested.number = 50; }).toThrow();
+  expect(p.victim.read("victim", "entry")?.value).toEqual({ nested: { number: 2 } });
+  expect(await p.api.shared!.read("victim", "private-preferences")).toEqual({ ok: true, value: null });
+  expect(await p.api.shared!.read("probe", "entry")).toMatchObject({ ok: false });
+  expect(await p.raw("shared.publish", ["victim", "entry", 1, "forged"])).toMatchObject({ result: { ok: false } });
+  expect(await p.api.shared!.publish("entry", 2, null)).toEqual({ ok: true, value: null });
+  expect(p.host.mark).toHaveBeenCalledTimes(1);
+  expect(p.saved[0]?.manifest?.capabilityUse?.entries[0]?.consequence).toBe("shared-write");
+  expect(p.game.manifest.modNoscore).toBe(false);
+  expect(await p.api.shared!.withdraw("entry")).toEqual({ ok: true, value: null });
+  expect(p.victim.read("probe", "entry")).toBeNull();
+});
+
+it("bounds shared entry size, entry count, and read and write frequency", async () => {
+  const clock = vi.spyOn(Date, "now");
+  let time = 100000;
+  clock.mockImplementation(() => time);
+  try {
+    const p = await spawnSharedProbe();
+    expect(await p.api.shared!.publish("large", 1, "x".repeat(WORKER_SHARED_ENTRY_BYTES))).toMatchObject({ ok: false });
+    expect(p.host.mark).not.toHaveBeenCalled();
+    for (let index = 0; index < WORKER_SHARED_ENTRY_COUNT; index++) {
+      time += 1001;
+      expect(await p.api.shared!.publish(`quota-${index}`, 1, index)).toEqual({ ok: true, value: null });
+    }
+    time += 1001;
+    expect(await p.api.shared!.publish("quota-extra", 1, null)).toMatchObject({ ok: false });
+    for (let index = 0; index < WORKER_SHARED_ENTRY_COUNT; index++) { time += 1001; await p.api.shared!.withdraw(`quota-${index}`); }
+    time += 1001;
+    for (let index = 0; index < WORKER_SHARED_CALLS_PER_SECOND; index++) expect(await p.api.shared!.read("victim", "none")).toEqual({ ok: true, value: null });
+    expect(await p.api.shared!.read("victim", "none")).toMatchObject({ ok: false });
+    expect(await p.api.shared!.publish("over-rate", 1, null)).toMatchObject({ ok: false });
+    expect(p.victim.read("probe", "over-rate")).toBeNull();
+  } finally { clock.mockRestore(); }
+});
+
+it("drops a shared publication revoked while its mark is pending", async () => {
+  const p = await spawnSharedProbe();
+  let finish: (result: boolean) => void = () => {};
+  vi.mocked(p.host.mark).mockReturnValue(new Promise<boolean>((resolve) => { finish = resolve; }));
+  const requestId = p.send("shared.publish", ["entry", 1, "secret"]);
+  await vi.waitFor(() => expect(p.host.mark).toHaveBeenCalled());
+  p.authorize([]);
+  finish(true);
+  await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  expect(p.victim.read("probe", "entry")).toBeNull();
+  expect(p.worker.sent.some((message) => message.type === "reply" && message.requestId === requestId)).toBe(false);
+});
+
+it("preserves prototype-shaped JSON keys without changing any prototype", async () => {
+  const p = await spawnSharedProbe();
+  const value = JSON.parse('{"__proto__":{"polluted":true},"constructor":{"prototype":{"other":true}}}') as WorkerJson;
+  expect(await p.api.shared!.publish("prototype-keys", 1, value)).toEqual({ ok: true, value: null });
+  expect(p.victim.read("probe", "prototype-keys")?.value).toEqual(value);
+  p.victim.publish("prototype-keys", 1, value);
+  expect(await p.api.shared!.read("victim", "prototype-keys")).toMatchObject({ ok: true, value: { value } });
+  expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
+  expect(await p.api.shared!.withdraw("prototype-keys")).toEqual({ ok: true, value: null });
+});
+
+it("rejects non-JSON publication and malformed publisher arguments without marking", async () => {
+  const p = await spawnSharedProbe();
+  for (const value of [NaN, Infinity, new Date(), new Map(), new Array(1)]) {
+    const requestId = p.send("shared.publish", ["bad-json", 1, value as unknown as WorkerJson]);
+    expect(await p.reply(requestId)).toMatchObject({ ok: false });
+  }
+  for (const args of [["other/mod", "entry"], ["victim", "../private"], ["victim", "entry", "private"], ["victim", { key: "entry" }]]) {
+    expect(await p.raw("shared.read", args as WorkerJson[])).toMatchObject({ result: { ok: false } });
+  }
+  expect(p.host.mark).not.toHaveBeenCalled();
+  expect(p.victim.read("probe", "bad-json")).toBeNull();
+});
+
+it("drops shared reads when authorization is revoked before reply delivery", async () => {
+  const p = await spawnSharedProbe();
+  p.victim.publish("entry", 1, { information: "published" });
+  const run = p.health.run.bind(p.health);
+  vi.spyOn(p.health, "run").mockImplementationOnce((...args) => {
+    const result = run(...args);
+    p.authorize([]);
+    return result;
+  });
+  const requestId = p.send("shared.read", ["victim", "entry"]);
+  await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  expect(p.worker.sent.some((message) => message.type === "reply" && message.requestId === requestId)).toBe(false);
+  expect(p.host.mark).not.toHaveBeenCalled();
+});
+
+it("rejects changed bindings, concurrent spawn requests, and the fifth spawn request", async () => {
+  const p = await spawnSharedProbe();
+  let finish: (result: boolean) => void = () => {};
+  vi.mocked(p.host.confirm).mockReturnValueOnce(new Promise<boolean>((resolve) => { finish = resolve; }));
+  const pending = p.send("debug.spawnObject", [1]);
+  await vi.waitFor(() => expect(p.host.confirm).toHaveBeenCalled());
+  expect(await p.raw("debug.spawnMonster", [1])).toMatchObject({ result: { ok: false, code: "busy" } });
+  setConsentBindings(new Map([["probe", "changed-binding"]]));
+  finish(true);
+  await new Promise<void>((resolve) => setTimeout(resolve, 20));
+  expect(p.worker.sent.some((message) => message.type === "reply" && message.requestId === pending)).toBe(false);
+  expect(p.host.mark).not.toHaveBeenCalled();
+  expect(p.host.spawn).not.toHaveBeenCalled();
+  expect(await p.raw("shared.publish", ["changed-binding", 1, null])).toMatchObject({ result: { ok: false, reason: "not-granted" } });
+  setConsentBindings(new Map([["probe", "spawn-shared-binding"]]));
+  vi.mocked(p.host.confirm).mockResolvedValue(false);
+  expect(await p.raw("debug.spawnObject", [1])).toMatchObject({ result: { ok: false } });
+  expect(await p.raw("debug.spawnObject", [1])).toMatchObject({ result: { ok: false } });
+  expect(await p.raw("debug.spawnObject", [1])).toMatchObject({ result: { ok: false, code: "rate" } });
+});
+
+it("refuses legacy publications above the Worker entry limit without exposing the value", async () => {
+  const p = await spawnSharedProbe();
+  p.victim.publish("large", 1, "x".repeat(WORKER_SHARED_ENTRY_BYTES));
+  expect(await p.api.shared!.read("victim", "large")).toMatchObject({ ok: false, code: "quota" });
+  expect(p.host.mark).not.toHaveBeenCalled();
 });

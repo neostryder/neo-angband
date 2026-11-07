@@ -25,8 +25,8 @@ const granting = (...capabilities: string[]): CapabilitySet =>
 
 describe("the capability vocabulary", () => {
   it("opens only the implemented simple option, keybinding, and filter grants", () => {
-    for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create", "display:replace", "ui:menu.replace", "ui:screen.replace", "screens:manage"]) expect(capabilityTiers(capability)).toContain("worker");
-    for (const capability of ["ui:*.replace", "ui:birth.replace", "debug:wizard", "engine:access"]) expect(capabilityTiers(capability)).not.toContain("worker");
+    for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create", "display:replace", "ui:menu.replace", "ui:screen.replace", "screens:manage", "mod:install", "mod:session", "mod:read", "debug:wizard", "session:control"]) expect(capabilityTiers(capability)).toContain("worker");
+    for (const capability of ["ui:*.replace", "ui:birth.replace", "engine:access"]) expect(capabilityTiers(capability)).not.toContain("worker");
     expect(consentText(matchCapability("options:write")!)).toContain("birth, cheat, or score");
     expect(consentText(matchCapability("keymap:edit")!)).toContain("permission-dialog input");
   });
@@ -81,7 +81,7 @@ describe("the capability vocabulary", () => {
     for (const cap of MANAGEMENT) {
       expect(publicSpellings).not.toContain(cap);
       expect(isPublicCapability(cap)).toBe(false);
-      expect(capabilityTiers(cap)).toEqual(["profiles:manage", "session:control", "options:manage", "saves:manage"].includes(cap) ? CAPABILITY_TIERS : ["mod:authoring", "screens:manage"].includes(cap) ? ["first-party", "worker"] : ["first-party"]);
+      expect(capabilityTiers(cap)).toEqual(["profiles:manage", "session:control", "options:manage", "saves:manage"].includes(cap) ? CAPABILITY_TIERS : ["mod:authoring", "mod:install", "mod:session", "screens:manage"].includes(cap) ? ["first-party", "worker"] : ["first-party"]);
       expect(matchCapability(cap)?.entry.namespace).toBe("manage");
     }
     expect(CAPABILITY_VOCABULARY.filter((entry) => entry.namespace === "manage").map((entry) => entry.capability).sort())
@@ -137,4 +137,12 @@ describe("the capability vocabulary", () => {
     expect(consentText(matchCapability("event:turn-start")!)).toBe("Observe the \"turn-start\" game event");
     expect(consentText(matchCapability("network:Example.TEST:8080")!)).toBe("Send network requests to example.test:8080");
   });
+});
+
+it("opens only bounded spawning and explicit shared JSON in this stage", () => {
+  for (const capability of ["debug:spawn", "shared:read", "shared:publish"]) expect(capabilityTiers(capability)).toContain("worker");
+  for (const capability of ["engine:access", "ui:*.replace"]) expect(capabilityTiers(capability)).not.toContain("worker");
+  expect(consentText(matchCapability("shared:read")!)).toContain("does not expose private mod storage");
+  expect(consentText(matchCapability("shared:publish")!)).toContain("all other mods holding shared:read");
+  expect(consentText(matchCapability("debug:spawn")!)).toContain("can no longer be scored");
 });
