@@ -31,12 +31,37 @@ describe("host-owned controller attribution", () => {
     expect(manifest.autoplayers).toHaveLength(2);
   });
 
-  it("preserves first-party determinism and never clears earlier marks", () => {
+  it("marks first-party control nondeterministic and never clears earlier marks", () => {
     const manifest = coreOnlyManifest(); const player = { noscore: 0 };
     recordControllerUse(manifest, player, { ...identity, firstParty: true });
-    expect(manifest.determinism).toBe("deterministic");
+    expect(manifest.determinism).toBe("nondeterministic");
+    expect(manifest.modNoscore).toBe(true);
     recordControllerUse(manifest, player, identity);
     recordControllerUse(manifest, player, { ...identity, firstParty: true });
+    expect(manifest.determinism).toBe("nondeterministic");
+    expect(player.noscore & NOSCORE.BORG).not.toBe(0);
+  });
+
+  it("retains permanent first-use provenance after controller history truncates", () => {
+    const manifest = coreOnlyManifest(); const player = { noscore: 0 };
+    const provenance = { installation: "measured-installation", activation: { turn: 12, depth: 3 } };
+    recordControllerUse(manifest, player, identity, provenance);
+    provenance.activation.turn = 99;
+    recordControllerUse(manifest, player, identity, provenance);
+    for (let index = 0; index < 40; index++) recordControllerUse(manifest, player, { ...identity, version: String(index) });
+    expect(manifest.autoplayers).toHaveLength(32);
+    expect(manifest.capabilityUse?.entries).toHaveLength(41);
+    expect(manifest.capabilityUse?.entries[0]).toEqual({ installation: "measured-installation", id: identity.id, version: identity.version, digest: identity.digest,
+      capability: "input:controller", activation: { turn: 12, depth: 3 }, consequence: "controller" });
+  });
+
+  it("preserves a future summary while applying existing score and determinism marks", () => {
+    const manifest = coreOnlyManifest(); const player = { noscore: 0 };
+    manifest.capabilityUse = { schema: 2, entries: [] };
+    const before = structuredClone(manifest.capabilityUse);
+    recordControllerUse(manifest, player, identity);
+    expect(manifest.capabilityUse).toEqual(before);
+    expect(manifest.modNoscore).toBe(true);
     expect(manifest.determinism).toBe("nondeterministic");
     expect(player.noscore & NOSCORE.BORG).not.toBe(0);
   });

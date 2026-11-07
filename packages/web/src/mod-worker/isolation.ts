@@ -30,9 +30,9 @@
  * for the same reason; it loads the mod's modules with `import()`, which a
  * classic Worker has.
  *
- * Messages run host <-> Worker over a MessageChannel whose far port is handed
- * to the Worker, so the frame relays nothing after boot. A second channel joins
- * the host and the frame, and carries only Worker errors and the order to stop.
+ * The frame retains the host ports. It forwards only bounded JSON text from
+ * the Worker, after parsing and validation in the frame. A separate control
+ * channel authenticates boot and carries Worker errors and the order to stop.
  * Stopping removes the frame, which ends its document and every Worker in it.
  *
  * docs/modding/WORKER_ISOLATION.md describes what this does and does not stop.
@@ -44,10 +44,16 @@ import type { ModWorkerLike } from "./host";
 import type { HostToModWorker } from "./protocol";
 import type { StagedModuleGraph } from "./staging";
 
-/** Host to frame, once, with the Worker's port and the control port. */
+/** Host to frame, once, transferring the boot port and nothing else. */
+export const MOD_FRAME_HELLO = "neo-angband/mod-frame/hello";
+/** Frame to host on the boot port, echoing the nonce that was embedded in the frame. */
+export const MOD_FRAME_ACK = "neo-angband/mod-frame/ack";
+/** Host to frame on the boot port, once the nonce matches. Carries the module source. */
 export const MOD_FRAME_BOOT = "neo-angband/mod-frame/boot";
-/** Frame to Worker, once, with the host port and the linked entry URL. */
+/** Frame to Worker, once, with the measured module URLs and no host port. */
 export const MOD_WORKER_PORT = "neo-angband/mod-worker/port";
+/** Worker to frame, once, after the bootstrap is installed and before host traffic is forwarded. */
+export const MOD_WORKER_LIVE = "neo-angband/mod-worker/live";
 
 /**
  * The most characters the frame builds when it links a mod's modules into data:
@@ -57,13 +63,20 @@ export const MOD_WORKER_PORT = "neo-angband/mod-worker/port";
  */
 export const MAX_LINKED_SOURCE = 64 * 1024 * 1024;
 
-/** What the host sends the frame to start a Worker. */
+/** What the host posts to the frame's window. The module source is not in it. */
+export interface ModFrameHello {
+  readonly type: typeof MOD_FRAME_HELLO;
+  readonly nonce: string;
+}
+
+/** What the host sends the frame on the boot port, after the nonce matches. */
 export interface ModFrameBoot {
   readonly type: typeof MOD_FRAME_BOOT;
+  readonly nonce: string;
   readonly name: string;
   readonly workerSource: string;
   readonly modules: StagedModuleGraph["modules"];
-  /** MAX_LINKED_SOURCE, sent along because the relay ships as text and can import nothing. */
+  /** MAX_LINKED_SOURCE, sent along because the relay can import nothing of the game's. */
   readonly linkLimit: number;
 }
 
@@ -114,7 +127,7 @@ export function modFrameDocument(nonce: string): string {
     `<meta http-equiv="Content-Security-Policy" content="${modFrameCsp(nonce)}">`,
     "<title>mod</title>",
     "</head><body>",
-    `<script nonce="${nonce}">(${relay})(window);</script>`,
+    `<script nonce="${nonce}">(${relay})(window, ${JSON.stringify(nonce)});</script>`,
     "</body></html>",
   ].join("");
 }
@@ -130,60 +143,90 @@ export interface ModFrameWindow {
  * The frame's only script, shipped as source text inside modFrameDocument. It
  * refers to nothing but its parameter and the language's own globals.
  *
- * It accepts one boot message, and only from the game page that made the frame.
- * It links the staged modules into data: URLs, starts the Worker from the
- * host-supplied bootstrap, and hands the Worker the host port. After that it
- * only reports Worker errors and obeys "terminate".
+ * A single-use nonce binds the transferred control port to this frame. Module
+ * source arrives only on that port. The frame keeps the host port so raw
+ * Worker handles cannot reach the page, even if a mod bypasses its proxy.
  */
-export function modFrameRelay(win: ModFrameWindow): void {
+export function modFrameRelay(win: ModFrameWindow, nonce: string): void {
   let booted = false;
   win.addEventListener("message", (event: MessageEvent) => {
     if (booted || event.source !== win.parent) return;
-    const data = event.data as { type?: unknown; name?: unknown; workerSource?: unknown; modules?: unknown; linkLimit?: unknown } | null;
-    if (data === null || typeof data !== "object" || data.type !== "neo-angband/mod-frame/boot") return;
-    const hostPort = event.ports[0];
-    const control = event.ports[1];
-    if (hostPort === undefined || control === undefined) return;
+    const hello = event.data as { type?: unknown; nonce?: unknown } | null;
+    if (hello === null || typeof hello !== "object" || hello.type !== "neo-angband/mod-frame/hello" || hello.nonce !== nonce || event.ports.length !== 1) return;
+    const control = event.ports[0];
+    if (control === undefined) return;
     booted = true;
-    const urls: string[] = [];
-    const dataUrl = (text: string): string => `data:text/javascript;charset=utf-8,${encodeURIComponent(text)}`;
-    const report = (message: unknown): void => control.postMessage({ type: "frame.error", message: String(message instanceof Error ? message.message : message) });
-    try {
-      if (typeof data.workerSource !== "string" || typeof data.name !== "string" || !Array.isArray(data.modules) || data.modules.length === 0 || typeof data.linkLimit !== "number") throw new Error("malformed boot message");
-      const modules = data.modules as { parts?: unknown }[];
-      const limit = data.linkLimit;
-      let linked = 0;
-      for (let index = 0; index < modules.length; index += 1) {
-        const parts = modules[index]?.parts;
-        if (!Array.isArray(parts)) throw new Error("malformed staged module");
-        let text = "";
-        for (const part of parts as unknown[]) {
-          if (typeof part === "string") text += part;
-          else if (typeof part === "number" && Number.isInteger(part) && part >= 0 && part < index) text += JSON.stringify(urls[part]);
-          else throw new Error("staged module refers forward or to nothing");
-          if (text.length > limit) break;
+    control.onmessage = (boot: MessageEvent): void => {
+      const data = boot.data as ModFrameBoot | null;
+      if (data === null || typeof data !== "object" || data.type !== "neo-angband/mod-frame/boot" || data.nonce !== nonce || boot.ports.length !== 1) return;
+      control.onmessage = null;
+      const hostPort = boot.ports[0];
+      if (hostPort === undefined) return;
+      const urls: string[] = [];
+      const dataUrl = (text: string): string => `data:text/javascript;charset=utf-8,${encodeURIComponent(text)}`;
+      const report = (message: unknown): void => control.postMessage({ type: "frame.error", message: String(message instanceof Error ? message.message : message).slice(0, 4096) });
+      try {
+        if (typeof data.workerSource !== "string" || typeof data.name !== "string" || !Array.isArray(data.modules) || data.modules.length === 0 || typeof data.linkLimit !== "number") throw new Error("malformed boot message");
+        const modules = data.modules as { parts?: unknown }[];
+        const limit = data.linkLimit;
+        let linked = 0;
+        for (let index = 0; index < modules.length; index += 1) {
+          const parts = modules[index]?.parts;
+          if (!Array.isArray(parts)) throw new Error("malformed staged module");
+          let text = "";
+          for (const part of parts as unknown[]) {
+            if (typeof part === "string") text += part;
+            else if (typeof part === "number" && Number.isInteger(part) && part >= 0 && part < index) text += JSON.stringify(urls[part]);
+            else throw new Error("staged module refers forward or to nothing");
+            if (text.length > limit) break;
+          }
+          const url = dataUrl(text);
+          linked += url.length;
+          if (text.length > limit || linked > limit) throw new Error(`the mod's modules come to more than ${String(limit)} characters once linked`);
+          urls.push(url);
         }
-        const url = dataUrl(text);
-        linked += url.length;
-        if (text.length > limit || linked > limit) throw new Error(`the mod's modules come to more than ${String(limit)} characters once linked`);
-        urls.push(url);
+        const worker = new win.Worker(dataUrl(data.workerSource), { type: "classic", name: data.name });
+        worker.onerror = (error: ErrorEvent): void => {
+          error.preventDefault();
+          report(error.message || "the mod Worker failed to load");
+        };
+        worker.onmessageerror = (): void => report("the mod Worker sent a message that could not be read");
+        let live = false;
+        worker.onmessage = (message: MessageEvent): void => {
+          if (!live) {
+            if (message.data !== "neo-angband/mod-worker/live" || message.ports.length !== 0) return;
+            live = true;
+            hostPort.onmessage = (incoming: MessageEvent): void => worker.postMessage(incoming.data);
+            return;
+          }
+          /* The page never receives the Worker's objects or transferred handles. */
+          if (message.ports.length !== 0 || typeof message.data !== "string" || message.data.length > 65536) return;
+          try {
+            if (new TextEncoder().encode(message.data).byteLength > 65536) return;
+            const json: unknown = JSON.parse(message.data);
+            const valid = (value: unknown, depth: number): boolean => {
+              if (depth > 64) return false;
+              if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+              if (typeof value === "number") return Number.isFinite(value);
+              if (Array.isArray(value)) return value.every((child) => valid(child, depth + 1));
+              return typeof value === "object" && Object.values(value).every((child) => valid(child, depth + 1));
+            };
+            if (valid(json, 0)) hostPort.postMessage(json);
+          } catch { /* Malformed or oversized data has no authority on the page. */ }
+        };
+        control.onmessage = (message: MessageEvent): void => {
+          if ((message.data as { type?: unknown } | null)?.type !== "frame.terminate") return;
+          worker.terminate();
+          hostPort.close();
+          control.close();
+        };
+        worker.postMessage({ type: "neo-angband/mod-worker/port", entryUrl: urls[modules.length - 1] });
+        control.postMessage({ type: "frame.ready", modules: modules.length });
+      } catch (err) {
+        report(err);
       }
-      const worker = new win.Worker(dataUrl(data.workerSource), { type: "classic", name: data.name });
-      worker.onerror = (error: ErrorEvent): void => {
-        error.preventDefault();
-        report(error.message || "the mod Worker failed to load");
-      };
-      worker.onmessageerror = (): void => report("the mod Worker sent a message that could not be read");
-      control.onmessage = (message: MessageEvent): void => {
-        if ((message.data as { type?: unknown } | null)?.type !== "frame.terminate") return;
-        worker.terminate();
-        control.close();
-      };
-      worker.postMessage({ type: "neo-angband/mod-worker/port", port: hostPort, entryUrl: urls[modules.length - 1] }, [hostPort]);
-      control.postMessage({ type: "frame.ready", modules: modules.length });
-    } catch (err) {
-      report(err);
-    }
+    };
+    control.postMessage({ type: "neo-angband/mod-frame/ack", nonce });
   });
 }
 
@@ -193,7 +236,7 @@ export function modFrameRelay(win: ModFrameWindow): void {
  * the mod's entry is imported, and refers to nothing outside itself.
  *
  * Returns the names that are still reachable afterwards, which an engine that
- * makes a global non-configurable can cause. The isolation probe reads it.
+ * makes a global non-configurable can cause. Production boot refuses leftovers.
  */
 export function lockDownModWorkerScope(scope: object): string[] {
   const names = [
@@ -204,6 +247,7 @@ export function lockDownModWorkerScope(scope: object): string[] {
     "EventSource",
     "WebTransport",
     "indexedDB",
+    "webkitIndexedDB",
     "caches",
     "cookieStore",
     "Worker",
@@ -212,10 +256,28 @@ export function lockDownModWorkerScope(scope: object): string[] {
     "BroadcastChannel",
     "RTCPeerConnection",
     "RTCDataChannel",
+    "webkitRTCPeerConnection",
+    "mozRTCPeerConnection",
+    "SharedArrayBuffer",
+    "Atomics",
+    "OffscreenCanvas",
+    "Blob",
+    "localStorage",
+    "sessionStorage",
+    "webkitRequestFileSystem",
+    "requestFileSystem",
+    "FileSystemHandle",
+    "FileSystemDirectoryHandle",
+    "FileSystemFileHandle",
+    "StorageManager",
+    "Cache",
+    "CacheStorage",
+    "StorageBucket",
+    "StorageBucketManager",
   ];
   const left: string[] = [];
-  for (const name of names) {
-    for (let target: object | null = scope; target !== null; target = Object.getPrototypeOf(target) as object | null) {
+  const remove = (root: object, name: string, label: string): void => {
+    for (let target: object | null = root; target !== null; target = Object.getPrototypeOf(target) as object | null) {
       const own = Object.getOwnPropertyDescriptor(target, name);
       if (own === undefined) continue;
       if (own.configurable === true) {
@@ -224,14 +286,24 @@ export function lockDownModWorkerScope(scope: object): string[] {
         Reflect.set(target, name, undefined);
       }
     }
-    if ((scope as Record<string, unknown>)[name] !== undefined) left.push(name);
+    try {
+      if ((root as Record<string, unknown>)[name] !== undefined) left.push(label);
+    } catch { /* A getter that refuses access leaves no reachable authority. */ }
+  };
+  for (const name of names) remove(scope, name, name);
+  const globals = scope as Record<string, unknown>;
+  const url = globals["URL"];
+  if (typeof url === "function" || (typeof url === "object" && url !== null)) remove(url, "createObjectURL", "URL.createObjectURL");
+  const navigator = globals["navigator"];
+  if (typeof navigator === "object" && navigator !== null) {
+    for (const name of ["sendBeacon", "serviceWorker", "storage", "storageBuckets", "storageFoundation", "webkitTemporaryStorage", "webkitPersistentStorage", "locks", "getStorageDirectory"]) remove(navigator, name, `navigator.${name}`);
   }
   return left;
 }
 
 /**
  * The isolated Worker's script, a classic one: the lockdown, then the API 2 bootstrap
- * installed on the host port the frame hands over, importing the frame-linked
+ * installed on a private JSON transport, importing the frame-linked
  * entry and nothing else.
  */
 export function isolatedWorkerSource(protocolVersion: string, options: { readonly lockDown?: boolean } = {}): string {
@@ -239,13 +311,19 @@ export function isolatedWorkerSource(protocolVersion: string, options: { readonl
   return [
     `const lockDown = (${lockDownModWorkerScope.toString()});`,
     `const install = (${installModWorkerBootstrap.toString()});`,
-    lockDown ? "lockDown(self);" : "",
+    lockDown ? "const left = lockDown(self); if (left.length) throw new Error(('mod Worker lockdown failed: ' + left.join(', ')).slice(0, 1024));" : "",
+    "for (const name of ['MessagePort', 'MessageEvent']) { const ctor = self[name]; if (ctor) { Object.freeze(ctor.prototype); Object.freeze(ctor); Object.defineProperty(self, name, { value: ctor, writable: false, configurable: false }); } }",
+    "const post = self.postMessage.bind(self);",
+    "const stringify = JSON.stringify;",
     "self.onmessage = (event) => {",
     "  const data = event.data;",
-    `  if (data === null || typeof data !== "object" || data.type !== ${JSON.stringify(MOD_WORKER_PORT)} || typeof data.entryUrl !== "string" || data.port === undefined) return;`,
+    `  if (data === null || typeof data !== "object" || data.type !== ${JSON.stringify(MOD_WORKER_PORT)} || typeof data.entryUrl !== "string") return;`,
     "  self.onmessage = null;",
     "  const entryUrl = data.entryUrl;",
-    `  install(data.port, ${JSON.stringify(protocolVersion)}, () => import(entryUrl), ${JSON.stringify(MOD_PERMISSION_TEXT)});`,
+    "  const scope = { onmessage: null, postMessage: (message) => post(stringify(message)) };",
+    `  install(scope, ${JSON.stringify(protocolVersion)}, () => import(entryUrl), ${JSON.stringify(MOD_PERMISSION_TEXT)});`,
+    "  self.onmessage = (incoming) => scope.onmessage?.(incoming);",
+    `  post(${JSON.stringify(MOD_WORKER_LIVE)});`,
     "};",
     "",
   ].join("\n");
@@ -255,7 +333,7 @@ export function isolatedWorkerSource(protocolVersion: string, options: { readonl
 export interface ModFrameHandle {
   /** Resolves once the frame's script has run. */
   readonly loaded: Promise<void>;
-  post(message: ModFrameBoot, transfer: Transferable[]): void;
+  post(message: ModFrameHello, transfer: Transferable[]): void;
   remove(): void;
 }
 
@@ -314,8 +392,10 @@ export function createIsolatedModWorker(options: IsolatedModWorkerOptions): ModW
   const channel = new MessageChannel();
   const control = new MessageChannel();
   const name = `neo-angband-mod:${options.id}`;
-  const frame = (options.frame ?? domModFrame)(modFrameDocument(options.nonce ?? freshNonce()), name);
+  const nonce = options.nonce ?? freshNonce();
+  const frame = (options.frame ?? domModFrame)(modFrameDocument(nonce), name);
   let stopped = false;
+  let acknowledged = false;
   const isolated: ModWorkerLike = {
     onmessage: null,
     onerror: null,
@@ -338,20 +418,27 @@ export function createIsolatedModWorker(options: IsolatedModWorkerOptions): ModW
     if (!stopped) isolated.onerror?.(errorEvent(message));
   };
   control.port1.onmessage = (event: MessageEvent<unknown>): void => {
+    const ack = event.data as { type?: unknown; nonce?: unknown } | null;
+    if (!stopped && !acknowledged && ack?.type === MOD_FRAME_ACK && ack.nonce === nonce && event.ports.length === 0) {
+      acknowledged = true;
+      const boot: ModFrameBoot = {
+        type: MOD_FRAME_BOOT,
+        nonce,
+        name,
+        workerSource: isolatedWorkerSource(options.protocolVersion, options.lockDown === false ? { lockDown: false } : {}),
+        modules: options.graph.modules,
+        linkLimit: options.linkLimit ?? MAX_LINKED_SOURCE,
+      };
+      control.port1.postMessage(boot, [channel.port2]);
+      return;
+    }
     const report = event.data as Partial<ModFrameReport> | null;
     if (report?.type === "frame.error") raise(typeof report.message === "string" ? report.message : "the mod frame failed");
   };
   void frame.loaded.then(
     () => {
       if (stopped) return;
-      const boot: ModFrameBoot = {
-        type: MOD_FRAME_BOOT,
-        name,
-        workerSource: isolatedWorkerSource(options.protocolVersion, options.lockDown === false ? { lockDown: false } : {}),
-        modules: options.graph.modules,
-        linkLimit: options.linkLimit ?? MAX_LINKED_SOURCE,
-      };
-      frame.post(boot, [channel.port2, control.port2]);
+      frame.post({ type: MOD_FRAME_HELLO, nonce }, [control.port2]);
     },
     (err: unknown) => raise(err instanceof Error ? err.message : String(err)),
   );

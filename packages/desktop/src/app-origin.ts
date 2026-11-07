@@ -54,6 +54,24 @@ export const APP_SCHEME = "neo-angband";
 export const APP_HOST = "game";
 export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
 
+/** Report-only until the game and its inherited frame policies can be enforced together. */
+export const GAME_PAGE_CSP = [
+  "default-src 'none'",
+  "script-src 'self' blob:",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' blob: data:",
+  "font-src 'self'",
+  "media-src 'self' blob:",
+  "connect-src 'self' https:",
+  "worker-src 'self' blob: data:",
+  "frame-src 'self' blob:",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
+
 /** The privileges `protocol.registerSchemesAsPrivileged` grants the scheme. */
 export const APP_SCHEME_PRIVILEGES = Object.freeze({
   standard: true,

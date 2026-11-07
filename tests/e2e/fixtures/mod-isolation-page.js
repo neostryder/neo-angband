@@ -3,7 +3,7 @@
 // the same transform as in a release) and serve it from a fake game origin.
 
 import { startModWorker } from "../../../packages/web/src/mod-worker/host.ts";
-import { createIsolatedModWorker } from "../../../packages/web/src/mod-worker/isolation.ts";
+import { createIsolatedModWorker, domModFrame, isolatedWorkerSource, MAX_LINKED_SOURCE, modFrameDocument } from "../../../packages/web/src/mod-worker/isolation.ts";
 import { MOD_WORKER_PROTOCOL_VERSION } from "../../../packages/web/src/mod-worker/protocol.ts";
 import { stageModuleGraph } from "../../../packages/web/src/mod-worker/staging.ts";
 
@@ -109,4 +109,41 @@ window.probeControl = async () => {
   });
   worker.terminate();
   return result;
+};
+
+window.probeLeftover = async () => {
+  const nonce = "AAAAAAAAAAAAAAAAAAAAAAAA";
+  const frame = domModFrame(modFrameDocument(nonce), "leftover-probe");
+  const control = new MessageChannel();
+  const host = new MessageChannel();
+  let messages = 0;
+  host.port1.onmessage = () => { messages += 1; };
+  try {
+    await frame.loaded;
+    const error = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("leftover probe did not fail")), 10000);
+      control.port1.onmessage = (event) => {
+        if (event.data.type === "neo-angband/mod-frame/ack") {
+          control.port1.postMessage({
+            type: "neo-angband/mod-frame/boot",
+            nonce,
+            name: "leftover-probe",
+            workerSource: `Object.defineProperty(self, "SharedArrayBuffer", { value: class {}, configurable: false, writable: false });\n${isolatedWorkerSource(MOD_WORKER_PROTOCOL_VERSION)}`,
+            modules: [{ parts: ["postMessage('unexpected mod execution'); export default {};"] }],
+            linkLimit: MAX_LINKED_SOURCE,
+          }, [host.port2]);
+        } else if (event.data.type === "frame.error") {
+          clearTimeout(timer);
+          resolve(event.data.message);
+        }
+      };
+    });
+    frame.post({ type: "neo-angband/mod-frame/hello", nonce }, [control.port2]);
+    return { error: await error, messages };
+  } finally {
+    control.port1.postMessage({ type: "frame.terminate" });
+    control.port1.close();
+    host.port1.close();
+    frame.remove();
+  }
 };

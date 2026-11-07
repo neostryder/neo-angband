@@ -83,6 +83,8 @@ export function isolatedResults(run: IsolatedRun): ProbeResults {
 /** Ways out: each must fail inside the sandbox, and no request may reach the route log. */
 export const NETWORK_CHECKS = ["fetchGame", "fetchRemote", "xhr", "webSocket", "eventSource", "remoteImport"] as const;
 
+export const LOCKDOWN_CHECKS = ["sharedArrayBuffer", "atomics", "offscreenCanvas", "blob", "objectUrl", "sendBeacon", "serviceWorker", "storage", "storageBuckets", "storageFoundation", "webkitTemporaryStorage", "webkitPersistentStorage", "getStorageDirectory", "locks", "RTCPeerConnection", "webkitRTCPeerConnection", "mozRTCPeerConnection", "broadcast"] as const;
+
 /**
  * The game's stores: none may hand the sandbox the secret the page put there.
  * An engine may give an opaque origin an empty store of its own (WebKit gives

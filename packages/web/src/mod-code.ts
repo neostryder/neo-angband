@@ -271,7 +271,9 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       skipped.push({ id, why: "not enabled" });
       continue;
     }
-    if (typeof binding !== "string") {
+    /* The headless runner sets unsafeInProcess itself and has no page to measure; every
+     * other load needs a measured binding, first-party included. */
+    if (typeof binding !== "string" && opts.unsafeInProcess === undefined) {
       problems.push({ id, why: MOD_PERMISSION_TEXT.unavailable });
       continue;
     }
@@ -498,9 +500,8 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
         problems.push({ id, why: `${PLUGIN_FILE}: ${wrong}` });
         continue;
       }
-      /* The grants and first-party seams the loader settled, read when the mod
+      /* The grants and seams the loader settled, read when the mod
        * registers; the same answer modStartGrants gives the Worker runtime. */
-      const capabilities = CapabilitySet.fromManifest(manifest);
       plugins.push({
         id,
         ...approvedPayload,
@@ -510,6 +511,13 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
         grants,
         plugin: api2Plugin(entry as Api2ModDefinition, () => {
           const start = modStartGrants(id);
+          const capabilities = { has: (capability: string) => {
+            if (consentBinding(id) !== binding) return false;
+            const held = effectiveGrants(modStartGrants(id).granted, tier, {
+              granted: modStartGrants(id).granted, refused: opts.refused?.(id) ?? [],
+            });
+            return CapabilitySet.fromManifest({ ...manifest, capabilities: [...held.granted] }).has(capability);
+          } };
           return { grants: capabilities, execution: start.tier.execution, developerInProcess: start.tier.developerInProcess === true, tier: start.tier.trust === "first-party" ? "first-party" : "public", ...(start.firstParty ? { firstParty: start.firstParty } : {}) };
         }),
         api: 2,
