@@ -32,6 +32,26 @@ import { MOD_API_VERSION } from "./mod-plugin";
 import { ModStore, buildCatalog, readEnabledModIds, type StorageLike } from "./mod-store";
 import { CORE_DRAWN_IDS, isCoreDrawn } from "./core-drawn";
 import { MODELLED_SCREENS } from "./screen-view";
+
+it("lets Workers stage pure authoring without opening management", () => {
+  const tier = assignTier({ id: "author", source: "folder", execution: "worker" });
+  expect(tierRefusal("mod:authoring", tier)).toBeNull();
+  for (const capability of ["mod:install", "mod:session", "screens:manage", "options:manage"]) expect(tierRefusal(capability, tier)).not.toBeNull();
+});
+
+it("applies Worker eligibility to first-party grants and refuses broad replacements", () => {
+  for (const id of ["anybandui", "other"]) {
+    const tier = id === "anybandui" ? assignTier(installed({ execution: "worker" })) : assignTier({ id, source: "folder", execution: "worker" });
+    for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create", "mod:authoring"]) {
+      expect(tierRefusal(capability, tier)).toBeNull();
+      expect(effectiveGrants([capability], tier, { granted: [], refused: [] }).granted).toEqual([]);
+    }
+    for (const capability of ["ui:*.replace", "ui:birth.replace", "ui:menu.replace", "ui:screen.replace", "display:replace", "debug:spawn", "debug:wizard", "shared:read", "shared:publish", TRUTH_MAP, TRUTH_MONSTERS, "engine:access", "mod:install", "mod:session", "mod:read", "screens:manage"]) {
+      expect(tierRefusal(capability, tier)).not.toBeNull();
+      expect(effectiveGrants([capability], tier, { granted: [capability], refused: [] }).granted).toEqual([]);
+    }
+  }
+});
 import { consentSessionMod, rowLabel, unreviewedNoticeDue, unreviewedNoticeScreen } from "./mods";
 import * as overlay from "./overlay";
 import type { GridPointerInput, GridSurface } from "./term";
@@ -266,24 +286,17 @@ describe("the seam policy", () => {
     expect(tierRefusal("profiles:manage", squire)).toBeNull();
   });
 
-  it("opens only the four serialized management grants to Workers of every author", () => {
+  it("refuses management in Workers except the pure authoring library", () => {
     const capabilities = ["screens:manage", "session:control", "profiles:manage", "mod:install", "mod:session", "mod:authoring", "options:manage"];
-    const workerCapabilities = ["profiles:manage", "session:control", "options:manage", "saves:manage"];
     for (const capability of capabilities) {
       for (const trust of ["listed", "reviewed", "sideloaded"] as const) expect(tierRefusal(capability, { ...anybandui, trust })).not.toBeNull();
-      for (const trust of ["first-party", "listed", "reviewed", "sideloaded"] as const) {
-        expect(tierRefusal(capability, { ...anybandui, trust, execution: "worker" }) === null).toBe(workerCapabilities.includes(capability));
-      }
+      if (capability === "mod:authoring") expect(tierRefusal(capability, { ...anybandui, execution: "worker" })).toBeNull();
+      else expect(tierRefusal(capability, { ...anybandui, execution: "worker" })).not.toBeNull();
       expect(tierRefusal(capability, { ...anybandui, execution: "data" })).not.toBeNull();
     }
     setModTiers(new Map([["anybandui", { ...anybandui, execution: "worker" }]]));
     setModGrants(new Map([["anybandui", { granted: ["mod:install"], refusedByTier: [], refusedByPlayer: [], undecided: [], blocking: [] }]]));
     expect(modStartGrants("anybandui").firstParty?.manage).toBeUndefined();
-    for (const capability of workerCapabilities) {
-      expect(needsOwnConfirmation(capability)).toBe(true);
-      expect(tierRefusal(capability, worker)).toBeNull();
-      expect(effectiveGrants([capability], worker, { granted: [capability], refused: [capability] }).granted).toEqual([]);
-    }
   });
 
   it("asks about manage on its own question", () => {
@@ -292,17 +305,9 @@ describe("the seam policy", () => {
     expect(needsOwnConfirmation("command:add")).toBe(false);
   });
 
-  it("lets any in-process mod or Worker hold either truth grant with consent", () => {
+  it("lets any in-process mod hold the real map with consent, but not a sideloaded Worker", () => {
     expect(tierRefusal(TRUTH_MAP, sideloaded)).toBeNull();
-    for (const trust of ["first-party", "listed", "reviewed", "sideloaded"] as const) {
-      for (const capability of [TRUTH_MAP, TRUTH_MONSTERS]) {
-        const tier = { ...worker, trust };
-        expect(tierRefusal(capability, tier)).toBeNull();
-        expect(effectiveGrants([capability], tier, { granted: [capability], refused: [] }).granted).toEqual([capability]);
-        expect(effectiveGrants([capability], tier, { granted: [capability], refused: [capability] }).granted).toEqual([]);
-        expect(effectiveGrants([capability], tier, { granted: [], refused: [] }).granted).toEqual([]);
-      }
-    }
+    expect(tierRefusal(TRUTH_MAP, worker)).toBe("this needs a brokered mechanism Workers do not have yet");
     const held = effectiveGrants([TRUTH_MAP], sideloaded, { granted: [TRUTH_MAP], refused: [] });
     expect(held.granted).toEqual([TRUTH_MAP]);
   });
@@ -332,7 +337,7 @@ describe("the seam policy", () => {
     expect(modStartGrants("unknown").firstParty).toBeUndefined();
   });
 
-  it("marks either truth grant for every author", () => {
+  it("marks either truth grant for every author without widening Worker eligibility", () => {
     setModTiers(new Map([["anybandui", anybandui], ["s", sideloaded]]));
     setModGrants(new Map([["s", effectiveGrants([TRUTH_MAP], sideloaded, { granted: [TRUTH_MAP], refused: [] })]]));
     expect(saveMarkingGrantHeld()).toBe(true);

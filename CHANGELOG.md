@@ -48,8 +48,13 @@ still calls itself.
 
 ## [Unreleased]
 
-- [Visible] [Security] **Worker mods can read hidden state with player consent.** Either explicit truth grant opens bounded truth snapshots for every mod author. The host saves permanent unscorable marking and provenance before building a snapshot, refuses reads when persistence fails, and drops replies after revocation. The map grant includes monster and race truth; the monsters grant does not open the map.
-- [Visible] [Security] **Worker mods can request bounded management operations with player confirmation.** Profile operations stay with their creator, character operations use player-selected opaque ids, cheat changes persist scoring consequences first, and management requests recheck grants, payload bindings, epochs, and plans before committing. Workers cannot write permission decisions or access installs, session packs, screen replacement, quit, exit-to-title, or wizard operations.
+- [Visible] [Security] **First-party Workers follow the same capability eligibility as other Workers.** Broad presentation and unavailable domains remain refused, while the implemented simple grants require player consent.
+
+- [Visible] [Security] **Worker mods can request the game's pure authoring library.** The host stages a fixed module graph for local draft preparation and validation without exposing installation, session loading, or a live host library.
+
+- [Visible] [Security] **Worker mods can request host-drawn text replacements and grid regions.** Separate grants cover messages, vitals, status, and additional rectangles. The host bounds text and geometry, accepts fixed style tokens, and hides mod output during host dialogs.
+
+- [Visible] [Security] **Worker mods can request interface options, keybinding edits, and named visual filters.** The broker rejects birth, cheat, and score option changes, limits keybinding edits to the current keyset, protects recovery keys, and cancels capture and hides mod presentation during host dialogs.
 
 - [Visible] [Security] **Controller and hidden-information marks apply to every mod author.** Every mod controller makes its character permanently unscorable and its save nondeterministic. Either truth grant permanently marks affected characters unscorable, and truth reads require the mark to be saved before a reply. Saves and run reports retain capability-use provenance independently of truncated controller history and mod-owned bags. Consent text discloses unseen creatures and the map grant's monster and race access. Worker capability eligibility is unchanged.
 - [Visible] [Security] **First-party API 2 engine and presentation access now honors declared permissions and player refusals.** Live presentation facilities require their own grants, and profile roll-on waits for controller confirmation for every author. Worker capabilities and execution tiers stay unchanged.

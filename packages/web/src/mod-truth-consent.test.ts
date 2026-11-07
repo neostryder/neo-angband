@@ -1,11 +1,8 @@
-import { readFileSync } from "node:fs";
-import ts from "typescript";
-import { coreOnlyManifest, NOSCORE, type SaveManifest } from "@rpgm-tools/neo-angband-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setConsentBindings } from "./mod-consent-binding";
 import { ModStore, type StorageLike } from "./mod-store";
-import { TRUTH_MAP, TRUTH_MONSTERS, modHolds, modStartGrants, resetModTiers, setModGrants, setModTiers, type ModTier } from "./mod-tier";
-import { markPlayerForTruth, mayAskForTruth, recordTruthUse, requestTruthConsent, type TruthCapability } from "./mod-truth-consent";
+import { TRUTH_MAP, modHolds, modStartGrants, resetModTiers, setModGrants, setModTiers, type ModTier } from "./mod-tier";
+import { markPlayerForTruth, mayAskForTruth, requestTruthConsent } from "./mod-truth-consent";
 
 function storage(): StorageLike {
   const map = new Map<string, string>();
@@ -140,46 +137,5 @@ describe("markPlayerForTruth", () => {
     const once = player.noscore;
     markPlayerForTruth(player);
     expect(player.noscore).toBe(once);
-  });
-});
-
-describe("main.ts truth save writer", () => {
-  /* main.ts boots on import, so this test supplies save and loader dependencies to its actual writer declaration. */
-  const source = ts.createSourceFile("main.ts", readFileSync(new URL("./main.ts", import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
-  const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration => ts.isFunctionDeclaration(statement) && statement.name?.text === "saveTruthUse")!;
-  const compiled = ts.transpileModule(declaration.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  const bind = new Function("activeModCode", "consentBinding", "game", "recordTruthUse", "persistSave", "suppressSave", "birthPending", "attachedSlot", `${compiled}\nreturn saveTruthUse;`) as (
-    code: () => unknown, binding: (id: string) => string, game: unknown, record: typeof recordTruthUse, persist: () => boolean,
-    suppress: boolean, birth: boolean, slot: () => string | null,
-  ) => (id: string, capability: TruthCapability) => boolean;
-
-  it.each([TRUTH_MAP, TRUTH_MONSTERS] as const)("records a Worker identity holding %s for either author", (capability) => {
-    for (const firstParty of [true, false]) {
-      const worker = { id: "worker", permissionBinding: "installation", contentDigest: "payload", manifest: { version: "2.0.0" }, tier: { trust: firstParty ? "first-party" : "sideloaded" } };
-      const game = { manifest: coreOnlyManifest(), state: { actor: { player: { noscore: 0 } }, turn: 42, chunk: { depth: 10 } } };
-      let saved: SaveManifest | undefined;
-      const persist = vi.fn(() => { saved = structuredClone(game.manifest); return true; });
-      const write = bind(() => ({ plugins: [], workers: [worker] }), () => "installation", game, recordTruthUse, persist, false, false, () => "slot");
-      expect(write("worker", capability)).toBe(true);
-      expect(persist).toHaveBeenCalledOnce();
-      expect(saved?.capabilityUse?.entries).toEqual([{ installation: "installation", id: "worker", version: "2.0.0", digest: "payload", capability,
-        activation: { turn: 42, depth: 10 }, consequence: "hidden-information" }]);
-      expect(saved?.modNoscore).toBe(true);
-      expect(game.state.actor.player.noscore & NOSCORE.DEBUG).not.toBe(0);
-    }
-  });
-
-  it.each(["unknown", "replaced", "title", "birth", "detached", "failed-save"])("refuses %s without disclosing truth", (failure) => {
-    const game = { manifest: coreOnlyManifest(), state: { actor: { player: { noscore: 0 } }, turn: 0, chunk: { depth: 0 } } };
-    const worker = { id: "worker", permissionBinding: "installation", manifest: { version: "1.0.0" } };
-    const persist = vi.fn(() => failure !== "failed-save");
-    const write = bind(() => ({ plugins: [], workers: [worker] }), () => failure === "replaced" ? "replacement" : "installation", game, recordTruthUse, persist,
-      failure === "title", failure === "birth", () => failure === "detached" ? null : "slot");
-    expect(write(failure === "unknown" ? "spoof" : "worker", TRUTH_MAP)).toBe(false);
-    if (failure !== "failed-save") {
-      expect(persist).not.toHaveBeenCalled();
-      expect(game.manifest.modNoscore).toBe(false);
-      expect(game.state.actor.player.noscore).toBe(0);
-    }
   });
 });

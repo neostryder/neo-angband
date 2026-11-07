@@ -44,8 +44,8 @@ export interface ModWorkerPanelPatch {
 
 /**
  * The `ModApi2` methods a Worker may call, by path. Anything else is refused
- * before it reaches the host's domains. Truth reads require a durable mark;
- * management uses the separate schema table below.
+ * before it reaches the host's domains. `manage` and `truth` are absent: a
+ * Worker mod never holds them.
  */
 export const WORKER_CALLS = [
   "meta.settings",
@@ -76,10 +76,6 @@ export const WORKER_CALLS = [
   "view.inspect.tileActions",
   "view.input",
   "view.isCurrent",
-  "truth.level",
-  "truth.monsters",
-  "truth.race",
-  "truth.storeKnowledge",
   "act.submit",
   "act.answer",
   "act.controller.owns",
@@ -216,49 +212,31 @@ export type ModWorkerToHost =
   | (FromWorker & { readonly type: "log"; readonly level: WorkerLogLevel; readonly message: string })
   | (FromWorker & { readonly type: "fault"; readonly site: string; readonly message: string });
 
-/** Management requests use explicit schemas rather than property traversal. */
-export const WORKER_MANAGE_CALLS: Readonly<Record<string, string>> = Object.freeze({
-  "manage.profiles.list": "profiles:manage",
-  "manage.profiles.create": "profiles:manage",
-  "manage.profiles.switchTo": "profiles:manage",
-  "manage.profiles.rename": "profiles:manage",
-  "manage.session.save": "session:control",
-  "manage.options.get": "options:manage",
-  "manage.options.set": "options:manage",
-  "manage.saves.list": "saves:manage",
-  "manage.saves.load": "saves:manage",
-  "manage.saves.rename": "saves:manage",
-  "manage.saves.delete": "saves:manage",
-  "manage.mods.snapshot": "profiles:manage",
-  "manage.mods.disable": "profiles:manage",
-  "manage.mods.setSettingValue": "profiles:manage",
-  "manage.mods.setSectionChoice": "profiles:manage",
-  "manage.mods.setConflictOverride": "profiles:manage",
-  "manage.mods.setThirdPartyConsent": "profiles:manage",
-});
+/** Simple grants use separate paths so they never open the management domain. */
+export const SIMPLE_WORKER_CALLS = {
+  "options.set": "options:write",
+  "keybindings.keyset": "keymap:edit",
+  "keybindings.list": "keymap:edit",
+  "keybindings.commands": "keymap:edit",
+  "keybindings.set": "keymap:edit",
+  "keybindings.remove": "keymap:edit",
+  "keybindings.capture": "keymap:edit",
+  "keybindings.cancelCapture": "keymap:edit",
+  "display.filter": "display:filter",
+  "ui.messages.replace": "ui:messages.replace",
+  "ui.sidebar.replace": "ui:sidebar.replace",
+  "ui.status.replace": "ui:status.replace",
+  "ui.region.create": "ui:region.create",
+  "ui.region.remove": "ui:region.create",
+} as const;
 
-export function validWorkerManageCall(method: string, args: readonly WorkerJson[]): boolean {
-  const text = (v: WorkerJson | undefined, max = 120): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= max && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(v);
-  const object = (v: WorkerJson | undefined): v is Record<string, WorkerJson> => v !== null && typeof v === "object" && !Array.isArray(v);
-  const id = () => text(args[0], 128);
-  switch (method) {
-    case "manage.profiles.list": case "manage.session.save": case "manage.options.get":
-    case "manage.saves.list": case "manage.mods.snapshot": return args.length === 0;
-    case "manage.profiles.create": return args.length === 1 && text(args[0]);
-    case "manage.profiles.rename": case "manage.saves.rename": return args.length === 2 && id() && text(args[1], method === "manage.saves.rename" ? 15 : 120);
-    case "manage.profiles.switchTo": return (args.length === 1 || args.length === 2) && id() && (args.length === 1 || object(args[1]) && Object.keys(args[1]).every((key) => key === "kind" || key === "armController") && args[1].kind === "create-character" && (args[1].armController === undefined || typeof args[1].armController === "boolean"));
-    case "manage.saves.load": return (args.length === 1 || args.length === 2) && id() && (args.length === 1 || object(args[1]) && Object.keys(args[1]).every((key) => key === "resumeAutoplayer") && (args[1].resumeAutoplayer === undefined || typeof args[1].resumeAutoplayer === "boolean"));
-    case "manage.saves.delete": case "manage.mods.disable": return args.length === 1 && id();
-    case "manage.mods.setSettingValue": return args.length === 3 && id() && text(args[1], 64) && typeof args[2] === "number" && Number.isFinite(args[2]);
-    case "manage.mods.setSectionChoice": return args.length === 3 && id() && text(args[1], 64) && typeof args[2] === "boolean";
-    case "manage.mods.setConflictOverride": return args.length === 2 && text(args[0], 128) && (args[1] === null || text(args[1], 128));
-    case "manage.mods.setThirdPartyConsent": return args.length === 1 && args[0] === false;
-    case "manage.options.set": {
-      const change = args[0];
-      if (args.length !== 1 || !object(change) || !Object.keys(change).every((key) => ["values", "hitpointWarn", "delayFactor", "lazymoveDelay"].includes(key))) return false;
-      if (change.values !== undefined && (!object(change.values) || Object.keys(change.values).length > 64 || Object.entries(change.values).some(([key, value]) => !text(key, 64) || typeof value !== "boolean"))) return false;
-      return ["hitpointWarn", "delayFactor", "lazymoveDelay"].every((key) => change[key] === undefined || typeof change[key] === "number" && Number.isInteger(change[key]) && change[key] >= 0 && change[key] <= (key === "hitpointWarn" ? 9 : 255));
-    }
-    default: return false;
-  }
+export interface WorkerTextLine {
+  readonly text: string;
+  readonly style?: "normal" | "muted" | "warning" | "danger" | "good";
+}
+
+export interface WorkerTextRegion {
+  readonly id: string;
+  readonly rect: { readonly col: number; readonly row: number; readonly cols: number; readonly rows: number };
+  readonly lines: readonly WorkerTextLine[];
 }

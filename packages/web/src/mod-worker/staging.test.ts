@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAX_STAGED_SOURCE, stageModuleGraph, type StagedModuleGraph } from "./staging";
+import { Worker } from "node:worker_threads";
 
 const ORIGIN = "neo-angband://game";
 const BASE = `${ORIGIN}/mods/probe/`;
@@ -14,6 +15,40 @@ function joined(graph: StagedModuleGraph): string[] {
 }
 
 describe("staging a Worker mod's module graph", () => {
+  it("runs the fixed authoring library inside a Worker without a host call", async () => {
+    const graph = await stageModuleGraph(`${BASE}worker.js`, { origin: ORIGIN, authoring: () => true,
+      read: reader({ [`${BASE}worker.js`]: `import * as tools from "@rpgm-tools/neo-angband-mod-sdk/authoring"; export default { template: tools.templateRecord("monster"), checked: typeof tools.checkRecords, install: tools.install, session: tools.loadForSession };` }) });
+    expect(graph.modules.filter((module) => module.label.startsWith("host authoring/")).map((module) => module.label).sort()).toEqual([
+      "host authoring/authoring.js", "host authoring/blueprints.js", "host authoring/fields.js", "host authoring/provenance.js", "host authoring/references.js",
+    ]);
+    const urls: string[] = [];
+    for (const module of graph.modules) {
+      const source = module.parts.map((part) => typeof part === "number" ? JSON.stringify(urls[part]) : part).join("");
+      urls.push(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`);
+    }
+    const worker = new Worker(`const { parentPort } = require("node:worker_threads"); import(${JSON.stringify(urls.at(-1))}).then((module) => parentPort.postMessage(JSON.parse(JSON.stringify(module.default))));`, { eval: true });
+    try {
+      const reply = await new Promise<unknown>((resolve, reject) => { worker.once("message", resolve); worker.once("error", reject); });
+      expect(reply).toMatchObject({ template: expect.any(Object), checked: "function" });
+      expect(reply).not.toHaveProperty("install");
+      expect(reply).not.toHaveProperty("session");
+    } finally { await worker.terminate(); }
+  });
+
+  it("rejects authoring imports without a grant, after revocation, and with a forged library path", async () => {
+    const source = `import "@rpgm-tools/neo-angband-mod-sdk/authoring"; import "./late.js";`;
+    await expect(stageModuleGraph(`${BASE}worker.js`, { origin: ORIGIN, read: reader({ [`${BASE}worker.js`]: source }) })).rejects.toThrow(/lacks mod:authoring/);
+    let held = true;
+    await expect(stageModuleGraph(`${BASE}worker.js`, { origin: ORIGIN, authoring: () => held,
+      read: async (url) => {
+        if (url.endsWith("late.js")) { held = false; return ""; }
+        return source;
+      } })).rejects.toThrow(/revoked/);
+    for (const spec of ["neo-authoring:///authoring.js", "@rpgm-tools/neo-angband-mod-sdk/authoring/../install", "@rpgm-tools/neo-angband-mod-sdk"]) {
+      await expect(stageModuleGraph(`${BASE}worker.js`, { origin: ORIGIN, authoring: () => true,
+        read: reader({ [`${BASE}worker.js`]: `import ${JSON.stringify(spec)};` }) })).rejects.toThrow(/not one of the mod's own files/);
+    }
+  });
   it("puts dependencies first, the entry last, and shares a module imported twice", async () => {
     const graph = await stageModuleGraph(`${BASE}worker.js`, {
       origin: ORIGIN,

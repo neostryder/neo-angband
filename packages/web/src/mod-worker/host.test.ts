@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MFLAG,
-  NOSCORE,
+  OPTION_ENTRIES,
   composeModHooks,
   loc,
   GlyphTable,
@@ -23,7 +23,6 @@ import {
   squareForget,
   squareMemorize,
   startGame,
-  saveGame,
   ObjRegistry,
   Rng,
   bindConstants,
@@ -45,8 +44,10 @@ import { API2_POLICY_KINDS, CapabilitySet, MOD_PERMISSION_TEXT, type Api2ModDefi
 import { api2Plugin, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "../mod-api2-shim";
 import { createApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
-import { TRUTH_MAP, TRUTH_MONSTERS, resetModTiers, setModGrants } from "../mod-tier";
-import { recordTruthUse, setTruthSaveWriter } from "../mod-truth-consent";
+import { browserKeydown } from "../input-door";
+import { clearKeymaps, keymapEntries } from "../keymap-store";
+import { suspendModPanels } from "../panel-runtime";
+import { createModOptions } from "../mod-options";
 import { ModHealthMonitor, type ModSwitchOff } from "../mod-health";
 import type { ModPrefs } from "../mod-prefs";
 import { installModWorkerBootstrap, type WorkerScope } from "./bootstrap";
@@ -54,24 +55,13 @@ import { resetWorkerHooks, settleWorkerHooks, workerModHooks } from "./hooks";
 import {
   startModWorker,
   MAX_MESSAGE_BYTES,
-  MAX_REPLY_BYTES,
-  MAX_CALLS_PER_SECOND,
   WorkerTimeoutError,
   type ModWorkerHostDeps,
   type ModWorkerLike,
   type StartedModWorker,
   type WorkerApiOptions,
 } from "./host";
-import { MOD_WORKER_PROTOCOL_VERSION, type HostToModWorker, type ModWorkerToHost, type WorkerJson } from "./protocol";
-import { setConsentBindings } from "../mod-consent-binding";
-import { createModProfiles } from "../profile-runtime";
-import { ProfileStore } from "../profiles";
-import { scopedStorage, type ScopedStorage } from "../profile-scope";
-import { buildCatalog, ModStore, MOD_STATE_STORAGE_KEY } from "../mod-store";
-import { createModSaves, type SavesDoorDeps } from "../saves-facade";
-import type { CharMeta } from "../roster";
-import type { WorkerManagementHost } from "../mod-api2-host";
-import { createModManagerService } from "../mod-manager/service";
+import { MOD_WORKER_PROTOCOL_VERSION, type HostToModWorker, type ModWorkerToHost } from "./protocol";
 
 function loadJson<T>(name: string): T {
   return JSON.parse(readFileSync(new URL(`../../../content/pack/${name}.json`, import.meta.url), "utf8")) as T;
@@ -130,6 +120,7 @@ interface HostSetup {
   readonly prefs?: ModPrefs;
   readonly net?: ModNet;
   readonly options?: Partial<import("../mod-api2-host").Api2HostOptions>;
+  readonly context?: Partial<import("../mod-plugin").ModPluginContext>;
 }
 
 /** The broker's `api` dependency: the in-process host over the mod's own context, as main.ts builds it. */
@@ -142,10 +133,9 @@ function hostApi(setup: HostSetup = {}): (options: WorkerApiOptions) => ModApi2 
     const ctx = modPluginContext("probe", {}, setup.game?.state, {}, {
       capabilities,
       prefs: setup.prefs ?? memoryPrefs(),
-      ...(setup.game ? { registries: setup.game.booted.registries } : {}),
       ...(setup.net ? { net: setup.net } : {}),
     });
-    return createApi2Host(ctx, { grants: capabilities, ...setup.options, ...options, execution: "worker" });
+    return createApi2Host({ ...ctx, ...setup.context }, { grants: capabilities, ...setup.options, ...options, execution: "worker" });
   };
 }
 
@@ -196,9 +186,6 @@ afterEach(() => {
   for (const session of sessions.splice(0)) session.teardown();
   resetWorkerHooks();
   resetTvalRegistry();
-  resetModTiers();
-  setTruthSaveWriter(undefined);
-  setConsentBindings(new Map());
 });
 
 function wire(definition: Api2ModDefinition, deps: Partial<ModWorkerHostDeps> = {}): Wired {
@@ -238,293 +225,6 @@ function liveMonsters(state: GameState): Monster[] {
   return state.monsters.filter((m): m is Monster => m !== null && m !== undefined);
 }
 
-async function managementProbe(grants = ["profiles:manage", "session:control", "options:manage", "saves:manage"]) {
-  const values = new Map<string, string>();
-  const storage: ScopedStorage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => { values.set(key, value); }, removeItem: (key) => { values.delete(key); }, get length() { return values.size; }, key: (index) => [...values.keys()][index] ?? null };
-  const manifest = { id: "probe", name: "Probe", version: "1.0.0", shape: "plugin" as const, capabilities: grants, settings: [{ id: "amount", title: "Amount", description: "Amount", min: 0, max: 10, step: 1, default: 1 }], sections: [{ id: "part", title: "Part", flag: "probe.part" }] };
-  const caps = CapabilitySet.fromManifest(manifest);
-  const authorize = (held: readonly string[]) => setModGrants(new Map([["probe", { granted: held, refusedByTier: [], refusedByPlayer: [], undecided: [], blocking: [] }]]));
-  setConsentBindings(new Map([["probe", "probe-digest"], ["victim", "victim-digest"]]));
-  authorize(grants);
-  const store = new ModStore(storage);
-  store.setDecisions("probe", { granted: grants, refused: [], binding: "probe-digest" }, "1.0.0");
-  store.setDecisions("victim", { granted: ["engine:access"], refused: [], binding: "victim-digest" }, "1.0.0");
-  const consent = () => storage.getItem(MOD_STATE_STORAGE_KEY);
-  const beforeConsent = consent();
-  const manager = createModManagerService({ store, listCatalog: () => buildCatalog({ content: [], sandbox: [], trusted: [manifest, { ...manifest, id: "victim", name: "Victim", capabilities: ["engine:access"] }], enabled: store.getEnabled(), consents: store.getConsents(), refusals: store.getRefusals() }) });
-  const profilesStore = new ProfileStore(storage);
-  const reload = vi.fn();
-  const profiles = createModProfiles("probe", caps, { store: profilesStore, storage, pendingStorage: storage, installed: () => [manifest], hasController: () => true, reload, canSwitch: () => ({ ok: true }) });
-  const foreignProfile = profilesStore.create("Another profile");
-  const character: CharMeta = { id: "raw-a", name: "Alice", race: "Human", cls: "Mage", sex: "", level: 1, depth: 0, maxDepth: 0, turn: 0, alive: true, updatedAt: 1 };
-  let roster = [character, { ...character, id: "raw-b", name: "Bob" }];
-  let active: string | null = null;
-  let scope = "profile-a";
-  const load = vi.fn(async (_id: string, current?: () => boolean, _resumeModId?: string) => current?.() ? { ok: true as const } : { ok: false as const, reason: "Revoked" });
-  const rename = vi.fn(() => ({ ok: true as const }));
-  const deleteSlot = vi.fn((id: string) => { roster = roster.filter((entry) => entry.id !== id); });
-  const saveDeps: SavesDoorDeps = { listRoster: () => roster, load, rename, renameStored: rename, deleteSlot, confirmDelete: vi.fn(async () => true), activeSlot: () => active, namePinned: () => false, fingerprint: (id) => `save:${id}` };
-  const saves = createModSaves(saveDeps);
-  const game = startGame(pack, { seed: SEED, depth: DEPTH });
-  const save = vi.fn(() => ({ ok: true as const }));
-  const host: WorkerManagementHost = {
-    confirm: vi.fn(async () => true), pickSaves: vi.fn(async () => ["raw-a"]), scope: () => scope,
-    markCheat: vi.fn(() => { expect(game.state.options!.get("cheat_live")).toBe(false); game.state.actor.player.noscore |= 2; return true; }), saveOptions: vi.fn(),
-  };
-  let proxy: ModApi2 | undefined;
-  const wired = wire({ api: API, start: (api) => { proxy = api; } }, { grants, api: () => createApi2Host({ ...modPluginContext("probe", {}, game.state, {}, { capabilities: caps }), profiles, saves, session: { save, exitToTitle: vi.fn(), quit: vi.fn() } }, { execution: "worker", grants: caps, workerManagement: host, management: async () => manager.service }) });
-  const api = await started(wired, () => proxy);
-  let requestId = 1000;
-  const raw = async (method: string, args: import("./protocol").WorkerJson[] = [], epoch = 1) => {
-    const id = ++requestId;
-    wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch, requestId: id, method, args });
-    await vi.waitFor(() => expect(wired.worker.sent.some((message) => message.type === "reply" && message.requestId === id)).toBe(true));
-    const reply = wired.worker.sent.find((message) => message.type === "reply" && message.requestId === id);
-    if (reply?.type !== "reply") throw new Error("The broker did not reply.");
-    return reply.ok ? reply.result : { error: reply.error };
-  };
-  const selected = async () => {
-    const result = await api.manage!.saves.list();
-    if (!result.ok) throw new Error("The player selection failed.");
-    return result.value[0]!.id;
-  };
-  return { api, wired, raw, selected, host, load, rename, deleteSlot, save, authorize, profiles, profilesStore, storage, caps, game, reload, foreignProfile, consent, beforeConsent, setActive: (id: string | null) => { active = id; }, setScope: (value: string) => { scope = value; }, changeRoster: () => { roster = roster.map((entry) => ({ ...entry, updatedAt: entry.updatedAt + 1 })); } };
-}
-
-describe("Worker management", () => {
-  it("redacts the manager snapshot across the port and confirms its own configuration changes", async () => {
-    const f = await managementProbe();
-    expect(await f.api.manage!.mods.snapshot()).toEqual({ ok: true, value: { id: "probe", name: "Probe" } });
-    vi.mocked(f.host.confirm).mockResolvedValue(false);
-    expect(await f.api.manage!.mods.setSettingValue("probe", "amount", 4)).toMatchObject({ ok: false });
-    expect(await f.api.manage!.mods.setSectionChoice("victim", "part", false)).toMatchObject({ ok: false });
-    expect(f.consent()).toBe(f.beforeConsent);
-    vi.mocked(f.host.confirm).mockResolvedValue(true);
-    expect(await f.api.manage!.mods.setSettingValue("probe", "amount", 4)).toMatchObject({ ok: true });
-    expect(new ModStore(f.storage).getSettingValues().probe?.amount).toBe(4);
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it.each(["manage.profiles.create", "manage.session.save", "manage.options.set", "manage.saves.list"])("refuses an ungranted %s before asking or mutating", async (method) => {
-    const f = await managementProbe([]);
-    const args = method === "manage.profiles.create" ? ["Denied"] : method === "manage.options.set" ? [{ values: { cheat_live: true } }] : [];
-    expect(await f.raw(method, args)).toMatchObject({ ok: false, reason: "not-granted" });
-    expect(f.host.confirm).not.toHaveBeenCalled();
-    expect(f.host.pickSaves).not.toHaveBeenCalled();
-    expect(f.save).not.toHaveBeenCalled();
-    expect(f.profilesStore.list()).toHaveLength(2);
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("uses explicit proxies and opaque ids for only the player-selected characters", async () => {
-    const f = await managementProbe();
-    const id = await f.selected();
-    expect(id).not.toBe("raw-a");
-    expect(JSON.stringify(await f.api.manage!.saves.list())).not.toContain("raw-");
-    const fresh = await f.selected();
-    expect(await f.api.manage!.saves.load(id)).toMatchObject({ ok: false });
-    expect(await f.api.manage!.saves.load("raw-a")).toMatchObject({ ok: false });
-    expect(await f.api.manage!.saves.rename("raw-b", "Stolen")).toMatchObject({ ok: false });
-    expect(await f.api.manage!.saves.load(fresh, { resumeAutoplayer: true })).toMatchObject({ ok: true });
-    expect(f.load).toHaveBeenCalledWith("raw-a", expect.any(Function), "probe");
-    expect(await f.api.manage!.saves.rename(fresh, "Allowed")).toMatchObject({ ok: true });
-    expect(f.rename).toHaveBeenCalledWith("raw-a", "Allowed");
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("refuses missing and revoked grants and does not expose install or consent writers", async () => {
-    const f = await managementProbe(["profiles:manage"]);
-    expect(await f.raw("manage.session.save")).toMatchObject({ reason: "not-granted" });
-    for (const method of ["manage.mods.recordConsent", "manage.mods.setDecisions", "manage.mods.resolveConfirmation", "manage.mods.copyScopedStorage", "manage.mods.enable", "manage.screens.take", "manage.loadForSession", "manage.wizard", "manage.session.quit", "manage.session.exitToTitle"]) {
-      expect(await f.raw(method)).toHaveProperty("error");
-    }
-    f.authorize([]);
-    expect(await f.raw("manage.profiles.create", ["Denied"])).toMatchObject({ ok: false, code: "revoked" });
-    expect(f.profilesStore.list()).toHaveLength(2);
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("rejects stale epochs, spoofed callers, malformed arguments, and oversized messages before mutation", async () => {
-    const f = await managementProbe();
-    const count = f.wired.worker.sent.length;
-    f.wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "victim", epoch: 1, requestId: 9, method: "manage.session.save", args: [] });
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    expect(f.wired.worker.sent).toHaveLength(count);
-    expect(await f.raw("manage.session.save", [], 0)).toHaveProperty("error");
-    expect(await f.raw("manage.profiles.create", ["x".repeat(121)])).toMatchObject({ ok: false, code: "bad-call" });
-    expect(await f.raw("manage.profiles.create", ["Name", null])).toMatchObject({ ok: false, code: "bad-call" });
-    expect(await f.raw("manage.options.set", [{ values: { use_sound: "yes" } }])).toMatchObject({ ok: false, code: "bad-call" });
-    expect(await f.raw("manage.profiles.create", ["x".repeat(MAX_MESSAGE_BYTES)])).toHaveProperty("error");
-    expect(f.save).not.toHaveBeenCalled();
-    expect(f.host.confirm).not.toHaveBeenCalled();
-    expect(f.profilesStore.list()).toHaveLength(2);
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("declines every mutation without changing consent, profiles, characters, or options", async () => {
-    const f = await managementProbe();
-    const id = await f.selected();
-    vi.mocked(f.host.confirm).mockResolvedValue(false);
-    for (const [method, args] of [["manage.profiles.create", ["Declined"]], ["manage.options.set", [{ values: { cheat_live: true } }]], ["manage.session.save", []], ["manage.saves.load", [id]], ["manage.saves.rename", [id, "Declined"]], ["manage.saves.delete", [id]]] as const) {
-      expect(await f.raw(method, [...args])).toMatchObject({ ok: false });
-    }
-    expect(f.load).not.toHaveBeenCalled();
-    expect(f.rename).not.toHaveBeenCalled();
-    expect(f.deleteSlot).not.toHaveBeenCalled();
-    expect(f.save).not.toHaveBeenCalled();
-    expect(f.host.markCheat).not.toHaveBeenCalled();
-    expect(f.game.state.options!.get("cheat_live")).toBe(false);
-    expect(f.profilesStore.list()).toHaveLength(2);
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it.each(["binding", "grant", "epoch", "plan"])("refuses a %s change during the dialog", async (change) => {
-    const f = await managementProbe();
-    const id = await f.selected();
-    vi.mocked(f.host.confirm).mockImplementation(async () => {
-      if (change === "binding") setConsentBindings(new Map([["probe", "replacement-digest"]]));
-      if (change === "grant") f.authorize([]);
-      if (change === "epoch") f.wired.session.teardown();
-      if (change === "plan") f.changeRoster();
-      return true;
-    });
-    if (change === "epoch") {
-      const pending = f.api.manage!.saves.delete(id).catch(() => {});
-      await vi.waitFor(() => expect(f.host.confirm).toHaveBeenCalled());
-      await pending;
-    } else expect(await f.api.manage!.saves.delete(id)).toMatchObject({ ok: false });
-    expect(f.deleteSlot).not.toHaveBeenCalled();
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("refuses active-slot deletion both initially and after the confirmation", async () => {
-    const f = await managementProbe();
-    const id = await f.selected();
-    f.setActive("raw-a");
-    expect(await f.api.manage!.saves.delete(id)).toMatchObject({ ok: false });
-    f.setActive(null);
-    vi.mocked(f.host.confirm).mockImplementation(async () => { f.setActive("raw-a"); return true; });
-    expect(await f.api.manage!.saves.delete(id)).toMatchObject({ ok: false });
-    expect(f.deleteSlot).not.toHaveBeenCalled();
-  });
-
-  it("binds save ids to the profile and refuses another profile's raw id", async () => {
-    const f = await managementProbe();
-    const id = await f.selected();
-    f.setScope("profile-b");
-    expect(await f.api.manage!.saves.load(id)).toMatchObject({ ok: false });
-    expect(f.load).not.toHaveBeenCalled();
-    expect(await f.raw("manage.profiles.switchTo", [f.foreignProfile])).toMatchObject({ ok: false });
-    expect(f.reload).not.toHaveBeenCalled();
-  });
-
-  it("creates profiles without consent, pins, or preferences and requires destination consent for birth", async () => {
-    const f = await managementProbe();
-    const result = await f.api.manage!.profiles.create("Own profile");
-    if (!result.ok || result.value.id === null) throw new Error("The profile was not created.");
-    const target = scopedStorage(f.storage, result.value.id);
-    expect(new ModStore(target).getConsents()).toEqual({});
-    expect(new ModStore(target).getPins()).toEqual([]);
-    expect(target.getItem("neo:modPrefs:probe")).toBeNull();
-    expect(await f.raw("manage.profiles.switchTo", [result.value.id, { kind: "create-character" }])).toMatchObject({ ok: false });
-    expect(await f.raw("manage.profiles.rename", [f.foreignProfile, "Stolen"])).toMatchObject({ ok: false });
-    expect(await f.raw("manage.profiles.rename", [result.value.id, "Renamed"])).toMatchObject({ ok: true });
-    expect(f.reload).not.toHaveBeenCalled();
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("marks cheat consequences before changing options and keeps birth options refused", async () => {
-    const f = await managementProbe();
-    expect(await f.api.manage!.options.set({ values: { cheat_live: true } })).toMatchObject({ ok: true });
-    expect(f.host.markCheat).toHaveBeenCalledTimes(1);
-    expect(f.game.state.actor.player.noscore).not.toBe(0);
-    expect(f.game.state.options!.get("score_live")).toBe(true);
-    expect(await f.api.manage!.options.set({ values: { birth_no_recall: true } })).toMatchObject({ ok: false });
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("refuses an option transaction when the durable cheat mark fails", async () => {
-    const f = await managementProbe();
-    vi.mocked(f.host.markCheat).mockReturnValue(false);
-    expect(await f.api.manage!.options.set({ values: { cheat_live: true, use_sound: true } })).toMatchObject({ ok: false });
-    expect(f.game.state.options!.get("cheat_live")).toBe(false);
-    expect(f.game.state.options!.get("use_sound")).toBe(false);
-    expect(f.host.saveOptions).not.toHaveBeenCalled();
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("rechecks authorization after an asynchronous load prerequisite", async () => {
-    const f = await managementProbe();
-    const id = await f.selected();
-    let release: (() => void) | undefined;
-    const committed = vi.fn();
-    f.load.mockImplementation(async (_id, current) => {
-      await new Promise<void>((resolve) => { release = resolve; });
-      if (!current?.()) return { ok: false, reason: "Revoked" };
-      committed();
-      return { ok: true };
-    });
-    const pending = f.api.manage!.saves.load(id);
-    await vi.waitFor(() => expect(release).toBeDefined());
-    f.authorize([]);
-    release!();
-    expect(await pending).toMatchObject({ ok: false });
-    expect(committed).not.toHaveBeenCalled();
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("keeps a confirmed profile rename and switch unchanged after a declined dialog", async () => {
-    const f = await managementProbe();
-    const created = await f.api.manage!.profiles.create("Owned");
-    if (!created.ok || !created.value.id) throw new Error("The profile was not created.");
-    vi.mocked(f.host.confirm).mockResolvedValue(false);
-    expect(await f.raw("manage.profiles.rename", [created.value.id, "Declined"])).toMatchObject({ ok: false });
-    expect(await f.api.manage!.profiles.switchTo(created.value.id)).toMatchObject({ ok: false });
-    expect(f.profilesStore.list().find((profile) => profile.id === created.value.id)?.name).toBe("Owned");
-    expect(f.reload).not.toHaveBeenCalled();
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("refuses a profile birth plan when destination decisions change during confirmation", async () => {
-    const f = await managementProbe();
-    const created = f.profiles.create("Destination");
-    if (!created.ok || !created.value.id) throw new Error("The profile was not created.");
-    const destination = new ModStore(scopedStorage(f.storage, created.value.id));
-    vi.mocked(f.host.confirm).mockImplementation(async () => {
-      destination.setDecisions("probe", { granted: ["profiles:manage", "session:control", "options:manage", "saves:manage"], refused: [], binding: "probe-digest" }, "1.0.0");
-      return true;
-    });
-    expect(await f.api.manage!.profiles.switchTo(created.value.id, { kind: "create-character" })).toMatchObject({ ok: false, code: "changed" });
-    expect(f.reload).not.toHaveBeenCalled();
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("serializes pending dialogs and bounds management call rate", async () => {
-    const f = await managementProbe();
-    let answer: ((value: boolean) => void) | undefined;
-    vi.mocked(f.host.confirm).mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }));
-    const pending = f.api.manage!.session.save();
-    await vi.waitFor(() => expect(answer).toBeDefined());
-    expect(await f.api.manage!.session.save()).toMatchObject({ ok: false, code: "busy" });
-    answer!(false);
-    await pending;
-    for (let count = 0; count < 31; count++) await f.api.manage!.profiles.list();
-    expect(await f.api.manage!.session.save()).toMatchObject({ ok: false, code: "rate" });
-    expect(f.save).not.toHaveBeenCalled();
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-
-  it("refuses profile creation at its storage limit without opening a dialog", async () => {
-    const f = await managementProbe();
-    for (let index = 0; index < 64; index++) expect(f.profiles.create(`Profile ${index}`).ok).toBe(true);
-    const before = f.profilesStore.list();
-    expect(await f.api.manage!.profiles.create("Overflow")).toMatchObject({ ok: false, code: "quota" });
-    expect(f.profilesStore.list()).toEqual(before);
-    expect(f.host.confirm).not.toHaveBeenCalled();
-    expect(f.consent()).toBe(f.beforeConsent);
-  });
-});
-
 /** What a mod observes of the world, as text, without the per-game token epochs. */
 async function observed(api: ModApi2): Promise<string> {
   const world = await api.view.world();
@@ -538,254 +238,6 @@ async function observed(api: ModApi2): Promise<string> {
 function observer(sink: (seen: string) => void): Api2ModDefinition {
   return { api: API, start: async (api) => sink(await observed(api)) };
 }
-
-describe("Worker truth reads", () => {
-  const hold = (granted: readonly string[]): void => setModGrants(new Map([["probe", {
-    granted, refusedByTier: [], refusedByPlayer: [], undecided: [], blocking: [],
-  }]]));
-  const send = (wired: Wired, requestId: number, method = "truth.monsters", args: readonly WorkerJson[] = [], pluginId = "probe", epoch = 1): void => {
-    wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId, epoch, requestId, method, args });
-  };
-  const reply = (wired: Wired, requestId: number) => wired.worker.sent.find((m) => m.type === "reply" && m.requestId === requestId);
-  const ready = async (grants: readonly string[], api = hostApi({ grants })): Promise<Wired> => {
-    hold(grants);
-    const wired = wire({ api: API }, { grants, api });
-    await wired.session.ready;
-    wired.session.start();
-    return wired;
-  };
-
-  it.each([TRUTH_MAP, TRUTH_MONSTERS])("saves %s before a Worker reads and crashes", async (capability) => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    let saved: ReturnType<typeof saveGame> | undefined;
-    setTruthSaveWriter(async (id, used, state) => {
-      recordTruthUse(game.manifest, state.actor.player, { installation: "binding", id, version: "1.0.0", digest: "digest" }, used,
-        { turn: state.turn, depth: state.chunk.depth });
-      saved = structuredClone(saveGame(game));
-      return true;
-    });
-    hold([capability]);
-    let crashed = false;
-    const wired = wire({ api: API, start: async (api) => {
-      const result = await api.truth!.monsters();
-      expect(result.ok).toBe(true);
-      expect(saved?.manifest?.modNoscore).toBe(true);
-      expect(saved?.manifest?.capabilityUse?.entries[0]).toMatchObject({ id: "probe", capability, consequence: "hidden-information" });
-      expect((saved!.player.noscore ?? 0) & NOSCORE.DEBUG).not.toBe(0);
-      crashed = true;
-      throw new Error("crash after truth");
-    } }, { grants: [capability], api: hostApi({ game, grants: [capability] }) });
-    await started(wired, () => crashed ? true : undefined);
-    await vi.waitFor(() => expect(wired.problems.join(" ")).toContain("crash after truth"));
-    expect(game.manifest.determinism).toBe("deterministic");
-  });
-
-  it.each([TRUTH_MAP, TRUTH_MONSTERS])("exposes exactly the reads granted by %s", async (capability) => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const hidden = liveMonsters(game.state).find((mon) => !monsterIsObvious(mon))!;
-    setTruthSaveWriter(() => true);
-    hold([capability]);
-    let done = false;
-    const wired = wire({ api: API, start: async (api) => {
-      const monsters = await api.truth!.monsters();
-      expect(monsters.ok).toBe(true);
-      if (monsters.ok) expect(monsters.value.find((mon) => mon.id === hidden.midx)).toMatchObject({ perceived: false });
-      const race = await api.truth!.race(hidden.race.ridx);
-      expect(race.ok && race.value?.ridx).toBe(hidden.race.ridx);
-      expect((await api.truth!.level()).ok).toBe(capability === TRUTH_MAP);
-      expect((await api.truth!.storeKnowledge()).ok).toBe(capability === TRUTH_MAP);
-      done = true;
-    } }, { grants: [capability], api: hostApi({ game, grants: [capability] }) });
-    await started(wired, () => done ? true : undefined);
-  });
-
-  it.each([true, false])("keeps a controller using truth unscorable with firstParty=%s", async (firstParty) => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const grants = [TRUTH_MONSTERS, "input:controller", "input:intent", "state:interaction.read"];
-    hold(grants);
-    let saved: ReturnType<typeof saveGame> | undefined;
-    setTruthSaveWriter((id, capability, state) => {
-      recordTruthUse(game.manifest, state.actor.player, { installation: "binding", id, version: "1", digest: "digest" }, capability, null);
-      saved = structuredClone(saveGame(game));
-      return true;
-    });
-    const wired = wire({ api: API, controller: async (api) => {
-      expect((await api.truth!.monsters()).ok).toBe(true);
-      expect(saved?.manifest?.modNoscore).toBe(true);
-      expect(saved?.manifest?.capabilityUse?.entries[0]?.consequence).toBe("hidden-information");
-      expect((saved!.player.noscore ?? 0) & NOSCORE.DEBUG).not.toBe(0);
-    } }, { grants, api: hostApi({ game, grants, options: { tier: firstParty ? "first-party" : "public" } }) });
-    await wired.session.ready;
-    expect(wired.session.hasController()).toBe(true);
-    wired.session.start();
-    await wired.session.decide({ token: { epoch: 0, revision: 1 }, phase: "play", messagePending: false, prompt: null } as never, {} as ModApi2);
-    expect(saved).toBeDefined();
-  });
-
-  it("omits truth without a grant and refuses a forged call without mutation", async () => {
-    const writer = vi.fn(() => true);
-    setTruthSaveWriter(writer);
-    let absent: boolean | undefined;
-    const wired = wire({ api: API, start: (api) => { absent = api.truth === undefined; } });
-    expect(await started(wired, () => absent)).toBe(true);
-    send(wired, 101);
-    await vi.waitFor(() => expect(reply(wired, 101)).toMatchObject({ result: { reason: "not-granted" } }));
-    expect(writer).not.toHaveBeenCalled();
-  });
-
-  it("refuses a grant revoked before admission without marking", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const writer = vi.fn(() => true);
-    setTruthSaveWriter(writer);
-    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
-    hold([]);
-    send(wired, 102);
-    await vi.waitFor(() => expect(reply(wired, 102)).toMatchObject({ result: { reason: "not-granted" } }));
-    expect(writer).not.toHaveBeenCalled();
-  });
-
-  it("drops a reply revoked while the save writer waits", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    let release: ((ok: boolean) => void) | undefined;
-    setTruthSaveWriter(() => new Promise((resolve) => { release = resolve; }));
-    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
-    send(wired, 103);
-    await vi.waitFor(() => expect(release).toBeDefined());
-    expect(reply(wired, 103)).toBeUndefined();
-    hold([]);
-    release!(true);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(reply(wired, 103)).toBeUndefined();
-  });
-
-  it.each([false, true])("drops a reply revoked during serialization, including copy failure=%s", async (failCopy) => {
-    const wired = await ready([TRUTH_MAP], () => ({
-      meta: { granted: () => true },
-      truth: { monsters: () => ({ ok: true, value: { get hidden() {
-        hold([]);
-        if (failCopy) throw new Error("copy failed");
-        return "hidden";
-      } } }) },
-    }) as unknown as ModApi2);
-    send(wired, 104);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(reply(wired, 104)).toBeUndefined();
-  });
-
-  it("refuses a spoofed identity and stale epoch without marking", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const writer = vi.fn(() => true);
-    setTruthSaveWriter(writer);
-    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
-    send(wired, 105, "truth.monsters", [], "victim");
-    send(wired, 106, "truth.monsters", [], "probe", 0);
-    await vi.waitFor(() => expect(reply(wired, 106)).toMatchObject({ ok: false, error: expect.stringMatching(/epoch/u) }));
-    expect(reply(wired, 105)).toBeUndefined();
-    expect(writer).not.toHaveBeenCalled();
-  });
-
-  it("refuses replay of a formerly valid epoch after a timeout", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const writer = vi.fn(() => true);
-    setTruthSaveWriter(writer);
-    hold([TRUTH_MAP]);
-    const wired = wire({ api: API, migrateBag: () => new Promise(() => undefined) as never }, {
-      grants: [TRUTH_MAP], api: hostApi({ game, grants: [TRUTH_MAP] }), timing: { askMs: 10 },
-    });
-    await wired.session.ready;
-    wired.session.start();
-    await expect(wired.session.migrateBag({}, 0)).rejects.toBeInstanceOf(WorkerTimeoutError);
-    send(wired, 116);
-    await vi.waitFor(() => expect(reply(wired, 116)).toMatchObject({ epoch: 1, ok: false, error: expect.stringMatching(/epoch/u) }));
-    expect(writer).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ["truth.monsters", [true]], ["truth.level", [{}]], ["truth.storeKnowledge", [0]],
-    ["truth.race", []], ["truth.race", [-1]], ["truth.race", [1.5]], ["truth.race", ["1"]],
-    ["truth.race", [0, 1]], ["truth.race", [{ capability: TRUTH_MAP }]],
-  ] as const)("refuses malformed %s arguments %j without marking", async (method, args) => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const writer = vi.fn(() => true);
-    setTruthSaveWriter(writer);
-    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
-    send(wired, 107, method, args as readonly WorkerJson[]);
-    await vi.waitFor(() => expect(reply(wired, 107)).toMatchObject({ result: { code: "bad-call" } }));
-    expect(writer).not.toHaveBeenCalled();
-  });
-
-  it("refuses an oversized truth request without marking", async () => {
-    const writer = vi.fn(() => true);
-    setTruthSaveWriter(writer);
-    const wired = await ready([TRUTH_MAP]);
-    send(wired, 108, "truth.race", ["x".repeat(MAX_MESSAGE_BYTES)]);
-    await vi.waitFor(() => expect(reply(wired, 108)).toMatchObject({ ok: false }));
-    expect(JSON.stringify(reply(wired, 108)).length).toBeLessThan(512);
-    expect(writer).not.toHaveBeenCalled();
-  });
-
-  it("retains the durable mark when the reply exceeds 4 MiB", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    let saved: ReturnType<typeof saveGame> | undefined;
-    setTruthSaveWriter((id, capability, state) => {
-      recordTruthUse(game.manifest, state.actor.player, { installation: "binding", id, version: "1", digest: "digest" }, capability, null);
-      saved = structuredClone(saveGame(game));
-      return true;
-    });
-    const real = hostApi({ game, grants: [TRUTH_MAP] });
-    const wired = await ready([TRUTH_MAP], (options) => {
-      const api = real(options);
-      return { ...api, truth: { ...api.truth!, monsters: async () => {
-        const result = await api.truth!.monsters();
-        return result.ok ? { ok: true, value: "x".repeat(MAX_REPLY_BYTES) } : result;
-      } } } as unknown as ModApi2;
-    });
-    send(wired, 109);
-    await vi.waitFor(() => expect(reply(wired, 109)).toMatchObject({ ok: false }));
-    expect(JSON.stringify(reply(wired, 109)).length).toBeLessThan(512);
-    expect(saved?.manifest?.modNoscore).toBe(true);
-    expect(saved?.manifest?.capabilityUse?.entries[0]?.capability).toBe(TRUTH_MAP);
-  });
-
-  it("refuses truth calls past 200 per second before marking", async () => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const writer = vi.fn(() => true);
-    setTruthSaveWriter(writer);
-    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
-    for (let i = 1; i <= MAX_CALLS_PER_SECOND + 1; i++) send(wired, i, "truth.race", [0]);
-    await vi.waitFor(() => expect(reply(wired, MAX_CALLS_PER_SECOND + 1)).toMatchObject({ result: { code: "rate" } }));
-    expect(writer).toHaveBeenCalledTimes(MAX_CALLS_PER_SECOND);
-  });
-
-  it.each(["missing", "false", "throws", "rejects"])("returns no truth when the save writer is %s", async (failure) => {
-    const game = startGame(pack, { seed: SEED, depth: DEPTH });
-    const before = structuredClone(saveGame(game));
-    setTruthSaveWriter(failure === "missing" ? undefined : () => {
-      if (failure === "throws") throw new Error("writer failed");
-      return failure === "rejects" ? Promise.reject(new Error("writer failed")) : false;
-    });
-    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
-    for (const [index, method] of ["truth.level", "truth.monsters", "truth.race", "truth.storeKnowledge"].entries()) {
-      send(wired, 110 + index, method, method === "truth.race" ? [0] : []);
-      await vi.waitFor(() => expect(reply(wired, 110 + index)).toMatchObject({ result: { ok: false } }));
-      expect(JSON.stringify(reply(wired, 110 + index)).length).toBeLessThan(512);
-    }
-    expect(saveGame(game)).toEqual(before);
-  });
-
-  it("returns no hidden data without a character and never calls after stop", async () => {
-    const writer = vi.fn(() => true);
-    setTruthSaveWriter(writer);
-    const wired = await ready([TRUTH_MAP]);
-    send(wired, 114);
-    await vi.waitFor(() => expect(reply(wired, 114)).toMatchObject({ result: { reason: "unavailable" } }));
-    const receive = wired.worker.onmessage!;
-    wired.session.teardown();
-    receive({ data: { type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1, requestId: 115, method: "truth.monsters", args: [] } } as MessageEvent);
-    expect(reply(wired, 115)).toBeUndefined();
-    expect(writer).not.toHaveBeenCalled();
-  });
-});
 
 describe("a Worker mod's view of the world", () => {
   it("uses granted key/value stores across the broker without a management namespace", async () => {
@@ -946,9 +398,9 @@ describe("the broker's grants", () => {
     wired.session.start();
     wired.worker.scope.postMessage({
       type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1,
-      requestId: 99, method: "manage.session.quit", args: [],
+      requestId: 99, method: "manage.profiles.list", args: [],
     });
-    await vi.waitFor(() => expect(wired.problems.join("\n")).toMatch(/refused call to "manage\.session\.quit"/u));
+    await vi.waitFor(() => expect(wired.problems.join("\n")).toMatch(/refused call to "manage\.profiles\.list"/u));
     await vi.waitFor(() => expect(wired.worker.sent.some((m) => m.type === "reply" && m.requestId === 99 && !m.ok)).toBe(true));
   });
 });
@@ -1533,5 +985,160 @@ it("gates controller key observation and never sends emergency keys to the Worke
   expect(await allowed.session.key(press)).toEqual({ kind: "keep", message: "Continuing" });
   expect(await allowed.session.key({ ...press, key: "Escape" })).toEqual({ kind: "release" });
   expect(await allowed.session.key({ ...press, key: "z", ctrl: true })).toEqual({ kind: "release" });
+  for (const key of ["F5", "F11", "F12"]) expect(await allowed.session.key({ ...press, key })).toEqual({ kind: "release" });
+  const restore = suspendModPanels();
+  try { expect(await allowed.session.key(press)).toEqual({ kind: "release" }); }
+  finally { restore(); }
   expect(onKey).toHaveBeenCalledTimes(1);
+});
+
+describe("Worker interface options", () => {
+  it("writes interface options through the bootstrap as plain JSON", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grants = ["options:write"];
+    let seen: unknown;
+    const wired = wire({ api: API, start: async (api) => {
+      seen = await (api as unknown as { options: { set(change: unknown): Promise<unknown> } }).options.set({ delayFactor: 17 });
+    } }, { grants, api: hostApi({ game, grants }) });
+    expect(await started(wired, () => seen)).toEqual({ ok: true, value: ["delayFactor"] });
+    expect(game.state.options!.delayFactor).toBe(17);
+    expect(wired.worker.sent.every((message) => JSON.stringify(JSON.parse(JSON.stringify(message))) === JSON.stringify(message))).toBe(true);
+  });
+
+  it.each(["BIRTH", "CHEAT", "SCORE"])("refuses %s and leaves the whole change unapplied", async (page) => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const entry = OPTION_ENTRIES.find((option) => option.type === page)!;
+    const before = game.state.options!.snapshot();
+    const grants = ["options:write"];
+    let seen: unknown;
+    const wired = wire({ api: API, start: async (api) => {
+      seen = await (api as unknown as { options: { set(change: unknown): Promise<unknown> } }).options.set({ values: { [entry.name]: !game.state.options!.get(entry.name) }, delayFactor: 17 });
+    } }, { grants, api: hostApi({ game, grants }) });
+    expect(await started(wired, () => seen)).toMatchObject({ ok: false });
+    expect(game.state.options!.snapshot()).toEqual(before);
+    expect(createModOptions(game.state, { writable: true }).set!({ values: { [entry.name]: true }, delayFactor: 17 }).ok).toBe(false);
+    expect(game.state.options!.snapshot()).toEqual(before);
+  });
+
+  describe.each([
+    { capability: "options:write", method: "options.set", args: [{ delayFactor: 17 }] },
+    { capability: "keymap:edit", method: "keybindings.set", args: ["F2", "h"] },
+    { capability: "display:filter", method: "display.filter", args: [{ name: "contrast", amount: 1.25 }] },
+    { capability: "ui:messages.replace", method: "ui.messages.replace", args: [[{ text: "warning" }]] },
+    { capability: "ui:sidebar.replace", method: "ui.sidebar.replace", args: [[{ text: "health" }]] },
+    { capability: "ui:status.replace", method: "ui.status.replace", args: [[{ text: "poisoned" }]] },
+    { capability: "ui:region.create", method: "ui.region.create", args: [{ id: "own", rect: { col: 0, row: 0, cols: 5, rows: 1 }, lines: [{ text: "own" }] }] },
+    { capability: "mod:authoring", method: "manage.authoring", args: [] },
+  ])("$capability admission", (domain) => {
+    it.each([
+      { name: "ungranted", held: false },
+      { name: "revoked", revoke: true },
+      { name: "wrong identity", pluginId: "victim" },
+      { name: "stale epoch", epoch: 0 },
+      { name: "malformed", args: [false] },
+      { name: "oversized", args: [{ values: { padding: "x".repeat(MAX_MESSAGE_BYTES) } }] },
+      { name: "over rate", overRate: true },
+      { name: "self widening", args: [{ delayFactor: 17, granted: ["options:manage"] }] },
+    ])("refuses $name without host mutation", async (attack) => {
+      const game = startGame(pack, { seed: SEED, depth: DEPTH });
+      const before = game.state.options!.snapshot();
+      let held = attack.held !== false;
+      clearKeymaps();
+      const grants = [domain.capability];
+      const filter = vi.fn();
+      const wired = wire({ api: API }, { grants, api: hostApi({ game, grants, options: { grants: { has: () => held } }, context: { display: { setVisualFilter: filter } as never } }),
+        ...(attack.overRate ? { timing: { maxCallsPerSecond: 1 } } : {}) });
+      await wired.session.ready;
+      wired.session.start();
+      if (attack.revoke) held = false;
+      if (attack.overRate) {
+        wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1, requestId: 400, method: "meta.settings", args: [] });
+      }
+      wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION,
+        pluginId: attack.pluginId ?? "probe", epoch: attack.epoch ?? 1, requestId: 401, method: domain.method,
+        args: (attack.args ?? domain.args) as import("./protocol").WorkerJson[] });
+      await vi.waitFor(() => {
+        if (attack.pluginId) expect(wired.problems.some((problem) => problem.includes("plugin id"))).toBe(true);
+        else expect(wired.worker.sent.find((message) => message.type === "reply" && message.requestId === 401)).toBeDefined();
+      });
+      const reply = wired.worker.sent.find((message) => message.type === "reply" && message.requestId === 401);
+      if (reply?.type === "reply" && reply.ok) expect(reply.result).toMatchObject({ ok: false });
+      expect(game.state.options!.snapshot()).toEqual(before);
+      expect(keymapEntries("orig")).toEqual([]);
+      expect(keymapEntries("rogue")).toEqual([]);
+      expect(filter).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("Worker keybinding editor", () => {
+  it("edits only the current keyset and refuses reserved triggers", async () => {
+    clearKeymaps();
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grants = ["keymap:edit"];
+    const wired = wire({ api: API }, { grants, api: hostApi({ game, grants }) });
+    await wired.session.ready;
+    wired.session.start();
+    const send = async (requestId: number, args: import("./protocol").WorkerJson[]) => {
+      wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1,
+        requestId, method: "keybindings.set", args });
+      await vi.waitFor(() => expect(wired.worker.sent.find((message) => message.type === "reply" && message.requestId === requestId)).toBeDefined());
+      return wired.worker.sent.find((message) => message.type === "reply" && message.requestId === requestId);
+    };
+    expect(await send(300, ["F2", "h"])).toMatchObject({ result: { ok: true } });
+    expect(await send(301, ["F2", "l", "roguelike"])).toMatchObject({ result: { ok: false } });
+    for (const [index, key] of ["Escape", "F5", "F11", "F12", "\u001a"].entries()) {
+      expect(await send(302 + index, [key, "h"])).toMatchObject({ result: { ok: false } });
+    }
+    expect(keymapEntries("orig")).toEqual([["F2", "h"]]);
+    expect(keymapEntries("rogue")).toEqual([]);
+    clearKeymaps();
+  });
+
+  it("ends capture when a host dialog opens and drops a revoked capture result", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grants = ["keymap:edit"];
+    let held = true;
+    let keys: { capture(): Promise<unknown> } | undefined;
+    const wired = wire({ api: API, start: (api) => { keys = (api as unknown as { keybindings: typeof keys }).keybindings; } },
+      { grants, api: hostApi({ game, grants, options: { grants: { has: () => held } } }) });
+    await started(wired, () => keys);
+    const capture = keys!.capture();
+    await vi.waitFor(() => expect(wired.health).toBeDefined());
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    const restore = suspendModPanels();
+    expect(await capture).toEqual({ ok: true, value: null });
+    browserKeydown({ key: "y", ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {}, stopImmediatePropagation() {} } as KeyboardEvent);
+    restore();
+    const revoked = keys!.capture();
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    const prevented = vi.fn();
+    browserKeydown({ key: "F5", ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault: prevented, stopImmediatePropagation() {} } as unknown as KeyboardEvent);
+    expect(prevented).not.toHaveBeenCalled();
+    held = false;
+    browserKeydown({ key: "a", ctrlKey: false, altKey: false, metaKey: false, repeat: false, preventDefault() {}, stopImmediatePropagation() {} } as KeyboardEvent);
+    expect(await revoked).toMatchObject({ reason: "not-granted" });
+  });
+});
+
+it("accepts named visual filters, rejects CSS and URLs, and suspends the filter for host consent", async () => {
+  const grants = ["display:filter"];
+  const filter = vi.fn();
+  let display: { filter(value: unknown): Promise<unknown> } | undefined;
+  const wired = wire({ api: API, start: (api) => { display = (api as unknown as { display: typeof display }).display; } },
+    { grants, api: hostApi({ grants, context: { display: { setVisualFilter: filter } as never } }) });
+  await started(wired, () => display);
+  for (const value of ["url(https://example.test)", { name: "url", amount: 1 }, { name: "contrast", amount: 1000 }, { name: "sepia", amount: 1, css: "x" }]) {
+    expect(await display!.filter(value)).toMatchObject({ ok: false });
+  }
+  expect(filter).not.toHaveBeenCalled();
+  expect(await display!.filter({ name: "contrast", amount: 1.25 })).toEqual({ ok: true, value: null });
+  expect(filter).toHaveBeenLastCalledWith("contrast(1.25)", { scope: "canvas" });
+  const restore = suspendModPanels();
+  expect(filter).toHaveBeenLastCalledWith(null, { scope: "canvas" });
+  expect(await display!.filter({ name: "invert", amount: 1 })).toMatchObject({ ok: false });
+  restore();
+  expect(filter).toHaveBeenLastCalledWith("contrast(1.25)", { scope: "canvas" });
+  wired.session.teardown();
+  expect(filter).toHaveBeenLastCalledWith(null);
 });

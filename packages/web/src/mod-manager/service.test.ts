@@ -11,7 +11,7 @@ import type { InstalledModMeta } from "../mod-install";
 import type { ModRefresh } from "../mod-refresh";
 import type { BrowseEntry } from "./browse-types";
 import { createModManagerService, type ModManagerService, type CoreModManager } from "./service";
-import { createManageAdapter, workerManageOperation } from "./manage-adapter";
+import { createManageAdapter } from "./manage-adapter";
 import type { ManagerResult, ModManagerEnvironment, ConfirmationDecision } from "./types";
 
 function manifest(id: string, over: Partial<PackManifest> = {}): PackManifest {
@@ -749,83 +749,6 @@ describe("Core-private confirmations and the first-party adapter", () => {
 });
 
 describe("content-bound manager confirmations", () => {
-  it("redacts a Worker snapshot to its own identity without another mod's data", async () => {
-    const f = fixture();
-    f.store.setDecisions("b", { granted: ["engine:access"], refused: [], binding: "measured-b" }, "1.0.0");
-    f.service.refreshState();
-    const confirm = vi.fn(async () => true);
-    expect(await workerManageOperation(f.service, "a", "snapshot", [], confirm, () => true)).toEqual({ status: "ok", value: { id: "a", name: "Mod a" } });
-    expect(confirm).not.toHaveBeenCalled();
-  });
-
-  it.each(["disable", "setSettingValue", "setSectionChoice", "setConflictOverride", "setThirdPartyConsent"])("asks before a Worker's %s and leaves a declined plan unchanged", async (method) => {
-    const f = fixture([manifest("a", { settings: [{ id: "amount", title: "Amount", description: "Amount", min: 0, max: 10, step: 1, default: 1 }], sections: [{ id: "part", title: "Part", flag: "a.part" }] })]);
-    f.store.setModEnabled("a", true);
-    f.service.refreshState();
-    const before = f.store.configurationRevision();
-    const args = method === "setThirdPartyConsent" ? [false] : method === "setSettingValue" ? ["a", "amount", 3] : method === "setSectionChoice" ? ["a", "part", false] : method === "setConflictOverride" ? ["slot", "a"] : ["a"];
-    const confirm = vi.fn(async (plan: string) => {
-      expect(plan).toContain('"id":"a"');
-      expect(plan).toContain('"name":"Mod a"');
-      expect(plan).toContain(method);
-      expect(f.store.configurationRevision()).toBe(before);
-      return false;
-    });
-    expect(await workerManageOperation(f.service, "a", method, args, confirm, () => true)).toMatchObject({ status: "refused", code: "cancelled" });
-    expect(confirm).toHaveBeenCalledTimes(1);
-    expect(f.store.configurationRevision()).toBe(before);
-    expect(f.env.consent!.read()).toBe(true);
-    expect(f.env.conflictOverrides!.read()).toEqual({});
-  });
-
-  it.each(["configuration", "digest", "revoked"])("refuses a Worker's confirmation after its %s changes", async (change) => {
-    const f = fixture();
-    f.store.setModEnabled("a", true);
-    const before = JSON.stringify(f.store.getConsents());
-    let current = true;
-    const confirm = vi.fn(async () => {
-      if (change === "configuration") f.store.setSettingValue("b", "setting", 2);
-      if (change === "digest") setConsentBindings(new Map([["a", "replacement-digest"]]));
-      if (change === "revoked") current = false;
-      return true;
-    });
-    expect(await workerManageOperation(f.service, "a", "disable", ["a"], confirm, () => current)).toMatchObject({ status: "refused", code: "changed" });
-    expect(f.store.isEnabled("a")).toBe(true);
-    expect(JSON.stringify(f.store.getConsents())).toBe(before);
-  });
-
-  it("refuses another mod's configuration and every consent-writing operation", async () => {
-    const f = fixture();
-    const before = f.store.configurationRevision();
-    const confirm = vi.fn(async () => true);
-    for (const method of ["disable", "setSettingValue", "setSectionChoice", "recordConsent", "resolveConfirmation", "setDecisions", "copyScopedStorage", "enable", "applyPlan"]) {
-      expect(await workerManageOperation(f.service, "a", method, ["b", "setting", 1], confirm, () => true)).toMatchObject({ status: "refused" });
-    }
-    expect(await workerManageOperation(f.service, "a", "setThirdPartyConsent", [true], confirm, () => true)).toMatchObject({ status: "refused" });
-    expect(confirm).not.toHaveBeenCalled();
-    expect(f.store.configurationRevision()).toBe(before);
-  });
-
-  it("refuses new Worker conflict entries after the storage limit without a dialog", async () => {
-    const f = fixture();
-    for (let index = 0; index < 64; index++) f.env.conflictOverrides!.write(`slot-${index}`, "a");
-    f.service.refreshState();
-    const before = JSON.stringify(f.env.conflictOverrides!.read());
-    const confirm = vi.fn(async () => true);
-    expect(await workerManageOperation(f.service, "a", "setConflictOverride", ["overflow", "a"], confirm, () => true)).toMatchObject({ status: "refused", code: "quota" });
-    expect(JSON.stringify(f.env.conflictOverrides!.read())).toBe(before);
-    expect(confirm).not.toHaveBeenCalled();
-  });
-
-  it("applies an accepted Worker disable plan without changing stored consents", async () => {
-    const f = fixture([manifest("a")]);
-    f.store.setModEnabled("a", true);
-    const before = JSON.stringify(f.store.getConsents());
-    expect(await workerManageOperation(f.service, "a", "disable", ["a"], async () => true, () => true)).toMatchObject({ status: "ok" });
-    expect(f.store.isEnabled("a")).toBe(false);
-    expect(JSON.stringify(f.store.getConsents())).toBe(before);
-  });
-
   it("refuses an approval when the payload changes while the question is open", async () => {
     const { setConsentBindings } = await import("../mod-consent-binding");
     const f = fixture([manifest("a", { capabilities: ["input:controller"] })]);

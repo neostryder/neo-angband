@@ -13,6 +13,7 @@
 import type { GameState } from "@rpgm-tools/neo-angband-core";
 import { keyForKeyset, type KeypressCommandRow } from "./command-menu";
 import { inputEvents } from "./input-door";
+import { modPresentationSuspended as modPanelsSuspended, onModPanelSuspension } from "./panel-runtime";
 import {
   isBindableTriggerKey,
   keymapAdd,
@@ -27,6 +28,11 @@ import type { ModGameCommand, ModKeybindings } from "@rpgm-tools/neo-angband-cor
 export type { ModGameCommand, ModKeybinding, ModKeybindings } from "@rpgm-tools/neo-angband-core";
 
 type Keyset = "original" | "roguelike";
+
+/** Browser recovery controls and control characters belong to the host. */
+export function isWorkerBindingKey(key: string): boolean {
+  return isBindableTriggerKey(key) && !/[\p{Cc}\p{Cf}]/u.test(key) && !["F5", "F11", "F12"].includes(key);
+}
 
 let commandRows: () => readonly (KeypressCommandRow & { readonly id?: string })[] = () => [];
 
@@ -45,7 +51,7 @@ function gameCommands(): readonly ModGameCommand[] {
   })]));
 }
 
-export function createModKeybindings(state: GameState): ModKeybindings {
+export function createModKeybindings(state: GameState, options: { worker?: boolean } = {}): ModKeybindings {
   const current = () => keymapModeFor(state.options?.get("rogue_like_commands") ?? false);
   /* An omitted keyset is the one in use; anything but the two names is no keyset. */
   const modeOf = (keyset: Keyset | undefined): KeymapMode | null =>
@@ -76,20 +82,34 @@ export function createModKeybindings(state: GameState): ModKeybindings {
     commands: gameCommands,
     capture: (): Promise<string | null> => {
       pending?.(null);
+      if (modPanelsSuspended()) return Promise.resolve(null);
       return new Promise<string | null>((resolve) => {
+        let offSuspension = () => {};
         const finish = (key: string | null): void => {
           inputEvents.removeEventListener("keydown", onKey, true);
+          offSuspension();
           if (pending === finish) pending = null;
           resolve(key);
         };
         const onKey = (ev: KeyboardEvent): void => {
-          if (ev.key !== "Escape" && !isBindableTriggerKey(ev.key)) return;
+          if (modPanelsSuspended() || ev.ctrlKey || ev.altKey || ev.metaKey) {
+            finish(null);
+            return;
+          }
+          if (ev.key === "Escape") {
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+            finish(null);
+            return;
+          }
+          if (ev.isComposing || ev.repeat || (options.worker ? !isWorkerBindingKey(ev.key) : !isBindableTriggerKey(ev.key))) return;
           ev.preventDefault();
           ev.stopImmediatePropagation();
-          finish(ev.key === "Escape" ? null : ev.key);
+          finish(ev.key);
         };
         pending = finish;
         inputEvents.addEventListener("keydown", onKey, true);
+        offSuspension = onModPanelSuspension((suspended) => { if (suspended) finish(null); });
       });
     },
     cancelCapture: (): boolean => {

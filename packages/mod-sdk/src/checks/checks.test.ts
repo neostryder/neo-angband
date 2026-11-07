@@ -655,12 +655,10 @@ describe("checker regressions", () => {
     expect(await rulesOf({ files: plugin([], "export default { api: 1, register() { document.createElementNS('http://www.w3.org/2000/svg', 'rect'); } };") })).not.toContain("checks/script-injection");
   });
 
-  it("allows consented truth declarations for community in-process and Worker mods", async () => {
+  it("allows consented truth declarations for community in-process mods", async () => {
     expect(await rulesOf({ files: plugin(["state:map.read", "state:map-actual.read"], OK) })).not.toContain("checks/first-party-capability");
     expect(await rulesOf({ files: plugin(["mod:install"], OK) })).toContain("checks/first-party-capability");
-    for (const capability of ["state:map-actual.read", "state:monsters-actual.read"]) {
-      expect(await rulesOf({ files: { "manifest.json": v2({ api: "^2.0.0", runtime: "worker", entry: "main.js", capabilities: [capability] }), "main.js": "export default { api: '^2.0.0', start() {} };" } })).not.toContain("checks/capability-tier");
-    }
+    expect(await rulesOf({ files: { "manifest.json": v2({ api: "^2.0.0", runtime: "worker", entry: "main.js", capabilities: ["state:map-actual.read"] }), "main.js": "export default { api: '^2.0.0', start() {} };" } })).toContain("checks/capability-tier");
   });
 
   it("follows incoming context through arguments and lexical arrows", async () => {

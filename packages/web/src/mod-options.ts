@@ -21,7 +21,7 @@ function wholeIn(value: unknown, min: number, max: number): value is number {
 
 export function createModOptions(
   state: GameState,
-  opts: { writable: boolean; management?: boolean; beforeCheat?: () => boolean; afterChange?: () => void },
+  opts: { writable: boolean; management?: boolean; afterChange?: () => void },
 ): ModOptions {
   const store = () => state.options;
   const get = (): ModOptionsView => {
@@ -54,7 +54,6 @@ export function createModOptions(
     if (change.hitpointWarn !== undefined && !wholeIn(change.hitpointWarn, 0, 9)) return { ok: false, reason: "The hit point warning is a whole number from 0 to 9." };
     if (change.delayFactor !== undefined && !wholeIn(change.delayFactor, 0, 255)) return { ok: false, reason: "The delay factor is a whole number from 0 to 255." };
     if (change.lazymoveDelay !== undefined && !wholeIn(change.lazymoveDelay, 0, 255)) return { ok: false, reason: "The movement delay is a whole number from 0 to 255." };
-    if (values.some(([name, value]) => OPTION_ENTRIES.some((entry) => entry.name === name && entry.type === "CHEAT") && options.get(name) !== value) && opts.beforeCheat && !opts.beforeCheat()) return { ok: false, reason: "The cheat consequence could not be saved." };
     const before = optionsFingerprint(state);
     const changed: string[] = [];
     for (const [name, value] of values) {
