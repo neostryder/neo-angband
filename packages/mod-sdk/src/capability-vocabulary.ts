@@ -230,10 +230,10 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The mod's entries on the title screen do not appear.", { powerful: false, tiers: ALL_TIERS }),
   fixed("ui:menu.row", { kind: "menu-row", action: "add" }, "Add a row to the game menu",
     "The mod's row in the game menu does not appear.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("shared:read", { kind: "shared", action: "read" }, "Read data other mods share",
-    "The mod cannot see what other mods share with it.", { powerful: false }),
-  fixed("shared:publish", { kind: "shared", action: "publish" }, "Share data with other mods",
-    "Other mods cannot see what this mod shares.", { powerful: false }),
+  fixed("shared:read", { kind: "shared", action: "read" }, "Read JSON data other mods explicitly publish; this does not expose private mod storage",
+    "The mod cannot see what other mods share with it.", { powerful: false, tiers: ALL_TIERS }),
+  fixed("shared:publish", { kind: "shared", action: "publish" }, "Share selected JSON data with all other mods holding shared:read; recipients can keep or send that data elsewhere",
+    "Other mods cannot see what this mod shares.", { powerful: false, tiers: ALL_TIERS }),
   fixed("display:replace", { kind: "display", action: "replace" }, "Draw the dungeon itself - everything you see of the map comes from this mod instead of the game",
     "The game draws the map itself and this mod's view is not used.", { powerful: true, canRunWithout: false }),
   fixed("display:filter", { kind: "display", action: "filter" }, "Change how the game looks; it can make details difficult to see, while host permission dialogs keep their own appearance",
@@ -262,7 +262,7 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   fixed("mod:read", { kind: "mod-read", action: "read" }, "Look up a mod at a repository address, the same way installing one does - its name, description, author, version and file listing - by reaching out to that repository on your behalf. Nothing is installed and nothing is added to your library",
     "The mod cannot look up other mods by their repository address.", { powerful: true }),
   fixed("debug:spawn", { kind: "debug", action: "spawn" }, "Conjure items and creatures into your game, the way the debug commands do - it asks first, and the character it happens to is marked for good and can no longer be scored",
-    "The mod cannot create items or creatures in your game.", { powerful: true }),
+    "The mod cannot create items or creatures in your game.", { powerful: true, tiers: ALL_TIERS }),
   /* The wizard grant costs the session rather than the score: it refuses to run
    * until the session is cut loose from its save. */
   fixed("debug:wizard", { kind: "debug", action: "wizard" }, "Use the game's debug commands to test with - depth, experience, gold, items, creatures - after stopping this session from being saved at all. Your character on disk keeps whatever the last save left and nothing after that is written, which cannot be undone without reloading",

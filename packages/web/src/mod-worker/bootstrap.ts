@@ -255,6 +255,12 @@ export function installModWorkerBootstrap(
           mods: { snapshot: method("manage.mods.snapshot"), disable: method("manage.mods.disable"), setSettingValue: method("manage.mods.setSettingValue"), setSectionChoice: method("manage.mods.setSectionChoice"), setConflictOverride: method("manage.mods.setConflictOverride"), setThirdPartyConsent: method("manage.mods.setThirdPartyConsent") },
         },
       } : {}),
+      ...(m.granted.includes("debug:spawn") ? {
+        debug: { spawnObject: method("debug.spawnObject"), spawnMonster: method("debug.spawnMonster") },
+      } : {}),
+      ...(m.granted.includes("shared:read") || m.granted.includes("shared:publish") ? {
+        shared: { read: method("shared.read"), publish: method("shared.publish"), withdraw: method("shared.withdraw") },
+      } : {}),
       ...(m.net ? {
         net: {
           request: method("net.request"),

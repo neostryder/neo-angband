@@ -17,6 +17,9 @@ import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import { gameplayIntent } from "./mod-gameplay-intents";
 import {
   AgentCapabilityError,
+  ContentIdResolver,
+  wizCreateObj,
+  wizSummonNamed,
   buildKnownWorld,
   createAgentView,
   colorPrefId,
@@ -45,6 +48,7 @@ import {
   type ModRegistryHost,
   type PlayerIntent,
   type PromptAnswer,
+  type WizardDeps,
 } from "@rpgm-tools/neo-angband-core";
 import {
   API2_EVENT_NAMES,
@@ -96,7 +100,7 @@ import { OPTION_ENTRIES } from "@rpgm-tools/neo-angband-core";
 import { bootPhase, onBootPhaseChanged } from "./presentation-phase";
 import { menuRegistry } from "./menu-registry";
 import { clearQueuedUiInputs, enqueueUiInputs, inputEvents } from "./input-door";
-import { closeTopModPanel, modPanelsSuspended, modPresentationSuspended, onModPanelSuspension, topModPanelId } from "./panel-runtime";
+import { closeTopModPanel, modPanelsSuspended, modPresentationSuspended, onModPanelSuspension, suspendModPanels, topModPanelId } from "./panel-runtime";
 import { removeBackupSink } from "./mod-backup";
 import { prepareTruthRead } from "./mod-truth-consent";
 import { consentBinding } from "./mod-consent-binding";
@@ -106,6 +110,8 @@ import { workerSaveAccess } from "./saves-facade";
 import { createModOptions } from "./mod-options";
 import { createModKeybindings, isWorkerBindingKey } from "./mod-keybindings";
 import { workerVisualFilter } from "./visual-filter";
+import { cloneWorkerJson, payloadBytes } from "./mod-worker/clone";
+import { SPAWN_SHARED_WORKER_CALLS } from "./mod-worker/protocol";
 
 /** Asks the player for the real map on behalf of a mod; the game wires it at boot (main.ts). */
 type TruthConsentAsk = (modId: string, reason: string) => Promise<"granted" | "declined" | "unavailable">;
@@ -136,6 +142,7 @@ export interface Api2HostOptions {
   readonly sessionStorage?: PrefsStorage | null;
   readonly management?: () => Promise<ModManagerService>;
   readonly workerManagement?: WorkerManagementHost;
+  readonly workerSpawnShared?: WorkerSpawnSharedHost;
   readonly commands?: {
     readonly registry: Pick<ActionRegistry, "has" | "register" | "unregister">;
     readonly verbs?: CommandVerbTable;
@@ -1141,6 +1148,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     } : {}),
   };
   if (options.execution === "worker") workerManagementCalls.set(api, workerManageDomain(ctx, options, () => stopped));
+  if (options.execution === "worker") spawnSharedWorkerCalls.set(api, spawnSharedWorkerDomain(ctx, options, () => stopped));
   if (options.execution === "worker") {
     const simple: SimpleWorkerHost = { ctx, held: (capability) => !stopped && granted(capability), capturing: false, filter: null,
       ...(ctx.state ? { keys: createModKeybindings(ctx.state, { worker: true }) } : {}) };
@@ -1759,4 +1767,164 @@ function workerManageDomain(ctx: ModPluginContext, options: Api2HostOptions, sto
       workerManagementBusy = false;
     }
   };
+}
+
+export interface WorkerSpawnRequest {
+  readonly kind: "object" | "monster";
+  readonly index: number;
+  readonly name: string;
+  readonly count: number;
+}
+
+export interface WorkerSpawnSharedHost {
+  confirm(id: string, request: WorkerSpawnRequest): Promise<boolean>;
+  mark(id: string, capability: "debug:spawn" | "shared:publish", state: GameState, current: () => boolean): boolean | Promise<boolean>;
+  spawn(state: GameState, request: WorkerSpawnRequest): number;
+}
+
+let workerSpawnSharedHost: WorkerSpawnSharedHost | undefined;
+let workerSpawnBusy = false;
+const spawnSharedWorkerCalls = new WeakMap<ModApi2, WorkerManagementCall>();
+const workerPublishedNames = new Map<string, Set<string>>();
+export const WORKER_SHARED_ENTRY_BYTES = 16 * 1024;
+export const WORKER_SHARED_ENTRY_COUNT = 32;
+export const WORKER_SHARED_CALLS_PER_SECOND = 16;
+export const WORKER_SPAWN_COUNT = 16;
+
+export function setApi2WorkerSpawnSharedHost(host: WorkerSpawnSharedHost | undefined): void {
+  workerSpawnSharedHost = host;
+}
+
+export function serveSpawnSharedWorkerCall(api: ModApi2, method: string, args: readonly WorkerJson[], current: () => boolean): Api2Call<unknown> {
+  return spawnSharedWorkerCalls.get(api)?.(method, args, current) ?? Promise.resolve(api2Unavailable("Worker spawning and sharing are unavailable."));
+}
+
+function spawnSharedWorkerDomain(ctx: ModPluginContext, options: Api2HostOptions, stopped: () => boolean): WorkerManagementCall {
+  const host = options.workerSpawnShared ?? workerSpawnSharedHost;
+  const binding = consentBinding(ctx.id);
+  const sharedTimes: number[] = [];
+  const spawnTimes: number[] = [];
+  let sharedMarked = false;
+  let markingShared = false;
+  const name = (value: unknown): value is string => typeof value === "string" && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(value);
+  return async (method, rawArgs, live) => {
+    const capability = SPAWN_SHARED_WORKER_CALLS[method];
+    if (!capability) return api2Refused("bad-call", "This operation has no Worker mechanism.");
+    const state = ctx.state;
+    const current = () => live() && !stopped() && typeof binding === "string" && binding === consentBinding(ctx.id) &&
+      state === ctx.state && options.grants.has(capability) && modHolds(ctx.id, capability);
+    if (!current()) return api2NotGranted(capability);
+    let args: WorkerJson[];
+    try { args = cloneWorkerJson(rawArgs) as WorkerJson[]; }
+    catch { return api2Refused("bad-call", "Only JSON values can be shared or spawned."); }
+    const time = Date.now();
+    const times = method.startsWith("debug.") ? spawnTimes : sharedTimes;
+    const interval = method.startsWith("debug.") ? 60000 : 1000;
+    while (times[0] !== undefined && times[0] <= time - interval) times.shift();
+    if (times.length >= (method.startsWith("debug.") ? 4 : WORKER_SHARED_CALLS_PER_SECOND)) return api2Refused("rate", "This mod has sent too many spawn or shared requests.");
+    times.push(time);
+    try {
+      if (method.startsWith("debug.")) {
+        const [which, quantity = 1] = args;
+        if (args.length < 1 || args.length > 2 ||
+          !(typeof which === "number" && Number.isSafeInteger(which) && which >= 0 || typeof which === "string" && which.length > 0 && which.length <= 128 && !/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(which)) ||
+          typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > WORKER_SPAWN_COUNT) return api2Refused("bad-call", "Spawning needs a known content id or index and a count from 1 to 16.");
+        if (!state || !ctx.registries || !host) return api2Unavailable("The live spawn host is unavailable.");
+        const kind = method === "debug.spawnObject" ? "object" : "monster";
+        const records = kind === "object" ? ctx.registries.objects.kinds : ctx.registries.monsters.races;
+        const ids = new ContentIdResolver(ctx.registries);
+        const contentIndex = typeof which === "string" ? kind === "object" ? ids.kindIndex(which) : ids.raceIndex(which) : undefined;
+        const index = typeof which === "number" ? which : contentIndex ?? records.findIndex((record) => record && record.name === which);
+        const record = records[index];
+        if (!record || !record.name) return api2Refused("content", "That content is not in the current game.");
+        const request: WorkerSpawnRequest = Object.freeze({ kind, index, name: record.name, count: quantity });
+        if (workerSpawnBusy) return api2Refused("busy", "The host is handling another spawn request.");
+        workerSpawnBusy = true;
+        try {
+          if (!await host.confirm(ctx.id, request)) return api2Refused("declined", "The player declined the spawn request.");
+          if (!current()) return api2NotGranted(capability);
+          if (!await host.mark(ctx.id, "debug:spawn", state, current)) return api2Refused("save", "The permanent spawn mark could not be saved.");
+          if (!current()) return api2NotGranted(capability);
+          return api2Ok({ spawned: host.spawn(state, request) });
+        } finally { workerSpawnBusy = false; }
+      }
+      if (!ctx.shared) return api2Unavailable("The shared value store is unavailable.");
+      if (method === "shared.read") {
+        if (args.length !== 2 || !name(args[0]) || !name(args[1]) || args[0] === ctx.id) return api2Refused("bad-call", "Reads name another publisher and an explicitly published value.");
+        const value = ctx.shared.read(args[0], args[1]);
+        if (value !== null && payloadBytes(value.value) > WORKER_SHARED_ENTRY_BYTES) return api2Refused("quota", "This published entry exceeds the Worker limit.");
+        return api2Ok(cloneWorkerJson(value));
+      }
+      if (method === "shared.withdraw") {
+        if (args.length !== 1 || !name(args[0])) return api2Refused("bad-call", "Withdrawal takes one owned publication name.");
+        ctx.shared.withdraw(args[0]);
+        workerPublishedNames.get(ctx.id)?.delete(args[0]);
+        return api2Ok(null);
+      }
+      if (args.length !== 3 || !name(args[0]) || typeof args[1] !== "number" || !Number.isSafeInteger(args[1]) || args[1] < 0) return api2Refused("bad-call", "Publication takes a name, a nonnegative version, and a JSON value.");
+      if (payloadBytes(args[2]) > WORKER_SHARED_ENTRY_BYTES) return api2Refused("quota", "This publication exceeds 16 KiB.");
+      const own = workerPublishedNames.get(ctx.id) ?? new Set<string>();
+      if (!own.has(args[0]) && own.size >= WORKER_SHARED_ENTRY_COUNT) return api2Refused("quota", "This mod already publishes 32 entries.");
+      if (!sharedMarked) {
+        if (!state || !host) return api2Unavailable("The shared publication save writer is unavailable.");
+        if (markingShared) return api2Refused("busy", "This mod is recording its first publication.");
+        markingShared = true;
+        try {
+          if (!await host.mark(ctx.id, "shared:publish", state, current)) return api2Refused("save", "The shared publication consequence could not be saved.");
+          if (!current()) return api2NotGranted(capability);
+          sharedMarked = true;
+        } finally { markingShared = false; }
+      }
+      if (!current()) return api2NotGranted(capability);
+      ctx.shared.publish(args[0], args[1], args[2]);
+      own.add(args[0]);
+      workerPublishedNames.set(ctx.id, own);
+      return api2Ok(null);
+    } catch {
+      return api2Refused("operation", "The spawn or shared request failed.");
+    }
+  };
+}
+
+export function spawnWorkerContent(state: GameState, request: WorkerSpawnRequest, deps: WizardDeps): number {
+  let spawned = 0;
+  for (let index = 0; index < request.count; index++) {
+    const race = deps.races?.[request.index];
+    const done = request.kind === "object" ? wizCreateObj(state, { index: request.index }, deps) : !!race && wizSummonNamed(state, { race }, deps);
+    if (!done) break;
+    spawned++;
+  }
+  return spawned;
+}
+
+export async function drawWorkerSpawnConsent(id: string, name: string, request: WorkerSpawnRequest): Promise<boolean> {
+  if (typeof document === "undefined" || typeof HTMLDialogElement === "undefined" || typeof HTMLDialogElement.prototype.showModal !== "function") return false;
+  const restore = suspendModPanels();
+  const dialog = document.createElement("dialog");
+  const clean = (value: string) => value.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, "").slice(0, 128);
+  const heading = document.createElement("h2");
+  heading.textContent = `${clean(name)} (${clean(id)}) asks to conjure content`;
+  const description = document.createElement("p");
+  description.textContent = `${request.count} ${request.kind === "object" ? "item(s)" : "creature(s)"}: ${clean(request.name)} will appear near your character. This permanently makes the character unscorable.`;
+  const accept = document.createElement("button");
+  accept.textContent = "Conjure";
+  const decline = document.createElement("button");
+  decline.textContent = "Cancel";
+  dialog.append(heading, description, accept, decline);
+  dialog.style.cssText = "color:#fff;background:#000;max-width:42rem;max-height:85vh;overflow:auto";
+  try {
+    document.body.append(dialog);
+    return await new Promise<boolean>((resolve) => {
+      accept.addEventListener("click", () => resolve(true));
+      decline.addEventListener("click", () => resolve(false));
+      dialog.addEventListener("cancel", (event) => { event.preventDefault(); resolve(false); });
+      dialog.addEventListener("close", () => resolve(false));
+      dialog.addEventListener("keydown", (event) => event.stopPropagation());
+      dialog.showModal();
+      decline.focus();
+    });
+  } finally {
+    dialog.remove();
+    restore();
+  }
 }

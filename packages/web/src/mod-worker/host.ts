@@ -25,7 +25,7 @@
  */
 
 import { decideAutoplayerKey } from "../autoplayer-keys";
-import { callWorkerManage, disposeApi2Host, serveSimpleWorkerCall } from "../mod-api2-host";
+import { callWorkerManage, disposeApi2Host, serveSimpleWorkerCall, serveSpawnSharedWorkerCall } from "../mod-api2-host";
 import {
   API2_HOOK_NAMES,
   CAPABILITY_VOCABULARY,
@@ -51,6 +51,7 @@ import {
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modHealth } from "../mod-health";
 import { modHolds } from "../mod-tier";
+import { consentBinding } from "../mod-consent-binding";
 import { modPanelsSuspended } from "../panel-runtime";
 import { cloneWorkerJson, payloadBytes, toWorkerJson } from "./clone";
 import {
@@ -59,6 +60,7 @@ import {
   WORKER_MANAGE_CALLS,
   validWorkerManageCall,
   SIMPLE_WORKER_CALLS,
+  SPAWN_SHARED_WORKER_CALLS,
   type HostToModWorker,
   type ModWorkerToHost,
   type WorkerDefinitionSummary,
@@ -472,6 +474,11 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
 
   /** Serve one call. Every path answers with an Api2Result or an error. */
   const serve = async (host: ModApi2, method: string, args: readonly WorkerJson[], current: () => boolean): Promise<Api2Result<unknown>> => {
+    if (Object.hasOwn(SPAWN_SHARED_WORKER_CALLS, method)) {
+      const capability = SPAWN_SHARED_WORKER_CALLS[method]!;
+      if (!capabilities.has(capability) || !host.meta.granted(capability) || !modHolds(deps.id, capability)) return api2NotGranted(capability);
+      return await serveSpawnSharedWorkerCall(host, method, args, current);
+    }
     if (Object.hasOwn(SIMPLE_WORKER_CALLS, method)) {
       const capability = SIMPLE_WORKER_CALLS[method as keyof typeof SIMPLE_WORKER_CALLS];
       if (!capabilities.has(capability) || !host.meta.granted(capability)) return api2NotGranted(capability);
@@ -612,10 +619,14 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
 
   const called = (message: Extract<ModWorkerToHost, { type: "call" }>): void => {
     let truthAdmitted = false;
-    const authorized = (): boolean => state === "running" && message.epoch === epoch && api !== null && truthCapability(api, message.method) !== null;
+    let spawnSharedAdmitted = false;
+    const binding = consentBinding(deps.id);
+    const authorized = (): boolean => state === "running" && message.epoch === epoch && api !== null && (spawnSharedAdmitted
+      ? binding === consentBinding(deps.id) && api.meta.granted(SPAWN_SHARED_WORKER_CALLS[message.method]!) && modHolds(deps.id, SPAWN_SHARED_WORKER_CALLS[message.method]!)
+      : truthCapability(api, message.method) !== null);
     const respond = (result: Api2Result<unknown> | Error): void => {
-      if (truthAdmitted && !authorized()) return;
-      reply(message.requestId, message.epoch, result, truthAdmitted ? authorized : undefined);
+      if ((truthAdmitted || spawnSharedAdmitted) && !authorized()) return;
+      reply(message.requestId, message.epoch, result, truthAdmitted || spawnSharedAdmitted ? authorized : undefined);
     };
     if (message.epoch !== epoch) {
       stale += 1;
@@ -631,7 +642,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       respond(api2NotGranted("engine:access"));
       return;
     }
-    if (!(WORKER_CALLS as readonly string[]).includes(message.method) && !Object.hasOwn(WORKER_MANAGE_CALLS, message.method) && !Object.hasOwn(SIMPLE_WORKER_CALLS, message.method)) {
+    if (!(WORKER_CALLS as readonly string[]).includes(message.method) && !Object.hasOwn(WORKER_MANAGE_CALLS, message.method) && !Object.hasOwn(SIMPLE_WORKER_CALLS, message.method) && !Object.hasOwn(SPAWN_SHARED_WORKER_CALLS, message.method)) {
       fail(`refused call to "${message.method}", which a Worker mod cannot make`);
       respond(new Error(`"${message.method}" is not part of the API a Worker mod holds${message.method.startsWith("manage.") ? "; this operation has no isolated Worker mechanism, and exit, quit, and wizard require proven detachment from saves" : ""}`));
       return;
@@ -645,6 +656,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     callTimes.push(t);
     const host = controllerApi && (message.method === "act.submit" || message.method === "act.answer") ? controllerApi : api;
     truthAdmitted = message.method.startsWith("truth.") && truthCapability(host, message.method) !== null;
+    spawnSharedAdmitted = Object.hasOwn(SPAWN_SHARED_WORKER_CALLS, message.method) && capabilities.has(SPAWN_SHARED_WORKER_CALLS[message.method]!) && host.meta.granted(SPAWN_SHARED_WORKER_CALLS[message.method]!) && modHolds(deps.id, SPAWN_SHARED_WORKER_CALLS[message.method]!);
     let pending: Promise<Api2Result<unknown>>;
     try {
       pending = health.run(deps.id, `Worker ${message.method}`, () => message.method.startsWith("manage.")

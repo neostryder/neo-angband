@@ -2138,6 +2138,32 @@ function saveTruthUse(id: string, capability: TruthCapability): boolean {
   return persistSave(false, true);
 }
 setTruthSaveWriter((id, capability, current) => current === game.state && modHolds(id, capability) && saveTruthUse(id, capability));
+import { drawWorkerSpawnConsent, setApi2WorkerSpawnSharedHost, spawnWorkerContent } from "./mod-api2-host";
+import { recordCapabilityUse } from "./mod-controller-record";
+
+function saveSpawnSharedUse(id: string, capability: "debug:spawn" | "shared:publish"): boolean {
+  if (suppressSave || birthPending || !attachedSlot() || dead || sessionTaint()) return false;
+  const loaded = activeModCode().workers.find((mod) => mod.id === id);
+  if (!loaded || !loaded.permissionBinding || loaded.permissionBinding !== consentBinding(id) || !modHolds(id, capability)) return false;
+  if (capability === "debug:spawn") state.actor.player.noscore = markNoscore(state.actor.player.noscore, NOSCORE.DEBUG);
+  recordCapabilityUse(game.manifest, { installation: loaded.permissionBinding, id, version: loaded.manifest.version, digest: loaded.contentDigest ?? null,
+    capability, activation: { turn: state.turn, depth: state.chunk.depth }, consequence: capability === "debug:spawn" ? "spawn" : "shared-write" });
+  return persistSave(false, true);
+}
+
+setApi2WorkerSpawnSharedHost({
+  confirm: (id, request) => {
+    const loaded = activeModCode().workers.find((mod) => mod.id === id);
+    return loaded ? drawWorkerSpawnConsent(id, loaded.manifest.name, request) : Promise.resolve(false);
+  },
+  mark: (id, capability, current, authorized) => current === state && authorized() && saveSpawnSharedUse(id, capability),
+  spawn: (current, request) => {
+    if (current !== state) return 0;
+    const spawned = spawnWorkerContent(state, request, buildWizardDeps());
+    repaintEverything();
+    return spawned;
+  },
+});
 /* Runtime consent must persist the consequence before activating truth. */
 setApi2TruthConsent((id, reason) => requestTruthConsent(id, reason, {
   store: defaultModStore(),

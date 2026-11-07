@@ -84,6 +84,12 @@ The broker permits `manage.profiles.list/create/switchTo/rename` under `profiles
 
 Workers cannot resolve confirmations, write permission decisions, enable or install code, load session packs, replace management screens, or invoke engine or presentation objects through this surface. Quit, exit-to-title, and wizard remain refused until detachment from saves is proven.
 
+## Worker spawning and publication
+
+`debug:spawn` opens only `debug.spawnObject` and `debug.spawnMonster`, with a known content id, name, or index and 1 to 16 creations per call. Each request uses a host-drawn native dialog naming the mod's display name and id and the content and count. The host persists the permanent debug score mark and the `spawn` consequence before any creation becomes observable. Decline, writer failure, revocation, a changed binding, or a stale epoch prevents the spawn. A mod gets four spawn requests per minute, and only one spawn dialog runs at a time. Wizard controls remain refused.
+
+`shared:read` reads another mod's explicit publications only. `shared:publish` publishes or withdraws under the caller's host-owned id, never an identity supplied by the Worker. Readers cannot inspect private mod storage. Values cross as JSON copies in both directions, with 16 KiB per value, 32 entries per publisher, and 16 combined shared calls per mod per second. The first publication persists `shared-write` once per Worker session without a dialog or score penalty; it requires a character with a working save writer. Publication is visible to all other readers and transfers no authority. These operations also check the current grant, measured binding, identity, and epoch and use the existing transport quotas. No live callback or host object crosses this domain.
+
 ## Refused permissions
 
 A broker request that needs an ungranted permission resolves to `{ ok: false, reason: "not-granted", capability }`. This applies during startup too, so awaiting a refused preference read does not prevent the Worker from becoming ready. Methods that normally return no value also return this result on refusal. Invalid payloads and operational failures still reject. Host-rendered Worker panels and in-process API 2 panels stay hidden and inert while a Core confirmation is open, including panels mounted or patched during that confirmation.

@@ -141,3 +141,34 @@ it("does not turn preinstall decisions or an old notice into content approval", 
   store.setDecisions("probe", { granted: ["input:controller"], refused: [], binding: "digest-a" }, "1.0.0");
   expect(store.getConsent("probe")).toEqual(["input:controller"]);
 });
+
+import { drawWorkerSpawnConsent } from "./mod-api2-host";
+
+it("draws spawn identity and content as text in a protected dialog and defaults to decline", async () => {
+  const result = drawWorkerSpawnConsent("probe", "<img src=x>Builder", { kind: "monster", index: 1, name: "<script>Creature", count: 3 });
+  const dialog = document.querySelector("dialog")!;
+  expect(dialog.querySelector("img, script")).toBeNull();
+  expect(dialog.textContent).toContain("<img src=x>Builder (probe)");
+  expect(dialog.textContent).toContain("3 creature(s): <script>Creature");
+  expect(dialog.textContent).toContain("permanently makes the character unscorable");
+  expect(modPanelsSuspended()).toBe(true);
+  expect(document.activeElement?.textContent).toBe("Cancel");
+  document.querySelectorAll<HTMLButtonElement>("dialog button")[1]!.click();
+  expect(await result).toBe(false);
+  expect(modPanelsSuspended()).toBe(false);
+  expect(document.querySelector("dialog")).toBeNull();
+});
+
+it.each(["accept", "cancel", "close", "failure"])("releases the spawn dialog after %s", async (choice) => {
+  if (choice === "failure") Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: () => { throw new Error("dialog failed"); } });
+  const result = drawWorkerSpawnConsent("probe", "Builder", { kind: "object", index: 1, name: "Dagger", count: 1 });
+  if (choice === "failure") await expect(result).rejects.toThrow("dialog failed");
+  else {
+    const dialog = document.querySelector("dialog")!;
+    if (choice === "accept") dialog.querySelector("button")!.click();
+    else dialog.dispatchEvent(new Event(choice, { cancelable: true }));
+    expect(await result).toBe(choice === "accept");
+  }
+  expect(modPanelsSuspended()).toBe(false);
+  expect(document.querySelector("dialog")).toBeNull();
+});

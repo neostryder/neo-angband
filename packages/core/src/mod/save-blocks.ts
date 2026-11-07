@@ -122,7 +122,7 @@ export interface CapabilityUseEntry extends CapabilityUseIdentity {
   capability: string;
   /** Retaining the first activation avoids growing the summary on every turn. */
   activation: { turn: number; depth: number } | null;
-  consequence: "controller" | "hidden-information";
+  consequence: "controller" | "hidden-information" | "spawn" | "shared-write";
 }
 
 /** Permanent consequences must outlive bounded event histories. */

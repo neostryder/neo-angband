@@ -291,3 +291,11 @@ export interface WorkerTextRegion {
   readonly rect: { readonly col: number; readonly row: number; readonly cols: number; readonly rows: number };
   readonly lines: readonly WorkerTextLine[];
 }
+
+export const SPAWN_SHARED_WORKER_CALLS: Readonly<Record<string, string>> = Object.freeze({
+  "debug.spawnObject": "debug:spawn",
+  "debug.spawnMonster": "debug:spawn",
+  "shared.read": "shared:read",
+  "shared.publish": "shared:publish",
+  "shared.withdraw": "shared:publish",
+});

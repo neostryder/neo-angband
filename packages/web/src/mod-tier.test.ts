@@ -42,11 +42,11 @@ it("lets Workers stage pure authoring without opening management", () => {
 it("applies Worker eligibility to first-party grants and refuses broad replacements", () => {
   for (const id of ["anybandui", "other"]) {
     const tier = id === "anybandui" ? assignTier(installed({ execution: "worker" })) : assignTier({ id, source: "folder", execution: "worker" });
-    for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create", "mod:authoring"]) {
+    for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create", "mod:authoring", "debug:spawn", "shared:read", "shared:publish"]) {
       expect(tierRefusal(capability, tier)).toBeNull();
       expect(effectiveGrants([capability], tier, { granted: [], refused: [] }).granted).toEqual([]);
     }
-    for (const capability of ["ui:*.replace", "ui:birth.replace", "ui:menu.replace", "ui:screen.replace", "display:replace", "debug:spawn", "debug:wizard", "shared:read", "shared:publish", "engine:access", "mod:install", "mod:session", "mod:read", "screens:manage"]) {
+    for (const capability of ["ui:*.replace", "ui:birth.replace", "ui:menu.replace", "ui:screen.replace", "display:replace", "debug:wizard", "engine:access", "mod:install", "mod:session", "mod:read", "screens:manage"]) {
       expect(tierRefusal(capability, tier)).not.toBeNull();
       expect(effectiveGrants([capability], tier, { granted: [capability], refused: [] }).granted).toEqual([]);
     }

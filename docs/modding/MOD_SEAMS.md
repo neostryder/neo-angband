@@ -780,7 +780,11 @@ Desktop network and backup authority lives in the main process, keyed by mod id 
 
 The desktop filesystem bridge stays available to the game page: `host-electron.ts`'s `makeDesktopHost` needs synchronous save and preference operations. The preload and main process validate its operations and leaf names, but they do not distinguish scripts in that page. A handle is a bearer credential; this stage does not isolate hostile code that already executes in the game page or replace Worker isolation. Quit, update download, update installation, and release-page opening require native confirmation. The log bridge rejects mixed or oversized batches, with limits of 2,000 lines, 8,000 characters per line, and 1 MiB of UTF-8 text per batch. (neostryder/neo-angband#300)
 
+API 2 Workers with `debug:spawn` use `debug.spawnObject` or `debug.spawnMonster` with known content ids, names, or indexes and counts from 1 to 16. A separate host-drawn dialog names the mod by id and display name, the content, and the count on every call. The durable save receives `NOSCORE.DEBUG`, `modNoscore`, and a permanent `spawn` consequence before the engine creates anything. Decline leaves no mark or creation, and failed persistence or revoked authority prevents creation. Four requests per mod per minute and one active spawn dialog bound the operation. These rules describe the Worker API; the API 1 grid-prompt path above remains separate.
+
 ## 4za. `ctx.shared` - values one mod shares with others
+
+API 2 Workers receive `shared.read(modId, name)`, `shared.publish(name, version, value)`, and `shared.withdraw(name)` under their respective `shared:read` and `shared:publish` grants. Reads see only other mods' explicit publications. The connection fixes the publisher id, private storage is excluded, and each request and result is copied. Worker values have a 16 KiB JSON limit, each publisher has 32 entries, and combined reads and writes have a 16-per-second limit. The first publication persists a permanent `shared-write` consequence once per Worker session without a dialog or score disqualification and requires a character with a working save writer. All other mods with read consent can see the publication and can retain or forward it. No publication grants authority, and no callback crosses the port.
 
 A mod can publish named JSON values for other mods to read. A plugin that declares `shared:publish` calls `ctx.shared.publish(name, version, value)`, and one that declares `shared:read` calls `ctx.shared.read(modId, name)`. `ctx.shared` is present when the manifest declares either capability, and a method whose capability is missing throws a capability error. Both capabilities are listed on the Mods screen, so the player can see which mods share data and which mods read it.
 
@@ -790,7 +794,7 @@ A name is 1 to 64 characters of lower-case letters, digits, `.`, `-` and `_`. Th
 
 Treat a shared value as untrusted input. Another mod wrote it, and the player may have any version of that mod installed, so check the version and the type of every field you use before drawing it or acting on it.
 
-Two mods that both act on the same event run in an order you do not control. In the example below the recap listens with `onChange` rather than reading inside its own `onRunEnd`, which could run before the reporter has published. Worker-tier mods do not get `ctx.shared`. (#365)
+Two mods that both act on the same event run in an order you do not control. In the example below the recap listens with `onChange` rather than reading inside its own `onRunEnd`, which could run before the reporter has published. Worker-tier mods use the asynchronous API 2 `shared` domain described below, with polling instead of callbacks. (#365)
 
 ```js
 // The run reporter's plugin.js (manifest: "shared:publish")

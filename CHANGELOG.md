@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+- [Visible] [Security] **Workers can request bounded spawning and share published JSON after consent.** Each spawn asks the player and persists its permanent scoring consequence before creation. Shared publication uses the host-owned publisher id, JSON copies, quotas, and a permanent publication record. Saves and run reports retain both consequences, and the SDK now types the Worker profile rename method.
+
 - [Visible] [Security] **Worker mods can read hidden state with player consent.** Either explicit truth grant opens bounded truth snapshots for every mod author. The host saves permanent unscorable marking and provenance before building a snapshot, refuses reads when persistence fails, and drops replies after revocation. The map grant includes monster and race truth; the monsters grant does not open the map.
 - [Visible] [Security] **Worker mods can request bounded management operations with player confirmation.** Profile operations stay with their creator, character operations use player-selected opaque ids, cheat changes persist scoring consequences first, and management requests recheck grants, payload bindings, epochs, and plans before committing. Workers cannot write permission decisions or access installs, session packs, screen replacement, quit, exit-to-title, or wizard operations.
 - [Visible] [Security] **First-party Workers follow the same capability eligibility as other Workers.** Broad presentation and unavailable domains remain refused, while the implemented simple grants require player consent.

@@ -560,3 +560,52 @@ describe("main boot order", () => {
     );
   });
 });
+
+import { NOSCORE, markNoscore } from "@rpgm-tools/neo-angband-core";
+import { recordCapabilityUse } from "./mod-controller-record";
+
+function spawnSharedWriterHarness() {
+  const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
+  const writer = source.statements.find((statement): statement is ts.FunctionDeclaration => ts.isFunctionDeclaration(statement) && statement.name?.text === "saveSpawnSharedUse")!;
+  const state = { actor: { player: { noscore: 0 } }, turn: 12, chunk: { depth: 3 } };
+  const manifest = coreOnlyManifest();
+  const loaded = { id: "probe", permissionBinding: "binding", manifest: { version: "1.0.0" }, contentDigest: "digest" };
+  const persistSave = vi.fn(() => true);
+  const deps = { state, game: { manifest }, suppressSave: false, birthPending: false, dead: false,
+    attachedSlot: () => "character-slot", sessionTaint: () => null, activeModCode: () => ({ plugins: [], workers: [loaded] }),
+    consentBinding: () => "binding", modHolds: () => true, NOSCORE, markNoscore, recordCapabilityUse, persistSave };
+  const compile = () => {
+    const emitted = ts.transpileModule(`${writer.getText(source)}\nreturn saveSpawnSharedUse;`, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
+    return new Function(...Object.keys(deps), emitted)(...Object.values(deps)) as (id: string, capability: "debug:spawn" | "shared:publish") => boolean;
+  };
+  return { state, manifest, loaded, persistSave, deps, compile };
+}
+
+it.each(["debug:spawn", "shared:publish"] as const)("records %s for a Worker before the durable writer runs", (capability) => {
+  const p = spawnSharedWriterHarness();
+  p.persistSave.mockImplementation(() => {
+    expect(p.manifest.capabilityUse?.entries[0]).toMatchObject({ id: "probe", installation: "binding", digest: "digest", capability,
+      consequence: capability === "debug:spawn" ? "spawn" : "shared-write", activation: { turn: 12, depth: 3 } });
+    expect(p.manifest.modNoscore).toBe(capability === "debug:spawn");
+    expect((p.state.actor.player.noscore & NOSCORE.DEBUG) !== 0).toBe(capability === "debug:spawn");
+    return true;
+  });
+  expect(p.compile()("probe", capability)).toBe(true);
+  expect(p.persistSave).toHaveBeenCalledWith(false, true);
+});
+
+it("refuses missing Workers, stale identity, detached saves, and a failing durable writer", () => {
+  const p = spawnSharedWriterHarness();
+  expect(p.compile()("victim", "debug:spawn")).toBe(false);
+  p.loaded.permissionBinding = "stale";
+  expect(p.compile()("probe", "debug:spawn")).toBe(false);
+  p.loaded.permissionBinding = "binding";
+  p.deps.suppressSave = true;
+  expect(p.compile()("probe", "debug:spawn")).toBe(false);
+  expect(p.manifest.capabilityUse).toBeUndefined();
+  expect(p.state.actor.player.noscore).toBe(0);
+  expect(p.persistSave).not.toHaveBeenCalled();
+  p.deps.suppressSave = false;
+  p.persistSave.mockReturnValue(false);
+  expect(p.compile()("probe", "debug:spawn")).toBe(false);
+});
