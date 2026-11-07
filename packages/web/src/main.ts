@@ -794,6 +794,7 @@ import {
   onSlotLost,
   slotHeldElsewhere,
 } from "./slot-attach";
+import { createBootSaveGate } from "./boot-save-gate";
 import { SAVE_CODEC, SAVE_CODECS } from "./save-codec";
 import { renameStoredSave } from "./stored-rename";
 // --- High scores (task #28) ---
@@ -1038,6 +1039,8 @@ setModLookHost({
 const modLists = new ModListStore(scopedGameStorage);
 let modSaveGuard: ModSaveGuard | null = null;
 let saveCatalog: (() => CatalogMod[]) | null = null;
+/* Saves asked for before bootMenus has built the two above wait here instead of failing (boot-save-gate.ts). */
+const bootSaveGate = createBootSaveGate();
 let saveModMetadata: readonly InstalledModMeta[] = [];
 let allowModSetOverwrite = false;
 const MOD_SAVE_APPROVAL_KEY = "neo-angband:mod-save-approval";
@@ -7710,6 +7713,7 @@ let lastSaveMs = -Infinity;
 let autosaveFailed = false;
 function autosave(force = false): void {
   if (dead) return;
+  if (!bootSaveGate.admit()) return;
   const now =
     typeof performance !== "undefined" ? performance.now() : Date.now();
   if (!force && now - lastSaveMs < 3000) return;
@@ -15319,6 +15323,9 @@ async function bootMenus(): Promise<void> {
       if (!modSaveGuard.current()) { reloadAfterModChange(); return; }
     }
   }
+  /* Saving is possible from here. A save asked for earlier (a controller that resumed from its
+   * keyboard dialog marks the character and saves at once) is written now, once, not reported as failed. */
+  if (bootSaveGate.open()) autosave(true);
   /*
    * THE LOADING SCREEN ENDS HERE, and it ends at the ONE ENTRY to the menu
    * stack rather than at one of maybeTitle's four EXITS.
