@@ -32,6 +32,12 @@ import { MOD_API_VERSION } from "./mod-plugin";
 import { ModStore, buildCatalog, readEnabledModIds, type StorageLike } from "./mod-store";
 import { CORE_DRAWN_IDS, isCoreDrawn } from "./core-drawn";
 import { MODELLED_SCREENS } from "./screen-view";
+
+it("lets Workers stage pure authoring without opening management", () => {
+  const tier = assignTier({ id: "author", source: "folder", execution: "worker" });
+  expect(tierRefusal("mod:authoring", tier)).toBeNull();
+  for (const capability of ["mod:install", "mod:session", "screens:manage", "options:manage"]) expect(tierRefusal(capability, tier)).not.toBeNull();
+});
 import { consentSessionMod, rowLabel, unreviewedNoticeDue, unreviewedNoticeScreen } from "./mods";
 import * as overlay from "./overlay";
 import type { GridPointerInput, GridSurface } from "./term";
@@ -266,11 +272,12 @@ describe("the seam policy", () => {
     expect(tierRefusal("profiles:manage", squire)).toBeNull();
   });
 
-  it("refuses every management capability in Workers and in non-first-party tiers", () => {
+  it("refuses management in Workers except the pure authoring library", () => {
     const capabilities = ["screens:manage", "session:control", "profiles:manage", "mod:install", "mod:session", "mod:authoring", "options:manage"];
     for (const capability of capabilities) {
       for (const trust of ["listed", "reviewed", "sideloaded"] as const) expect(tierRefusal(capability, { ...anybandui, trust })).not.toBeNull();
-      expect(tierRefusal(capability, { ...anybandui, execution: "worker" })).not.toBeNull();
+      if (capability === "mod:authoring") expect(tierRefusal(capability, { ...anybandui, execution: "worker" })).toBeNull();
+      else expect(tierRefusal(capability, { ...anybandui, execution: "worker" })).not.toBeNull();
       expect(tierRefusal(capability, { ...anybandui, execution: "data" })).not.toBeNull();
     }
     setModTiers(new Map([["anybandui", { ...anybandui, execution: "worker" }]]));

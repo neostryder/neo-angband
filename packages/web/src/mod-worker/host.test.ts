@@ -1028,6 +1028,7 @@ describe("Worker interface options", () => {
     { capability: "ui:sidebar.replace", method: "ui.sidebar.replace", args: [[{ text: "health" }]] },
     { capability: "ui:status.replace", method: "ui.status.replace", args: [[{ text: "poisoned" }]] },
     { capability: "ui:region.create", method: "ui.region.create", args: [{ id: "own", rect: { col: 0, row: 0, cols: 5, rows: 1 }, lines: [{ text: "own" }] }] },
+    { capability: "mod:authoring", method: "manage.authoring", args: [] },
   ])("$capability admission", (domain) => {
   it.each([
     { name: "ungranted", held: false },

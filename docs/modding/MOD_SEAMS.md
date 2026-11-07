@@ -8,6 +8,8 @@ Core is a faithful reproduction of Angband 4.2.6: everything in official Angband
 
 ## 0. Grid rendering is a surface contract
 
+The Worker `mod:authoring` grant stages the SDK's pure authoring module and its fixed dependencies. The library runs inside the Worker and reads only supplied data. It exposes no installation or session-loading operation, and the broker keeps `manage.authoring` closed because a live SDK namespace cannot cross the port.
+
 Worker grants for messages, sidebar, status, and additional regions use the host's text renderer. Mods send line records with fixed style tokens; additional regions also name a bounded rectangle in the current character grid. The host owns the elements, draws with `textContent`, clips the output, and suspends it during host dialogs. No Worker presenter, DOM element, canvas, or function crosses this seam.
 
 The Worker broker exposes `options:write`, `keymap:edit`, and `display:filter` through serialized calls. The options path rejects birth, cheat, and score options. The keybinding path edits only the current keyset, reserves host recovery controls, and cancels capture when a host dialog opens. Filters come from a fixed host set with bounded numeric parameters. Host dialogs suspend mod panels and filters. These mechanisms do not expose the management domain, DOM objects, canvas handles, or host functions; [API2.md](API2.md) documents their call shapes.

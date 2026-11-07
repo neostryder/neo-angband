@@ -307,6 +307,7 @@ export function tierRefusal(capability: string, tier: ModTier): string | null {
   if (capability === "engine:access" && tier.trust !== "first-party" && !tier.developerInProcess) return "this needs a live engine mechanism Workers do not have yet";
   const entry = entryOf(capability);
   if (!entry) return "the game does not know this permission";
+  if (capability === "mod:authoring" && tier.execution === "worker" && entry.tiers.includes("worker")) return null;
   if (entry.namespace !== "public") return seamRefusal(entry, capability, tier);
   if (tier.execution !== "worker") return null;
   if (!entry.tiers.includes(tier.capabilityTier)) {

@@ -16265,6 +16265,7 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
        * load the game's URLs. */
       const graph = await stageModuleGraph(loaded.entryUrl, {
         origin: location.origin,
+        authoring: () => modHolds(loaded.id, "mod:authoring") && loaded.permissionBinding === consentBinding(loaded.id) && defaultModStore().getConsent(loaded.id).includes("mod:authoring"),
         read: async (url) => {
           const response = await fetch(url);
           return response.ok ? await response.text() : null;

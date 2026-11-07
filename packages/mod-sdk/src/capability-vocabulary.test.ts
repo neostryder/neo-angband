@@ -81,7 +81,7 @@ describe("the capability vocabulary", () => {
     for (const cap of MANAGEMENT) {
       expect(publicSpellings).not.toContain(cap);
       expect(isPublicCapability(cap)).toBe(false);
-      expect(capabilityTiers(cap)).toEqual(["first-party"]);
+      expect(capabilityTiers(cap)).toEqual(cap === "mod:authoring" ? ["first-party", "worker"] : ["first-party"]);
       expect(matchCapability(cap)?.entry.namespace).toBe("manage");
     }
     expect(CAPABILITY_VOCABULARY.filter((entry) => entry.namespace === "manage").map((entry) => entry.capability).sort())

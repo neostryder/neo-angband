@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+- [Visible] [Security] **Worker mods can request the game's pure authoring library.** The host stages a fixed module graph for local draft preparation and validation without exposing installation, session loading, or a live host library.
+
 - [Visible] [Security] **Worker mods can request host-drawn text replacements and grid regions.** Separate grants cover messages, vitals, status, and additional rectangles. The host bounds text and geometry, accepts fixed style tokens, and hides mod output during host dialogs.
 
 - [Visible] [Security] **Worker mods can request interface options, keybinding edits, and named visual filters.** The broker rejects birth, cheat, and score option changes, limits keybinding edits to the current keyset, protects recovery keys, and cancels capture and hides mod presentation during host dialogs.
