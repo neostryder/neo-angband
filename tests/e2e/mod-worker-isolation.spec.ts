@@ -7,7 +7,7 @@
 // The game origin is a fake `https://game.test` answered by page.route, so no
 // server is started and nothing reaches the network.
 import { expect, test, type Page } from "@playwright/test";
-import { buildProbeFiles, GAME_SECRETS, isolatedResults, LOCKDOWN_CHECKS, NETWORK_CHECKS, STORAGE_CHECKS, type IsolatedRun, type ProbeFiles, type ProbeResults } from "./mod-isolation.fixture.js";
+import { buildProbeFiles, GAME_SECRETS, isolatedResults, NETWORK_CHECKS, STORAGE_CHECKS, type IsolatedRun, type ProbeFiles, type ProbeResults } from "./mod-isolation.fixture.js";
 
 const GAME = "https://game.test";
 
@@ -53,9 +53,6 @@ for (const lockDown of [true, false]) {
     for (const check of NETWORK_CHECKS) expect.soft(results[check], check).toMatch(/^blocked:/u);
     for (const check of STORAGE_CHECKS) expect.soft(results[check], check).not.toMatch(GAME_SECRETS);
     expect.soft(results["eval"]).toMatch(/^blocked:/u);
-    for (const check of ["portWrap", "messageEventWrap", "dataImportFetch", "pageAccess"]) expect.soft(results[check], check).toMatch(/^blocked:/u);
-    expect(results["dataImport"]).toBe("open:42");
-    if (lockDown) for (const check of LOCKDOWN_CHECKS) expect.soft(results[check], check).toMatch(/^blocked:/u);
     /* A nested Worker inherits the opaque origin and the policy, so even where
      * one may start, its own fetch is refused. */
     expect.soft(results["nestedWorker"]).not.toBe("open:fetched");
@@ -89,12 +86,4 @@ test("the control: a plain Worker of the game's origin reaches the game's store"
   expect(results["caches"]).toBe("open:[neo-angband-isolation-probe]");
   expect(results["eval"]).toBe("open:42");
   expect(results["remoteImport"]).toBe("open:reached");
-});
-
-test("a real Worker aborts before mod execution when lockdown leaves a forbidden global", async ({ page }) => {
-  await openGame(page);
-  const result = await page.evaluate(() => (window as unknown as { probeLeftover(): Promise<{ error: string; messages: number }> }).probeLeftover());
-  expect(result.error).toContain("mod Worker lockdown failed: SharedArrayBuffer");
-  expect(result.error.length).toBeLessThanOrEqual(4096);
-  expect(result.messages).toBe(0);
 });

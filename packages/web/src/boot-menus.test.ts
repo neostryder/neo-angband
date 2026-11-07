@@ -154,7 +154,7 @@ describe("title Mods uses the play manager with a title reload", () => {
     expect(manager).toContain("runModManager(term, deps, opts?.resume === false ? { fromTitle: true } : undefined)");
     expect(manager).not.toContain("resumedActive");
     expect(manager).not.toContain("attachedSlot");
-    expect(stripComments(MAIN)).toMatch(/if \(!id\) return !required;\s*try \{/u);
+    expect(stripComments(MAIN)).toMatch(/if \(!id\) return true;\s*try \{/u);
   });
 
   it("reloads changes to the title while leaving the play call unchanged", () => {

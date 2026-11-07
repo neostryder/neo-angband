@@ -49,14 +49,14 @@ Nearly every member of the old `ctx` has a home in API 2. Find each member your 
 | `ctx.controller` | `act.controller` | Everyone. The `controller` member needs `state:interaction.read`, `input:intent`, and `input:prompt.reply` (see Step 6) |
 | `ctx.events` | `events.on`, `events.off`, with payloads that carry only what the player knows | Everyone with `event:<name>` |
 | `ctx.keymaps` | `ui.keys` | Everyone with `keymap:write` |
-| `ctx.ui` | `ui.mount`, `ui.patch`, and `presentation.panels` for first-party DOM panels | `ui:panel.mount` for `ui.mount` and `ui.patch`; first-party in-process with `ui:region.create` for `presentation.panels` |
-| `ctx.title` | `ui.title`, and `presentation.title` | `ui:title`; `presentation.title` also needs first-party in-process execution |
+| `ctx.ui` | `ui.mount`, `ui.patch`, and `presentation.panels` for first-party DOM panels | `ui:panel.mount` for `ui.mount` and `ui.patch`, and first-party only for `presentation.panels` |
+| `ctx.title` | `ui.title`, and `presentation.title` | `ui.title` with `ui:title`, and `presentation.title` first-party only |
 | `ctx.net` | `net.request`, `net.credentials` (credentials by opaque reference) | Everyone with `network:<host>` for each host the manifest names |
 | `ctx.backupFolder` | `backupFolder` | Everyone with `backup:folder` |
-| `ctx.display` | `presentation.display` | First-party in-process with `display:replace`; live `onKey` also needs `keymap:edit` |
-| `ctx.subwindows` | `presentation.subwindows` | First-party in-process with `ui:region.create` |
-| `ctx.tiles` | `presentation.tiles` | First-party in-process with `display:replace` |
-| `ctx.keyRepeat` | `presentation.keyRepeat` | First-party in-process with `keymap:edit` |
+| `ctx.display` | `presentation.display` | First-party only |
+| `ctx.subwindows` | `presentation.subwindows` | First-party only |
+| `ctx.tiles` | `presentation.tiles` | First-party only |
+| `ctx.keyRepeat` | `presentation.keyRepeat` | First-party only |
 | `ctx.authoring` | `manage.authoring` | First-party only, with `mod:authoring` |
 | `ctx.keybindings` | `manage.keys` | First-party only |
 | `ctx.look` | `manage.look` | First-party only |
@@ -76,7 +76,7 @@ The entries of the plugin object itself move onto the definition:
 | Old plugin entry | Definition entry |
 | --- | --- |
 | `controller` | The definition's `controller(mod, input)` member, with `armed`, `onKey`, and `onDeath` |
-| `register(host, ctx)` | `start(mod)`. While `start` runs, the registry host it was given is `mod.engine?.registry` (`engine:access` for every author, in-process only) |
+| `register(host, ctx)` | `start(mod)`. While `start` runs, the registry host it was given is `mod.engine?.registry` (first-party or `engine:access`, in-process only) |
 | `menu`, `screen`, `hud`, `birth` | The `presentation` member (`menu`, `screen`, `hud`, `birth`) and the `birth` member |
 | Game-menu rows | The `actions` member, or `ui.gameMenu.register` |
 | Title rows | The `titleActions` member, or `ui.title.registerRow` |

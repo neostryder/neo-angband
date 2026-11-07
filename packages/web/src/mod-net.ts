@@ -20,15 +20,17 @@ import {
   parseDocument,
   readBodyCapped,
   secretNamesIn,
+  networkRequestCapability,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { NetProblem, NetProblemCode, NetRequest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModNetResponse, ModSecretResult, ModNet } from "@rpgm-tools/neo-angband-core";
+import { desktopInstallation, type DesktopConsentBridge } from "./host-electron";
 export type { ModSecretStorage, ModNetResponse, ModSecretResult, ModNetSecrets, ModNet } from "@rpgm-tools/neo-angband-core";
 
 export type { NetProblemCode, NetRequest } from "@rpgm-tools/neo-angband-mod-sdk";
 
 /** The desktop preload's relay, when this page has one. */
-export interface NetRelayBridge {
+export interface NetRelayBridge extends DesktopConsentBridge {
   net(op: string, arg?: unknown): Promise<unknown>;
 }
 
@@ -85,10 +87,14 @@ function secretResult(value: unknown): ModSecretResult {
 
 /** The desktop transport: every operation goes to the main process. */
 function relayNet(deps: ModNetDeps, relay: NetRelayBridge): ModNet {
-  const base = { modId: deps.modId, grants: [...deps.grants] };
   const call = async (op: string, arg: Record<string, unknown>): Promise<unknown> => {
     try {
-      return await relay.net(op, { ...base, ...arg });
+      const request = arg["request"] as { url?: string } | undefined;
+      const cap = request?.url ? networkRequestCapability(request.url) : null;
+      const hosts = Array.isArray(arg["hosts"]) ? arg["hosts"] as string[] : cap ? [cap.slice(8)] : [];
+      const installation = await desktopInstallation(deps.modId, relay, hosts);
+      if (!installation) return problem("not-declared", "The desktop installation is not authorized.");
+      return await relay.net(op, { ...installation, ...arg });
     } catch {
       return undefined;
     }

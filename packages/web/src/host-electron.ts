@@ -19,6 +19,91 @@
 
 import type { HostIo } from "@rpgm-tools/neo-angband-core";
 import { RawFsHost, rawFsOverTransport } from "@rpgm-tools/neo-angband-core";
+import { consentBinding, onModConsentChange } from "./mod-consent-binding";
+import { modPayloadDigest } from "./mod-code-snapshot";
+import { defaultModStore } from "./mod-store";
+
+export interface DesktopConsentBridge {
+  consent?(decision: unknown): Promise<unknown>;
+}
+
+export interface DesktopInstallation {
+  readonly installation: string;
+  readonly modId: string;
+  readonly digest: string;
+}
+
+interface InstallationState {
+  epoch: { valid: boolean };
+  binding: string;
+  digest: string;
+  grants: string[];
+  destinations: string[];
+  result: Promise<DesktopInstallation | null>;
+}
+
+const installations = new Map<DesktopConsentBridge, Map<string, InstallationState>>();
+
+onModConsentChange((id) => {
+  for (const [bridge, records] of installations) {
+    const record = records.get(id);
+    if (!record) continue;
+    record.epoch.valid = false;
+    records.delete(id);
+    void bridge.consent?.({ modId: id, digest: record.digest, revoke: true }).catch(() => undefined);
+  }
+});
+
+function installationAnswer(answer: unknown): DesktopInstallation | null {
+  if (!answer || typeof answer !== "object") return null;
+  const a = answer as Record<string, unknown>;
+  return a["ok"] === true && typeof a["installation"] === "string" && /^[a-f0-9]{64}$/u.test(a["installation"]) &&
+    typeof a["modId"] === "string" && typeof a["digest"] === "string"
+    ? { installation: a["installation"], modId: a["modId"], digest: a["digest"] } : null;
+}
+
+/** Page decisions are proposals until the main process confirms them natively. */
+export async function desktopInstallation(id: string, bridge: DesktopConsentBridge, destinations: readonly string[] = []): Promise<DesktopInstallation | null> {
+  const binding = consentBinding(id);
+  const digest = modPayloadDigest(id);
+  const grants = defaultModStore().getConsent(id).filter((cap) => cap === "backup:folder" || cap.startsWith("network:")).sort();
+  if (!bridge.consent || typeof binding !== "string" || !digest || grants.length === 0) return null;
+  let records = installations.get(bridge);
+  if (!records) { records = new Map(); installations.set(bridge, records); }
+  const prior = records.get(id);
+  const hosts = [...new Set([
+    ...grants.filter((cap) => cap.startsWith("network:") && cap !== "network:*" && cap !== "network:local").map((cap) => cap.slice(8)),
+    ...(prior?.digest === digest ? prior.destinations : []), ...destinations,
+  ])].sort();
+  if (prior?.binding === binding && prior.digest === digest && JSON.stringify([prior.grants, prior.destinations]) === JSON.stringify([grants, hosts])) return prior.result;
+  const sameBinding = prior?.binding === binding && prior.digest === digest;
+  if (prior && !sameBinding) prior.epoch.valid = false;
+  const epoch = sameBinding ? prior.epoch : { valid: true };
+  const state: InstallationState = { epoch, binding, digest, grants, destinations: hosts, result: Promise.resolve(null) };
+  records.set(id, state);
+  state.result = (async () => {
+    try {
+      const previous = await prior?.result;
+      if (!epoch.valid) return null;
+      const answer = installationAnswer(await bridge.consent!({ modId: id, digest, grants, destinations: hosts,
+        ...(previous ? { installation: previous.installation } : {}) }));
+      if (!epoch.valid || consentBinding(id) !== binding || modPayloadDigest(id) !== digest) {
+        if (answer) await bridge.consent!({ modId: id, digest, revoke: true });
+        return null;
+      }
+      return answer?.modId === id && answer.digest === digest ? answer : null;
+    } catch { return null; }
+  })();
+  return state.result;
+}
+
+export function desktopHostInstallation(purpose: string, bridge: DesktopConsentBridge): () => Promise<DesktopInstallation | null> {
+  let result: Promise<DesktopInstallation | null> | undefined;
+  return () => result ??= (async () => {
+    try { return installationAnswer(await bridge.consent?.({ hostPurpose: purpose })); }
+    catch { return null; }
+  })();
+}
 
 /**
  * What packages/desktop's preload exposes on `window`. Declared here rather than

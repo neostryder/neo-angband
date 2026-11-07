@@ -6,7 +6,11 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
-import { createNetRelay, type NetRelayDeps } from "./net-relay.js";
+import { createDesktopAuthority, createNetRelay, type NetRelayDeps } from "./net-relay.js";
+
+const [{ createModNet }, bindings, snapshots, store] = await Promise.all([
+  "../../web/src/mod-net.ts", "../../web/src/mod-consent-binding.ts", "../../web/src/mod-code-snapshot.ts", "../../web/src/mod-store.ts",
+].map((modulePath) => import(modulePath)));
 
 interface Seen {
   path: string;
@@ -57,9 +61,11 @@ beforeEach(() => {
 });
 
 function relayWith(overrides: Partial<NetRelayDeps> = {}) {
+  const authority = overrides.authority ?? createDesktopAuthority();
   let file: string | null = null;
   const asks: { modName: string; variables: readonly string[]; hosts: readonly string[] }[] = [];
   const relay = createNetRelay({
+    authority,
     fetch: (input, init) => {
       const target = new URL(String(input));
       target.protocol = "http:";
@@ -83,11 +89,214 @@ function relayWith(overrides: Partial<NetRelayDeps> = {}) {
     },
     ...overrides,
   });
-  return { relay, asks, file: () => file };
+  const handles = new Map<string, Promise<Record<string, unknown>>>();
+  return { authority, rawRelay: relay, relay: {
+    async handle(op: unknown, arg: unknown, owner = -1): Promise<unknown> {
+      if (op === "info") return relay.handle(op, arg, owner);
+      const a = arg as Record<string, unknown>;
+      const slot = `${owner}:${String(a["modId"])}`;
+      const previous = handles.get(slot);
+      const authorization = (async () => {
+        const prior = await previous;
+        const hosts = (a["grants"] ?? prior?.["hosts"] ?? [here()]) as string[];
+        if (prior && JSON.stringify(hosts) === JSON.stringify(prior["hosts"])) return prior;
+        const destinations = [...new Set([...hosts.filter((host) => host !== "*" && host !== "local"), here(), `other.example.com:${port}`])]
+          .filter((host) => hosts.includes("*") || hosts.includes(host));
+        const answer = await authority.report({ modId: a["modId"], digest: "a".repeat(64), grants: hosts.map((host) => `network:${host}`),
+          destinations, ...(prior ? { installation: prior["installation"] } : {}) }, owner, async () => true) as Record<string, unknown>;
+        return { ...answer, hosts };
+      })();
+      handles.set(slot, authorization);
+      const answer = await authorization;
+      return relay.handle(op, { ...a, installation: answer["installation"] }, owner);
+    },
+  }, asks, file: () => file };
 }
 
 const here = () => `api.example.com:${port}`;
 const url = (path: string) => `https://${here()}${path}`;
+
+describe("desktop installation authority", () => {
+  const decision = () => ({ modId: "squire", digest: "a".repeat(64), grants: [`network:${here()}`], destinations: [here()] });
+  const allow = async () => true;
+
+  it("carries a measured renderer caller through native consent to the relay transport and revokes it", async () => {
+    const digest = vi.spyOn(snapshots, "modPayloadDigest").mockReturnValue("a".repeat(64));
+    const { authority, rawRelay } = relayWith();
+    const reports: unknown[] = [];
+    const relay = {
+      consent: async (decision: unknown) => {
+        reports.push(decision);
+        return authority.report(decision, 1, allow);
+      },
+      net: (op: unknown, arg: unknown) => rawRelay.handle(op, arg, 1),
+    };
+    try {
+      bindings.setConsentBindings(new Map([["squire", "binding"]]));
+      store.setModStorage(null);
+      store.setSessionConsents({ squire: ["network:*"] });
+      const net = createModNet({ modId: "squire", modName: "Squire", grants: ["*"], relay, fetch: undefined, storage: null });
+      const results = await Promise.all([net.request({ url: url("/hello") }), net.request({ url: `https://other.example.com:${port}/hello` })]);
+      expect(results.every((result: { ok: boolean }) => result.ok)).toBe(true);
+      expect(reports).toHaveLength(2);
+      expect(await net.secrets.set("key", "fixture-value", { hosts: [here()] })).toMatchObject({ ok: true });
+      expect(reports).toHaveLength(2);
+      store.setSessionConsents({});
+      bindings.invalidateModConsent("squire");
+      expect(await net.request({ url: url("/hello") })).toMatchObject({ ok: false, code: "not-declared" });
+      expect(seen).toHaveLength(2);
+      expect(reports[2]).toMatchObject({ modId: "squire", revoke: true });
+    } finally {
+      bindings.setConsentBindings(new Map());
+      store.setSessionConsents({});
+      digest.mockRestore();
+    }
+  });
+
+  it("refuses spoofed identities, invented grants, unapproved destinations, and foreign windows without sending", async () => {
+    let sent = 0;
+    const { authority, rawRelay } = relayWith({ fetch: async () => { sent++; return new Response("ok"); } });
+    const handle = await authority.report(decision(), 1, allow) as Record<string, unknown>;
+    const base = { installation: handle["installation"], request: { url: url("/hello") } };
+    for (const arg of [
+      { modId: "squire", grants: ["*"], request: base.request },
+      { ...base, modId: "victim" },
+      { ...base, digest: "b".repeat(64) },
+      { ...base, grants: ["*"] },
+      { ...base, grants: ["network:*"] },
+      { ...base, request: { url: "https://evil.example.com/" } },
+    ]) expect(await rawRelay.handle("request", arg, 1)).toMatchObject({ ok: false, code: "not-declared" });
+    expect(await rawRelay.handle("request", base, 2)).toMatchObject({ ok: false });
+    expect(sent).toBe(0);
+    expect(await rawRelay.handle("request", base, 1)).toMatchObject({ ok: true });
+  });
+
+  it("requires a native decision for forged reports, widening, and duplicate handle requests", async () => {
+    const { authority, rawRelay } = relayWith();
+    const report = decision();
+    expect(await authority.report({ ...report, accepted: true }, 1, allow)).toMatchObject({ ok: false });
+    expect(await authority.report(report, 1, async () => false)).toMatchObject({ ok: false });
+    const handle = await authority.report(report, 1, allow) as Record<string, unknown>;
+    const installation = handle["installation"];
+    expect(await authority.report(report, 1, async () => false)).toMatchObject({ ok: false });
+    expect(await authority.report({ ...report, installation, grants: ["network:*"], destinations: [here(), "evil.example.com"] }, 1, async () => false)).toMatchObject({ ok: false });
+    expect(await rawRelay.handle("request", { installation, request: { url: "https://evil.example.com/" } }, 1)).toMatchObject({ ok: false });
+    expect(authority.lookup({ installation }, 1)?.grants).toEqual(report.grants);
+    const ask = vi.fn(allow);
+    for (const forged of [{ ...report, digest: "bad" }, { ...report, grants: Array(257).fill("network:*") },
+      { ...report, destinations: ["*"] }, { ...report, destinations: ["evil.example.com"] }]) {
+      expect(await authority.report(forged, 1, ask)).toMatchObject({ ok: false });
+    }
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("bounds pending confirmations, confirmation frequency, and table size without creating extra authority", async () => {
+    const authority = createDesktopAuthority();
+    let finish: (allowed: boolean) => void = () => {};
+    const pending = authority.report(decision(), 1, () => new Promise((resolve) => { finish = resolve; }));
+    const ask = vi.fn(allow);
+    expect(await authority.report({ ...decision(), modId: "second" }, 1, ask)).toMatchObject({ ok: false });
+    expect(ask).not.toHaveBeenCalled();
+    finish(true);
+    await pending;
+    for (let i = 1; i < 10; i++) await authority.report({ ...decision(), modId: `mod-${i}` }, 1, ask);
+    expect(await authority.report({ ...decision(), modId: "rate-excess" }, 1, ask)).toMatchObject({ ok: false });
+    expect(ask).toHaveBeenCalledTimes(9);
+    const full = createDesktopAuthority();
+    for (let i = 0; i < 128; i++) await full.report(decision(), i, allow);
+    expect(await full.report(decision(), 128, ask)).toMatchObject({ ok: false });
+    expect(ask).toHaveBeenCalledTimes(9);
+  });
+
+  it("keeps existing requests authorized when native consent only adds destinations", async () => {
+    const authority = createDesktopAuthority();
+    const handle = await authority.report(decision(), 1, allow) as Record<string, unknown>;
+    const before = authority.lookup(handle, 1)!;
+    const wider = await authority.report({ ...decision(), installation: handle["installation"], grants: ["network:*"],
+      destinations: [here(), "other.example.com"] }, 1, allow) as Record<string, unknown>;
+    expect(before.signal.aborted).toBe(true);
+    const current = authority.lookup(wider, 1)!;
+    const added = await authority.report({ ...decision(), installation: wider["installation"], grants: ["network:*"],
+      destinations: [here(), "other.example.com", "third.example.com"] }, 1, allow) as Record<string, unknown>;
+    expect(added["installation"]).toBe(wider["installation"]);
+    expect(current.signal.aborted).toBe(false);
+    expect(current.destinations).not.toContain("third.example.com");
+    authority.revokeWindow(1);
+    expect(current.signal.aborted).toBe(true);
+  });
+
+  it("rechecks approved destinations on redirects even when network:* is granted", async () => {
+    let sent = 0;
+    const { authority, rawRelay } = relayWith({ fetch: async () => {
+      sent++;
+      return new Response(null, { status: 302, headers: { location: "https://evil.example.com/" } });
+    } });
+    const handle = await authority.report({ ...decision(), grants: ["network:*"] }, 1, allow) as Record<string, unknown>;
+    expect(await rawRelay.handle("request", { installation: handle["installation"], request: { url: url("/hello") } }, 1)).toMatchObject({ ok: false, code: "redirect" });
+    expect(sent).toBe(1);
+  });
+
+  it("aborts an in-flight body, drops its bytes, and rejects a revoked handle after a new epoch", async () => {
+    let started: () => void = () => {};
+    const reading = new Promise<void>((resolve) => { started = resolve; });
+    let canceled = false;
+    let signal: AbortSignal | undefined;
+    const { authority, rawRelay } = relayWith({ fetch: async (_url, init) => {
+      signal = init?.signal ?? undefined;
+      return new Response(new ReadableStream({ pull() { started(); }, cancel() { canceled = true; } }));
+    } });
+    const handle = await authority.report(decision(), 1, allow) as Record<string, unknown>;
+    const arg = { installation: handle["installation"], request: { url: url("/hello") } };
+    const pending = rawRelay.handle("request", arg, 1);
+    await reading;
+    await authority.report({ ...decision(), revoke: true }, 1, allow);
+    expect(await pending).toMatchObject({ ok: false, code: "not-declared" });
+    expect(canceled).toBe(true);
+    expect(signal?.aborted).toBe(true);
+    await authority.report(decision(), 1, allow);
+    expect(await rawRelay.handle("request", arg, 1)).toMatchObject({ ok: false, code: "not-declared" });
+  });
+
+  it("does not resurrect a pending confirmation after revoke or navigation and starts empty after restart", async () => {
+    const authority = createDesktopAuthority();
+    for (const navigate of [false, true]) {
+      let finish: (allowed: boolean) => void = () => {};
+      const pending = authority.report(decision(), 1, () => new Promise((resolve) => { finish = resolve; }));
+      if (navigate) authority.revokeWindow(1);
+      else await authority.report({ ...decision(), revoke: true }, 1, allow);
+      finish(true);
+      expect(await pending).toMatchObject({ ok: false });
+    }
+    const handle = await authority.report(decision(), 1, allow);
+    expect(createDesktopAuthority().lookup(handle, 1)).toBeNull();
+    authority.revokeWindow(1);
+    expect(authority.lookup(handle, 1)).toBeNull();
+  });
+
+  it("cancels a pending widening when an authenticated decision removes authority", async () => {
+    const authority = createDesktopAuthority();
+    const handle = await authority.report(decision(), 1, allow) as Record<string, unknown>;
+    let finish: (allowed: boolean) => void = () => {};
+    const pending = authority.report({ ...decision(), installation: handle["installation"], grants: ["network:*"] }, 1,
+      () => new Promise((resolve) => { finish = resolve; }));
+    const narrowed = await authority.report({ ...decision(), installation: handle["installation"], grants: [], destinations: [] }, 1, allow);
+    finish(true);
+    expect(await pending).toMatchObject({ ok: false });
+    expect(authority.lookup(narrowed, 1)?.grants).toEqual([]);
+    expect(authority.lookup(handle, 1)).toBeNull();
+  });
+
+  it("does not store an environment binding after its grant is revoked during confirmation", async () => {
+    const authority = createDesktopAuthority();
+    const handle = await authority.report(decision(), 1, allow) as Record<string, unknown>;
+    const { rawRelay, file } = relayWith({ authority, confirmEnv: async () => {
+      await authority.report({ ...decision(), revoke: true }, 1, allow);
+      return true;
+    } });
+    expect(await rawRelay.handle("secret-env", { installation: handle["installation"], name: "key", variables: ["TEST_KEY"], hosts: [here()] }, 1)).toMatchObject({ ok: false });
+    expect(file()).toBeNull();
+  });
+});
 
 describe("net relay requests", () => {
   it("sends a request to a declared host and returns status, headers and body", async () => {
@@ -313,14 +522,14 @@ describe("net relay secrets", () => {
     const bind = { modId: "squire", modName: "Squire", grants: [here()], name: "jev", variables: ["MISSING_KEY", "TYPESAFE_API_KEY"], hosts: [here()] };
     expect(await relay.handle("secret-env", bind)).toEqual({ ok: true, storage: "environment" });
     expect(await relay.handle("secret-env", bind)).toEqual({ ok: true, storage: "environment" });
-    expect(asks).toEqual([{ modName: "Squire", variables: ["MISSING_KEY", "TYPESAFE_API_KEY"], hosts: [here()] }]);
+    expect(asks).toEqual([{ modName: "squire", variables: ["MISSING_KEY", "TYPESAFE_API_KEY"], hosts: [here()] }]);
     const r = await relay.handle("request", {
       modId: "squire", grants: [here()],
       request: { url: url("/hello"), headers: { Authorization: "Bearer {secret:jev}" } },
     });
     expect(r).toMatchObject({ ok: true, secretStorage: "environment" });
     expect(seen[0]?.auth).toBe("Bearer env-key");
-    await relay.handle("secret-env", { ...bind, hosts: [here(), "local"], grants: [here(), "local"] });
+    await relay.handle("secret-env", { ...bind, hosts: [here(), "extra.example.com"], grants: [here(), "extra.example.com"] });
     expect(asks).toHaveLength(2);
   });
 

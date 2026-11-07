@@ -10,27 +10,13 @@
  * `showDirectoryPicker` is confirmed broken there (the dialog opens and the
  * underlying promise never resolves - see `docs/modding/CLOUD_BACKUP_DESIGN.md`).
  *
- * NOT A REFACTOR OF `mod-backup.ts`. That module already ships the character
- * -backup feature in production and is left exactly as it is; this is a new,
- * independent instance of the same proven pattern, generalised by a caller-
- * supplied `purpose` (so two callers never collide over the same remembered
- * folder unless they deliberately share one) and file `ext` (so a caller is
- * not stuck writing `.neochar` files). `packages/desktop/src/backup-folder.ts`
- * was itself widened to take the same two parameters, defaulting to the
- * original ticket #133 caller's own values so that caller is unaffected -
- * this module is the browser-side half of that same generalisation, plus the
- * one function (`createHostFolder`) that picks the right platform
- * implementation, the same way `createBackupFolder` (mod-backup.ts) already
- * does for its own single purpose.
- *
- * INDEPENDENT OF ANY MOD OR MOD-MENU SEAM. `ctx.backupFolder` (mod-plugin.ts)
- * is a capability a MOD requests and is dispatched per mod id; this is a
- * host-internal primitive a host FEATURE (the mod-profile sync #158 builds on
- * top of it) calls directly, with no manifest, no capability, and no mod in
- * between.
+ * Browser handles remain purpose-keyed. Desktop profile sync obtains an
+ * installation handle from the main process, which measures the host payload
+ * and confirms backup authority natively. Other desktop purposes fail closed.
  */
 
 import { STORE_HANDLES, idbDelete, idbGet, idbPut, openDb } from "./idb";
+import { desktopHostInstallation, type DesktopConsentBridge } from "./host-electron";
 
 /** One purpose's folder, however the platform actually stores it. */
 export interface HostFolder {
@@ -58,11 +44,10 @@ export interface HostFolderEntry {
 }
 
 /* ------------------------------------------------------------------ *
- * The desktop implementation: BACKUP_CHANNEL, generalised (#158) to carry
- * `purpose` and `ext` inside its own `arg` rather than needing a new channel.
+ * The desktop implementation uses the same authority checks as mod backups.
  * ------------------------------------------------------------------ */
 
-interface DesktopBackupBridge {
+interface DesktopBackupBridge extends DesktopConsentBridge {
   backup(op: string, arg?: unknown): Promise<unknown>;
 }
 
@@ -82,27 +67,33 @@ function desktopBridge(scope: unknown): DesktopBackupBridge | null {
 }
 
 function desktopHostFolder(purpose: string, ext: string, scope: unknown): HostFolder {
+  const bridge = desktopBridge(scope)!;
+  const installation = desktopHostInstallation(purpose, bridge);
+  const call = async (op: string, arg: Record<string, unknown> = {}): Promise<unknown> => {
+    const authority = await installation();
+    return authority ? bridge.backup(op, { ...authority, ext, ...arg }) : null;
+  };
   return {
     async name(): Promise<string | null> {
       const bridge = desktopBridge(scope);
       if (!bridge) return null;
-      const r = await bridge.backup("name", { purpose, ext });
+      const r = await call("name");
       return typeof r === "string" ? r : null;
     },
     async choose(): Promise<string | null> {
       const bridge = desktopBridge(scope);
       if (!bridge) return null;
-      const r = await bridge.backup("choose", { purpose, ext });
+      const r = await call("choose");
       return typeof r === "string" ? r : null;
     },
     async forget(): Promise<void> {
       const bridge = desktopBridge(scope);
-      if (bridge) await bridge.backup("forget", { purpose, ext });
+      if (bridge) await call("forget");
     },
     async write(name: string, text: string): Promise<boolean> {
       const bridge = desktopBridge(scope);
       if (!bridge) return false;
-      const r = (await bridge.backup("write", { purpose, ext, name, text })) as
+      const r = (await call("write", { name, text })) as
         | { ok?: boolean }
         | undefined;
       return r?.ok === true;
@@ -110,13 +101,15 @@ function desktopHostFolder(purpose: string, ext: string, scope: unknown): HostFo
     async list(): Promise<readonly HostFolderEntry[]> {
       const bridge = desktopBridge(scope);
       if (!bridge) return [];
-      const r = await bridge.backup("list", { purpose, ext });
+      const r = await call("list");
       if (!Array.isArray(r)) return [];
       const out: HostFolderEntry[] = [];
       for (const item of r) {
         if (item !== null && typeof item === "object") {
-          const { name, text } = item as { name?: unknown; text?: unknown };
-          if (typeof name === "string" && typeof text === "string") out.push({ name, text });
+          const { name, size } = item as { name?: unknown; size?: unknown };
+          if (typeof name !== "string" || typeof size !== "number" || !Number.isSafeInteger(size) || size < 0) continue;
+          const read = await call("read", { name }) as { name?: unknown; text?: unknown } | null;
+          if (read?.name === name && typeof read.text === "string") out.push({ name, text: read.text });
         }
       }
       return out;
@@ -280,8 +273,8 @@ function browserHostFolder(purpose: string, ext: string, scope: unknown): HostFo
  * Build a purpose's `HostFolder`, or undefined when there is no platform
  * support at all (Firefox/Safari with no desktop bridge either). Two calls
  * with the SAME `purpose` on the SAME platform read and write the SAME
- * remembered folder; two calls with different purposes never collide, even
- * if the player happens to point both at the same real directory.
+ * remembered browser folder. Desktop profile sync uses its own installation
+ * allocation after native consent.
  */
 export function createHostFolder(
   purpose: string,

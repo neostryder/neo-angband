@@ -9,17 +9,14 @@
  *
  * What the main process enforces, whatever the page sends:
  *  - the request itself passes `checkNetRequest` (http or https, size limits,
- *    no reserved headers) against the grant hosts the page names;
+ *    no reserved headers) against the main process's authority entry;
  *  - every redirect hop lands on a covered host, and at most NET_LIMITS.redirects;
  *  - a secret is substituted only into a request to a host listed when the
  *    secret was stored, and its value never goes back to the page;
  *  - an environment variable is read only after the player agreed, in a native
  *    dialog the page cannot answer, to send it to the named hosts.
- * The grant hosts come from the page, and the page runs the mod's own code, so
- * the host check is a consent check rather than a sandbox. The secret and
- * environment destination rules still apply. The desktop transport separately
- * refuses private destinations and checks DNS again when opening the socket.
- * This module does not authenticate the renderer's mod identity or grants.
+ * Authority handles are issued after native consent and expire on revocation
+ * or navigation. The transport also checks DNS when opening the socket.
  */
 
 import {
@@ -32,12 +29,121 @@ import {
   networkGrantCovers,
   networkRequestCapability,
   parseDocument,
-  readBodyCapped,
+  parseCapability,
   secretNamesIn,
   serializeDocument,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { CheckedNetRequest, NetProblem, NetSecretValue } from "@rpgm-tools/neo-angband-mod-sdk";
 import { isBlockedHostname, isBlockedIp } from "./net-guard.js";
+import { createHash, randomBytes } from "node:crypto";
+
+export interface DesktopAuthorityEntry {
+  readonly modId: string;
+  readonly digest: string;
+  readonly key: string;
+  readonly grants: readonly string[];
+  readonly destinations: readonly string[];
+  readonly signal: AbortSignal;
+}
+
+export function createDesktopAuthority() {
+  const entries = new Map<string, { owner: number; token: string; entry: DesktopAuthorityEntry; controller: AbortController }>();
+  const pending = new Map<number, { key: string; controller: AbortController }>();
+  const attempts = new Map<number, number[]>();
+  const revoke = (key: string): void => {
+    const record = entries.get(key);
+    entries.delete(key);
+    record?.controller.abort();
+  };
+  const list = (value: unknown): string[] | null => Array.isArray(value) && value.length <= 256 &&
+    value.every((item) => typeof item === "string" && item.length > 0 && item.length <= 256 && /^[\x21-\x7e]+$/u.test(item))
+    ? [...new Set(value as string[])].sort() : null;
+  const identify = (a: Record<string, unknown>): { modId: string; digest: string; key: string } | null => {
+    const { modId, digest } = a;
+    if (typeof modId !== "string" || !/^[a-zA-Z0-9@][a-zA-Z0-9@/._:-]{0,127}$/u.test(modId) ||
+      typeof digest !== "string" || !/^[a-f0-9]{64}$/u.test(digest)) return null;
+    return { modId, digest, key: createHash("sha256").update(JSON.stringify([modId, digest])).digest("hex") };
+  };
+  return {
+    lookup(arg: unknown, owner: number): DesktopAuthorityEntry | null {
+      if (!arg || typeof arg !== "object" || Array.isArray(arg)) return null;
+      const a = arg as Record<string, unknown>;
+      if (typeof a["installation"] !== "string" || a["installation"].length !== 64) return null;
+      for (const record of entries.values()) {
+        const entry = record.entry;
+        if (record.owner !== owner || record.token !== a["installation"]) continue;
+        if ((a["modId"] !== undefined && a["modId"] !== entry.modId) ||
+          (a["digest"] !== undefined && a["digest"] !== entry.digest)) return null;
+        if (a["grants"] !== undefined) {
+          const claimed = list(a["grants"]);
+          if (!claimed || claimed.some((cap) => !entry.grants.includes(cap) && !entry.grants.includes(`network:${cap}`))) return null;
+        }
+        return entry;
+      }
+      return null;
+    },
+    async report(arg: unknown, owner: number, confirm: (entry: DesktopAuthorityEntry) => Promise<boolean>): Promise<unknown> {
+      const refused = { ok: false, code: "not-declared", problem: "The desktop installation is not authorized." };
+      if (!arg || typeof arg !== "object" || Array.isArray(arg)) return refused;
+      const a = arg as Record<string, unknown>;
+      if (Object.keys(a).some((key) => !["modId", "digest", "grants", "destinations", "installation", "revoke"].includes(key))) return refused;
+      const identity = identify(a);
+      if (!identity) return refused;
+      const slot = `${owner}:${identity.key}`;
+      if (a["revoke"] === true) {
+        revoke(slot);
+        if (pending.get(owner)?.key === slot) pending.get(owner)?.controller.abort();
+        return { ok: true };
+      }
+      const grants = list(a["grants"]);
+      const destinations = list(a["destinations"]);
+      if (!grants || !destinations || grants.some((cap) => cap !== "backup:folder" && !cap.startsWith("network:"))) return refused;
+      try {
+        for (const cap of grants) parseCapability(cap);
+        if (destinations.some((host) => host === "*" || host === "local" ||
+          !checkSecretHosts([host], grants.filter((cap) => cap.startsWith("network:")).map((cap) => cap.slice(8))).ok)) return refused;
+      } catch { return refused; }
+      const prior = entries.get(slot);
+      const held = prior !== undefined && prior.token === a["installation"];
+      const widening = !held || grants.some((cap) => !prior.entry.grants.includes(cap)) || destinations.some((host) => !prior.entry.destinations.includes(host));
+      if (held && !widening && JSON.stringify([grants, destinations]) === JSON.stringify([prior.entry.grants, prior.entry.destinations])) {
+        return { ok: true, installation: prior.token, modId: identity.modId, digest: identity.digest };
+      }
+      const controller = new AbortController();
+      const entry: DesktopAuthorityEntry = Object.freeze({ ...identity, grants: Object.freeze(grants), destinations: Object.freeze(destinations), signal: controller.signal });
+      if (widening) {
+        const recent = (attempts.get(owner) ?? []).filter((stamp) => Date.now() - stamp < 60_000);
+        if (pending.has(owner) || recent.length >= 10 || entries.size >= 128) return refused;
+        attempts.set(owner, [...recent, Date.now()]);
+        pending.set(owner, { key: slot, controller });
+        try {
+          if (!(await confirm(entry)) || controller.signal.aborted) return refused;
+        } catch { return refused; }
+        finally { if (pending.get(owner)?.controller === controller) pending.delete(owner); }
+      }
+      if (controller.signal.aborted) return refused;
+      if (held && prior.entry.grants.every((cap) => grants.includes(cap)) && prior.entry.destinations.every((host) => destinations.includes(host))) {
+        entries.set(slot, { ...prior, entry: Object.freeze({ ...entry, signal: prior.controller.signal }) });
+        return { ok: true, installation: prior.token, modId: identity.modId, digest: identity.digest };
+      }
+      if (!widening && pending.get(owner)?.key === slot) pending.get(owner)?.controller.abort();
+      for (const [key, record] of entries) {
+        if (record.owner === owner && record.entry.modId === identity.modId) revoke(key);
+      }
+      revoke(slot);
+      const token = randomBytes(32).toString("hex");
+      entries.set(slot, { owner, token, entry, controller });
+      return { ok: true, installation: token, modId: identity.modId, digest: identity.digest };
+    },
+    revokeWindow(owner: number): void {
+      pending.get(owner)?.controller.abort();
+      for (const [key, record] of entries) if (record.owner === owner) revoke(key);
+      attempts.delete(owner);
+    },
+  };
+}
+
+export type DesktopAuthority = ReturnType<typeof createDesktopAuthority>;
 
 /** One stored secret, as the secrets file holds it. */
 interface StoredSecret {
@@ -49,6 +155,7 @@ interface StoredSecret {
 type SecretStore = Record<string, Record<string, StoredSecret>>;
 
 export interface NetRelayDeps {
+  readonly authority: DesktopAuthority;
   readonly fetch: typeof fetch;
   /** Reads an environment variable of the game's process. */
   readonly env: (name: string) => string | undefined;
@@ -70,6 +177,29 @@ export interface NetRelayDeps {
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 const fail = (code: NetProblem["code"], problem: string): NetProblem => ({ ok: false, code, problem });
+
+async function readRelayBody(body: ReadableStream<Uint8Array> | null, signal: AbortSignal): Promise<string | null> {
+  if (body === null) return "";
+  const reader = body.getReader();
+  const abort = (): void => { void reader.cancel().catch(() => undefined); };
+  signal.addEventListener("abort", abort, { once: true });
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    while (!signal.aborted) {
+      const next = await reader.read();
+      if (next.done) break;
+      size += next.value.byteLength;
+      if (size > NET_LIMITS.responseBytes) { await reader.cancel(); return null; }
+      chunks.push(next.value);
+    }
+    if (signal.aborted) throw new Error("The request was canceled.");
+    return Buffer.concat(chunks).toString("utf8");
+  } finally {
+    signal.removeEventListener("abort", abort);
+    reader.releaseLock();
+  }
+}
 
 function stringList(value: unknown): string[] | null {
   return Array.isArray(value) && value.every((v) => typeof v === "string") ? [...value] : null;
@@ -133,7 +263,9 @@ export function createNetRelay(deps: NetRelayDeps): { handle(op: unknown, arg: u
     }
   };
 
-  const request = async (modId: string, grants: readonly string[], raw: unknown): Promise<unknown> => {
+  const request = async (entry: DesktopAuthorityEntry, raw: unknown): Promise<unknown> => {
+    const modId = entry.key;
+    const grants = entry.grants.filter((cap) => cap.startsWith("network:")).map((cap) => cap.slice(8));
     const checked = checkNetRequest(raw, grants);
     if (!checked.ok) return checked;
     const target = new URL(checked.value.url);
@@ -148,14 +280,23 @@ export function createNetRelay(deps: NetRelayDeps): { handle(op: unknown, arg: u
     }));
     let current: CheckedNetRequest = { ...checked.value, headers };
     const controller = new AbortController();
+    const revoke = (): void => { controller.abort(); };
+    entry.signal.addEventListener("abort", revoke, { once: true });
+    if (entry.signal.aborted) controller.abort();
     const timer = setTimeout(() => controller.abort(), current.timeoutMs);
     try {
       for (let hop = 0; ; hop++) {
         const target = new URL(current.url);
+        if (controller.signal.aborted) throw new Error("The request was canceled.");
+        const cap = networkRequestCapability(current.url);
+        if (!cap || !networkGrantCovers(grants, cap) || !networkGrantCovers(entry.destinations, cap)) {
+          return fail(hop === 0 ? "not-declared" : "redirect", "The destination is not approved for this installation.");
+        }
         if (target.username || target.password) return fail("redirect", "A redirect URL cannot contain credentials.");
         if (!(await publicHost(target.hostname, controller.signal))) {
           return fail(hop === 0 ? "not-declared" : "redirect", "The desktop relay refuses private, loopback, link-local, and metadata destinations.");
         }
+        if (controller.signal.aborted) throw new Error("The request was canceled.");
         const filled = fillSecretTemplates(current.headers, current.url, (name) => resolve(store, modId, name));
         if (!filled.ok) return hop === 0 ? filled : fail("redirect", `The server redirected to ${current.url}, which the request's secrets may not be sent to.`);
         if (Buffer.byteLength(JSON.stringify(filled.headers), "utf8") > 16 * 1024) return fail("too-large", "The request headers exceed 16 KiB.");
@@ -167,14 +308,18 @@ export function createNetRelay(deps: NetRelayDeps): { handle(op: unknown, arg: u
           credentials: "omit",
           signal: controller.signal,
         });
+        if (controller.signal.aborted) {
+          await response.body?.cancel().catch(() => undefined);
+          throw new Error("The request was canceled.");
+        }
         const location = response.headers.get("location");
         if (response.status >= 300 && response.status < 400 && location) {
           await response.body?.cancel().catch(() => undefined);
           if (hop >= NET_LIMITS.redirects) return fail("redirect", `The server redirected more than ${NET_LIMITS.redirects} times.`);
           const next = new URL(location, current.url).toString();
           const cap = networkRequestCapability(next);
-          if (cap === null || !networkGrantCovers(grants, cap)) {
-            return fail("redirect", `The server redirected to ${next}, which this mod's manifest does not ask for.`);
+          if (cap === null || !networkGrantCovers(grants, cap) || !networkGrantCovers(entry.destinations, cap)) {
+            return fail("redirect", "The redirect destination is not approved for this installation.");
           }
           const toGet = response.status === 303 || ((response.status === 301 || response.status === 302) && current.method === "POST");
           if (toGet) {
@@ -185,7 +330,8 @@ export function createNetRelay(deps: NetRelayDeps): { handle(op: unknown, arg: u
           }
           continue;
         }
-        const body = await readBodyCapped(response.body, NET_LIMITS.responseBytes);
+        const body = await readRelayBody(response.body, controller.signal);
+        if (entry.signal.aborted) return fail("not-declared", "The installation's authority was revoked.");
         if (body === null) return fail("too-large", `The response was larger than ${NET_LIMITS.responseBytes} bytes.`);
         const headers: Record<string, string> = {};
         response.headers.forEach((value, key) => {
@@ -195,11 +341,13 @@ export function createNetRelay(deps: NetRelayDeps): { handle(op: unknown, arg: u
         const storage = usesSecrets ? secretStorageOf(store, modId, secretNamesIn(checked.value.headers)) : undefined;
         return { ok: true, status: response.status, headers, body, ...(storage ? { secretStorage: storage } : {}) };
       }
-    } catch (error) {
+    } catch {
+      if (entry.signal.aborted) return fail("not-declared", "The installation's authority was revoked.");
       if (controller.signal.aborted) return fail("timeout", `No complete response within ${current.timeoutMs} ms.`);
-      return fail("unreachable", `The server could not be reached: ${error instanceof Error ? error.message : String(error)}`);
+      return fail("unreachable", "The server could not be reached.");
     } finally {
       clearTimeout(timer);
+      entry.signal.removeEventListener("abort", revoke);
     }
   };
 
@@ -218,7 +366,8 @@ export function createNetRelay(deps: NetRelayDeps): { handle(op: unknown, arg: u
     return { ok: true, storage: "os" };
   };
 
-  const envSecret = async (modId: string, grants: readonly string[], a: Record<string, unknown>): Promise<unknown> => {
+  const envSecret = async (entry: DesktopAuthorityEntry, grants: readonly string[], a: Record<string, unknown>): Promise<unknown> => {
+    const modId = entry.key;
     if (!isSecretName(a["name"])) return fail("bad-request", "A secret name is kebab-case, such as \"jev-key\".");
     const variables = stringList(a["variables"]);
     if (!variables || variables.length === 0 || variables.length > 8 || variables.some((v) => !ENV_NAME.test(v))) {
@@ -232,10 +381,11 @@ export function createNetRelay(deps: NetRelayDeps): { handle(op: unknown, arg: u
       existing.env.join("\n") === variables.join("\n") &&
       [...existing.hosts].sort().join("\n") === [...hosts.hosts].sort().join("\n");
     if (!same) {
-      const modName = typeof a["modName"] === "string" && a["modName"] !== "" ? a["modName"] : "A mod";
+      const modName = entry.modId;
       if (!(await deps.confirmEnv({ modName, variables, hosts: hosts.hosts }))) {
         return fail("secret-missing", "The player chose not to share those environment variables.");
       }
+      if (entry.signal.aborted) return fail("not-declared", "The installation's authority was revoked.");
       (store[modId] ??= {})[a["name"]] = { hosts: hosts.hosts, env: variables };
       save(store);
     }
@@ -246,27 +396,30 @@ export function createNetRelay(deps: NetRelayDeps): { handle(op: unknown, arg: u
     async handle(op: unknown, arg: unknown, windowId = -1): Promise<unknown> {
       if (!allowRate(windowId)) return fail("bad-request", "This window sent too many network calls.");
       const a = (arg !== null && typeof arg === "object" ? arg : {}) as Record<string, unknown>;
-      const modId = typeof a["modId"] === "string" && a["modId"] !== "" ? a["modId"] : null;
-      const grants = stringList(a["grants"]) ?? [];
+      if (op === "info") return { encryption: deps.encryption.available() };
+      const entry = deps.authority.lookup(arg, windowId);
+      if (!entry || !entry.grants.some((cap) => cap.startsWith("network:"))) return fail("not-declared", "The desktop installation is not authorized.");
+      const modId = entry.key;
+      const grants = entry.grants.filter((cap) => cap.startsWith("network:")).map((cap) => cap.slice(8));
       try {
         switch (op) {
-          case "info":
-            return { encryption: deps.encryption.available() };
           case "request":
             if (!modId) return fail("bad-request", "The request did not say which mod sent it.");
             if ((active.get(windowId) ?? 0) >= 8) return fail("bad-request", "This window has too many active requests.");
             active.set(windowId, (active.get(windowId) ?? 0) + 1);
             try {
-              return await request(modId, grants, a["request"]);
+              return await request(entry, a["request"]);
             } finally {
               active.set(windowId, (active.get(windowId) ?? 1) - 1);
             }
           case "secret-set":
             if (!modId) return fail("bad-request", "The request did not say which mod sent it.");
+            if (!checkSecretHosts(a["hosts"], entry.destinations).ok) return fail("not-declared", "The secret destination is not approved.");
             return setSecret(modId, grants, a);
           case "secret-env":
             if (!modId) return fail("bad-request", "The request did not say which mod sent it.");
-            return await envSecret(modId, grants, a);
+            if (!checkSecretHosts(a["hosts"], entry.destinations).ok) return fail("not-declared", "The secret destination is not approved.");
+            return await envSecret(entry, grants, a);
           case "secret-has": {
             if (!modId || !isSecretName(a["name"])) return { present: false };
             const secret = load()[modId]?.[a["name"]];
@@ -282,12 +435,12 @@ export function createNetRelay(deps: NetRelayDeps): { handle(op: unknown, arg: u
             return { ok: true };
           }
           default:
-            return fail("bad-request", `unknown operation ${String(op)}`);
+            return fail("bad-request", "The relay operation is unknown.");
         }
-      } catch (error) {
+      } catch {
         /* An exception in an invoke handler becomes a rejected promise in the page
          * with Electron's own wording, so it is answered as a problem instead. */
-        return fail("unreachable", `The relay failed: ${error instanceof Error ? error.message : String(error)}`);
+        return fail("unreachable", "The relay failed.");
       }
     },
   };

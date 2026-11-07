@@ -4,7 +4,7 @@
  * channel this one is modeled on.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -20,7 +20,13 @@ import {
   readBackupFolder,
   writeBackupFolder,
   writeBackupFile,
+  createBackupRelay,
 } from "./backup-folder.js";
+import { createDesktopAuthority } from "./net-relay.js";
+
+const [{ createBackupFolder }, bindings, snapshots, store] = await Promise.all([
+  "../../web/src/mod-backup.ts", "../../web/src/mod-consent-binding.ts", "../../web/src/mod-code-snapshot.ts", "../../web/src/mod-store.ts",
+].map((modulePath) => import(modulePath)));
 
 let base: string;
 
@@ -252,5 +258,114 @@ describe("backup writes", () => {
     });
     expect(result).toBe(false);
     expect(fs.readFileSync(sentinel, "utf8")).toBe("keep");
+  });
+});
+
+describe("installation backup allocations", () => {
+  const decision = (modId: string, digest = "a".repeat(64)) => ({ modId, digest, grants: ["backup:folder"], destinations: [] });
+
+  async function fixture() {
+    const authority = createDesktopAuthority();
+    const a = await authority.report(decision("a"), 1, async () => true) as Record<string, unknown>;
+    const b = await authority.report(decision("b"), 1, async () => true) as Record<string, unknown>;
+    const relay = createBackupRelay({ authority, userBase: path.join(base, "records"), choose: async () => base,
+      confirmReplace: async () => true, confirmRead: async () => true });
+    return { authority, relay, a: { installation: a["installation"] }, b: { installation: b["installation"] } };
+  }
+
+  it("preserves the renderer backup path through native consent, metadata listing, and confirmed reads", async () => {
+    const digest = vi.spyOn(snapshots, "modPayloadDigest").mockReturnValue("a".repeat(64));
+    const { authority, relay } = await fixture();
+    const scope = { neoDesktop: {
+      consent: (arg: unknown) => authority.report(arg, 1, async () => true),
+      backup: (op: unknown, arg: unknown) => relay.handle(op, arg, 1),
+    } };
+    try {
+      bindings.setConsentBindings(new Map([["a", "binding"]]));
+      store.setModStorage(null);
+      store.setSessionConsents({ a: ["backup:folder"] });
+      const folder = createBackupFolder("a", scope);
+      expect(await folder.choose()).toBe(path.basename(base));
+      expect(await folder.write("own.neochar", "not a character file")).toBe(true);
+      expect(await folder.list()).toEqual([{ name: "own.neochar", characterName: "", level: 0 }]);
+      store.setSessionConsents({});
+      bindings.invalidateModConsent("a");
+      expect(await folder.write("blocked.neochar", "bad")).toBe(false);
+    } finally {
+      bindings.setConsentBindings(new Map());
+      store.setSessionConsents({});
+      digest.mockRestore();
+    }
+  });
+
+  it("lists names and sizes from one allocation and refuses identity, purpose, and path spoofing", async () => {
+    const { authority, relay, a, b } = await fixture();
+    await relay.handle("choose", a, 1);
+    await relay.handle("choose", b, 1);
+    expect(await relay.handle("write", { ...b, name: "victim.neochar", text: "private" }, 1)).toEqual({ ok: true });
+    expect(await relay.handle("list", a, 1)).toEqual([]);
+    expect(await relay.handle("list", b, 1)).toEqual([{ name: "victim.neochar", size: 7 }]);
+    const key = authority.lookup(b, 1)!.key;
+    for (const arg of [
+      { ...a, modId: "b", name: "victim.neochar", text: "bad" },
+      { ...a, purpose: key, name: "victim.neochar", text: "bad" },
+      { ...a, name: `../${key}/victim.neochar`, text: "bad" },
+      { modId: "b", digest: "a".repeat(64), name: "victim.neochar", text: "bad" },
+    ]) {
+      expect(await relay.handle("write", arg, 1)).toEqual({ ok: false });
+      expect(await relay.handle("list", arg, 1)).not.toEqual([{ name: "victim.neochar", size: 7 }]);
+    }
+    expect(await relay.handle("write", { ...a, name: "own.neochar", text: "own" }, 1)).toEqual({ ok: true });
+    expect(await relay.handle("list", a, 1)).toEqual([{ name: "own.neochar", size: 3 }]);
+    expect(await relay.handle("read", { ...a, name: "victim.neochar" }, 1)).toEqual({ ok: false });
+    expect(fs.readFileSync(path.join(base, key, "victim.neochar"), "utf8")).toBe("private");
+    expect(await relay.handle("list", b, 2)).toEqual({ ok: false });
+  });
+
+  it("fails closed without backup consent and keeps payload versions separate", async () => {
+    const { authority, relay, a } = await fixture();
+    const noBackup = await authority.report({ ...decision("network"), grants: ["network:*"] }, 1, async () => true);
+    expect(await relay.handle("choose", noBackup, 1)).toEqual({ ok: false });
+    await relay.handle("choose", a, 1);
+    expect(await relay.handle("write", { ...a, name: "big.neochar", text: "x".repeat(BACKUP_LIMITS.fileBytes + 1) }, 1)).toEqual({ ok: false });
+    expect(await relay.handle("write", { ...a, ext: ".exe", name: "bad.exe", text: "bad" }, 1)).toEqual({ ok: false });
+    expect(await relay.handle("list", a, 1)).toEqual([]);
+    await relay.handle("write", { ...a, name: "old.neochar", text: "old" }, 1);
+    const updated = await authority.report(decision("a", "b".repeat(64)), 1, async () => true);
+    await relay.handle("choose", updated, 1);
+    expect(await relay.handle("list", updated, 1)).toEqual([]);
+    expect(await relay.handle("list", a, 1)).toEqual({ ok: false });
+    authority.revokeWindow(1);
+    expect(await relay.handle("list", a, 1)).toEqual({ ok: false });
+  });
+
+  it("checks revocation after replacement and read confirmations and never releases text from list", async () => {
+    const { authority, relay, a } = await fixture();
+    await relay.handle("choose", a, 1);
+    await relay.handle("write", { ...a, name: "keep.neochar", text: "keep" }, 1);
+    const key = authority.lookup(a, 1)!.key;
+    const guarded = createBackupRelay({ authority, userBase: path.join(base, "records"), choose: async () => base,
+      confirmReplace: async () => { await authority.report({ ...decision("a"), revoke: true }, 1, async () => true); return true; },
+      confirmRead: async () => false });
+    expect(await guarded.handle("read", { ...a, name: "keep.neochar" }, 1)).toEqual({ ok: false });
+    expect(await guarded.handle("list", a, 1)).toEqual([{ name: "keep.neochar", size: 4 }]);
+    expect(await guarded.handle("write", { ...a, name: "keep.neochar", text: "bad" }, 1)).toEqual({ ok: false });
+    expect(fs.readFileSync(path.join(base, key, "keep.neochar"), "utf8")).toBe("keep");
+  });
+
+  it("rejects overlapping writes and cancels a pending file read on revocation", async () => {
+    const { authority, relay, a } = await fixture();
+    const key = authority.lookup(a, 1)!.key;
+    await relay.handle("choose", a, 1);
+    await relay.handle("write", { ...a, name: "keep.neochar", text: "keep" }, 1);
+    let finish: (allowed: boolean) => void = () => {};
+    const guarded = createBackupRelay({ authority, userBase: path.join(base, "records"), choose: async () => base,
+      confirmReplace: async () => true, confirmRead: () => new Promise((resolve) => { finish = resolve; }) });
+    const reading = guarded.handle("read", { ...a, name: "keep.neochar" }, 1);
+    expect(await guarded.handle("write", { ...a, name: "extra.neochar", text: "bad" }, 1)).toEqual({ ok: false });
+    await authority.report({ ...decision("a"), revoke: true }, 1, async () => true);
+    finish(true);
+    expect(await reading).toEqual({ ok: false });
+    expect(fs.existsSync(path.join(base, key, "extra.neochar"))).toBe(false);
   });
 });

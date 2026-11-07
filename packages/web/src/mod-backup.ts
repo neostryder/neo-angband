@@ -15,6 +15,7 @@
 import { STORE_HANDLES, idbDelete, idbGet, idbPut, openDb } from "./idb";
 import type { BackupFolder, BackupFolderEntry } from "./mod-plugin";
 import { peekTransferMeta, type TransferPeek } from "./save-transfer";
+import { desktopInstallation, type DesktopConsentBridge } from "./host-electron";
 
 /* ------------------------------------------------------------------ *
  * The desktop implementation: packages/desktop's BACKUP_CHANNEL, over the
@@ -23,7 +24,7 @@ import { peekTransferMeta, type TransferPeek } from "./save-transfer";
  * to guarantee (see bridge-channel.ts's BACKUP_CHANNEL doc comment).
  * ------------------------------------------------------------------ */
 
-interface DesktopBackupBridge {
+interface DesktopBackupBridge extends DesktopConsentBridge {
   backup(op: string, arg?: unknown): Promise<unknown>;
 }
 
@@ -43,27 +44,33 @@ export function backupBridge(scope: unknown = globalThis): DesktopBackupBridge |
 }
 
 function desktopBackupFolder(id: string, scope: unknown): BackupFolder {
+  const call = async (op: string, arg: Record<string, unknown> = {}): Promise<unknown> => {
+    const bridge = backupBridge(scope);
+    if (!bridge) return null;
+    const installation = await desktopInstallation(id, bridge);
+    return installation ? bridge.backup(op, { ...installation, ...arg }) : null;
+  };
   return {
     async name(): Promise<string | null> {
       const bridge = backupBridge(scope);
       if (!bridge) return null;
-      const r = await bridge.backup("name");
+      const r = await call("name");
       return typeof r === "string" ? r : null;
     },
     async choose(): Promise<string | null> {
       const bridge = backupBridge(scope);
       if (!bridge) return null;
-      const r = await bridge.backup("choose");
+      const r = await call("choose");
       return typeof r === "string" ? r : null;
     },
     async forget(): Promise<void> {
       const bridge = backupBridge(scope);
-      if (bridge) await bridge.backup("forget");
+      if (bridge) await call("forget");
     },
     async write(name: string, text: string): Promise<boolean> {
       const bridge = backupBridge(scope);
       if (!bridge) return false;
-      const r = (await bridge.backup("write", { name, text })) as
+      const r = (await call("write", { name, text })) as
         | { ok?: boolean }
         | undefined;
       return r?.ok === true;
@@ -310,20 +317,18 @@ export interface BackupFileRead {
 }
 
 /**
- * The desktop side of `list()`: `BACKUP_CHANNEL`'s own `"list"` op returns
- * every `.neochar` file the main process could read as `{name, text}` pairs -
- * the chosen folder's path never crosses the bridge here either, same as
- * every other op on this channel. Defended the way `write`'s own `{ok}`
- * reply is: the renderer does not trust its own IPC blindly.
- *
- * `id` is unused: the desktop backup folder is one global path for the whole
- * app (backup-folder.ts's own record, not keyed per mod), unlike the browser
- * tab's per-mod IndexedDB handle - see BACKUP_CHANNEL's doc comment.
+ * Listing exposes names and sizes. Legacy metadata and import callers need a
+ * separate native confirmation before the main process releases each file.
  */
-async function desktopBackupFiles(_id: string, scope: unknown, requireReadable = false): Promise<RawBackupFile[]> {
+async function desktopBackupFiles(id: string, scope: unknown, requireReadable = false): Promise<RawBackupFile[]> {
   const bridge = backupBridge(scope);
   if (!bridge) return [];
-  const r = await bridge.backup("list");
+  const installation = await desktopInstallation(id, bridge);
+  if (!installation) {
+    if (requireReadable) throw new Error("The backup folder is not authorized.");
+    return [];
+  }
+  const r = await bridge.backup("list", installation);
   if (!Array.isArray(r)) {
     if (requireReadable) throw new Error("The backup folder could not be read.");
     return [];
@@ -331,8 +336,11 @@ async function desktopBackupFiles(_id: string, scope: unknown, requireReadable =
   const out: RawBackupFile[] = [];
   for (const item of r) {
     if (item !== null && typeof item === "object") {
-      const { name, text } = item as { name?: unknown; text?: unknown };
-      if (typeof name === "string" && typeof text === "string") out.push({ name, text });
+      const { name, size } = item as { name?: unknown; size?: unknown };
+      if (typeof name !== "string" || typeof size !== "number" || !Number.isSafeInteger(size) || size < 0) continue;
+      const read = await bridge.backup("read", { ...installation, name }) as { name?: unknown; text?: unknown } | null;
+      if (read?.name === name && typeof read.text === "string") out.push({ name, text: read.text });
+      else if (requireReadable) throw new Error("The backup file could not be read.");
     }
   }
   return out;

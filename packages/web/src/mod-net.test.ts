@@ -6,12 +6,15 @@
  */
 
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CapabilitySet, modPageSecretsFormat, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { GameState } from "@rpgm-tools/neo-angband-core";
 import { createModNet, netRelayBridge, type NetRelayBridge } from "./mod-net";
 import { modPluginContext, setModDriverControl, setModNetControl } from "./mod-context";
 import type { ModSaves } from "./mod-plugin";
+import { setConsentBindings } from "./mod-consent-binding";
+import { setModStorage, setSessionConsents } from "./mod-store";
+import * as snapshots from "./mod-code-snapshot";
 
 const MAIN_TS_SOURCE = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 
@@ -134,9 +137,23 @@ describe("ctx.net in a browser tab", () => {
 });
 
 describe("ctx.net in the desktop app", () => {
-  it("hands requests and secrets to the relay with the mod's id and grants", async () => {
+  beforeEach(() => {
+    setConsentBindings(new Map([["squire", "binding"]]));
+    setModStorage(null);
+    setSessionConsents({ squire: ["network:api.example.com", "network:local"] });
+    vi.spyOn(snapshots, "modPayloadDigest").mockReturnValue("a".repeat(64));
+  });
+  afterEach(() => {
+    setConsentBindings(new Map());
+    setSessionConsents({});
+    vi.restoreAllMocks();
+  });
+  const consent = async () => ({ ok: true, installation: "b".repeat(64), modId: "squire", digest: "a".repeat(64) });
+
+  it("hands requests and secrets to the relay with the host-issued installation handle", async () => {
     const calls: [string, unknown][] = [];
     const relay: NetRelayBridge = {
+      consent,
       net: async (op, arg) => {
         calls.push([op, arg]);
         if (op === "request") return { ok: true, status: 200, headers: {}, body: "hi", secretStorage: "os" };
@@ -151,17 +168,27 @@ describe("ctx.net in the desktop app", () => {
     expect(await net.secrets.fromEnv("jev", ["TYPESAFE_API_KEY", "JEV_API_KEY"], { hosts: ["api.example.com"] }))
       .toEqual({ ok: true, storage: "environment" });
     expect(calls.map(([op]) => op)).toEqual(["request", "secret-env"]);
-    expect(calls[0]?.[1]).toMatchObject({ modId: "squire", grants: ["api.example.com"], request: { url: "https://api.example.com/x", method: "GET" } });
+    expect(calls[0]?.[1]).toMatchObject({ modId: "squire", installation: "b".repeat(64), digest: "a".repeat(64), request: { url: "https://api.example.com/x", method: "GET" } });
+    expect(calls[0]?.[1]).not.toHaveProperty("grants");
     expect(calls[1]?.[1]).toMatchObject({ modName: "Squire", variables: ["TYPESAFE_API_KEY", "JEV_API_KEY"] });
   });
 
   it("answers a garbled or failed relay call as a problem", async () => {
     const net = createModNet({
       modId: "squire", modName: "Squire", grants: ["local"], fetch: undefined as never, storage: null,
-      relay: { net: async () => { throw new Error("no handler"); } },
+      relay: { consent, net: async () => { throw new Error("no handler"); } },
     });
     expect(await net.request({ url: "http://localhost:1/" })).toMatchObject({ ok: false, code: "unreachable" });
     expect(await net.secrets.set("jev", "v", { hosts: ["local"] })).toMatchObject({ ok: false });
+  });
+
+  it("does not call the relay when measurement, consent, or native approval is missing", async () => {
+    const relay = { consent: vi.fn(async () => ({ ok: false })), net: vi.fn(async () => ({})) };
+    const net = createModNet({ modId: "squire", modName: "Squire", grants: ["api.example.com"], relay, fetch: undefined as never, storage: null });
+    expect(await net.request({ url: "https://api.example.com/" })).toMatchObject({ ok: false, code: "not-declared" });
+    setConsentBindings(new Map());
+    expect(await net.secrets.set("key", "value", { hosts: ["api.example.com"] })).toMatchObject({ ok: false });
+    expect(relay.net).not.toHaveBeenCalled();
   });
 
   it("finds the relay only on a desktop preload", () => {

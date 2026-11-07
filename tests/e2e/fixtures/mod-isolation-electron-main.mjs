@@ -6,7 +6,7 @@
 // or the network is counted, and the spec reads the counts back.
 import { app, BrowserWindow, protocol, session } from "electron";
 import * as fs from "node:fs";
-import { APP_HOST, APP_SCHEME, APP_SCHEME_PRIVILEGES, GAME_PAGE_CSP } from "../../../packages/desktop/src/app-origin.ts";
+import { APP_HOST, APP_SCHEME, APP_SCHEME_PRIVILEGES } from "../../../packages/desktop/src/app-origin.ts";
 
 // Bundled to CommonJS by the spec with esbuild, the desktop shell's own bundler.
 
@@ -26,7 +26,6 @@ void app.whenReady().then(async () => {
       status: file === undefined ? 404 : 200,
       headers: {
         "Content-Type": file?.type ?? "text/plain; charset=utf-8",
-        "Content-Security-Policy-Report-Only": GAME_PAGE_CSP,
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cross-Origin-Embedder-Policy": "require-corp",
         "Cross-Origin-Resource-Policy": "same-origin",

@@ -52,18 +52,9 @@ import {
   UPDATE_CHANNEL,
   UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
-import type { BackupOp } from "./bridge-channel.js";
-import {
-  CHARACTER_BACKUP_PURPOSE,
-  backupFolderDisplayName,
-  isBackupPurpose,
-  listBackupFiles,
-  readBackupFolder,
-  writeBackupFolder,
-  writeBackupFile,
-} from "./backup-folder.js";
+import { createBackupRelay } from "./backup-folder.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
-import { capLogBatch, confirmHostAction, hostFsCallIsSafe, hostFsFailure, updateCallIsSafe } from "./bridge-guard.js";
+import { MOD_AUTHORITY_CHANNEL, capLogBatch, confirmHostAction, desktopConsentReport, hostFsCallIsSafe, hostFsFailure, updateCallIsSafe } from "./bridge-guard.js";
 import { createCheckedFetch } from "./net-guard.js";
 import * as dns from "node:dns";
 import { LOG_DIRNAME, openLogFile, writeReportFile } from "./log-file.js";
@@ -88,12 +79,12 @@ import {
   APP_ORIGIN,
   APP_SCHEME,
   APP_SCHEME_PRIVILEGES,
-  GAME_PAGE_CSP,
   appRequestPath,
   isGameUrl,
   isGameBridgeFrame,
   isLegacyProbe,
   legacyOrigin,
+  hostPayloadDigest,
 } from "./app-origin.js";
 import { handledPorts, planOriginMerge } from "./origin-merge.js";
 import {
@@ -116,7 +107,7 @@ import {
 } from "./mod-origin-merge.js";
 import type { ModRecord, ModSnapshot } from "./mod-origin-merge.js";
 import { ORIGIN_PROBE_ROUTE, planRequest } from "./routes.js";
-import { createNetRelay } from "./net-relay.js";
+import { createDesktopAuthority, createNetRelay } from "./net-relay.js";
 import type { OriginSnapshot } from "./origin-merge.js";
 import { readWindowState, startPlacement, writeWindowState } from "./window-state.js";
 import { mergedOriginsFormat, deathLedgerFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -289,7 +280,6 @@ function respond(status: number, body: string | Buffer, type?: string): Response
     status,
     headers: {
       "Content-Type": type ?? "text/plain; charset=utf-8",
-      "Content-Security-Policy-Report-Only": GAME_PAGE_CSP,
       // Cross-origin isolation -> crossOriginIsolated -> SharedArrayBuffer.
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
@@ -616,6 +606,7 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
   installThrottleChannel();
   installUpdater();
   installModZipChannel();
+  installAuthorityChannel();
   installBackupChannel();
   installNetChannel();
 }
@@ -627,6 +618,27 @@ async function confirmAction(sender: Electron.WebContents, message: string, acce
   return allowed && !sender.isDestroyed();
 }
 
+const desktopAuthority = createDesktopAuthority();
+
+function installAuthorityChannel(): void {
+  const watched = new Set<number>();
+  ipcMain.handle(MOD_AUTHORITY_CHANNEL, (event, arg: unknown) => {
+    if (!isGameBridgeFrame(event.senderFrame, event.sender.mainFrame)) return { ok: false };
+    const sender = event.sender;
+    if (!watched.has(sender.id)) {
+      watched.add(sender.id);
+      sender.on("did-start-navigation", (_event, _url, inPlace, isMainFrame) => {
+        if (isMainFrame && !inPlace) desktopAuthority.revokeWindow(sender.id);
+      });
+      sender.once("destroyed", () => { desktopAuthority.revokeWindow(sender.id); watched.delete(sender.id); });
+    }
+    const decision = desktopConsentReport(arg, () => hostPayloadDigest(WEB_ROOT, __filename));
+    if (decision === null) return { ok: false };
+    return desktopAuthority.report(decision, sender.id, (entry) => confirmAction(sender,
+      `Allow desktop access for ${entry.modId}?\nSHA-256: ${entry.digest}\nCapabilities: ${entry.grants.join(", ") || "none"}\nNetwork destinations: ${entry.destinations.join(", ") || "none"}`, "Allow"));
+  });
+}
+
 /**
  * The mod network relay (`ctx.net`, neostryder/neo-angband#300). The rules are in
  * net-relay.ts; this supplies Electron's parts. Secrets live in one JSON file
@@ -636,6 +648,7 @@ async function confirmAction(sender: Electron.WebContents, message: string, acce
 function installNetChannel(): void {
   const file = path.join(USER_BASE, "mod-secrets.json");
   const relay = createNetRelay({
+    authority: desktopAuthority,
     fetch: createCheckedFetch(),
     resolveHost: async (hostname) => (await dns.promises.lookup(hostname, { all: true })).map((record) => record.address),
     env: (name) => process.env[name],
@@ -676,64 +689,30 @@ function installNetChannel(): void {
 }
 
 /**
- * Ticket #133's cloud-backup folder, now a purpose-keyed primitive (#158). See
- * BACKUP_CHANNEL's doc comment (bridge-channel.ts) for why this is a native
- * dialog rather than the browser's `showDirectoryPicker()`.
- *
- * `dialog.showOpenDialog(win, ...)`, not the no-window overload: passing the
- * window makes the native picker modal to it, matching every other dialog this
- * process already opens (`dialog.showMessageBox(win, ...)` at the crash and
- * load-failure sites below).
- *
- * `purpose` and `ext` travel inside `arg` (never a new channel argument, so
- * the channel's own shape - `invoke(op, arg)` - is unchanged) and both
- * default to the original ticket #133 caller's own values, so an existing
- * caller that has not been updated to pass them keeps reading and writing
- * exactly the file it always did.
+ * Native dialogs keep folder selection, replacement, and file import outside page control.
  */
 function installBackupChannel(): void {
+  const relay = createBackupRelay({
+    authority: desktopAuthority,
+    userBase: USER_BASE,
+    choose: async (entry, owner) => {
+      const win = BrowserWindow.getAllWindows().find((window) => window.webContents.id === owner);
+      if (!win) return null;
+      const result = await dialog.showOpenDialog(win, { title: `Backup folder for ${entry.modId}`, properties: ["openDirectory"] });
+      return result.canceled ? null : result.filePaths[0] ?? null;
+    },
+    confirmReplace: async (entry, name, owner) => {
+      const win = BrowserWindow.getAllWindows().find((window) => window.webContents.id === owner);
+      return win ? confirmAction(win.webContents, `Replace backup ${name} for ${entry.modId}?`, "Replace") : false;
+    },
+    confirmRead: async (entry, name, owner) => {
+      const win = BrowserWindow.getAllWindows().find((window) => window.webContents.id === owner);
+      return win ? confirmAction(win.webContents, `Read backup ${name} for ${entry.modId}?`, "Read") : false;
+    },
+  });
   ipcMain.handle(BACKUP_CHANNEL, async (event, op: unknown, arg: unknown) => {
     if (!isGameBridgeFrame(event.senderFrame, event.sender.mainFrame)) return { ok: false };
-    const a = (arg ?? {}) as { purpose?: unknown; ext?: unknown; name?: unknown; text?: unknown };
-    const purpose = typeof a.purpose === "string" && a.purpose !== "" ? a.purpose : CHARACTER_BACKUP_PURPOSE;
-    if (!isBackupPurpose(purpose)) throw new Error("the backup purpose is not a valid id");
-    const ext = typeof a.ext === "string" && a.ext !== "" ? a.ext : ".neochar";
-    const folder = readBackupFolder(USER_BASE, purpose);
-    switch (op as BackupOp) {
-      case "name":
-        return folder === null ? null : backupFolderDisplayName(folder);
-
-      case "choose": {
-        const win = BrowserWindow.fromWebContents(event.sender);
-        const result = win
-          ? await dialog.showOpenDialog(win, { properties: ["openDirectory"] })
-          : await dialog.showOpenDialog({ properties: ["openDirectory"] });
-        if (result.canceled || result.filePaths.length === 0) return null;
-        const chosen = result.filePaths[0] as string;
-        writeBackupFolder(USER_BASE, chosen, purpose);
-        return backupFolderDisplayName(chosen);
-      }
-
-      case "forget":
-        writeBackupFolder(USER_BASE, null, purpose);
-        return { ok: true };
-
-      case "list":
-        /* #24, the read side of #133: every file matching `ext` this build can
-         * currently read out of the chosen folder, name plus text - the
-         * folder's own path never crosses this reply either, matching every
-         * other op on this channel. */
-        return folder === null ? [] : listBackupFiles(folder, ext);
-
-      case "write": {
-        const { name, text } = a;
-        if (folder === null) return { ok: false };
-        return { ok: await writeBackupFile(folder, name, text, ext, () => confirmAction(event.sender, `Replace backup ${String(name)}?`, "Replace")) };
-      }
-
-      default:
-        return { ok: false, error: `unknown operation ${String(op)}` };
-    }
+    return relay.handle(op, arg, event.sender.id);
   });
 }
 
@@ -2118,6 +2097,7 @@ async function createWindow(): Promise<void> {
    * read-only-folder checks above use one: this is a packaged desktop app, and
    * a player has no terminal to read. */
   win.webContents.on("render-process-gone", (_event, details) => {
+    desktopAuthority.revokeWindow(win.webContents.id);
     void dialog.showMessageBox(win, {
       type: "error",
       title: "Neo Angband",

@@ -12,7 +12,7 @@
  * filter the host's own checkpoint is built on.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   backupFilename,
   backupPickingSupported,
@@ -24,6 +24,18 @@ import {
   type BackupFileRead,
 } from "./mod-backup";
 import { encodeTransfer, type TransferMeta } from "./save-transfer";
+import { setConsentBindings } from "./mod-consent-binding";
+import { setModStorage, setSessionConsents } from "./mod-store";
+import * as snapshots from "./mod-code-snapshot";
+
+const consent = async () => ({ ok: true, installation: "b".repeat(64), modId: "qol", digest: "a".repeat(64) });
+
+beforeEach(() => {
+  setConsentBindings(new Map([["qol", "binding"]]));
+  setModStorage(null);
+  setSessionConsents({ qol: ["backup:folder"] });
+  vi.spyOn(snapshots, "modPayloadDigest").mockReturnValue("a".repeat(64));
+});
 
 const META: TransferMeta = {
   name: "Bilbo",
@@ -49,6 +61,9 @@ function neochar(lineage: string, meta: TransferMeta = META): string {
 
 afterEach(() => {
   clearBackupSinks();
+  setConsentBindings(new Map());
+  setSessionConsents({});
+  vi.restoreAllMocks();
 });
 
 describe("backupFilename", () => {
@@ -67,10 +82,11 @@ describe("backupFilename", () => {
 });
 
 describe("desktop platform: the real path never crosses the bridge", () => {
-  function desktopScope(chosen: string): { neoDesktop: { backup: ReturnType<typeof vi.fn> } } {
+  function desktopScope(chosen: string) {
     let folder: string | null = null;
     return {
       neoDesktop: {
+        consent,
         backup: vi.fn(async (op: string, arg?: unknown) => {
           if (op === "name") return folder ? folder.split(/[\\/]/).pop() : null;
           if (op === "choose") {
@@ -175,16 +191,18 @@ describe("notifyBackupSinks: per-mod fault containment", () => {
 describe("list()/readBackupFiles: ticket #24's read side", () => {
   function desktopListScope(
     files: readonly { name: string; text: string }[],
-  ): { neoDesktop: { backup: ReturnType<typeof vi.fn> } } {
+  ) {
     let chosen: string | null = null;
     return {
       neoDesktop: {
-        backup: vi.fn(async (op: string) => {
+        consent,
+        backup: vi.fn(async (op: string, arg?: unknown) => {
           if (op === "choose") {
             chosen = "picked";
             return "picked";
           }
-          if (op === "list") return chosen === null ? [] : files;
+          if (op === "list") return chosen === null ? [] : files.map(({ name, text }) => ({ name, size: text.length }));
+          if (op === "read") return files.find((file) => file.name === (arg as { name: string }).name);
           return null;
         }),
       },

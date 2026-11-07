@@ -40,7 +40,7 @@ import {
   UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
-import { capLogBatch, hostFsCallIsSafe, hostFsFailure, updateCallIsSafe } from "./bridge-guard.js";
+import { MOD_AUTHORITY_CHANNEL, capLogBatch, hostFsCallIsSafe, hostFsFailure, updateCallIsSafe } from "./bridge-guard.js";
 
 /** Ask the main process what the platform is, once, at preload time. */
 function platformInfo(): HostBridgeInfo {
@@ -144,15 +144,17 @@ contextBridge.exposeInMainWorld("neoDesktop", {
    * broken in this Electron build (see BACKUP_CHANNEL's doc comment); this is the
    * native replacement `mod-backup.ts` calls into on the desktop platform.
    *
-   * One operation channel, like `update`, rather than four methods: `"choose"`
-   * opens the native folder dialog and returns the chosen folder's DISPLAY NAME
-   * (never its path - the main process is the only side that ever holds that);
-   * `"name"` asks without prompting; `"forget"` clears it; `"write"` takes a
-   * LEAF file name and its text, same shape `archiveModZip` already uses for
-   * the same reason.
+   * Every operation requires an installation handle from native consent.
+   * Listing returns names and sizes; reading file text requires another native
+   * decision so the metadata channel cannot silently disclose file contents.
    */
   backup(op: string, arg?: unknown): Promise<unknown> {
     return ipcRenderer.invoke(BACKUP_CHANNEL, op, arg) as Promise<unknown>;
+  },
+
+  /** The main process confirms new authority natively before issuing a handle. */
+  consent(decision: unknown): Promise<unknown> {
+    return ipcRenderer.invoke(MOD_AUTHORITY_CHANNEL, decision) as Promise<unknown>;
   },
 
   /**

@@ -15,7 +15,7 @@ describe("createHostFolder: platform selection", () => {
 
   it("prefers the desktop bridge when both are somehow present", async () => {
     const scope = {
-      neoDesktop: { backup: vi.fn(async () => null) },
+      neoDesktop: { consent: async () => ({ ok: true, installation: "a".repeat(64), modId: "@host/mod-profile-sync", digest: "b".repeat(64) }), backup: vi.fn(async () => null) },
       showDirectoryPicker: () => Promise.reject(new Error("should not be called")),
     };
     const folder = createHostFolder("mod-profile-sync", ".ndelve", scope);
@@ -37,18 +37,24 @@ describe("hostFolderPickingSupported", () => {
  * exactly as the real IPC handler now does.
  * ------------------------------------------------------------------ */
 
-function desktopScope(): { neoDesktop: { backup: ReturnType<typeof vi.fn> } } {
+function desktopScope() {
   const folders = new Map<string, string>();
   return {
     neoDesktop: {
+      consent: vi.fn(async (decision: unknown) => {
+        const { hostPurpose } = decision as { hostPurpose: string };
+        return hostPurpose === "mod-profile-sync"
+          ? { ok: true, installation: "a".repeat(64), modId: "@host/mod-profile-sync", digest: "b".repeat(64) }
+          : { ok: false };
+      }),
       backup: vi.fn(async (op: string, arg?: unknown) => {
-        const { purpose, name, text } = (arg ?? {}) as {
-          purpose?: string;
+        const { modId, name, text } = (arg ?? {}) as {
+          modId?: string;
           ext?: string;
           name?: string;
           text?: string;
         };
-        const p = purpose ?? "";
+        const p = modId?.replace("@host/", "") ?? "";
         if (op === "name") return folders.get(p) ?? null;
         if (op === "choose") {
           folders.set(p, `Folder-${p}`);
@@ -61,27 +67,28 @@ function desktopScope(): { neoDesktop: { backup: ReturnType<typeof vi.fn> } } {
         if (op === "write") {
           return { ok: folders.has(p) && typeof name === "string" && typeof text === "string" };
         }
-        if (op === "list") return folders.has(p) ? [{ name: "x", text: "{}" }] : [];
+        if (op === "list") return folders.has(p) ? [{ name: "x", size: 2 }] : [];
+        if (op === "read") return { name, text: "{}" };
         return null;
       }),
     },
   };
 }
 
-describe("desktop platform: purpose threads through every op", () => {
-  it("choose()/name() are scoped per purpose, not shared globally", async () => {
+describe("desktop platform: the host issues the installation identity", () => {
+  it("refuses an unknown host feature while allowing profile sync", async () => {
     const scope = desktopScope();
     const a = createHostFolder("character-backup", ".neochar", scope);
     const b = createHostFolder("mod-profile-sync", ".ndelve", scope);
     expect(await a?.name()).toBeNull();
     expect(await b?.name()).toBeNull();
     await a?.choose();
-    expect(await a?.name()).toBe("Folder-character-backup");
+    expect(await a?.name()).toBeNull();
     /* The OTHER purpose was never touched by choosing this one. */
     expect(await b?.name()).toBeNull();
     await b?.choose();
     expect(await b?.name()).toBe("Folder-mod-profile-sync");
-    expect(await a?.name()).toBe("Folder-character-backup");
+    expect(await a?.name()).toBeNull();
   });
 
   it("forget() only clears its own purpose's folder", async () => {
@@ -107,17 +114,19 @@ describe("desktop platform: purpose threads through every op", () => {
     expect(await b?.list()).toEqual([{ name: "x", text: "{}" }]);
   });
 
-  it("every call carries this instance's own purpose and ext, never the other one's", async () => {
+  it("every call carries the issued handle and extension without a caller-selected purpose", async () => {
     const scope = desktopScope();
     const b = createHostFolder("mod-profile-sync", ".ndelve", scope);
     await b?.choose();
     await b?.write("ruleset.ndelve", "{}");
     await b?.list();
     for (const call of scope.neoDesktop.backup.mock.calls) {
-      const [, arg] = call as [string, { purpose?: string; ext?: string } | undefined];
-      expect(arg?.purpose).toBe("mod-profile-sync");
+      const [, arg] = call as [string, { purpose?: string; ext?: string; installation?: string } | undefined];
+      expect(arg?.purpose).toBeUndefined();
       expect(arg?.ext).toBe(".ndelve");
+      expect(arg?.installation).toBe("a".repeat(64));
     }
+    expect(scope.neoDesktop.consent).toHaveBeenCalledOnce();
   });
 });
 

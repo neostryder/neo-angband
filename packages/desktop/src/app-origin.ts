@@ -22,28 +22,37 @@
  */
 
 import { ORIGIN_PROBE_ROUTE } from "./routes.js";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { createHash } from "node:crypto";
+
+export function hostPayloadDigest(webRoot: string, hostFile: string): string {
+  const hash = createHash("sha256");
+  for (const file of [hostFile, path.join(path.dirname(hostFile), "preload.cjs")]) {
+    const bytes = fs.readFileSync(file);
+    hash.update(JSON.stringify([path.basename(file), bytes.length]));
+    hash.update(bytes);
+  }
+  let size = 0;
+  const visit = (folder: string): void => {
+    for (const name of fs.readdirSync(folder).sort()) {
+      const full = path.join(folder, name);
+      const stat = fs.lstatSync(full);
+      if (stat.isSymbolicLink()) throw new Error("The host payload contains a link.");
+      if (stat.isDirectory()) { visit(full); continue; }
+      size += stat.size;
+      if (!stat.isFile() || size > 256 * 1024 * 1024) throw new Error("The host payload exceeds its limit.");
+      hash.update(JSON.stringify([path.relative(webRoot, full).split(path.sep).join("/"), stat.size]));
+      hash.update(fs.readFileSync(full));
+    }
+  };
+  visit(webRoot);
+  return hash.digest("hex");
+}
 
 export const APP_SCHEME = "neo-angband";
 export const APP_HOST = "game";
 export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
-
-/** Report-only until the game and its inherited frame policies can be enforced together. */
-export const GAME_PAGE_CSP = [
-  "default-src 'none'",
-  "script-src 'self' blob:",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' blob: data:",
-  "font-src 'self'",
-  "media-src 'self' blob:",
-  "connect-src 'self' https:",
-  "worker-src 'self' blob: data:",
-  "frame-src 'self' blob:",
-  "manifest-src 'self'",
-  "object-src 'none'",
-  "base-uri 'none'",
-  "form-action 'none'",
-  "frame-ancestors 'none'",
-].join("; ");
 
 /** The privileges `protocol.registerSchemesAsPrivileged` grants the scheme. */
 export const APP_SCHEME_PRIVILEGES = Object.freeze({

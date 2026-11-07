@@ -8,6 +8,19 @@
  */
 
 const UPDATE_TAG = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,254}$/u;
+export const MOD_AUTHORITY_CHANNEL = "neo-mod-authority";
+
+export function desktopConsentReport(arg: unknown, hostDigest: () => string): unknown {
+  if (!arg || typeof arg !== "object" || Array.isArray(arg)) return null;
+  const a = arg as Record<string, unknown>;
+  if (a["hostPurpose"] !== undefined) {
+    if (a["hostPurpose"] !== "mod-profile-sync" || Object.keys(a).some((key) => !["hostPurpose", "installation"].includes(key))) return null;
+    try {
+      return { modId: "@host/mod-profile-sync", digest: hostDigest(), grants: ["backup:folder"], destinations: [], installation: a["installation"] };
+    } catch { return null; }
+  }
+  return typeof a["modId"] === "string" && a["modId"].startsWith("@host/") ? null : arg;
+}
 const RESERVED_LEAF = /^(con|prn|aux|nul|conin\$|conout\$|com[1-9\u00b9\u00b2\u00b3]|lpt[1-9\u00b9\u00b2\u00b3])[ .]*(\.|$)/iu;
 
 const HOST_DIRS = new Set(["user", "save", "panic", "scores", "archive"]);

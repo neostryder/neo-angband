@@ -3,7 +3,6 @@ import type { Plugin } from "vite";
 import type { PluginContext } from "rollup";
 import { VitePWA } from "vite-plugin-pwa";
 import { serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
-import { GAME_PAGE_CSP } from "../desktop/src/app-origin.ts";
 
 /**
  * Which build this is, stamped into the bundle AND written beside index.html.
@@ -34,12 +33,6 @@ function buildIdFile(): Plugin {
   return {
     name: "neo-build-id",
     generateBundle(this: PluginContext): void {
-      /* Static hosts must support _headers or configure this response header themselves. */
-      this.emitFile({
-        type: "asset",
-        fileName: "_headers",
-        source: `/*\n  Content-Security-Policy-Report-Only: ${GAME_PAGE_CSP}\n`,
-      });
       this.emitFile({
         type: "asset",
         fileName: "build-id.json",
@@ -51,7 +44,6 @@ function buildIdFile(): Plugin {
 
 export default defineConfig({
   base: "./",
-  preview: { headers: { "Content-Security-Policy-Report-Only": GAME_PAGE_CSP } },
   define: {
     __NEO_BUILD_ID__: JSON.stringify(BUILD_ID),
     __NEO_LAB_BUILD__: JSON.stringify(process.env.NEO_ANGBAND_LAB_BUILD === "1"),

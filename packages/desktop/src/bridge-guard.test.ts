@@ -3,7 +3,22 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { capLogBatch, confirmHostAction, hostFsCallIsSafe, hostFsFailure, isSafeHostLeaf, updateCallIsSafe } from "./bridge-guard.js";
+import { capLogBatch, confirmHostAction, desktopConsentReport, hostFsCallIsSafe, hostFsFailure, isSafeHostLeaf, updateCallIsSafe } from "./bridge-guard.js";
+
+describe("host feature consent reports", () => {
+  it("keeps host identity and capabilities under main-process control", () => {
+    const digest = vi.fn(() => "a".repeat(64));
+    for (const arg of [null, [], { hostPurpose: "other" }, { modId: "@host/mod-profile-sync" },
+      { hostPurpose: "mod-profile-sync", grants: ["network:*"] }, { hostPurpose: "mod-profile-sync", digest: "forged" }]) {
+      expect(desktopConsentReport(arg, digest)).toBeNull();
+    }
+    expect(digest).not.toHaveBeenCalled();
+    expect(desktopConsentReport({ hostPurpose: "mod-profile-sync" }, digest)).toMatchObject({
+      modId: "@host/mod-profile-sync", digest: "a".repeat(64), grants: ["backup:folder"], destinations: [],
+    });
+    expect(desktopConsentReport({ hostPurpose: "mod-profile-sync" }, () => { throw new Error("unreadable"); })).toBeNull();
+  });
+});
 
 describe("host filesystem arguments", () => {
   it("accepts a leaf in one of the five directories and rejects a path or a command", () => {

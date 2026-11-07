@@ -1,4 +1,8 @@
 /**
+ * Desktop IPC uses native-confirmed installation handles and separate subfolders.
+ * The purpose helpers retain the format of existing folder records; those records
+ * cannot authorize access through the desktop bridge.
+ *
  * Ticket #133's cloud-backup folder, generalised into a purpose-keyed
  * primitive (#158): the name rule and the small persisted record, kept
  * separate from main.ts so both are testable without an Electron process.
@@ -25,6 +29,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { backupFolderFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
+import type { DesktopAuthority, DesktopAuthorityEntry } from "./net-relay.js";
 
 /** The file this module persists the chosen folder's path in, beside `mods/`. */
 export const BACKUP_FOLDER_FILE = "backup-folder.json";
@@ -172,16 +177,17 @@ export async function writeBackupFile(
   text: unknown,
   ext: string,
   confirmReplace: () => Promise<boolean>,
+  authorized: () => boolean = () => true,
 ): Promise<boolean> {
   if (!isHostFolderFileName(name, ext) || typeof text !== "string") return false;
   const bytes = Buffer.byteLength(text, "utf8");
   if (bytes > BACKUP_LIMITS.fileBytes) return false;
   try {
-    if (!plainFolder(folder)) return false;
+    if (!authorized() || !plainFolder(folder)) return false;
     const full = path.join(folder, name);
     const initial = plainFile(full);
     if (initial && !(await confirmReplace())) return false;
-    if (!plainFolder(folder)) return false;
+    if (!authorized() || !plainFolder(folder)) return false;
     const existing = plainFile(full);
     if (!initial && existing) return false;
     let count = 0;
@@ -230,11 +236,12 @@ export async function writeBackupFile(
 export function listBackupFiles(
   folderPath: string,
   ext = ".neochar",
+  onlyName?: string,
 ): { name: string; text: string }[] {
   let names: string[];
   try {
     if (!plainFolder(folderPath)) return [];
-    names = fs.readdirSync(folderPath);
+    names = onlyName === undefined ? fs.readdirSync(folderPath) : [onlyName];
   } catch {
     return [];
   }
@@ -262,4 +269,69 @@ export function listBackupFiles(
     }
   }
   return out;
+}
+
+export function createBackupRelay(deps: {
+  readonly authority: DesktopAuthority;
+  readonly userBase: string;
+  readonly choose: (entry: DesktopAuthorityEntry, owner: number) => Promise<string | null>;
+  readonly confirmReplace: (entry: DesktopAuthorityEntry, name: string, owner: number) => Promise<boolean>;
+  readonly confirmRead: (entry: DesktopAuthorityEntry, name: string, owner: number) => Promise<boolean>;
+}) {
+  const busy = new Set<string>();
+  return {
+    async handle(op: unknown, arg: unknown, owner: number): Promise<unknown> {
+      const entry = deps.authority.lookup(arg, owner);
+      if (!entry || !entry.grants.includes("backup:folder")) return { ok: false };
+      const a = arg as Record<string, unknown>;
+      if (a["purpose"] !== undefined) return { ok: false };
+      const ext = entry.modId === "@host/mod-profile-sync" ? ".ndelve" : ".neochar";
+      if (a["ext"] !== undefined && a["ext"] !== ext) return { ok: false };
+      const slot = `${owner}:${entry.key}`;
+      if (busy.has(slot)) return { ok: false };
+      busy.add(slot);
+      try {
+        const folder = readBackupFolder(deps.userBase, entry.key);
+        if (op === "name") return folder === null ? null : backupFolderDisplayName(path.dirname(folder));
+        if (op === "choose") {
+          const chosen = await deps.choose(entry, owner);
+          if (chosen === null || entry.signal.aborted || !plainFolder(chosen)) return null;
+          const allocation = path.join(chosen, entry.key);
+          if (!fs.existsSync(allocation)) fs.mkdirSync(allocation);
+          if (!plainFolder(allocation) || entry.signal.aborted) return null;
+          writeBackupFolder(deps.userBase, allocation, entry.key);
+          return backupFolderDisplayName(chosen);
+        }
+        if (op === "forget") {
+          writeBackupFolder(deps.userBase, null, entry.key);
+          return { ok: true };
+        }
+        if (folder === null || !plainFolder(folder)) return op === "list" ? [] : { ok: false };
+        if (op === "list") {
+          const out: { name: string; size: number }[] = [];
+          let total = 0;
+          for (const name of fs.readdirSync(folder)) {
+            if (!isHostFolderFileName(name, ext)) continue;
+            const stat = plainFile(path.join(folder, name));
+            if (!stat || stat.size > BACKUP_LIMITS.fileBytes || total + stat.size > BACKUP_LIMITS.totalBytes) continue;
+            out.push({ name, size: stat.size });
+            total += stat.size;
+            if (out.length >= BACKUP_LIMITS.files) break;
+          }
+          return out;
+        }
+        if (!isHostFolderFileName(a["name"], ext)) return { ok: false };
+        const name = a["name"];
+        if (op === "write") return { ok: await writeBackupFile(folder, name, a["text"], ext,
+          () => deps.confirmReplace(entry, name, owner), () => !entry.signal.aborted) };
+        // Existing import callers need file text, so reads require a separate native decision.
+        if (op === "read") {
+          if (!(await deps.confirmRead(entry, name, owner)) || entry.signal.aborted) return { ok: false };
+          return listBackupFiles(folder, ext, name)[0] ?? { ok: false };
+        }
+        return { ok: false };
+      } catch { return { ok: false }; }
+      finally { busy.delete(slot); }
+    },
+  };
 }

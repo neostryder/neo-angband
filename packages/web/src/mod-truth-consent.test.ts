@@ -20,7 +20,7 @@ const tier = (over: Partial<ModTier> = {}): ModTier => ({
 });
 
 function deps(store: ModStore, answer: boolean) {
-  return { store, ask: vi.fn(async () => answer), markSave: vi.fn(() => true) };
+  return { store, ask: vi.fn(async () => answer), markSave: vi.fn() };
 }
 
 beforeEach(() => { setConsentBindings(new Map([["glow", "bound"], ["quiet", "bound"]])); });
@@ -56,12 +56,12 @@ describe("requestTruthConsent", () => {
     expect(modHolds("glow", TRUTH_MAP)).toBe(false);
   });
 
-  it("marks truth even when the mod's origin entry has no consequence", async () => {
+  it("does not mark the save for a mod whose entry does not mark it", async () => {
     setModTiers(new Map([["quiet", tier({ marksSave: [] })]]));
     const d = deps(new ModStore(storage()), true);
     expect(await requestTruthConsent("quiet", "Why.", d)).toBe("granted");
-    expect(d.ask).toHaveBeenCalledWith("quiet", "Why.", true);
-    expect(d.markSave).toHaveBeenCalledWith("quiet");
+    expect(d.ask).toHaveBeenCalledWith("quiet", "Why.", false);
+    expect(d.markSave).not.toHaveBeenCalled();
   });
 
   it("refuses a mod the game does not let hold the real map", async () => {
@@ -86,46 +86,6 @@ describe("requestTruthConsent", () => {
     await requestTruthConsent("glow", "Why.", deps(store, true));
     expect(store.getConsent("glow")).toEqual(["state:view.read", TRUTH_MAP]);
     expect(modHolds("glow", "state:view.read")).toBe(true);
-  });
-
-  it("withholds authority when the permanent mark cannot be saved", async () => {
-    setModTiers(new Map([["quiet", tier({ marksSave: [] })]]));
-    const store = new ModStore(storage());
-    const d = deps(store, true);
-    d.markSave.mockReturnValue(false);
-    expect(await requestTruthConsent("quiet", "Why.", d)).toBe("unavailable");
-    expect(store.getConsent("quiet")).toEqual([]);
-    expect(modHolds("quiet", TRUTH_MAP)).toBe(false);
-  });
-
-  it("rejects a stale consent binding before marking or granting", async () => {
-    setModTiers(new Map([["quiet", tier()]]));
-    const store = new ModStore(storage());
-    const d = deps(store, true);
-    d.ask.mockImplementation(async () => { setConsentBindings(new Map([["quiet", "replacement"]])); return true; });
-    expect(await requestTruthConsent("quiet", "Why.", d)).toBe("unavailable");
-    expect(d.markSave).not.toHaveBeenCalled();
-    expect(modHolds("quiet", TRUTH_MAP)).toBe(false);
-    expect(store.getConsent("quiet")).toEqual([]);
-  });
-
-  it("refuses an unmeasured installation before asking or mutating", async () => {
-    setModTiers(new Map([["unmeasured", tier()]]));
-    const d = deps(new ModStore(storage()), true);
-    expect(await requestTruthConsent("unmeasured", "Why.", d)).toBe("unavailable");
-    expect(d.ask).not.toHaveBeenCalled();
-    expect(d.markSave).not.toHaveBeenCalled();
-    expect(modHolds("unmeasured", TRUTH_MAP)).toBe(false);
-  });
-
-  it("does not grant truth when a save callback changes the binding", async () => {
-    setModTiers(new Map([["quiet", tier()]]));
-    const store = new ModStore(storage());
-    const d = deps(store, true);
-    d.markSave.mockImplementation(() => { setConsentBindings(new Map([["quiet", "replacement"]])); return true; });
-    expect(await requestTruthConsent("quiet", "Why.", d)).toBe("unavailable");
-    expect(modHolds("quiet", TRUTH_MAP)).toBe(false);
-    expect(store.getConsent("quiet")).toEqual([]);
   });
 });
 

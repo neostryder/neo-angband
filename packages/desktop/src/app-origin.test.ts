@@ -1,17 +1,56 @@
-import { describe, expect, it } from "vitest";
-import { APP_ORIGIN, GAME_PAGE_CSP, appRequestPath, isGameBridgeFrame, isGameUrl, isLegacyProbe, legacyOrigin } from "./app-origin.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { APP_ORIGIN, appRequestPath, hostPayloadDigest, isGameBridgeFrame, isGameUrl, isLegacyProbe, legacyOrigin } from "./app-origin.js";
 import { ORIGIN_PROBE_ROUTE } from "./routes.js";
 
-describe("the game's own origin", () => {
-  it("denies unlisted loads, inline scripts, eval, embedding, and form submissions in the proposed page policy", () => {
-    const directives = GAME_PAGE_CSP.split("; ");
-    expect(directives).toContain("default-src 'none'");
-    expect(directives).toContain("script-src 'self' blob:");
-    expect(directives).toContain("object-src 'none'");
-    expect(directives).toContain("frame-ancestors 'none'");
-    expect(directives).toContain("form-action 'none'");
-    expect(GAME_PAGE_CSP).not.toContain("unsafe-eval");
+describe("host installation measurement", () => {
+  let base: string;
+  let web: string;
+  let host: string;
+  beforeEach(() => {
+    base = fs.mkdtempSync(path.join(process.cwd(), "neo-authority-"));
+    web = path.join(base, "web");
+    host = path.join(base, "main.cjs");
+    fs.mkdirSync(web);
+    fs.writeFileSync(host, "host");
+    fs.writeFileSync(path.join(base, "preload.cjs"), "preload");
+    fs.writeFileSync(path.join(web, "index.html"), "page");
   });
+  afterEach(() => {
+    if (path.dirname(path.resolve(base)) !== process.cwd()) throw new Error("The fixture left the workspace.");
+    fs.rmSync(base, { recursive: true, force: true });
+  });
+
+  it("binds the host and web bytes and canonical file names", () => {
+    const initial = hostPayloadDigest(web, host);
+    expect(hostPayloadDigest(web, host)).toBe(initial);
+    fs.writeFileSync(host, "changed host");
+    expect(hostPayloadDigest(web, host)).not.toBe(initial);
+    fs.writeFileSync(host, "host");
+    fs.writeFileSync(path.join(base, "preload.cjs"), "changed preload");
+    expect(hostPayloadDigest(web, host)).not.toBe(initial);
+    fs.writeFileSync(path.join(base, "preload.cjs"), "preload");
+    fs.writeFileSync(path.join(web, "index.html"), "changed page");
+    expect(hostPayloadDigest(web, host)).not.toBe(initial);
+    fs.writeFileSync(path.join(web, "index.html"), "page");
+    fs.renameSync(path.join(web, "index.html"), path.join(web, "other.html"));
+    expect(hostPayloadDigest(web, host)).not.toBe(initial);
+  });
+
+  it("refuses linked and oversized host payloads instead of issuing a digest", () => {
+    const target = path.join(base, "target");
+    fs.mkdirSync(target);
+    fs.symlinkSync(target, path.join(web, "linked"), "junction");
+    expect(() => hostPayloadDigest(web, host)).toThrow("link");
+    fs.unlinkSync(path.join(web, "linked"));
+    fs.writeFileSync(path.join(web, "huge"), "");
+    fs.truncateSync(path.join(web, "huge"), 256 * 1024 * 1024 + 1);
+    expect(() => hostPayloadDigest(web, host)).toThrow("limit");
+  });
+});
+
+describe("the game's own origin", () => {
   it("has no port in it", () => {
     expect(APP_ORIGIN).toBe("neo-angband://game");
     expect(new URL(`${APP_ORIGIN}/`).port).toBe("");
