@@ -44,8 +44,8 @@ export interface ModWorkerPanelPatch {
 
 /**
  * The `ModApi2` methods a Worker may call, by path. Anything else is refused
- * before it reaches the host's domains. Management uses the separate schema
- * table below; truth operations require their own broker mechanism.
+ * before it reaches the host's domains. Truth reads require a durable mark;
+ * management uses the separate schema table below.
  */
 export const WORKER_CALLS = [
   "meta.settings",
@@ -76,6 +76,10 @@ export const WORKER_CALLS = [
   "view.inspect.tileActions",
   "view.input",
   "view.isCurrent",
+  "truth.level",
+  "truth.monsters",
+  "truth.race",
+  "truth.storeKnowledge",
   "act.submit",
   "act.answer",
   "act.controller.owns",

@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MFLAG,
+  NOSCORE,
   composeModHooks,
   loc,
   GlyphTable,
@@ -22,6 +23,7 @@ import {
   squareForget,
   squareMemorize,
   startGame,
+  saveGame,
   ObjRegistry,
   Rng,
   bindConstants,
@@ -43,6 +45,8 @@ import { API2_POLICY_KINDS, CapabilitySet, MOD_PERMISSION_TEXT, type Api2ModDefi
 import { api2Plugin, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "../mod-api2-shim";
 import { createApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
+import { TRUTH_MAP, TRUTH_MONSTERS, resetModTiers, setModGrants } from "../mod-tier";
+import { recordTruthUse, setTruthSaveWriter } from "../mod-truth-consent";
 import { ModHealthMonitor, type ModSwitchOff } from "../mod-health";
 import type { ModPrefs } from "../mod-prefs";
 import { installModWorkerBootstrap, type WorkerScope } from "./bootstrap";
@@ -50,15 +54,16 @@ import { resetWorkerHooks, settleWorkerHooks, workerModHooks } from "./hooks";
 import {
   startModWorker,
   MAX_MESSAGE_BYTES,
+  MAX_REPLY_BYTES,
+  MAX_CALLS_PER_SECOND,
   WorkerTimeoutError,
   type ModWorkerHostDeps,
   type ModWorkerLike,
   type StartedModWorker,
   type WorkerApiOptions,
 } from "./host";
-import { MOD_WORKER_PROTOCOL_VERSION, type HostToModWorker, type ModWorkerToHost } from "./protocol";
+import { MOD_WORKER_PROTOCOL_VERSION, type HostToModWorker, type ModWorkerToHost, type WorkerJson } from "./protocol";
 import { setConsentBindings } from "../mod-consent-binding";
-import { resetModTiers, setModGrants } from "../mod-tier";
 import { createModProfiles } from "../profile-runtime";
 import { ProfileStore } from "../profiles";
 import { scopedStorage, type ScopedStorage } from "../profile-scope";
@@ -137,6 +142,7 @@ function hostApi(setup: HostSetup = {}): (options: WorkerApiOptions) => ModApi2 
     const ctx = modPluginContext("probe", {}, setup.game?.state, {}, {
       capabilities,
       prefs: setup.prefs ?? memoryPrefs(),
+      ...(setup.game ? { registries: setup.game.booted.registries } : {}),
       ...(setup.net ? { net: setup.net } : {}),
     });
     return createApi2Host(ctx, { grants: capabilities, ...setup.options, ...options, execution: "worker" });
@@ -191,6 +197,7 @@ afterEach(() => {
   resetWorkerHooks();
   resetTvalRegistry();
   resetModTiers();
+  setTruthSaveWriter(undefined);
   setConsentBindings(new Map());
 });
 
@@ -531,6 +538,254 @@ async function observed(api: ModApi2): Promise<string> {
 function observer(sink: (seen: string) => void): Api2ModDefinition {
   return { api: API, start: async (api) => sink(await observed(api)) };
 }
+
+describe("Worker truth reads", () => {
+  const hold = (granted: readonly string[]): void => setModGrants(new Map([["probe", {
+    granted, refusedByTier: [], refusedByPlayer: [], undecided: [], blocking: [],
+  }]]));
+  const send = (wired: Wired, requestId: number, method = "truth.monsters", args: readonly WorkerJson[] = [], pluginId = "probe", epoch = 1): void => {
+    wired.worker.scope.postMessage({ type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId, epoch, requestId, method, args });
+  };
+  const reply = (wired: Wired, requestId: number) => wired.worker.sent.find((m) => m.type === "reply" && m.requestId === requestId);
+  const ready = async (grants: readonly string[], api = hostApi({ grants })): Promise<Wired> => {
+    hold(grants);
+    const wired = wire({ api: API }, { grants, api });
+    await wired.session.ready;
+    wired.session.start();
+    return wired;
+  };
+
+  it.each([TRUTH_MAP, TRUTH_MONSTERS])("saves %s before a Worker reads and crashes", async (capability) => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    let saved: ReturnType<typeof saveGame> | undefined;
+    setTruthSaveWriter(async (id, used, state) => {
+      recordTruthUse(game.manifest, state.actor.player, { installation: "binding", id, version: "1.0.0", digest: "digest" }, used,
+        { turn: state.turn, depth: state.chunk.depth });
+      saved = structuredClone(saveGame(game));
+      return true;
+    });
+    hold([capability]);
+    let crashed = false;
+    const wired = wire({ api: API, start: async (api) => {
+      const result = await api.truth!.monsters();
+      expect(result.ok).toBe(true);
+      expect(saved?.manifest?.modNoscore).toBe(true);
+      expect(saved?.manifest?.capabilityUse?.entries[0]).toMatchObject({ id: "probe", capability, consequence: "hidden-information" });
+      expect((saved!.player.noscore ?? 0) & NOSCORE.DEBUG).not.toBe(0);
+      crashed = true;
+      throw new Error("crash after truth");
+    } }, { grants: [capability], api: hostApi({ game, grants: [capability] }) });
+    await started(wired, () => crashed ? true : undefined);
+    await vi.waitFor(() => expect(wired.problems.join(" ")).toContain("crash after truth"));
+    expect(game.manifest.determinism).toBe("deterministic");
+  });
+
+  it.each([TRUTH_MAP, TRUTH_MONSTERS])("exposes exactly the reads granted by %s", async (capability) => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const hidden = liveMonsters(game.state).find((mon) => !monsterIsObvious(mon))!;
+    setTruthSaveWriter(() => true);
+    hold([capability]);
+    let done = false;
+    const wired = wire({ api: API, start: async (api) => {
+      const monsters = await api.truth!.monsters();
+      expect(monsters.ok).toBe(true);
+      if (monsters.ok) expect(monsters.value.find((mon) => mon.id === hidden.midx)).toMatchObject({ perceived: false });
+      const race = await api.truth!.race(hidden.race.ridx);
+      expect(race.ok && race.value?.ridx).toBe(hidden.race.ridx);
+      expect((await api.truth!.level()).ok).toBe(capability === TRUTH_MAP);
+      expect((await api.truth!.storeKnowledge()).ok).toBe(capability === TRUTH_MAP);
+      done = true;
+    } }, { grants: [capability], api: hostApi({ game, grants: [capability] }) });
+    await started(wired, () => done ? true : undefined);
+  });
+
+  it.each([true, false])("keeps a controller using truth unscorable with firstParty=%s", async (firstParty) => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const grants = [TRUTH_MONSTERS, "input:controller", "input:intent", "state:interaction.read"];
+    hold(grants);
+    let saved: ReturnType<typeof saveGame> | undefined;
+    setTruthSaveWriter((id, capability, state) => {
+      recordTruthUse(game.manifest, state.actor.player, { installation: "binding", id, version: "1", digest: "digest" }, capability, null);
+      saved = structuredClone(saveGame(game));
+      return true;
+    });
+    const wired = wire({ api: API, controller: async (api) => {
+      expect((await api.truth!.monsters()).ok).toBe(true);
+      expect(saved?.manifest?.modNoscore).toBe(true);
+      expect(saved?.manifest?.capabilityUse?.entries[0]?.consequence).toBe("hidden-information");
+      expect((saved!.player.noscore ?? 0) & NOSCORE.DEBUG).not.toBe(0);
+    } }, { grants, api: hostApi({ game, grants, options: { tier: firstParty ? "first-party" : "public" } }) });
+    await wired.session.ready;
+    expect(wired.session.hasController()).toBe(true);
+    wired.session.start();
+    await wired.session.decide({ token: { epoch: 0, revision: 1 }, phase: "play", messagePending: false, prompt: null } as never, {} as ModApi2);
+    expect(saved).toBeDefined();
+  });
+
+  it("omits truth without a grant and refuses a forged call without mutation", async () => {
+    const writer = vi.fn(() => true);
+    setTruthSaveWriter(writer);
+    let absent: boolean | undefined;
+    const wired = wire({ api: API, start: (api) => { absent = api.truth === undefined; } });
+    expect(await started(wired, () => absent)).toBe(true);
+    send(wired, 101);
+    await vi.waitFor(() => expect(reply(wired, 101)).toMatchObject({ result: { reason: "not-granted" } }));
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it("refuses a grant revoked before admission without marking", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const writer = vi.fn(() => true);
+    setTruthSaveWriter(writer);
+    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
+    hold([]);
+    send(wired, 102);
+    await vi.waitFor(() => expect(reply(wired, 102)).toMatchObject({ result: { reason: "not-granted" } }));
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it("drops a reply revoked while the save writer waits", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    let release: ((ok: boolean) => void) | undefined;
+    setTruthSaveWriter(() => new Promise((resolve) => { release = resolve; }));
+    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
+    send(wired, 103);
+    await vi.waitFor(() => expect(release).toBeDefined());
+    expect(reply(wired, 103)).toBeUndefined();
+    hold([]);
+    release!(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(reply(wired, 103)).toBeUndefined();
+  });
+
+  it.each([false, true])("drops a reply revoked during serialization, including copy failure=%s", async (failCopy) => {
+    const wired = await ready([TRUTH_MAP], () => ({
+      meta: { granted: () => true },
+      truth: { monsters: () => ({ ok: true, value: { get hidden() {
+        hold([]);
+        if (failCopy) throw new Error("copy failed");
+        return "hidden";
+      } } }) },
+    }) as unknown as ModApi2);
+    send(wired, 104);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(reply(wired, 104)).toBeUndefined();
+  });
+
+  it("refuses a spoofed identity and stale epoch without marking", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const writer = vi.fn(() => true);
+    setTruthSaveWriter(writer);
+    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
+    send(wired, 105, "truth.monsters", [], "victim");
+    send(wired, 106, "truth.monsters", [], "probe", 0);
+    await vi.waitFor(() => expect(reply(wired, 106)).toMatchObject({ ok: false, error: expect.stringMatching(/epoch/u) }));
+    expect(reply(wired, 105)).toBeUndefined();
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it("refuses replay of a formerly valid epoch after a timeout", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const writer = vi.fn(() => true);
+    setTruthSaveWriter(writer);
+    hold([TRUTH_MAP]);
+    const wired = wire({ api: API, migrateBag: () => new Promise(() => undefined) as never }, {
+      grants: [TRUTH_MAP], api: hostApi({ game, grants: [TRUTH_MAP] }), timing: { askMs: 10 },
+    });
+    await wired.session.ready;
+    wired.session.start();
+    await expect(wired.session.migrateBag({}, 0)).rejects.toBeInstanceOf(WorkerTimeoutError);
+    send(wired, 116);
+    await vi.waitFor(() => expect(reply(wired, 116)).toMatchObject({ epoch: 1, ok: false, error: expect.stringMatching(/epoch/u) }));
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["truth.monsters", [true]], ["truth.level", [{}]], ["truth.storeKnowledge", [0]],
+    ["truth.race", []], ["truth.race", [-1]], ["truth.race", [1.5]], ["truth.race", ["1"]],
+    ["truth.race", [0, 1]], ["truth.race", [{ capability: TRUTH_MAP }]],
+  ] as const)("refuses malformed %s arguments %j without marking", async (method, args) => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const writer = vi.fn(() => true);
+    setTruthSaveWriter(writer);
+    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
+    send(wired, 107, method, args as readonly WorkerJson[]);
+    await vi.waitFor(() => expect(reply(wired, 107)).toMatchObject({ result: { code: "bad-call" } }));
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it("refuses an oversized truth request without marking", async () => {
+    const writer = vi.fn(() => true);
+    setTruthSaveWriter(writer);
+    const wired = await ready([TRUTH_MAP]);
+    send(wired, 108, "truth.race", ["x".repeat(MAX_MESSAGE_BYTES)]);
+    await vi.waitFor(() => expect(reply(wired, 108)).toMatchObject({ ok: false }));
+    expect(JSON.stringify(reply(wired, 108)).length).toBeLessThan(512);
+    expect(writer).not.toHaveBeenCalled();
+  });
+
+  it("retains the durable mark when the reply exceeds 4 MiB", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    let saved: ReturnType<typeof saveGame> | undefined;
+    setTruthSaveWriter((id, capability, state) => {
+      recordTruthUse(game.manifest, state.actor.player, { installation: "binding", id, version: "1", digest: "digest" }, capability, null);
+      saved = structuredClone(saveGame(game));
+      return true;
+    });
+    const real = hostApi({ game, grants: [TRUTH_MAP] });
+    const wired = await ready([TRUTH_MAP], (options) => {
+      const api = real(options);
+      return { ...api, truth: { ...api.truth!, monsters: async () => {
+        const result = await api.truth!.monsters();
+        return result.ok ? { ok: true, value: "x".repeat(MAX_REPLY_BYTES) } : result;
+      } } } as unknown as ModApi2;
+    });
+    send(wired, 109);
+    await vi.waitFor(() => expect(reply(wired, 109)).toMatchObject({ ok: false }));
+    expect(JSON.stringify(reply(wired, 109)).length).toBeLessThan(512);
+    expect(saved?.manifest?.modNoscore).toBe(true);
+    expect(saved?.manifest?.capabilityUse?.entries[0]?.capability).toBe(TRUTH_MAP);
+  });
+
+  it("refuses truth calls past 200 per second before marking", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const writer = vi.fn(() => true);
+    setTruthSaveWriter(writer);
+    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
+    for (let i = 1; i <= MAX_CALLS_PER_SECOND + 1; i++) send(wired, i, "truth.race", [0]);
+    await vi.waitFor(() => expect(reply(wired, MAX_CALLS_PER_SECOND + 1)).toMatchObject({ result: { code: "rate" } }));
+    expect(writer).toHaveBeenCalledTimes(MAX_CALLS_PER_SECOND);
+  });
+
+  it.each(["missing", "false", "throws", "rejects"])("returns no truth when the save writer is %s", async (failure) => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const before = structuredClone(saveGame(game));
+    setTruthSaveWriter(failure === "missing" ? undefined : () => {
+      if (failure === "throws") throw new Error("writer failed");
+      return failure === "rejects" ? Promise.reject(new Error("writer failed")) : false;
+    });
+    const wired = await ready([TRUTH_MAP], hostApi({ game, grants: [TRUTH_MAP] }));
+    for (const [index, method] of ["truth.level", "truth.monsters", "truth.race", "truth.storeKnowledge"].entries()) {
+      send(wired, 110 + index, method, method === "truth.race" ? [0] : []);
+      await vi.waitFor(() => expect(reply(wired, 110 + index)).toMatchObject({ result: { ok: false } }));
+      expect(JSON.stringify(reply(wired, 110 + index)).length).toBeLessThan(512);
+    }
+    expect(saveGame(game)).toEqual(before);
+  });
+
+  it("returns no hidden data without a character and never calls after stop", async () => {
+    const writer = vi.fn(() => true);
+    setTruthSaveWriter(writer);
+    const wired = await ready([TRUTH_MAP]);
+    send(wired, 114);
+    await vi.waitFor(() => expect(reply(wired, 114)).toMatchObject({ result: { reason: "unavailable" } }));
+    const receive = wired.worker.onmessage!;
+    wired.session.teardown();
+    receive({ data: { type: "call", protocolVersion: MOD_WORKER_PROTOCOL_VERSION, pluginId: "probe", epoch: 1, requestId: 115, method: "truth.monsters", args: [] } } as MessageEvent);
+    expect(reply(wired, 115)).toBeUndefined();
+    expect(writer).not.toHaveBeenCalled();
+  });
+});
 
 describe("a Worker mod's view of the world", () => {
   it("uses granted key/value stores across the broker without a management namespace", async () => {

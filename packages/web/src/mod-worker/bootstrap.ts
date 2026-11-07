@@ -229,6 +229,12 @@ export function installModWorkerBootstrap(
         prefs: { get: method("store.prefs.get"), set: method("store.prefs.set") },
         character: { get: method("store.character.get"), set: method("store.character.set") },
       },
+      ...(m.granted.includes("state:map-actual.read") || m.granted.includes("state:monsters-actual.read") ? {
+        truth: {
+          level: method("truth.level"), monsters: method("truth.monsters"),
+          race: method("truth.race"), storeKnowledge: method("truth.storeKnowledge"),
+        },
+      } : {}),
       ...(["profiles:manage", "session:control", "options:manage", "saves:manage"].some((cap) => m.granted.includes(cap)) ? {
         manage: {
           profiles: { list: method("manage.profiles.list"), create: method("manage.profiles.create"), switchTo: method("manage.profiles.switchTo"), rename: method("manage.profiles.rename") },

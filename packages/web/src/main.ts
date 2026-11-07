@@ -2127,7 +2127,9 @@ setApi2CommandPusher((code, dir) => {
   advance();
 });
 function saveTruthUse(id: string, capability: TruthCapability): boolean {
-  const loaded = activeModCode().plugins.find((mod) => mod.id === id);
+  if (suppressSave || birthPending || !attachedSlot()) return false;
+  const code = activeModCode();
+  const loaded = code.plugins.find((mod) => mod.id === id) ?? code.workers.find((mod) => mod.id === id);
   if (!loaded || !loaded.permissionBinding || loaded.permissionBinding !== consentBinding(id)) return false;
   recordTruthUse(game.manifest, game.state.actor.player,
     { installation: loaded.permissionBinding, id, version: loaded.manifest.version, digest: loaded.contentDigest ?? null },

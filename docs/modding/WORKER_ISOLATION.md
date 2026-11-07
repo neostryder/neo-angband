@@ -16,6 +16,8 @@ From then on the frame retains both page-facing ports. The Worker sends JSON tex
 
 A mod that fails any step fails to start, with a problem line on the Mods screen. So does a Worker that has not answered as ready within 3 seconds. Nothing falls back to an unisolated Worker.
 
+The broker's operations include `view.*`, `store.*`, `backupFolder.*`, and granted truth snapshots. `truth.level()` and `truth.storeKnowledge()` require `state:map-actual.read`. `truth.monsters()` and `truth.race(index)` accept either that grant or `state:monsters-actual.read`, including unseen monsters and true race abilities. Every author follows the same rule. The broker checks the connection identity, epoch, arguments, and current grant, awaits confirmation that the character's permanent unscorable mark and provenance were saved, and only then builds the snapshot. Missing or failed persistence and sessions without a character return no hidden data. Revocation or an epoch change before delivery drops the reply. The existing 4 MiB reply and 200 calls per second limits apply; an oversized reply does not undo the mark. Management, engine access, and raw presentation remain unavailable to Workers.
+
 ## The three layers
 
 | Layer | What it stops | Where |

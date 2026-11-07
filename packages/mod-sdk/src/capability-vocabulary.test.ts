@@ -24,7 +24,7 @@ const granting = (...capabilities: string[]): CapabilitySet =>
   CapabilitySet.fromManifest({ id: "m", name: "M", version: "1.0.0", shape: "plugin", capabilities });
 
 describe("the capability vocabulary", () => {
-  it("discloses unseen monsters, race truth, and permanent scoring consequences without opening Workers", () => {
+  it("discloses unseen monsters, race truth, and permanent scoring consequences for Workers", () => {
     const map = consentText(matchCapability("state:map-actual.read")!);
     const monsters = consentText(matchCapability("state:monsters-actual.read")!);
     expect(map).toContain("every monster");
@@ -33,7 +33,7 @@ describe("the capability vocabulary", () => {
     expect(monsters).toContain("unseen creatures");
     for (const capability of ["state:map-actual.read", "state:monsters-actual.read"]) {
       expect(consentText(matchCapability(capability)!)).toContain("permanently unscorable");
-      expect(capabilityTiers(capability)).not.toContain("worker");
+      expect(capabilityTiers(capability)).toContain("worker");
     }
   });
   it("allows the Worker tier to request every policy table's registry permission", () => {
@@ -83,11 +83,11 @@ describe("the capability vocabulary", () => {
     expect(capabilityTiers("saves:manage")).toContain("worker");
   });
 
-  it("puts true map state in its own namespace, held by first-party mods only", () => {
+  it("puts true map state in its own namespace, including Workers", () => {
     expect(isTruthCapability(TRUTH)).toBe(true);
     expect(isTruthCapability(parseCapability(TRUTH))).toBe(true);
     expect(isPublicCapability(TRUTH)).toBe(false);
-    expect(capabilityTiers(TRUTH)).toEqual(["first-party"]);
+    expect(capabilityTiers(TRUTH)).toEqual(["first-party", "worker"]);
     expect(isTruthCapability("state:map.read")).toBe(false);
   });
 
