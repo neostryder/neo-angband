@@ -147,7 +147,7 @@ describe("a controller releases the keyboard", () => {
     expect(setAutoplaying).toHaveBeenCalledExactlyOnceWith(false);
     expect(ctx.controller).toBeUndefined();
     expect(rig.uninstall).toHaveBeenCalledOnce();
-    expect(rig.stopWorker).toHaveBeenCalledOnce();
+    expect(rig.stopWorker).not.toHaveBeenCalled();
     expect(rig.state.nextCommand).toBe(rig.playerInput);
     expect(rig.state.msg).toBe(rig.playerMessage);
     expect(changes).toEqual([{ kind: "player" }]);

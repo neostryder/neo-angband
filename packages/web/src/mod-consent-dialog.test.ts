@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerLocale, resetLocales } from "@rpgm-tools/neo-angband-core";
 import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import { drawModControllerConsent, drawModPermissionConsent } from "./mod-consent-dialog";
@@ -45,13 +45,17 @@ describe("core consent dialogs", () => {
     expect(dialog.querySelectorAll("input")).toHaveLength(2);
     expect(modPanelsSuspended()).toBe(true);
     expect(document.activeElement?.textContent).toBe(MOD_PERMISSION_TEXT.cancel);
+    for (const input of dialog.querySelectorAll<HTMLInputElement>("input")) {
+      expect(input.checked).toBe(false);
+      input.checked = true;
+    }
     apply();
     expect((await result)?.get("probe")).toEqual({ granted: ["input:controller", "input:intent"], refused: [], binding: "digest-a" });
     expect(modPanelsSuspended()).toBe(false);
   });
 
   it("preserves refusals and rejects content changes while a dialog is open", async () => {
-    const result = drawModPermissionConsent([ask()]);
+    const result = drawModPermissionConsent([ask()], () => ({ granted: ["input:intent"], refused: ["input:controller"] }));
     document.querySelector<HTMLInputElement>("dialog input")!.checked = false;
     apply();
     expect((await result)?.get("probe")).toEqual({ granted: ["input:intent"], refused: ["input:controller"], binding: "digest-a" });
@@ -60,6 +64,30 @@ describe("core consent dialogs", () => {
     expect(await changed).toBeNull();
     const store = new ModStore(null);
     expect(() => store.setDecisions("probe", { granted: ["input:controller"], refused: [], binding: "digest-a" }, "1.0.0")).toThrow(MOD_PERMISSION_TEXT.changed);
+  });
+
+  it("requires positive choices for input, network and action capabilities", async () => {
+    const caps = ["input:controller", "input:observe", "input:intent", "input:prompt.reply", "network:*", "network:local", "network:example.com", "command:add", "command:submit", "ui:title", "keymap:write", "keymap:edit", "ui:panel.mount", "state:map-actual.read", "display:filter", "ui:panel"];
+    const result = drawModPermissionConsent([ask(caps)]);
+    apply();
+    expect((await result)?.get("probe")).toEqual({ granted: ["display:filter", "ui:panel"], refused: caps.slice(0, -2), binding: "digest-a" });
+  });
+
+  it("normalizes names and removes format and line controls before truncating", async () => {
+    const request = ask();
+    const name = "\u200b".repeat(130) + "\uff2d\uff4f\uff44\u061c\u2028\u2029\u2060\ufeff\u{e0001}" + "x".repeat(130);
+    const result = drawModPermissionConsent([{ ...request, mod: { ...request.mod, name } }]);
+    expect(document.querySelector("dialog h3")?.textContent).toBe("Mod" + "x".repeat(117));
+    apply(); await result;
+  });
+
+  it("restores panels if constructing the dialog throws", async () => {
+    const append = vi.spyOn(document.body, "append").mockImplementation(() => { throw new Error("append failed"); });
+    try {
+      await expect(drawModPermissionConsent([ask()])).rejects.toThrow("append failed");
+      expect(modPanelsSuspended()).toBe(false);
+      expect(document.querySelector("dialog")).toBeNull();
+    } finally { append.mockRestore(); }
   });
 
   it("returns a decline on Escape and separately confirms keyboard control", async () => {

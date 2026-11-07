@@ -9,6 +9,7 @@ interface Payload {
   readonly files: ReadonlyMap<string, Uint8Array>;
   readonly digest: string;
   readonly urls: Map<string, string>;
+  readonly codeUrls: Map<string, string>;
 }
 
 let payloads: ReadonlyMap<string, Payload> = new Map();
@@ -25,7 +26,7 @@ export function modPayloadBytes(id: string, file: string): Uint8Array | null {
 export async function modPayloadUrl(id: string, file: string, code = false): Promise<string | null> {
   const payload = payloads.get(id);
   if (!payload?.files.has(file)) return null;
-  const cached = payload.urls.get(file);
+  const cached = (code ? payload.codeUrls : payload.urls).get(file);
   if (cached) return cached;
   if (code) {
     const graph = await buildModuleGraph(file, {
@@ -35,7 +36,7 @@ export async function modPayloadUrl(id: string, file: string, code = false): Pro
       },
       urlFor: (path, text) => {
         const url = URL.createObjectURL(new Blob([text], { type: "text/javascript" }));
-        payload.urls.set(path, url);
+        payload.codeUrls.set(path, url);
         return url;
       },
     });
@@ -47,11 +48,11 @@ export async function modPayloadUrl(id: string, file: string, code = false): Pro
   return url;
 }
 
-export async function readModPayload(url: string, limit: number, fetcher: typeof fetch = fetch): Promise<Uint8Array> {
+export async function readModPayload(url: string, limit: number, fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<Uint8Array> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const response = await fetcher(url, { signal: controller.signal });
+    const response = await fetcher(url, { signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal });
     if (!response.ok || !response.body) throw new Error(MOD_PERMISSION_TEXT.unavailable);
     const length = response.headers.get("content-length");
     if (length !== null && Number(length) > limit) throw new Error(MOD_PERMISSION_TEXT.quota);
@@ -77,49 +78,71 @@ export async function readModPayload(url: string, limit: number, fetcher: typeof
 export async function prepareModPayloads(
   report: DiskPackReport,
   tierOf: (id: string) => ModTier,
-  bytesOf: (url: string, limit: number) => Promise<Uint8Array> = readModPayload,
+  bytesOf: (url: string, limit: number, signal?: AbortSignal) => Promise<Uint8Array> = (url, limit, signal) => readModPayload(url, limit, fetch, signal),
   subtle: SubtleCrypto | undefined = globalThis.crypto?.subtle,
+  enabled?: (id: string) => boolean,
 ): Promise<void> {
   const next = new Map<string, Payload>();
   const bindings = new Map<string, string | null>();
-  for (const pack of report.packs) {
-    const id = pack.manifest.id;
-    if (tierOf(id).trust === "first-party") continue;
-    bindings.set(id, null);
-    try {
-      if (!subtle || !report.assetUrl) continue;
-      const paths = [...new Set(["manifest.json", ...Object.keys(pack.files).map((key) => key + ".json"), ...pack.code, ...pack.assets])].sort();
-      if (paths.length > 4096) continue;
-      const files = new Map<string, Uint8Array>();
-      const hashes: [string, string][] = [];
-      let size = 0;
-      for (const file of paths) {
-        const url = await report.assetUrl(id, file);
-        if (!url) throw new Error(MOD_PERMISSION_TEXT.unavailable);
-        const bytes = new Uint8Array(await bytesOf(url, 64 * 1024 * 1024 - size));
-        size += bytes.length;
-        if (size > 64 * 1024 * 1024) throw new Error(MOD_PERMISSION_TEXT.quota);
-        files.set(file, bytes);
-        hashes.push([file, await sha256Hex(bytes, subtle)]);
+  const controller = new AbortController();
+  let totalSize = 0;
+  let expired = false;
+  let timeout: ReturnType<typeof setTimeout>;
+  const deadline = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => { expired = true; controller.abort(); reject(new Error(MOD_PERMISSION_TEXT.quota)); }, 15000);
+  });
+  const bounded = <T>(work: Promise<T>): Promise<T> => Promise.race([work, deadline]);
+  try {
+    for (const pack of report.packs) {
+      const id = pack.manifest.id;
+      if (tierOf(id).trust === "first-party") continue;
+      bindings.set(id, null);
+      try {
+        if (!subtle || !report.assetUrl || expired || totalSize >= 128 * 1024 * 1024 || (enabled && !enabled(id))) continue;
+        const paths = [...new Set(["manifest.json", ...Object.keys(pack.files).map((key) => key + ".json"), ...pack.code, ...pack.assets])].sort();
+        if (paths.length > 4096) continue;
+        const files = new Map<string, Uint8Array>();
+        const hashes: [string, string][] = new Array(paths.length);
+        let size = 0;
+        let cursor = 0;
+        let failed = false;
+        await Promise.all(Array.from({ length: Math.min(4, paths.length) }, async () => {
+          try {
+            while (!failed && cursor < paths.length) {
+              const index = cursor++;
+              const file = paths[index]!;
+              const url = await bounded(report.assetUrl!(id, file));
+              if (!url) throw new Error(MOD_PERMISSION_TEXT.unavailable);
+              const limit = Math.min(64 * 1024 * 1024 - size, 128 * 1024 * 1024 - totalSize);
+              const bytes = new Uint8Array(await bounded(bytesOf(url, limit, controller.signal)));
+              size += bytes.length;
+              totalSize += bytes.length;
+              if (size > 64 * 1024 * 1024 || totalSize > 128 * 1024 * 1024) throw new Error(MOD_PERMISSION_TEXT.quota);
+              files.set(file, bytes);
+              hashes[index] = [file, await bounded(sha256Hex(bytes, subtle!))];
+            }
+          } catch { failed = true; }
+        }));
+        if (failed) continue;
+        const text = (file: string): string => new TextDecoder().decode(files.get(file)!);
+        const manifest = validateManifest(JSON.parse(text("manifest.json")), { code: [...pack.code] });
+        if (JSON.stringify(manifest) !== JSON.stringify(pack.manifest)) continue;
+        if (Object.entries(pack.files).some(([key, value]) => JSON.stringify(JSON.parse(text(key + ".json"))) !== JSON.stringify(value))) continue;
+        const digest = await bounded(sha256Hex(new TextEncoder().encode(JSON.stringify(hashes)), subtle));
+        const binding = await bounded(sha256Hex(new TextEncoder().encode(JSON.stringify([id, digest, tierOf(id).execution, [...new Set(pack.manifest.capabilities ?? [])].sort()])), subtle));
+        const prior = payloads.get(id);
+        next.set(id, prior?.digest === digest ? prior : { files, digest, urls: new Map(), codeUrls: new Map() });
+        bindings.set(id, binding);
+      } catch {
+        // A partial payload cannot authorize any code or permission.
       }
-      const text = (file: string): string => new TextDecoder().decode(files.get(file)!);
-      const manifest = validateManifest(JSON.parse(text("manifest.json")), { code: [...pack.code] });
-      if (JSON.stringify(manifest) !== JSON.stringify(pack.manifest)) continue;
-      if (Object.entries(pack.files).some(([key, value]) => JSON.stringify(JSON.parse(text(key + ".json"))) !== JSON.stringify(value))) continue;
-      const digest = await sha256Hex(new TextEncoder().encode(JSON.stringify(hashes)), subtle);
-      const binding = await sha256Hex(new TextEncoder().encode(JSON.stringify([id, digest, [...new Set(pack.manifest.capabilities ?? [])].sort()])), subtle);
-      const prior = payloads.get(id);
-      next.set(id, prior?.digest === digest ? prior : { files, digest, urls: new Map() });
-      bindings.set(id, binding);
-    } catch {
-      // A partial payload cannot authorize any code or permission.
     }
-  }
+  } finally { clearTimeout(timeout!); }
   const previous = payloads;
   payloads = next;
   setConsentBindings(bindings);
   for (const [id, payload] of previous) {
     if (next.get(id) === payload) continue;
-    for (const url of payload.urls.values()) URL.revokeObjectURL(url);
+    for (const url of [...payload.urls.values(), ...payload.codeUrls.values()]) URL.revokeObjectURL(url);
   }
 }

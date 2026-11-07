@@ -1095,7 +1095,7 @@ initLaunchArgsFromHost();
  * take effect: content composes and plugin code imports at boot, so a reload is
  * still what applies it, and the manager still says so.
  */
-async function rediscoverModSources(): Promise<void> {
+async function rediscoverModSources(forManagement = false): Promise<void> {
   /* The session tier first, and through its OWN latch rather than into the report
    * below (mod-session.ts). A mod staged for this session has to survive this
    * function running again - the manager calls it after every download - and
@@ -1134,13 +1134,13 @@ async function rediscoverModSources(): Promise<void> {
    * one that can actually compose. A folder or session copy may shadow the
    * installed id, and bundled packs always win too; caching one of those hashes
    * would falsely describe bytes the game is not using. */
-  await prepareModPayloads(diskPacks(), modTier);
+  const enabled = new Set(enabledModIds());
+  await prepareModPayloads(diskPacks(), modTier, undefined, undefined, forManagement ? undefined : (id) => enabled.has(id));
 
   const shadowed = new Set([
     ...folder.packs.map((pack) => pack.manifest.id),
     ...sessionPacks().packs.map((pack) => pack.manifest.id),
   ]);
-  const enabled = new Set(enabledModIds());
   const installedContentIds = new Set(
     installed.packs
       .filter(
@@ -7933,6 +7933,7 @@ let managementSubscribed = false;
 let managementDrawing = false;
 
 async function buildModManagerDeps(): Promise<ModManagerDeps> {
+  await prepareModPayloads(diskPacks(), modTier);
   const store = defaultModStore();
   /* Fetched once for the life of this screen, the same way `store` above is: an
    * install through ctx.installMod only happens while a mod's plugin is running
@@ -7981,7 +7982,7 @@ async function buildModManagerDeps(): Promise<ModManagerDeps> {
       }),
     /* So a mod downloaded in this session is in the list on the way back out,
      * instead of after a reload the player has not been told to do yet. */
-    rediscover: rediscoverModSources,
+    rediscover: () => rediscoverModSources(true),
     conflictLines: () => liveConflictLines(),
     profiler: () => modHealth().stats(),
     // The mods DIRECTORY, so the manager can name a real path instead of
@@ -16147,9 +16148,9 @@ setModControllerArmedControl((id) =>
 
 /* The Worker mods' brokers, by mod id (mod-worker/host.ts). */
 const workerPlugins = new Map<string, StartedModWorker>();
-const workerControllers: LoadedModPlugin[] = [];
+const workerControllers = new Map<string, LoadedModPlugin>();
 function controllerCandidates(): readonly LoadedModPlugin[] {
-  return [...activeModCode().plugins, ...workerControllers].filter((loaded) => loaded.tier.trust === "first-party" ||
+  return [...activeModCode().plugins, ...workerControllers.values()].filter((loaded) => loaded.tier.trust === "first-party" ||
     (loaded.permissionBinding === consentBinding(loaded.id) && ["input:controller", "input:intent"].every((capability) => defaultModStore().getConsent(loaded.id).includes(capability))));
 }
 /* What each Worker mod's policy tables install beside hooks, once it settles. */
@@ -16286,6 +16287,7 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
           settleWorkerHooks(loaded.id, null);
           workerPanelRenderer.teardown(loaded.id);
           workerPlugins.delete(loaded.id);
+          workerControllers.delete(loaded.id);
           if (installedController?.id === loaded.id) stopInstalledController?.(MOD_PERMISSION_TEXT.revoked);
         },
       });
@@ -16296,7 +16298,7 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
       ]);
       workerPlugins.set(loaded.id, session);
       if (session.hasController()) {
-        workerControllers.push({ ...loaded, url: loaded.entryUrl, plugin: api2Plugin({
+        workerControllers.set(loaded.id, { ...loaded, url: loaded.entryUrl, plugin: api2Plugin({
           api: ">=2.0.0 <3.0.0", onDeath: "end", armed: () => started.controllerArmed(),
           controller: (mod, input) => started.decide(input, mod),
           ...(started.hasKeyHandler() ? { onKey: (press: import("@rpgm-tools/neo-angband-mod-sdk").Api2ControllerKey) => {
@@ -16716,13 +16718,18 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
     /* A switched-off autoplayer answers nothing until the keyboard is handed
      * back (modSwitchedOff). */
     if (modHealth().isOff(loaded.id)) return null;
-    const command = modHealth().run(loaded.id, "controller", () => controller(view, act));
-    if (!command || loaded.tier.trust === "first-party") return command;
-    let accepted: PlayerCommand | null = null;
-    const gate = createIntentGate({ state, registry, snapshotSource: { phase: () => storeModalActive ? "store" : "play", prompt: () => null },
-      push: (value) => { accepted = value; }, storeCommand: (value) => { accepted = value; return true; }, advance: () => undefined });
-    gameplayIntents(gate).submit(inputToken(state), { kind: "command", command });
-    return accepted;
+    try {
+      return modHealth().run(loaded.id, "controller", () => {
+        const command = controller(view, act);
+        if (!command || loaded.tier.trust === "first-party") return command;
+        const copy = structuredClone(command);
+        let accepted: PlayerCommand | null = null;
+        const gate = createIntentGate({ state, registry, snapshotSource: modSnapshotSource,
+          push: (value) => { accepted = value; }, storeCommand: (value) => { accepted = value; return true; }, advance: () => undefined });
+        const result = gameplayIntents(gate).submit(inputToken(state), { kind: "command", command: copy });
+        return result.accepted ? accepted : null;
+      });
+    } catch { return null; }
   };
   const session = installController(state, modLatched, {
     capabilities: loaded.api === 2 ? { has: (capability) => capability === "command:add" || CapabilitySet.fromManifest(loaded.manifest).has(capability) }
@@ -16754,7 +16761,8 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
   const identity = { id: loaded.id, name: loaded.manifest.name, version: loaded.manifest.version,
     digest: loaded.contentDigest ?? null, firstParty: loaded.tier.trust === "first-party" };
   recordControllerUse(game.manifest, takenOver, identity);
-  autosave(true);
+  try { autosave(true); }
+  catch (err) { modHealth().recordFault(loaded.id, "autosave", err); }
   log.info(`mod:${loaded.id}`, `installed an autoplayer`);
   /* The other half of #125: a save can no longer be quietly handed to an
    * autoplayer, so a player who IS running one must be able to see that from
@@ -16860,7 +16868,6 @@ function finishAutoplayerInstall(loaded: LoadedModPlugin, install: ModController
       reportModFault(id, `could not be released from the keyboard: ${faultMessage(err)}`);
     }
     installedController = null;
-    workerPlugins.get(id)?.teardown();
     announceDriver();
     installedControllerSpeed = null;
     stopInstalledController = null;

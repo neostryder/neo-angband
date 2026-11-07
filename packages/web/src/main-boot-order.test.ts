@@ -1,12 +1,110 @@
 import { readFileSync } from "node:fs";
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
-import { Rng, StoreBehaviourRegistry, TvalRegistry, type ModRegistryHost, type TvalValueAdjustContext } from "@rpgm-tools/neo-angband-core";
+import { describe, expect, it, vi } from "vitest";
+import { coreOnlyManifest, inputToken, Rng, StoreBehaviourRegistry, TvalRegistry, type ModRegistryHost, type TvalValueAdjustContext } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet, type Api2PolicyRegistrations } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installApi2PolicyRegistrations } from "./mod-api2-shim";
 import type { ModPlugin } from "./mod-plugin";
+import { createIntentGate } from "./intent-gate";
+import { gameplayIntents } from "./mod-gameplay-intents";
+import { ModHealthMonitor } from "./mod-health";
+import { recordControllerUse } from "./mod-controller-record";
 
 const mainSource = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+
+function controllerHarness(command: () => unknown = () => null, save: () => void = () => undefined) {
+  const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
+  const install = source.statements.find((statement): statement is ts.FunctionDeclaration => ts.isFunctionDeclaration(statement) && statement.name?.text === "finishAutoplayerInstall")!;
+  let latched: () => unknown = () => undefined;
+  let tick: () => void = () => undefined;
+  let answer: unknown;
+  const health = new ModHealthMonitor();
+  const uninstall = vi.fn(); const teardown = vi.fn();
+  const snapshot = { phase: () => "play", prompt: () => null as unknown, viewDeps: () => ({}) };
+  const manifest = coreOnlyManifest();
+  const deps = {
+    state: { actor: { player: { noscore: 0 } }, turn: 0 }, game: { manifest },
+    consentBinding: () => "bound", defaultModStore: () => ({ sawUnreviewedNotice: () => true, getConsent: () => ["input:controller", "input:intent"] }),
+    workerPlugins: new Map([["probe", { teardown }]]), modHealth: () => health,
+    installController: vi.fn((_state: unknown, controller: () => unknown) => { latched = controller; return { uninstall }; }),
+    modSnapshotSource: snapshot, createIntentGate, gameplayIntents, inputToken, structuredClone,
+    registry: { has: () => true, codes: () => ["hold", "walk"] },
+    CapabilitySet: { fromManifest: () => ({ has: () => true }) },
+    announceDriver: vi.fn(), recordControllerUse, autosave: save,
+    log: { info: vi.fn(), error: vi.fn() }, showAutoplayerBanner: vi.fn(), hideAutoplayerBanner: vi.fn(),
+    setInterval: (callback: () => void) => { tick = callback; return 1; }, clearInterval: vi.fn(),
+    advance: () => { answer = latched(); }, storeModalActive: false, modalDepth: 0, dead: false, scoresOpen: false,
+    AUTOPLAYER_SPEED_MS: {}, say: vi.fn(), render: vi.fn(), t: () => "keyboard back", reportModFault: vi.fn(), faultMessage: String,
+  };
+  const emitted = ts.transpileModule(`let installedController = null; let installedControllerSpeed = null; let stopInstalledController = null; let MOD_AUTOPLAYER_TICK_MS = 120;
+${install.getText(source)}
+return { install: finishAutoplayerInstall, stop: () => stopInstalledController("Escape"), installed: () => installedController };`, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
+  const runtime = new Function(...Object.keys(deps), emitted)(...Object.values(deps)) as { install: (...args: unknown[]) => void; stop: () => void; installed: () => unknown };
+  runtime.install({ id: "probe", manifest: { name: "Probe", version: "1" }, tier: { trust: "sideloaded", execution: "worker" }, permissionBinding: "bound", api: 2 }, { controller: command });
+  return { runtime, health, uninstall, teardown, snapshot, manifest, drive: () => { tick(); return answer; } };
+}
+
+describe("main controller boundaries", () => {
+  it("releases the keyboard while the Worker's other registrations remain alive", () => {
+    const h = controllerHarness();
+    expect(h.runtime.installed()).not.toBeNull();
+    h.runtime.stop();
+    expect(h.uninstall).toHaveBeenCalledTimes(1);
+    expect(h.runtime.installed()).toBeNull();
+    expect(h.teardown).not.toHaveBeenCalled();
+  });
+
+  it("reports autosave failures and completes controller setup", () => {
+    const h = controllerHarness(() => null, () => { throw new Error("save failed"); });
+    expect(h.health.stats()[0]?.faults).toBe(1);
+    expect(h.runtime.installed()).not.toBeNull();
+    expect(h.manifest.autoplayers).toHaveLength(1);
+    expect(h.drive()).toBeNull();
+    h.runtime.stop();
+    expect(h.uninstall).toHaveBeenCalledTimes(1);
+  });
+
+  it("attributes a throwing command getter and keeps it out of the game loop", () => {
+    const h = controllerHarness(() => ({ get code() { throw new Error("getter failed"); } }));
+    expect(h.drive()).toBeNull();
+    expect(h.health.stats()[0]?.faults).toBe(1);
+  });
+
+  it("copies a command once, validates it and respects live prompts", () => {
+    const getter = vi.fn(() => "hold");
+    const h = controllerHarness(() => ({ get code() { return getter(); } }));
+    expect(h.drive()).toEqual({ code: "hold" });
+    expect(getter).toHaveBeenCalledTimes(1);
+    h.snapshot.prompt = () => ({ kind: "confirm" });
+    expect(h.drive()).toBeNull();
+    expect(controllerHarness(() => ({ code: "walk", dir: 99 })).drive()).toBeNull();
+  });
+
+  it("replaces Worker controller candidates and removes them on teardown", () => {
+    const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
+    let registration = ""; let teardown = "";
+    const visit = (node: ts.Node): void => {
+      if (ts.isExpressionStatement(node) && /^workerControllers\.(set|push)\(/.test(node.getText(source))) registration = node.getText(source);
+      if (ts.isPropertyAssignment(node) && node.name.getText(source) === "onTeardown") teardown = node.initializer.getText(source);
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    const start = mainSource.indexOf("const workerPlugins =");
+    const end = mainSource.indexOf("/* What each Worker mod's policy", start);
+    const deps = { activeModCode: () => ({ plugins: [] }), consentBinding: () => "bound", defaultModStore: () => ({ getConsent: () => ["input:controller", "input:intent"] }),
+      api2Plugin: () => ({}), started: { hasKeyHandler: () => false }, capabilities: {}, settleWorkerHooks: vi.fn(), workerPanelRenderer: { teardown: vi.fn() },
+      installedController: null, MOD_PERMISSION_TEXT: {}, context: {} };
+    const emitted = ts.transpileModule(`${mainSource.slice(start, end)}
+const add = (loaded) => { ${registration} }; const remove = (loaded) => (${teardown})();
+return { add, remove, candidates: controllerCandidates };`, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
+    const runtime = new Function(...Object.keys(deps), emitted)(...Object.values(deps)) as { add: (loaded: unknown) => void; remove: (loaded: unknown) => void; candidates: () => { entryUrl: string }[] };
+    const loaded = { id: "probe", tier: { trust: "sideloaded" }, permissionBinding: "bound", entryUrl: "old" };
+    runtime.add(loaded); runtime.add({ ...loaded, entryUrl: "new" });
+    expect(runtime.candidates().map((candidate) => candidate.entryUrl)).toEqual(["new"]);
+    runtime.remove(loaded);
+    expect(runtime.candidates()).toEqual([]);
+  });
+});
 
 describe("main boot order", () => {
   it("removes a faulted mod's preference declaration before reporting the fault", () => {
