@@ -9,8 +9,8 @@
  *
  * WHAT IT IS NOT. It is not a sandbox, and nothing here should be read as one.
  * A pack loaded through this file composes into the game exactly as an installed
- * pack does, and a plugin loaded through it runs in the page's own realm with the
- * whole engine namespace, the same as every other plugin. The only thing that is
+ * pack does. An executable archive still needs the loader's measured binding and
+ * a host decision; page storage cannot supply that authority. The only thing that is
  * shorter is how long the ARCHIVE is remembered. What the code did while it ran -
  * a save it rewrote, a key it left in storage, a request it sent - outlives the
  * session exactly as it would have if the mod had been installed. Every sentence
@@ -37,13 +37,15 @@
  * is, once, for the desktop shell, a picked folder and IndexedDB; this adds a
  * fourth source in front of it rather than a fourth idea of what a mod is. The
  * report it produces is latched with `setSessionPacks` and fused into `diskPacks()`
- * ahead of the boot report, so a session copy of an id shadows an installed one
- * and the collision is reported on the mod's row.
+ * ahead of the boot report. Installed ids are refused because their private
+ * storage and credentials must not belong to an archive.
  */
 
 import {
   NO_DISK_PACKS,
+  diskPacks,
   readModDir,
+  sessionPacks,
   setSessionPacks,
   type DiskPackReport,
   type ModDirEntry,
@@ -51,9 +53,8 @@ import {
 } from "./disk-packs";
 import { manifestFields, validateManifest, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { installBlocked } from "./mod-consent";
-import { archiveFaults, importedOrigin, installedMods, manifestDisplayName, sha256Hex } from "./mod-install";
+import { archiveFaults, installedMods, manifestDisplayName, sha256Hex } from "./mod-install";
 import { buildModuleGraph } from "./mod-modules";
-import { originConflict } from "./mod-source";
 import { assetMime, sortPackFiles } from "./pack-files";
 import { readModZip } from "./mod-zip";
 import { setSessionConsents } from "./mod-store";
@@ -103,25 +104,17 @@ export interface SessionMod {
   readonly digest: string;
   /** Where the bytes came from, in words a player recognises. */
   readonly source: string;
-  /** True when the archive ships code that will run in the page. */
+  /** Code presence requires an executable permission decision. */
   readonly code: boolean;
   /**
-   * The capabilities the player granted for this session, verbatim.
-   *
-   * Held here rather than in the persistent consent store on purpose: a grant made
-   * to test something must not become a standing grant for an id the player never
-   * installed. `setSessionConsents` is how the loader sees these without
-   * the mod-state document's consents ever being written.
+   * Legacy fields remain readable so existing archives can still be listed.
+   * Page storage cannot prove that a player made any of these decisions.
    */
   readonly granted: readonly string[];
   readonly refused?: readonly string[];
   readonly acknowledged?: boolean;
   /**
-   * The archive digest when `granted` was approved.
-   *
-   * Older session records have no value here. Their archive can still be read,
-   * but its grants do not count: consent without the bytes it named is no
-   * consent at all.
+   * Legacy digests cannot authenticate decisions stored in the same page record.
    */
   readonly grantedDigest?: string;
   /** The archive itself, base64. */
@@ -356,12 +349,11 @@ function manifestCapabilities(
  *
  * Refuses everything a permanent install refuses, through the same functions: the
  * third-party switch before the archive is opened, `readModZip`'s ceilings and
- * zip-slip check, the origin pin against an installed copy of the same id, and
+ * zip-slip check, the refusal of installed ids, and
  * `archiveFaults`' standards inspection. A session load that accepted an archive
  * the install door refuses would teach an author that a passing test means nothing.
  *
- * `granted` is what the player agreed this mod may do, for this session. It is
- * stored beside the archive and never in the mod-state document.
+ * Legacy decision fields cannot authorize code because the page can forge them.
  *
  * `contentOnly` refuses an archive that ships code. It is what the mod-facing door
  * passes (session-runtime.ts) and what the player's own door does not: a mod
@@ -407,14 +399,10 @@ export async function stageSessionMod(
   const read = readModZip(own);
   if (!read.ok) return { ok: false, problem: read.problem };
 
-  const repo = importedOrigin(read.repository);
   const installed = (await installedMods(scope)).find((m) => m.id === read.id) ?? null;
-  const conflict = originConflict(installed, repo);
-  /* The origin pin applies here too. A session copy SHADOWS an installed mod of
-   * the same id for the session, so letting an archive from anywhere shadow one
-   * pinned to a repository would be a way round the pin rather than a shortcut
-   * past the library. */
-  if (conflict !== null) return { ok: false, problem: conflict };
+  // Private storage and credentials use installed ids, so an archive cannot share one.
+  const discovered = diskPacks().packs.some((pack) => pack.manifest.id === read.id) && !sessionPacks().packs.some((pack) => pack.manifest.id === read.id);
+  if (installed || discovered) return { ok: false, problem: `${read.id} is installed. Remove it before loading a session archive with that id.` };
 
   const fault = archiveFaults(read.id, read.files);
   if (fault !== null) {
@@ -613,6 +601,7 @@ export function sessionModSource(
  * that has since been updated is judged by the new engine's rules.
  */
 export async function loadSessionMods(scope: unknown = globalThis): Promise<DiskPackReport> {
+  setSessionPacks(NO_DISK_PACKS);
   const staged = sessionMods(scope);
   if (staged.length === 0) {
     setSessionPacks(NO_DISK_PACKS);
@@ -624,7 +613,9 @@ export async function loadSessionMods(scope: unknown = globalThis): Promise<Disk
   const consents: Record<string, readonly string[]> = {};
   const refusals: Record<string, readonly string[]> = {};
   const notices: Record<string, boolean> = {};
+  const installed = new Set([...diskPacks().packs.map((pack) => pack.manifest.id), ...(await installedMods(scope)).map((mod) => mod.id)]);
   for (const mod of staged) {
+    if (installed.has(mod.id)) continue;
     let bytes: Uint8Array;
     try {
       bytes = fromBase64(mod.zip);
@@ -641,12 +632,10 @@ export async function loadSessionMods(scope: unknown = globalThis): Promise<Disk
       continue;
     }
     entries.push({ id: read.id, files: new Map(read.files.map(([p, b]) => [p, b])) });
-    /* A grant names one archive. Re-staging the id with different bytes has to
-     * return the mod to the same consent screen. */
-    const approved = mod.grantedDigest === mod.digest && mod.digest === await digestOf(bytes, scope);
-    consents[read.id] = approved ? mod.granted : [];
-    refusals[read.id] = approved ? mod.refused ?? [] : [];
-    notices[read.id] = approved && mod.acknowledged === true;
+    // Page storage describes archives, but cannot record a player decision.
+    consents[read.id] = [];
+    refusals[read.id] = [];
+    notices[read.id] = false;
   }
 
   /* The consents go in even when the pack turns out to be unusable, because the

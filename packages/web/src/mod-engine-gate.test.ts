@@ -26,6 +26,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as snapshots from "./mod-code-snapshot";
 import { ENGINE_VERSION, PARITY_BASELINE } from "@rpgm-tools/neo-angband-core";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { NO_DISK_PACKS, resetDiskPacks, setDiskPacks, type DiskPack } from "./disk-packs";
@@ -40,6 +41,7 @@ import type { CodeUrlResolver } from "./disk-packs";
 /* Same reasoning as mod-visibility.test.ts: no vi.resetModules(), because it would
  * hand `await import("./pack")` private copies of the latches this file writes to. */
 afterEach(() => {
+  vi.restoreAllMocks(); setConsentBindings(new Map());
   resetDiskPacks();
   resetModCode();
   resetModFaults();
@@ -299,6 +301,8 @@ describe("door 2 - a plugin written for another build", () => {
   });
 
   it("still imports a plugin whose range covers this build", async () => {
+    setConsentBindings(new Map([["current", "measured-fixture"]]));
+    vi.spyOn(snapshots, "modPayloadUrl").mockImplementation(resolver);
     const importer = vi.fn(() =>
       Promise.resolve({ default: { api: MOD_API_VERSION, hooks: () => undefined } }),
     );
@@ -387,6 +391,7 @@ describe("a mod refused on two doors is reported once", () => {
       assets: [],
     };
     setDiskPacks(folderWith(hybrid));
+    setConsentBindings(new Map([["both", "measured-fixture"]]));
     const code = await loadModCode({
       acknowledged: () => true,
       packs: [hybrid],

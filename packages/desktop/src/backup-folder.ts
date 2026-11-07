@@ -64,11 +64,19 @@ export function hostFolderRecordFile(purpose: string): string {
  */
 export function isHostFolderFileName(name: unknown, ext: string): name is string {
   return (
+    /^\.[a-z0-9]{1,16}$/u.test(ext) &&
     typeof name === "string" &&
     name.length > 0 &&
     name.length <= 255 &&
     !name.includes("/") &&
     !name.includes("\\") &&
+    !name.includes(":") &&
+    !name.includes("..") &&
+    !/[<>"|?*]/u.test(name) &&
+    ![...name].some((char) => char.charCodeAt(0) < 32) &&
+    !/^(con|prn|aux|nul|conin\$|conout\$|com[1-9\u00b9\u00b2\u00b3]|lpt[1-9\u00b9\u00b2\u00b3])[ .]*(\.|$)/iu.test(name) &&
+    !name.endsWith(" ") &&
+    !name.endsWith(".") &&
     !name.startsWith(".") &&
     !name.includes("\0") &&
     name.endsWith(ext)
@@ -135,6 +143,71 @@ export function backupFolderDisplayName(folderPath: string): string {
   return path.basename(folderPath);
 }
 
+export const BACKUP_LIMITS = Object.freeze({ files: 200, fileBytes: 8 * 1024 * 1024, totalBytes: 256 * 1024 * 1024 });
+
+function plainFolder(folder: string): boolean {
+  const stat = fs.lstatSync(folder);
+  return stat.isDirectory() && !stat.isSymbolicLink() && path.relative(path.resolve(folder), fs.realpathSync(folder)) === "";
+}
+
+function plainFile(file: string): fs.Stats | null {
+  try {
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error("The backup file is not a plain file.");
+    return stat;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function sameFile(a: fs.Stats, b: fs.Stats): boolean {
+  return a.dev === b.dev && a.ino === b.ino && b.isFile() && b.nlink === 1;
+}
+
+/** The dialog must finish before a replacement opens the existing file for writing. */
+export async function writeBackupFile(
+  folder: string,
+  name: unknown,
+  text: unknown,
+  ext: string,
+  confirmReplace: () => Promise<boolean>,
+): Promise<boolean> {
+  if (!isHostFolderFileName(name, ext) || typeof text !== "string") return false;
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes > BACKUP_LIMITS.fileBytes) return false;
+  try {
+    if (!plainFolder(folder)) return false;
+    const full = path.join(folder, name);
+    const initial = plainFile(full);
+    if (initial && !(await confirmReplace())) return false;
+    if (!plainFolder(folder)) return false;
+    const existing = plainFile(full);
+    if (!initial && existing) return false;
+    let count = 0;
+    let total = bytes;
+    for (const entry of fs.readdirSync(folder)) {
+      if (!isHostFolderFileName(entry, ext)) continue;
+      const stat = plainFile(path.join(folder, entry));
+      if (!stat) continue;
+      count++;
+      if (entry !== name) total += stat.size;
+    }
+    if (count + (existing ? 0 : 1) > BACKUP_LIMITS.files || total > BACKUP_LIMITS.totalBytes) return false;
+    const fd = fs.openSync(full, existing ? "r+" : "wx", 0o600);
+    try {
+      if (existing && !sameFile(existing, fs.fstatSync(fd))) return false;
+      fs.ftruncateSync(fd, 0);
+      fs.writeFileSync(fd, text, "utf8");
+      return true;
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Ticket #24 (the read side of #133): every file matching `ext` currently
  * readable in `folderPath`, name plus its full text - the renderer's own
@@ -160,15 +233,30 @@ export function listBackupFiles(
 ): { name: string; text: string }[] {
   let names: string[];
   try {
+    if (!plainFolder(folderPath)) return [];
     names = fs.readdirSync(folderPath);
   } catch {
     return [];
   }
   const out: { name: string; text: string }[] = [];
+  let total = 0;
   for (const name of names) {
+    if (out.length >= BACKUP_LIMITS.files) break;
     if (!isHostFolderFileName(name, ext)) continue;
     try {
-      out.push({ name, text: fs.readFileSync(path.join(folderPath, name), "utf8") });
+      const full = path.join(folderPath, name);
+      const stat = plainFile(full);
+      if (!stat || stat.size > BACKUP_LIMITS.fileBytes || total + stat.size > BACKUP_LIMITS.totalBytes) continue;
+      const fd = fs.openSync(full, "r");
+      try {
+        if (!sameFile(stat, fs.fstatSync(fd))) continue;
+        const bytes = Buffer.alloc(stat.size);
+        const read = fs.readSync(fd, bytes, 0, bytes.length, 0);
+        out.push({ name, text: bytes.subarray(0, read).toString("utf8") });
+        total += read;
+      } finally {
+        fs.closeSync(fd);
+      }
     } catch {
       /* unreadable: skip it, keep the rest of the listing */
     }

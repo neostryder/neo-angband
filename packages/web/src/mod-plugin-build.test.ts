@@ -29,7 +29,9 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { setConsentBindings } from "./mod-consent-binding";
+import * as snapshots from "./mod-code-snapshot";
 import { loadModCode, PLUGIN_FILE } from "./mod-code";
 import { MOD_API_VERSION, type ModPlugin } from "./mod-plugin";
 import { modPluginContext } from "./mod-context";
@@ -61,6 +63,8 @@ afterAll(() => {
 
 /** Load the built artefact the way a folder mod is loaded. */
 async function loadBuilt(): Promise<ModPlugin> {
+  setConsentBindings(new Map([[ID, "measured-fixture"]]));
+  vi.spyOn(snapshots, "modPayloadUrl").mockImplementation(async (id, file) => pathToFileURL(join(outDir, id, file)).href);
   const manifest = JSON.parse(
     readFileSync(join(outDir, ID, "manifest.json"), "utf8"),
   ) as DiskPack["manifest"];
@@ -83,6 +87,8 @@ async function loadBuilt(): Promise<ModPlugin> {
   expect(report.plugins).toHaveLength(1);
   return report.plugins[0]!.plugin;
 }
+
+afterEach(() => { vi.restoreAllMocks(); setConsentBindings(new Map()); });
 
 describe("the builder writes a loadable mod folder", () => {
   it("writes plugin.js and a verbatim manifest.json", () => {

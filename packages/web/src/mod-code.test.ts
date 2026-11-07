@@ -15,7 +15,9 @@
  *    be.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setConsentBindings } from "./mod-consent-binding";
+import * as snapshots from "./mod-code-snapshot";
 import { problemLines } from "./mod-problems";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { loadModCode as loadCode, hasPlugin, hasWorkerPlugin, PLUGIN_FILE } from "./mod-code";
@@ -23,8 +25,12 @@ import type { CodeUrlResolver, DiskPack } from "./disk-packs";
 import { MOD_API_MIN, MOD_API_VERSION, modApiVerdict, validateModPlugin } from "./mod-plugin";
 
 function loadModCode(options: Parameters<typeof loadCode>[0]) {
+  setConsentBindings(new Map(options.packs.map((pack) => [pack.manifest.id, "measured-fixture"])));
+  vi.spyOn(snapshots, "modPayloadUrl").mockImplementation(async (id, file) => options.codeUrl?.(id, file) ?? null);
   return loadCode({ tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }), ...options });
 }
+
+afterEach(() => { vi.restoreAllMocks(); setConsentBindings(new Map()); });
 
 /** A pack that ships code, with whatever manifest overrides a case needs. */
 function codePack(id: string, over: Partial<PackManifest> = {}): DiskPack {
@@ -140,7 +146,7 @@ describe("a folder can supply code", () => {
     expect(importer).toHaveBeenCalledTimes(2);
   });
 
-  it("releases each URL once the import has settled", async () => {
+  it("leaves retained URLs under the snapshot lifetime after import", async () => {
     /* A blob: URL pins its bytes for the document's lifetime until revoked, and a
      * mods folder can hold many. Safe after the import: the module graph is built
      * and never re-fetches. */
@@ -153,10 +159,10 @@ describe("a folder can supply code", () => {
       consented: NO_CAPS,
       importer: () => Promise.resolve({ default: { api: MOD_API_VERSION, hooks: () => undefined } }),
     });
-    expect(released).toEqual([`mem://one/${PLUGIN_FILE}`]);
+    expect(released).toEqual([]);
   });
 
-  it("releases the URL even when the import throws", async () => {
+  it("keeps retained URLs when an import throws", async () => {
     const released: string[] = [];
     await loadModCode({
       acknowledged: () => true,
@@ -166,7 +172,7 @@ describe("a folder can supply code", () => {
       consented: NO_CAPS,
       importer: () => Promise.reject(new Error("boom")),
     });
-    expect(released).toHaveLength(1);
+    expect(released).toHaveLength(0);
   });
 
   it("says so when packs ship code and the source cannot serve any", async () => {

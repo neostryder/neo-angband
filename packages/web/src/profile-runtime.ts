@@ -1,8 +1,8 @@
 import type { CapabilitySet, PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { parseDocument, profileActionFormat, profileOwnerFormat, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModProfile, ModProfileAction, ModProfiles, ProfileResult, SaveResult } from "./mod-plugin";
-import { consentSatisfied, ModStore, MOD_SETTINGS_STORAGE_KEY, MOD_STATE_STORAGE_KEY, type ConsentRecord } from "./mod-store";
-import { copyScopedStorage, scopedStorage, type ScopedStorage } from "./profile-scope";
+import { consentSatisfied, ModStore, type ConsentRecord } from "./mod-store";
+import { scopedStorage, type ScopedStorage } from "./profile-scope";
 import type { ProfileStorage, ProfileStore } from "./profiles";
 
 const OWNER_KEY = "neo-angband:profile-owner";
@@ -24,13 +24,6 @@ export interface ProfileRuntimeDeps {
   readonly canSwitch: () => SaveResult;
 }
 
-function configurationKey(key: string): boolean {
-  return key === MOD_STATE_STORAGE_KEY || key === MOD_SETTINGS_STORAGE_KEY ||
-    /^neo:mod(?:Prefs:|Choices$|Consents$|RuleChoices$|Pins$|SectionChoices$)/u.test(key) ||
-    key === "neo:enabledMods" ||
-    /^neo-angband-user:customized_[a-z_]+_options\.json$/u.test(key);
-}
-
 function refused(reason: string): { readonly ok: false; readonly reason: string } {
   return { ok: false, reason };
 }
@@ -49,24 +42,17 @@ export function createModProfiles(id: string, caps: CapabilitySet, deps: Profile
     if (!known(profileId) || !owner.ok || owner.data.profileId !== profileId || owner.data.modId !== id) return refused("This mod did not create that profile.");
     const enabled = [...new Set([id, ...mods])];
     const installed = new Map(deps.installed().map((m) => [m.id, m]));
-    const source = new ModStore(scopedStorage(deps.storage, deps.store.activeId()));
     const store = new ModStore(target);
     for (const modId of enabled) {
       const manifest = installed.get(modId);
       if (!manifest) return refused(`Mod "${modId}" is not installed.`);
       /* A refusal is a decision as much as a grant is (mod-store.ts setDecisions). */
       const decided = (d: ConsentRecord): readonly string[] => [...d.granted, ...d.refused];
-      if (!consentSatisfied(manifest.capabilities ?? [], decided(source.getDecisions(modId))) &&
-          !consentSatisfied(manifest.capabilities ?? [], decided(store.getDecisions(modId)))) {
+      if (!consentSatisfied(manifest.capabilities ?? [], decided(store.getDecisions(modId)))) {
         return refused(`Mod "${manifest.name}" needs your permission in the Mods screen first.`);
       }
     }
     for (const modId of enabled) {
-      const manifest = installed.get(modId)!;
-      const decisions = source.getDecisions(modId);
-      if (consentSatisfied(manifest.capabilities ?? [], [...decisions.granted, ...decisions.refused])) {
-        store.setDecisions(modId, decisions, source.getConsentVersion(modId) ?? manifest.version);
-      }
       store.setModChoice(modId, true);
     }
     for (const modId of new Set([...store.getEnabled(), ...installed.keys()])) {
@@ -89,14 +75,14 @@ export function createModProfiles(id: string, caps: CapabilitySet, deps: Profile
       const profileId = deps.store.create(name.trim());
       try {
         if (!known(profileId)) return refused(failStorage);
-        if (options?.copyFrom !== undefined) copyScopedStorage(deps.storage, options.copyFrom, profileId, configurationKey);
         const target = scopedStorage(deps.storage, profileId);
         target.setItem(OWNER_KEY, serializeDocument(profileOwnerFormat, { profileId, modId: id }, { compact: true }));
-        const result = enable(profileId, new ModStore(target).getEnabled());
-        if (!result.ok) {
-          deps.store.remove(profileId, deps.storage);
-          return result;
-        }
+        const selected = options?.copyFrom === undefined ? [] : new ModStore(scopedStorage(deps.storage, options.copyFrom)).getEnabled();
+        const store = new ModStore(target);
+        const enabled = [...new Set([id, ...selected])];
+        for (const modId of enabled) store.setModChoice(modId, true);
+        store.setEnabled(enabled);
+        if (JSON.stringify(store.getEnabled()) !== JSON.stringify(enabled)) throw new Error(failStorage);
         return { ok: true, value: list().find((p) => p.id === profileId)! };
       } catch {
         deps.store.remove(profileId, deps.storage);
@@ -117,6 +103,9 @@ export function createModProfiles(id: string, caps: CapabilitySet, deps: Profile
         if (action.kind !== "create-character") return refused("The profile action is not supported.");
         if (!caps.has("saves:manage")) return refused('Character creation needs capability "saves:manage".');
         if (!new ModStore(scopedStorage(deps.storage, profileId)).isEnabled(id)) return refused("This mod is disabled in the destination profile.");
+        const manifest = deps.installed().find((mod) => mod.id === id);
+        const decisions = new ModStore(scopedStorage(deps.storage, profileId)).getDecisions(id);
+        if (!manifest || !consentSatisfied(manifest.capabilities ?? [], [...decisions.granted, ...decisions.refused])) return refused("This mod needs your permission in the destination profile first.");
         if (action.armController && !deps.hasController(id)) return refused("This mod has no controller to arm.");
       }
       const previous = deps.store.activeId();

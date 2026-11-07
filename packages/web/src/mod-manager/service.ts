@@ -80,7 +80,10 @@ export class ModManagerService {
       setEnabled: (id, on) => mutate(() => env.store.setModEnabled(id, on)),
       setOrder: (ids) => mutate(() => env.store.setEnabled(ids)),
       moveEnabled: (id, delta) => mutate(() => env.store.moveEnabled(id, delta)),
-      recordConsent: (id, decisions, version) => mutate(() => env.store.setDecisions(id, decisions, version)),
+      recordConsent: (id, decisions, version) => mutate(() => {
+        const binding = consentBinding(id);
+        env.store.setDecisions(id, decisions.binding === undefined && typeof binding === "string" ? { ...decisions, binding } : decisions, version);
+      }),
       markUnreviewedNotice: (id, version) => mutate(() => env.store.markUnreviewedNotice(id, version)),
       setRuleChoice: (flag, on) => mutate(() => env.store.setRuleChoice(flag, on)),
       setSectionChoice: (id, section, on) => mutate(() => env.store.setSectionChoice(id, section, on)),
@@ -253,10 +256,12 @@ export class ModManagerService {
     if (!mod) return this.#missing();
     const invalid = this.#consentRefusal(mod, decisions);
     if (invalid) return invalid;
-    const grants = decisions.granted.filter((cap) => !this.#env.store.getConsent(id).includes(cap));
-    if (grants.length === 0) return this.#writeConsent(id, decisions);
-    const copy = immutable(decisions);
-    return this.#request({ operation: "permissions", requestedBy, mods: [this.#subject(mod)], permissions: grants.map((cap) => permissionConfirmation(id, cap)) }, async (decision) => this.#writeConsent(id, decision.permissions?.[id] ?? copy));
+    const grants = [...new Set([...decisions.granted, ...decisions.refused])];
+    return this.#request({ operation: "permissions", requestedBy, mods: [this.#subject(mod)], permissions: grants.map((cap) => permissionConfirmation(id, cap)) }, async (decision) => {
+      const choices = decision.permissions?.[id];
+      if (!choices || grants.some((cap) => !choices.granted.includes(cap) && !choices.refused.includes(cap))) return refused("permissions", "Choose each permission before saving this decision.");
+      return this.#writeConsent(id, choices);
+    });
   }
 
   enable(id: string, requestedBy: string | null = null): ManagerResult<unknown> {
@@ -634,8 +639,11 @@ export class ModManagerService {
     if (!mod) return this.#missing();
     const invalid = this.#consentRefusal(mod, decisions);
     if (invalid) return invalid;
+    const binding = consentBinding(id);
+    if (typeof binding !== "string") return refused("unmeasured", MOD_PERMISSION_TEXT.unavailable);
+    if (decisions.binding !== undefined && decisions.binding !== binding) return refused("changed", MOD_PERMISSION_TEXT.changed);
     const held = playerHeld(mod.capabilities, { granted: [...this.#env.store.getConsent(id).filter((cap) => !decisions.refused.includes(cap)), ...decisions.granted], refused: decisions.refused });
-    this.#env.store.setDecisions(id, { granted: decisions.granted.filter((cap) => held.held.includes(cap)), refused: decisions.refused, ...(decisions.binding !== undefined ? { binding: decisions.binding } : {}) }, mod.version);
+    this.#env.store.setDecisions(id, { granted: decisions.granted.filter((cap) => held.held.includes(cap)), refused: decisions.refused, binding }, mod.version);
     this.#publish();
     return { status: "ok", value: null };
   }

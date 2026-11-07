@@ -71,7 +71,11 @@ function parse(url: string): URL | null {
  */
 export function isGameUrl(url: string): boolean {
   const u = parse(url);
-  return u !== null && u.protocol === `${APP_SCHEME}:` && u.host === APP_HOST;
+  return u !== null && u.protocol === `${APP_SCHEME}:` && u.host === APP_HOST && u.username === "" && u.password === "";
+}
+
+export function isGameBridgeFrame(frame: { readonly url: string } | null | undefined, mainFrame: { readonly url: string }): boolean {
+  return frame === mainFrame && isGameUrl(frame.url);
 }
 
 /** The path and query a game URL asks for, as routes.ts expects them, or null. */

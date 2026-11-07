@@ -40,6 +40,7 @@ import {
   UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
+import { capLogBatch, hostFsCallIsSafe, hostFsFailure, updateCallIsSafe } from "./bridge-guard.js";
 
 /** Ask the main process what the platform is, once, at preload time. */
 function platformInfo(): HostBridgeInfo {
@@ -82,7 +83,9 @@ contextBridge.exposeInMainWorld("neoDesktop", {
    * renderer batches on a timer (LOG_FLUSH_MS) and this is the one call.
    */
   log(lines: readonly string[]): void {
-    ipcRenderer.send(LOG_CHANNEL, lines);
+    const batch = capLogBatch(lines);
+    if (batch === null) return;
+    ipcRenderer.send(LOG_CHANNEL, batch);
   },
 
   /** Report whether an autoplayer is driving (THROTTLE_CHANNEL). */
@@ -120,6 +123,7 @@ contextBridge.exposeInMainWorld("neoDesktop", {
    * with anything on disk.
    */
   update(op: string, arg?: unknown): Promise<unknown> {
+    if (!updateCallIsSafe(op, arg)) return Promise.resolve({ ok: false, error: "refused" });
     return ipcRenderer.invoke(UPDATE_CHANNEL, op, arg) as Promise<unknown>;
   },
 
@@ -183,6 +187,7 @@ contextBridge.exposeInMainWorld(HOST_BRIDGE_GLOBAL, {
    * command layer and let the transport reshape the game's control flow.
    */
   call(op: string, args: readonly unknown[]): unknown {
+    if (!hostFsCallIsSafe(op, args)) return hostFsFailure(op);
     return ipcRenderer.sendSync(HOST_BRIDGE_CHANNEL, op, args);
   },
 

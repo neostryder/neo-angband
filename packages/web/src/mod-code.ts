@@ -78,6 +78,7 @@ import {
   type PackManifest,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { consentBinding } from "./mod-consent-binding";
+import { modPayloadUrl } from "./mod-code-snapshot";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
 import { api2Plugin, checkApi2Definition } from "./mod-api2-shim";
 import { engineBlocksCode } from "./mod-engine";
@@ -270,7 +271,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       skipped.push({ id, why: "not enabled" });
       continue;
     }
-    if (binding === null) {
+    if (typeof binding !== "string") {
       problems.push({ id, why: MOD_PERMISSION_TEXT.unavailable });
       continue;
     }
@@ -312,13 +313,9 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
      * ABI that schema 1 called `modApi: 2` is retired: its manifest still
      * reads, and its code is refused with what to do about it. */
     const measuredTier = opts.tier?.(pack) ?? assignTier({ id, source: "folder", execution: executionOf(pack) });
-    /* Public code in the game page is always measured: a missing binding means
-     * its bytes were never hashed, so no consent can describe what would run.
-     * The headless runner sets unsafeInProcess itself and has no page to measure. */
-    if (measuredTier.trust !== "first-party" && typeof binding !== "string" && opts.unsafeInProcess === undefined) {
-      problems.push({ id, why: MOD_PERMISSION_TEXT.unavailable });
-      continue;
-    }
+    const codeUrl = measuredTier.trust === "first-party"
+      ? (modId: string, file: string) => modPayloadUrl(modId, file, true)
+      : opts.codeUrl;
     const isolate = measuredTier.trust !== "first-party" && !measuredTier.developerInProcess &&
       pack.manifest.manifestSchema === 2 && typeof pack.manifest.api === "string" && apiRangeVerdict(pack.manifest.api).ok;
     if (pack.manifest.runtime === "worker" || isolate) {
@@ -365,13 +362,17 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       }
       let entryUrl: string | null;
       try {
-        entryUrl = await opts.codeUrl(id, entry);
+        entryUrl = await codeUrl(id, entry);
       } catch (e) {
         problems.push({ id, why: message(e) });
         continue;
       }
       if (entryUrl === null) {
         problems.push({ id, why: `${entry} is listed in the folder but could not be opened` });
+        continue;
+      }
+      if (consentBinding(id) !== binding) {
+        problems.push({ id, why: MOD_PERMISSION_TEXT.changed });
         continue;
       }
       workers.push({
@@ -458,7 +459,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
 
     let url: string | null;
     try {
-      url = await opts.codeUrl(id, PLUGIN_FILE);
+      url = await codeUrl(id, PLUGIN_FILE);
     } catch (e) {
       /* The message from here already names the file at fault - which script is
        * missing, which two import each other (mod-modules.ts). Prefixing it with
@@ -474,6 +475,11 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       });
       continue;
     }
+    if (consentBinding(id) !== binding) {
+      if (measuredTier.trust !== "first-party") opts.codeUrl.release?.(url);
+      problems.push({ id, why: MOD_PERMISSION_TEXT.changed });
+      continue;
+    }
 
     let mod: unknown;
     try {
@@ -482,7 +488,7 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       problems.push({ id, why: `${PLUGIN_FILE} failed to load: ${importAdvice(e)}` });
       continue;
     } finally {
-      opts.codeUrl.release?.(url);
+      if (measuredTier.trust !== "first-party") opts.codeUrl.release?.(url);
     }
 
     const entry = (mod as { default?: unknown } | null)?.default;

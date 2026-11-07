@@ -380,7 +380,7 @@ Declare `session:control` for a save dialog of your own. `ctx.session` saves the
 
 Declare `ui:title` to receive `ctx.title`. `registerRow({ label, key?, run })` adds an action after the core title options. Rows keep their registration order, and the host removes a mod's rows when it uninstalls that mod. The optional key is a letter or digit; a core key or an earlier mod key keeps its existing action. `choose(title, choices)` opens a choice menu before play begins and returns the chosen index, or `null` on Escape. The first choice is selected by default.
 
-Declare `profiles:manage` to receive `ctx.profiles`. A mod can list profiles, create a fresh profile or copy configuration from another profile, replace the enabled mods in a profile it created, and switch profiles before play begins. Profile copies exclude characters and the save roster. See [MOD_SEAMS.md](MOD_SEAMS.md#player-profiles-and-title-actions) for method types and reload actions.
+Declare `profiles:manage` to receive `ctx.profiles`. A mod can list profiles, create a fresh profile or copy enabled-mod selections from another profile, replace the enabled mods in a profile it created, and switch profiles before play begins. Copies contain no consent decisions, pins, settings, private preferences, or character data. The destination needs its own permission decisions before the mod changes its enabled set or requests character creation. See [MOD_SEAMS.md](MOD_SEAMS.md#player-profiles-and-title-actions) for method types and reload actions.
 
 ### Sharing data with other mods: `ctx.shared`
 

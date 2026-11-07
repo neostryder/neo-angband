@@ -16,7 +16,9 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setConsentBindings } from "./mod-consent-binding";
+import * as snapshots from "./mod-code-snapshot";
 import type { ModDirEntry, ModDirSource } from "./disk-packs";
 import { diskPacks, readModDir, resetDiskPacks, setDiskPacks } from "./disk-packs";
 import {
@@ -55,6 +57,7 @@ type FrontendGlobal = typeof globalThis & {
 };
 
 afterEach(() => {
+  vi.restoreAllMocks(); setConsentBindings(new Map());
   delete (globalThis as FrontendGlobal).__neoFrontendFrames;
   resetDiskPacks();
   resetModCode();
@@ -87,6 +90,8 @@ function fixtureSource(): ModDirSource {
 async function bootDiskFrontendCode() {
   setDiskPacks(await readModDir(fixtureSource()));
   const disk = diskPacks();
+  setConsentBindings(new Map(ids.map((id) => [id, "measured-fixture"])));
+  vi.spyOn(snapshots, "modPayloadUrl").mockImplementation(disk.codeUrl!);
   const store = defaultModStore();
   setModCode(
     await loadModCode({
