@@ -246,20 +246,15 @@ export function installModWorkerBootstrap(
           race: method("truth.race"), storeKnowledge: method("truth.storeKnowledge"),
         },
       } : {}),
-      ...(["profiles:manage", "session:control", "options:manage", "saves:manage"].some((cap) => m.granted.includes(cap)) ? {
+      ...(["profiles:manage", "session:control", "options:manage", "saves:manage", "mod:install", "mod:session", "mod:read", "debug:wizard"].some((cap) => m.granted.includes(cap)) ? {
         manage: {
           profiles: { list: method("manage.profiles.list"), create: method("manage.profiles.create"), switchTo: method("manage.profiles.switchTo"), rename: method("manage.profiles.rename") },
-          session: { save: method("manage.session.save") },
+          session: { save: method("manage.session.save"), exitToTitle: method("manage.session.exitToTitle"), quit: method("manage.session.quit") },
           options: { get: method("manage.options.get"), set: method("manage.options.set") },
           saves: { list: method("manage.saves.list"), load: method("manage.saves.load"), rename: method("manage.saves.rename"), delete: method("manage.saves.delete") },
           mods: { snapshot: method("manage.mods.snapshot"), disable: method("manage.mods.disable"), setSettingValue: method("manage.mods.setSettingValue"), setSectionChoice: method("manage.mods.setSectionChoice"), setConflictOverride: method("manage.mods.setConflictOverride"), setThirdPartyConsent: method("manage.mods.setThirdPartyConsent") },
+          ...contentManage(m),
         },
-      } : {}),
-      ...(m.granted.includes("debug:spawn") ? {
-        debug: { spawnObject: method("debug.spawnObject"), spawnMonster: method("debug.spawnMonster") },
-      } : {}),
-      ...(m.granted.includes("shared:read") || m.granted.includes("shared:publish") ? {
-        shared: { read: method("shared.read"), publish: method("shared.publish"), withdraw: method("shared.withdraw") },
       } : {}),
       ...(m.net ? {
         net: {
@@ -482,4 +477,30 @@ export function installModWorkerBootstrap(
         return;
     }
   };
+
+  function contentManage(m: WorkerMeta): Record<string, unknown> {
+    const content: Record<string, unknown> = {};
+    const source = (value: unknown) => value instanceof Uint8Array ? { archive: [...value] } : value;
+    if (m.granted.includes("mod:install")) {
+      content.planInstall = (value: unknown) => call("manage.content.planInstall", [source(value)]);
+      content.applyInstall = method("manage.content.applyInstall");
+    }
+    if (m.granted.includes("mod:session")) {
+      content.planSession = (value: unknown) => call("manage.content.planSession", [source(value)]);
+      content.applySession = method("manage.content.applySession");
+    }
+    const wizard = Object.fromEntries([
+      "sandboxed", "attached", "sandbox", "catalogue", "where", "spawnItem", "spawnCreature", "spawnArtifact",
+      "goToDepth", "grantExperience", "setExperience", "setGold", "setStat", "maxOut", "heal", "rerollLife",
+      "acquire", "summonRandom", "banish", "killVisible", "teleport", "mapLevel", "lightLevel", "findCreatures", "learnItems", "learnCreatures",
+    ].map((name) => [name, method(`manage.wizard.${name}`)]));
+    return {
+      ...(Object.keys(content).length ? { content } : {}),
+      ...(m.granted.includes("mod:read") ? { readMod: method("manage.readMod") } : {}),
+      ...(m.granted.includes("debug:wizard") ? { wizard: async () => {
+        const result = await call("manage.wizard", []) as unknown as { ok: boolean };
+        return result.ok ? { ok: true, value: freeze(wizard) } : result;
+      } } : {}),
+    };
+  }
 }

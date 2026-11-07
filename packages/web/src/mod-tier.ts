@@ -263,7 +263,7 @@ interface SeamRule {
  * found. A namespace missing from this table is held by nobody.
  */
 const SEAM_POLICY: Readonly<Record<string, SeamRule>> = Object.freeze({
-  manage: Object.freeze({ inProcess: false, originListed: true, confirm: true, worker: ["profiles:manage", "session:control", "options:manage", "saves:manage"] }),
+  manage: Object.freeze({ inProcess: false, originListed: true, confirm: true, worker: ["profiles:manage", "session:control", "options:manage", "saves:manage", "mod:install", "mod:session"] }),
   truth: Object.freeze({ inProcess: true, originListed: false, brokered: true, confirm: false }),
 });
 
@@ -294,7 +294,7 @@ function seamRefusal(entry: CapabilityEntry, capability: string, tier: ModTier):
  * before it is granted (SEAM_POLICY `confirm`).
  */
 export function needsOwnConfirmation(capability: string): boolean {
-  if (capability === "saves:manage") return true;
+  if (["saves:manage", "mod:read", "debug:wizard"].includes(capability)) return true;
   const entry = entryOf(capability);
   return entry !== undefined && SEAM_POLICY[entry.namespace]?.confirm === true;
 }
@@ -305,7 +305,7 @@ export function needsOwnConfirmation(capability: string): boolean {
  * A capability the vocabulary does not know is never granted. One outside the
  * public namespace follows SEAM_POLICY. A public capability is never withheld
  * from code in the page; a Worker mod is held to the vocabulary's Worker tier,
- * which is what its runtime provides, including bounded spawning and published JSON.
+ * which is what its runtime provides.
  */
 export function tierRefusal(capability: string, tier: ModTier): string | null {
   if (capability === "engine:access" && tier.execution === "worker") return "this needs a live engine mechanism Workers do not have yet";

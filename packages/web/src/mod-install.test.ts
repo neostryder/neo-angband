@@ -65,6 +65,7 @@ import { contributedTileModes, mergeModSources } from "./tile-mods";
 import { loadModCode, type ModCodeReport } from "./mod-code";
 import { modPluginContext, setModInstallDoor } from "./mod-context";
 import { CapabilitySet, validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import { createWorkerContentBroker } from "./install-runtime";
 
 const subtle = webcrypto.subtle;
 
@@ -158,7 +159,9 @@ function fakeIdb(
               onerror?: (() => void) | null;
               onabort?: (() => void) | null;
               objectStore(name?: string): unknown;
+              abort(): void;
             } = {
+              abort: () => { failed = true; settle(); },
               objectStore: (name?: string) => {
                 const store = name ?? only;
                 return {
@@ -322,6 +325,66 @@ async function envFor(
     },
   };
 }
+
+describe("Worker content installation", () => {
+  const archive = () => zipSync({
+    "manifest.json": enc(JSON.stringify({ id: "worker-draft", name: "Worker draft", version: "1.0.0", shape: "content", modApi: 1, engine: ">=0.1.0", author: "A player", repository: "https://github.com/a-player/draft" })),
+    "monster.json": enc("[]"),
+  });
+  const confirmed = async () => true;
+
+  it("installs the measured bytes through the player validator and consumes the plan", async () => {
+    const { env, stores } = await envFor({});
+    const broker = createWorkerContentBroker({ door: { env, allowed: () => true, reload: () => {} }, discovery: () => ({ engineVersion: "9.9.9" }), fetch: vi.fn() }, "builder");
+    const plan = await broker.plan({ archive: [...archive()] }, false, confirmed, () => true);
+    expect(await broker.apply(plan.id, false, confirmed, () => true)).toMatchObject({ ok: true, id: "worker-draft" });
+    expect(await installedMeta("worker-draft", env.scope)).toMatchObject({ installedByModId: "builder", listing: "file", repo: "a-player/draft" });
+    expect(stores.get(STORE_MODS)?.has("worker-draft/monster.json")).toBe(true);
+    await expect(broker.apply(plan.id, false, confirmed, () => true)).rejects.toThrow("unavailable");
+  });
+
+  it.each(["declined", "revoked", "digest", "collision"])("refuses %s during confirmation without writing payload bytes", async (attack) => {
+    const { env, stores } = await envFor({});
+    const broker = createWorkerContentBroker({ door: { env, allowed: () => true, reload: () => {} }, discovery: () => ({ engineVersion: "9.9.9" }), fetch: vi.fn() }, "builder");
+    let current = true;
+    const plan = await broker.plan({ archive: [...archive()] }, false, confirmed, () => current);
+    const confirm = async () => {
+      if (attack === "revoked") current = false;
+      if (attack === "digest") vi.spyOn(env.subtle, "digest").mockResolvedValue(new Uint8Array(32).buffer);
+      if (attack === "collision") {
+        expect((await installModFromZip(archive(), env, true)).ok).toBe(true);
+        stores.get(STORE_MODS)?.clear();
+      }
+      return attack !== "declined";
+    };
+    await expect(broker.apply(plan.id, false, confirm, () => current)).rejects.toThrow();
+    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
+  });
+
+  it("refuses code, capability declarations, and oversized expansion without an install", async () => {
+    const { env, stores } = await envFor({});
+    const broker = createWorkerContentBroker({ door: { env, allowed: () => true, reload: () => {} }, discovery: () => ({ engineVersion: "9.9.9" }), fetch: vi.fn() }, "builder");
+    const base = { id: "worker-draft", name: "Draft", version: "1.0.0", shape: "plugin", facets: ["plugin"], modApi: 1, repository: "https://github.com/a-player/draft" };
+    for (const files of [
+      { "manifest.json": enc(JSON.stringify(base)), "plugin.js": enc("export default {}") },
+      { "manifest.json": enc(JSON.stringify({ ...base, capabilities: ["engine:access"] })) },
+      { "manifest.json": enc(JSON.stringify(base)), "large.json": new Uint8Array(4 * 1024 * 1024 + 1) },
+    ]) await expect(broker.plan({ archive: [...zipSync(files)] }, false, confirmed, () => true)).rejects.toThrow();
+    expect(stores.get(STORE_MOD_META)?.size ?? 0).toBe(0);
+  });
+
+  it("refuses a plan issued in an earlier authorization epoch", async () => {
+    const { env, stores } = await envFor({});
+    const broker = createWorkerContentBroker({ door: { env, allowed: () => true, reload: () => {} }, discovery: () => ({ engineVersion: "9.9.9" }), fetch: vi.fn() }, "builder");
+    let originalEpoch = true;
+    const plan = await broker.plan({ archive: [...archive()] }, false, confirmed, () => originalEpoch);
+    originalEpoch = false;
+    const confirm = vi.fn(confirmed);
+    await expect(broker.apply(plan.id, false, confirm, () => true)).rejects.toThrow("unavailable");
+    expect(confirm).not.toHaveBeenCalled();
+    expect(stores.get(STORE_MOD_META)?.size ?? 0).toBe(0);
+  });
+});
 
 
 /* ------------------------------------------------------------------ *

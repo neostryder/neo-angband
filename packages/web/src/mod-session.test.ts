@@ -47,6 +47,8 @@ import {
 import { buildCatalog, ModStore, resolveEnabledIds } from "./mod-store";
 import { createModSessionLoader } from "./install-runtime";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import { modKeyValueStore } from "./mod-prefs";
+import { createModNet } from "./mod-net";
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
 
@@ -120,6 +122,10 @@ describe("staging an archive", () => {
     if (!preview.ok) return;
     const opts = { bytes, source: "draft.zip", allowed: true, granted: [], refused: ["command:add"], acknowledged: true, grantedDigest: preview.digest };
     expect((await stageSessionMod(opts, scope)).ok).toBe(true);
+    const forged = JSON.parse((scope as { sessionStorage: SessionStorageLike }).sessionStorage.getItem(SESSION_MODS_KEY)!) as { mods: { granted: string[]; grantedDigest: string }[] };
+    forged.mods[0]!.granted = ["command:add", "engine:access"];
+    forged.mods[0]!.grantedDigest = preview.digest;
+    (scope as { sessionStorage: SessionStorageLike }).sessionStorage.setItem(SESSION_MODS_KEY, JSON.stringify(forged));
     await loadSessionMods(scope);
     const persisted = new ModStore(store());
     expect(persisted.getDecisions("draft")).toEqual({ granted: [], refused: [] });
@@ -129,6 +135,11 @@ describe("staging an archive", () => {
 
   it("refuses a same-repository installed id at staging and on a forged reload", async () => {
     const s = store(); const scope = scopeWith(s);
+    const privateStorage = store();
+    const records = modKeyValueStore("draft", "kv", () => true, privateStorage);
+    expect(await records.set("private-record", { owner: "installed" })).toMatchObject({ ok: true });
+    const net = createModNet({ modId: "draft", modName: "Installed draft", grants: ["example.test"], relay: null, storage: privateStorage, fetch: vi.fn() });
+    expect(await net.secrets.set("test-key", "synthetic-test-value", { hosts: ["example.test"] })).toMatchObject({ ok: true });
     await stageSessionMod({ bytes: WITH_CODE(), source: "draft.zip", allowed: true }, scope);
     const before = s.getItem(SESSION_MODS_KEY);
     vi.spyOn(installs, "installedMods").mockResolvedValue([{ id: "draft", name: "Installed draft", repo: "a-player/draft", tag: "v0.1.0", sha: "installed", files: [], installedAt: "today" }]);
@@ -139,6 +150,10 @@ describe("staging an archive", () => {
     expect((await loadSessionMods(scope)).packs).toEqual([]);
     expect(sessionPacks().packs).toEqual([]);
     expect(persisted.getConsent("draft")).toEqual(["command:add"]);
+    expect(await records.get("private-record")).toEqual({ ok: true, value: { owner: "installed" } });
+    expect(await net.secrets.has("test-key")).toMatchObject({ present: true });
+    expect(s.getItem(SESSION_MODS_KEY)).not.toContain("private-record");
+    expect(s.getItem(SESSION_MODS_KEY)).not.toContain("test-key");
   });
   it("holds a content pack and can read it back", async () => {
     const s = store();

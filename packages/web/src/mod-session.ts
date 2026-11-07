@@ -371,6 +371,7 @@ export async function stageSessionMod(
     readonly grantedDigest?: string;
     readonly contentOnly?: boolean;
     readonly allowed: boolean;
+    readonly authorized?: () => boolean;
   },
   scope: unknown = globalThis,
 ): Promise<SessionStageResult> {
@@ -423,6 +424,7 @@ export async function stageSessionMod(
     };
   }
 
+  const before = JSON.stringify(sessionMods(scope));
   const kept = sessionMods(scope).filter((m) => m.id !== read.id);
   const zip = toBase64(own);
   const total = zip.length + kept.reduce((n, m) => n + m.zip.length, 0);
@@ -447,6 +449,7 @@ export async function stageSessionMod(
     ...(opts.grantedDigest === undefined ? {} : { grantedDigest: opts.grantedDigest }),
     zip,
   };
+  if (opts.authorized && (!opts.authorized() || before !== JSON.stringify(sessionMods(scope)))) return { ok: false, problem: "The session request was revoked or changed." };
   if (!writeSessionMods([...kept, mod], scope)) {
     return {
       ok: false,
