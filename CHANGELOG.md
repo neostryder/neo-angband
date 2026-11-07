@@ -50,7 +50,8 @@ still calls itself.
 
 ### Added
 
-- [Visible] [Modding-API] **The run report retains the game's original seed when known.** `RunReport.seed` follows the original stream across the birth reload and save/load, rather than reporting a new page's unrelated random seed. Legacy saves and continuations without original-seed provenance omit the field; the lab hook also reports it as unknown. This records provenance for replay, which additionally needs a matching birth path, code and controller policy (#431).
+- [Visible] [Modding-API] **The run report now carries the game's seed and birth state, so a mod can journal a run for replay.** `RunReport`, the payload of `event:run-end`, has three optional read-only fields: `seed` (the original master seed), `birthRngState` (the random-number generator state accepted at birth, before character and world generation, as `{ quick, value, state, stateI, fixed, fixval }`), and `birthOptions` (the birth options chosen for the character). The seed follows the original stream through the birth reload and through save and load, older saves load unchanged without these fields, and a character created by reincarnation omits `birthRngState` because it continues the earlier stream. The lab hook's `seed()` reports the same value, or `undefined` when unknown, and a replay also needs the same birth path, code, and controller policy. (neostryder/neo-angband#431) Reported by diegoami.
+- [Visible] [Modding-API] **`ctx.saves.load(id, { resumeAutoplayer: true })` hands a loaded character to your autoplayer.** Before, a loaded save never gave the keyboard back to a mod's autoplayer, so an unattended run that loaded a stored character stopped and waited for the player. The option matches `create`'s and is also accepted by the API 2 `saves.load(id, options)`. (neostryder/neo-angband#430) Reported by diegoami. Fixed by diegoami.
 
 ### Changed
 
@@ -60,7 +61,7 @@ still calls itself.
 
 ### Fixed
 
-- [Visible] [Modding-API] **Mods now receive the `input-flush` event.** `disturb()` ends by signalling it, as upstream's does (player-util.c:1674), so a mod with `event:input-flush` hears every disturbance - a run stopping, a rest reaching its condition, a hit landing - and can stop a multi-step action on it. The event was declared and grantable before, but nothing ever fired it. A handler that throws is logged and the disturbance still completes (#414).
+- [Visible] [Modding-API] **`disturb()` now fires `event:input-flush`.** The event was declared and grantable but nothing fired it. It now fires at the end of every disturbance, as upstream's `disturb()` does, even when nothing needed cancelling, so a mod with the `event:input-flush` grant can stop a multi-step action when the character is hit, a monster comes into view, or a rest ends. (neostryder/neo-angband#414) Reported by diegoami. Fixed by diegoami.
 - [Internal] [Security] **A backup folder purpose id in the desktop game must now be 1 to 64 lowercase letters, digits, and hyphens starting with a letter or digit,** since the id becomes part of a file name in the user data folder and an id such as "x/../../sentinel" could point a forget request at a JSON file outside it. A purpose id that does not match is rejected before any file is read, written, or deleted.
 - [Internal] [Security] **The desktop shell now rejects an update download in the installing process when the release is not newer than the installed version or its tag is not a version.** The page already applied this rule when choosing an update, but any script in the page can call the update bridge with any tag, and because the save format only moves forward, an older engine can damage characters it cannot read.
 

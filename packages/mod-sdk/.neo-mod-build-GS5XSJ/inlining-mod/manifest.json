@@ -1,0 +1,1 @@
+{"id":"inlining-mod","name":"Inlining Mod","version":"0.10.0","shape":"content","facets":["plugin"],"modApi":1,"author":"neostryder (RPGM Tools)","license":"GPL-2.0-only","description":"A fixture whose bare import resolves, so the builder has to refuse it."}
