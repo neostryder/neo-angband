@@ -17,9 +17,9 @@ describe("describeCapability", () => {
   it("describes title additions and profile changes separately", () => {
     expect(describeCapability("ui:title")).toEqual({ cap: "ui:title", text: "Add title screen actions", elevated: false });
     expect(describeCapability("profiles:manage")).toEqual({ cap: "profiles:manage", text: "Create profiles and switch between them", elevated: true });
-    expect(describeCapability("session:control")).toEqual({ cap: "session:control", text: "Ask the game to save your character, return to the title screen, or quit after your confirmation; leaving ends your current session", elevated: false });
-    expect(describeCapability("shared:read")).toEqual({ cap: "shared:read", text: "Read JSON data other mods explicitly publish; this does not expose private mod storage", elevated: false });
-    expect(describeCapability("shared:publish")).toEqual({ cap: "shared:publish", text: "Share selected JSON data with all other mods holding shared:read; recipients can keep or send that data elsewhere", elevated: false });
+    expect(describeCapability("session:control")).toEqual({ cap: "session:control", text: "Ask the game to save your character, return to the title screen, or quit after you confirm. Leaving ends your current session.", elevated: false });
+    expect(describeCapability("shared:read")).toEqual({ cap: "shared:read", text: "Read JSON data that other mods explicitly publish. Private mod storage stays hidden from this mod.", elevated: false });
+    expect(describeCapability("shared:publish")).toEqual({ cap: "shared:publish", text: "Share selected JSON data with every other mod that holds shared:read. Those mods can keep that data or send it elsewhere.", elevated: false });
   });
   it("describes each registry override domain, flagging system override as elevated", () => {
     expect(describeCapability("registry:effect")).toMatchObject({ elevated: true });
@@ -80,7 +80,7 @@ describe("describeCapability", () => {
     expect(describeCapability("network:local").text).toMatch(/local network/);
     expect(describeCapability("network:localhost:8010").text).toBe("Send network requests to localhost:8010");
     expect(describeCapability("display:filter")).toMatchObject({ elevated: false });
-    expect(describeCapability("display:filter").text).toContain("make details difficult to see");
+    expect(describeCapability("display:filter").text).toContain("make details hard to see");
     expect(describeCapability("display:filter").text).toContain("host permission dialogs keep their own appearance");
   });
 
@@ -116,7 +116,7 @@ describe("describeCapability", () => {
     /* It reaches the network on the player's behalf, and it is proportionate
      * because nothing lands in the library and nothing is installed. */
     expect(read.text).toMatch(/GitHub learns about the lookup/i);
-    expect(read.text).toMatch(/installs nothing/i);
+    expect(read.text).toMatch(/nothing is installed/i);
   });
 
   it("says what ui:panel.mount and debug:spawn actually are, not what they are called", () => {

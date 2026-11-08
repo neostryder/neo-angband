@@ -190,14 +190,14 @@ const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
 ];
 
 const WORKER_REGISTRY_CONSENT: Readonly<Record<string, string>> = {
-  effect: "Install bounded heal, damage, and message effect programs; affected characters become permanently unscorable and stop being replayable",
-  room: "Select host room builders for named room types; affected characters become permanently unscorable and stop being replayable",
-  profile: "Add weighted dungeon profiles copied from existing profiles; affected characters become permanently unscorable and stop being replayable",
-  blow: "Set fixed damage and visibility for monster blow effects; affected characters become permanently unscorable and stop being replayable",
-  glyph: "Map room or vault symbols to existing symbol behavior; affected characters become permanently unscorable and stop being replayable",
-  randart: "Set bounded combat stats for random artifact abilities and item preparation; affected characters become permanently unscorable and stop being replayable",
-  vocab: "Declare mod-owned vocabulary terms and labels; affected characters become permanently unscorable and stop being replayable",
-  menu: "Rename or hide existing rows in supported gameplay menus; permissions remain host-controlled, and affected characters become permanently unscorable and stop being replayable",
+  effect: "Install bounded heal, damage, and message effect programs. Any character they touch becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
+  room: "Select host room builders for named room types. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
+  profile: "Add weighted dungeon profiles copied from existing profiles. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
+  blow: "Set fixed damage and visibility for monster blow effects. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
+  glyph: "Map room or vault symbols to existing symbol behavior. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
+  randart: "Set bounded combat stats for random artifact abilities and item preparation. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
+  vocab: "Declare vocabulary terms and labels that belong to the mod. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
+  menu: "Rename or hide existing rows in supported gameplay menus. Permissions stay under host control, and any character this touches becomes permanently unscorable and its run can no longer be reproduced from its seed.",
 };
 
 /** What the player would call each HUD region or screen family `ui:<region>.replace` hands over. */
@@ -215,12 +215,12 @@ const UI_REGIONS: readonly (readonly [string, string, string])[] = [
 ];
 
 const WORKER_TEXT_CONSENT: Readonly<Record<string, string>> = {
-  messages: "Replace game messages with text; it can hide or change warnings",
-  sidebar: "Replace your vitals panel with text; it can misstate health, food, armor, or depth",
-  status: "Replace the status line with text; it can hide harmful conditions",
-  menu: "Replace gameplay menus with host-drawn text and choices; it can mislabel choices and hide options, while permission dialogs remain controlled by the game",
-  screen: "Replace gameplay screens with host-drawn text and local choices; it can misrepresent inventory and character information, while game actions and permission dialogs stay with the game",
-  birth: "Replace character creation with host-drawn text and propose legal choices; birth options stay locked, and the game shows the actual character summary and asks before starting it",
+  messages: "Replace game messages with its own text. The mod can use this to hide or change warnings.",
+  sidebar: "Replace your vitals panel with its own text. The panel can then misstate your health, food, armor, or depth.",
+  status: "Replace the status line with its own text. The status line can then hide harmful conditions.",
+  menu: "Replace gameplay menus with host-drawn text and choices. The mod can mislabel choices and hide options, but the game keeps control of permission dialogs.",
+  screen: "Replace gameplay screens with host-drawn text and local choices. The mod can misrepresent your inventory and character information, but game actions and permission dialogs stay with the game.",
+  birth: "Replace character creation with host-drawn text and propose legal choices. Birth options stay locked, and the game shows you the actual character summary and asks before starting that character.",
 };
 
 const FIXED_ENTRIES: readonly FixedEntry[] = [
@@ -244,15 +244,15 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The mod's entries on the title screen do not appear.", { powerful: false, tiers: ALL_TIERS }),
   fixed("ui:menu.row", { kind: "menu-row", action: "add" }, "Add a row to the game menu",
     "The mod's row in the game menu does not appear.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("shared:read", { kind: "shared", action: "read" }, "Read JSON data other mods explicitly publish; this does not expose private mod storage",
+  fixed("shared:read", { kind: "shared", action: "read" }, "Read JSON data that other mods explicitly publish. Private mod storage stays hidden from this mod.",
     "The mod cannot see what other mods share with it.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("shared:publish", { kind: "shared", action: "publish" }, "Share selected JSON data with all other mods holding shared:read; recipients can keep or send that data elsewhere",
+  fixed("shared:publish", { kind: "shared", action: "publish" }, "Share selected JSON data with every other mod that holds shared:read. Those mods can keep that data or send it elsewhere.",
     "Other mods cannot see what this mod shares.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("display:replace", { kind: "display", action: "replace" }, "Draw the dungeon with bounded grid glyphs and host color tokens; it can hide dangers or show a misleading map, while host dialogs remain protected",
+  fixed("display:replace", { kind: "display", action: "replace" }, "Draw the dungeon with bounded grid glyphs and host color tokens. The mod can hide dangers or show a misleading map, but host dialogs stay protected.",
     "The game draws the map itself and this mod's view is not used.", { powerful: true, canRunWithout: false, tiers: ALL_TIERS }),
-  fixed("display:filter", { kind: "display", action: "filter" }, "Change how the game looks; it can make details difficult to see, while host permission dialogs keep their own appearance",
+  fixed("display:filter", { kind: "display", action: "filter" }, "Change how the game looks. The mod can make details hard to see, but host permission dialogs keep their own appearance.",
     "The game's screen is shown without this mod's filter.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("ui:*.replace", { kind: "ui", region: "*", action: "replace" }, "Replace messages, vitals, status, gameplay menus, gameplay screens, and character creation with host-drawn text and choices; it can mislead you, while the game owns permissions, birth options, and final character acceptance",
+  fixed("ui:*.replace", { kind: "ui", region: "*", action: "replace" }, "Replace messages, vitals, status, gameplay menus, gameplay screens, and character creation with host-drawn text and choices. The mod can mislead you, but the game keeps control of permissions, birth options, and final character acceptance.",
     "The game draws its own interface around the map.", { powerful: true, wildcard: true, tiers: ALL_TIERS }),
   ...UI_REGIONS.map(([region, words, withoutIt]) =>
     fixed(`ui:${region}.replace`, { kind: "ui", region, action: "replace" }, WORKER_TEXT_CONSENT[region] ?? `Draw the ${words} instead of the game`,
@@ -260,7 +260,7 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   /* `create` adds a rectangle of the game's own character grid; it hands over
    * nothing the game already draws, so it is its own action, and `ui:*.replace`
    * does not cover it (#261). */
-  fixed("ui:region.create", { kind: "ui", region: "region", action: "create" }, "Add text panels over or beside the game; they can cover information and show misleading instructions, while host dialogs remain protected",
+  fixed("ui:region.create", { kind: "ui", region: "region", action: "create" }, "Add text panels over or beside the game. These panels can cover information and show misleading instructions, but host dialogs stay protected.",
     "The panels this mod draws on the game screen do not appear.", { powerful: true, tiers: ALL_TIERS }),
   /* `mount` puts real web content above the game. The consent text tells the
    * player the two facts they have no other way to learn: what they see may
@@ -271,21 +271,21 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The text area this mod fills on the game screen stays empty.", { powerful: true, tiers: ALL_TIERS }),
   fixed("ui:panel", { kind: "ui-panel", action: "write" }, "Show panels of buttons and text that the game draws for this mod",
     "The panels this mod asks the game to draw do not appear.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("backup:folder", { kind: "backup", action: "folder" }, "Receive character backup notices, list backup file names, and request bounded writes in a folder you pick; for Workers, the desktop asks before each write and keeps files in this installation's subfolder without revealing its path or save contents",
+  fixed("backup:folder", { kind: "backup", action: "folder" }, "Receive character backup notices, list backup file names, and request bounded writes in a folder you pick. For Workers, the desktop asks before each write and keeps files in this installation's subfolder without revealing that path or your save contents.",
     "The mod cannot write backups to a folder you pick.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("mod:read", { kind: "mod-read", action: "read" }, "Ask the game to contact a GitHub repository to read public mod metadata and file names after your confirmation; GitHub learns about the lookup. This returns no file text and installs nothing",
+  fixed("mod:read", { kind: "mod-read", action: "read" }, "Ask the game to read public mod metadata and file names from a GitHub repository after you confirm. GitHub learns about the lookup. No file text comes back, and nothing is installed.",
     "The mod cannot look up other mods by their repository address.", { powerful: true, tiers: ALL_TIERS }),
   fixed("debug:spawn", { kind: "debug", action: "spawn" }, "Conjure items and creatures into your game, the way the debug commands do - it asks first, and the character it happens to is marked for good and can no longer be scored",
     "The mod cannot create items or creatures in your game.", { powerful: true, tiers: ALL_TIERS }),
   /* The wizard grant costs the session rather than the score: it refuses to run
    * until the session is cut loose from its save. */
-  fixed("debug:wizard", { kind: "debug", action: "wizard" }, "Ask the game to use debug commands after your confirmation, marking this character unscorable and permanently stopping this session from saving. Your character on disk keeps its last save; progress after that is lost on reload",
+  fixed("debug:wizard", { kind: "debug", action: "wizard" }, "Ask the game to use debug commands after you confirm, which marks this character unscorable and permanently stops this session from saving. Your character on disk keeps its last save, and any progress after that is lost on reload.",
     "The mod cannot use the game's debug commands.", { powerful: true, tiers: ALL_TIERS }),
   fixed("keymap:write", { kind: "keymap", action: "write" }, "Create new shortcut keymaps in your current keyset without replacing your existing shortcuts",
     "The shortcut keys this mod offers to add are not created.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("keymap:edit", { kind: "keymap", action: "edit" }, "Change or remove shortcuts in your current keyset and request one key for binding; host recovery keys and permission-dialog input stay with the game",
+  fixed("keymap:edit", { kind: "keymap", action: "edit" }, "Change or remove shortcuts in your current keyset and request one key for binding. Host recovery keys and input to permission dialogs stay with the game.",
     "The mod's keymap editor cannot change your keymaps.", { powerful: true, tiers: ALL_TIERS }),
-  fixed("options:write", { kind: "options", action: "write" }, "Change your interface options and delays; this permission cannot change birth, cheat, or score options",
+  fixed("options:write", { kind: "options", action: "write" }, "Change your interface options and delays. This permission cannot change birth, cheat, or score options.",
     "The mod cannot change your options; the options menu still works.", { powerful: false, tiers: ALL_TIERS }),
   fixed("query:snapshot", { kind: "query", action: "snapshot" }, "Read the host's named, cloned engine and content snapshots",
     "The mod cannot read the game's snapshots.", { powerful: false, tiers: ALL_TIERS }),
@@ -307,9 +307,9 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The mod cannot open the images and data files it ships with.", { powerful: false, tiers: ALL_TIERS }),
   fixed("state:*.read", { kind: "state", domain: "*", access: "read" }, "Read ALL game state, except the parts of the map your character has not found",
     "The mod cannot read the game state it uses.", { powerful: true, tiers: ALL_TIERS, wildcard: true }),
-  fixed("state:map-actual.read", { kind: "state", domain: "map-actual", access: "read" }, "See the real map, hidden terrain, traps, items, shop knowledge, every monster, and true race abilities. Affected characters become permanently unscorable.",
+  fixed("state:map-actual.read", { kind: "state", domain: "map-actual", access: "read" }, "See the true map, hidden terrain, traps, items, shop knowledge, every monster, and true race abilities. Any character this touches becomes permanently unscorable.",
     "The mod sees only what your character has found.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "truth" }),
-  fixed("state:monsters-actual.read", { kind: "state", domain: "monsters-actual", access: "read" }, "See every creature's location and exact state, including unseen creatures, and true race abilities. Affected characters become permanently unscorable.",
+  fixed("state:monsters-actual.read", { kind: "state", domain: "monsters-actual", access: "read" }, "See every creature's location and exact state, including creatures you have not seen, and true race abilities. Any character this touches becomes permanently unscorable.",
     "The mod sees only what your character has learned about creatures.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "truth" }),
   fixed("network:*", { kind: "network", host: "*" }, "Send network requests to ANY host (your data could leave this device)",
     "The mod cannot reach the internet.", { powerful: true, tiers: ALL_TIERS, wildcard: true }),
@@ -325,20 +325,20 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
    * grants; broader mechanisms still require first-party page execution. */
   fixed("profiles:manage", { kind: "profiles", action: "manage" }, "Create profiles and switch between them",
     "The mod cannot create profiles or switch between them.", { powerful: true, tiers: ALL_TIERS, namespace: "manage" }),
-  fixed("session:control", { kind: "session", action: "control" }, "Ask the game to save your character, return to the title screen, or quit after your confirmation; leaving ends your current session",
+  fixed("session:control", { kind: "session", action: "control" }, "Ask the game to save your character, return to the title screen, or quit after you confirm. Leaving ends your current session.",
     "The mod cannot save the game, leave it or quit for you.", { powerful: false, tiers: ALL_TIERS, namespace: "manage" }),
-  fixed("screens:manage", { kind: "screens", action: "manage" }, "Replace the Mods screen with host-drawn text and choices; it can mislead you about mods and settings, while permissions and game controls remain available through the host",
+  fixed("screens:manage", { kind: "screens", action: "manage" }, "Replace the Mods screen with host-drawn text and choices. The mod can mislead you about mods and settings, but permissions and game controls stay available through the host.",
     "The game's own management screens are shown instead.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "manage" }),
-  fixed("mod:authoring", { kind: "mod", action: "authoring" }, "Validate and prepare mod content using the game's authoring tools; this does not install or run it",
+  fixed("mod:authoring", { kind: "mod", action: "authoring" }, "Validate and prepare mod content with the game's authoring tools. This permission cannot install or run that content.",
     "The mod cannot check drafts with this game's authoring library.", { powerful: false, tiers: [...FIRST_PARTY, "worker"], namespace: "manage" }),
   fixed("options:manage", { kind: "options", action: "manage" }, "The mod can read and change game options, including cheat options that permanently disqualify a character from scoring",
     "The mod cannot edit cheat options; the options menu still works.", { powerful: true, tiers: ALL_TIERS, namespace: "manage" }),
   /* Install and session loads are two grants: an install arrives switched off,
    * a session load is on as soon as the game reloads. The archive is forgotten
    * with the session; what its records did to a character is not. */
-  fixed("mod:install", { kind: "mod", action: "install" }, "Ask the game to install content mods after you confirm their identity and digest - records and tweaks, never code or capabilities. They arrive switched off and cannot replace an existing mod through the Worker door. Repository requests contact GitHub after your confirmation",
+  fixed("mod:install", { kind: "mod", action: "install" }, "Ask the game to install content mods after you confirm their identity and digest. These mods hold only records and tweaks, never code or capabilities, arrive switched off, and cannot replace an existing mod through the Worker door. Repository requests contact GitHub after you confirm.",
     "The mod cannot add mods to your library.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "manage" }),
-  fixed("mod:session", { kind: "mod", action: "session" }, "Ask the game to load content after you confirm its identity and digest - records and tweaks, never code or capabilities. It starts on reload, cannot share an installed mod's id, and ends with this session; its effects on characters can remain. Repository requests contact GitHub after your confirmation",
+  fixed("mod:session", { kind: "mod", action: "session" }, "Ask the game to load content after you confirm its identity and digest. This content holds only records and tweaks, never code or capabilities. It starts on reload, cannot share an installed mod's id, and ends with this session, though its effects on characters can remain. Repository requests contact GitHub after you confirm.",
     "The mod cannot load test content into this session.", { powerful: true, tiers: [...FIRST_PARTY, "worker"], namespace: "manage" }),
 ];
 

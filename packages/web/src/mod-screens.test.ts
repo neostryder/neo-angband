@@ -525,7 +525,7 @@ describe("the consent read renders exactly what its hand-laid version did", () =
     expect(view.title).toBe("Capability approval");
     expect(table.rows.map((r) => r.cells.text?.text?.split(". Without it: ")[0])).toEqual([
       "Quality of Life: Add new player commands",
-        "ModForge: Page mechanism: Override effect, combat, and magic logic. Worker mechanism: Install bounded heal, damage, and message effect programs; affected characters become permanently unscorable and stop being replayable",
+        "ModForge: Page mechanism: Override effect, combat, and magic logic. Worker mechanism: Install bounded heal, damage, and message effect programs. Any character they touch becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
     ]);
     expect(table.rows.map((r) => r.semantic?.data?.modId)).toEqual(["qol", "forge"]);
   });

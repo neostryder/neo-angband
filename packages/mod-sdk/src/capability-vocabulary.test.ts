@@ -37,7 +37,7 @@ describe("the capability vocabulary", () => {
     for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create", "display:replace", "ui:menu.replace", "ui:screen.replace", "screens:manage", "mod:install", "mod:session", "mod:read", "debug:wizard", "session:control"]) expect(capabilityTiers(capability)).toContain("worker");
     for (const capability of ["engine:access"]) expect(capabilityTiers(capability)).not.toContain("worker");
     expect(consentText(matchCapability("options:write")!)).toContain("birth, cheat, or score");
-    expect(consentText(matchCapability("keymap:edit")!)).toContain("permission-dialog input");
+    expect(consentText(matchCapability("keymap:edit")!)).toContain("input to permission dialogs");
   });
   it("discloses unseen monsters, race truth, and permanent scoring consequences for Workers", () => {
     const map = consentText(matchCapability("state:map-actual.read")!);
@@ -45,7 +45,7 @@ describe("the capability vocabulary", () => {
     expect(map).toContain("every monster");
     expect(map).toContain("race abilities");
     expect(monsters).toContain("every creature's location and exact state");
-    expect(monsters).toContain("unseen creatures");
+    expect(monsters).toContain("creatures you have not seen");
     for (const capability of ["state:map-actual.read", "state:monsters-actual.read"]) {
       expect(consentText(matchCapability(capability)!)).toContain("permanently unscorable");
       expect(capabilityTiers(capability)).toContain("worker");
@@ -151,8 +151,8 @@ describe("the capability vocabulary", () => {
 it("opens only bounded spawning and explicit shared JSON in this stage", () => {
   for (const capability of ["debug:spawn", "shared:read", "shared:publish"]) expect(capabilityTiers(capability)).toContain("worker");
   for (const capability of ["engine:access"]) expect(capabilityTiers(capability)).not.toContain("worker");
-  expect(consentText(matchCapability("shared:read")!)).toContain("does not expose private mod storage");
-  expect(consentText(matchCapability("shared:publish")!)).toContain("all other mods holding shared:read");
+  expect(consentText(matchCapability("shared:read")!)).toContain("Private mod storage stays hidden");
+  expect(consentText(matchCapability("shared:publish")!)).toContain("every other mod that holds shared:read");
   expect(consentText(matchCapability("debug:spawn")!)).toContain("can no longer be scored");
 });
 
