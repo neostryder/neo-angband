@@ -33,31 +33,31 @@ Nearly every member of the old `ctx` has a home in API 2. Find each member your 
 | Old ctx name | Where it lives now | Who can use it |
 | --- | --- | --- |
 | `ctx.id`, `ctx.engine`, `ctx.flags`, `ctx.newCharacter`, `ctx.log`, `ctx.mods`, `ctx.controllerArmed` | `meta.id`, `meta.engine`, `meta.flags`, `meta.newCharacter`, `meta.log`, `meta.mods`, `meta.controllerArmed` | Everyone |
-| `ctx.api` | `meta.api`, which is a semver string instead of an integer | Everyone |
-| `ctx.settings` | `meta.settings`, `meta.setSetting` | Everyone |
-| `ctx.core`, `ctx.state`, `ctx.registries` | `engine.core`, `engine.state`, `engine.registries` | In-process, needs `engine:access` |
+| `ctx.api` | `meta.api`, now a semver string instead of an integer | Everyone |
+| `ctx.settings` | `meta.settings` and `meta.setSetting` | Everyone |
+| `ctx.core`, `ctx.state`, `ctx.registries` | `engine.core`, `engine.state`, `engine.registries` | In-process mods with `engine:access` |
 | `ctx.data`, `ctx.assetUrl`, `ctx.composedRecords` | `content.own`, `content.asset`, `content.records`, `content.lookup` | Everyone |
-| `ctx.prefs`, `ctx.characterStore` | `store.prefs` (with an explicit prefs migration), `store.character` | Everyone |
-| `ctx.snapshot`, `ctx.driver` | `view.input`, `view.input().driver` | Everyone with `state:interaction.read` |
-| `ctx.knownLevel` | `view.level` | Everyone with `state:map.read` |
-| `ctx.inspect` | `view.inspect` (`inspectItem` is `item`, `spellInfo` is `spell`) | Everyone with the `state:` permission for what each call reads, such as `state:inventory.read` for `item` and `state:spells.read` for `spell` |
-| `ctx.knowledge` | `view.knowledge` (category and id select a recall page) | Everyone with `state:knowledge.read` |
-| `ctx.options` | `view.options`, and `manage.options` for the first-party editor | `view.options` with `state:player.read`, and `manage.options` first-party only |
-| `ctx.character` | `view.character`, `view.player().key`, and `events.on("run-end")` | Everyone with `state:player.read`, plus `event:run-end` for `events.on` |
-| `ctx.intent` | `act.submit` (and `view.catalogue`) | Everyone with `input:intent` (`state:interaction.read` for `view.catalogue`) |
-| `ctx.prompt` | `act.answer` | Everyone with `input:prompt.reply` |
+| `ctx.prefs`, `ctx.characterStore` | `store.prefs`, with an explicit prefs migration, and `store.character` | Everyone |
+| `ctx.snapshot`, `ctx.driver` | `view.input`, and the driver at `view.input().driver` | Any mod with `state:interaction.read` |
+| `ctx.knownLevel` | `view.level` | Any mod with `state:map.read` |
+| `ctx.inspect` | `view.inspect`, where `inspectItem` becomes `item` and `spellInfo` becomes `spell` | Any mod holding the `state:` permission for the data a call reads, such as `state:inventory.read` for `item` and `state:spells.read` for `spell` |
+| `ctx.knowledge` | `view.knowledge`, where category and id pick the recall page | Any mod with `state:knowledge.read` |
+| `ctx.options` | `view.options`, plus `manage.options` for the first-party editor | `view.options` needs `state:player.read`. `manage.options` is first-party only |
+| `ctx.character` | `view.character`, `view.player().key`, and `events.on("run-end")` | Any mod with `state:player.read`. `events.on` also needs `event:run-end` |
+| `ctx.intent` | `act.submit`, with `view.catalogue` alongside it | Any mod with `input:intent`. `view.catalogue` needs `state:interaction.read` |
+| `ctx.prompt` | `act.answer` | Any mod with `input:prompt.reply` |
 | `ctx.controller` | `act.controller` | Everyone. The `controller` member needs `state:interaction.read`, `input:intent`, and `input:prompt.reply` (see Step 6) |
-| `ctx.events` | `events.on`, `events.off`, with payloads that carry only what the player knows | Everyone with `event:<name>` |
-| `ctx.keymaps` | `ui.keys` | Everyone with `keymap:write` |
-| `ctx.ui` | `ui.mount`, `ui.patch`, and `presentation.panels` for first-party DOM panels | `ui:panel.mount` for `ui.mount` and `ui.patch`; first-party in-process with `ui:region.create` for `presentation.panels` |
-| `ctx.title` | `ui.title`, and `presentation.title` | `ui:title`; `presentation.title` also needs first-party in-process execution |
-| `ctx.net` | `net.request`, `net.credentials` (credentials by opaque reference) | Everyone with `network:<host>` for each host the manifest names |
-| `ctx.backupFolder` | `backupFolder` | Everyone with `backup:folder` |
-| `ctx.display` | `presentation.display` | First-party in-process with `display:replace`; live `onKey` also needs `keymap:edit` |
-| `ctx.subwindows` | `presentation.subwindows` | First-party in-process with `ui:region.create` |
-| `ctx.tiles` | `presentation.tiles` | First-party in-process with `display:replace` |
-| `ctx.keyRepeat` | `presentation.keyRepeat` | First-party in-process with `keymap:edit` |
-| `ctx.authoring` | `manage.authoring` | First-party only, with `mod:authoring` |
+| `ctx.events` | `events.on` and `events.off`. Payloads carry only what the player knows | Any mod with `event:<name>` |
+| `ctx.keymaps` | `ui.keys` | Any mod with `keymap:write` |
+| `ctx.ui` | `ui.mount`, `ui.patch`, and `presentation.panels` for first-party DOM panels | `ui.mount` and `ui.patch` need `ui:panel.mount`. `presentation.panels` needs first-party in-process execution and `ui:region.create` |
+| `ctx.title` | `ui.title` and `presentation.title` | `ui:title`. `presentation.title` also needs first-party in-process execution |
+| `ctx.net` | `net.request` and `net.credentials`, which hands out credentials by opaque reference | Any mod with `network:<host>` for each host its manifest names |
+| `ctx.backupFolder` | `backupFolder` | Any mod with `backup:folder` |
+| `ctx.display` | `presentation.display` | First-party in-process mods with `display:replace`. A live `onKey` also needs `keymap:edit` |
+| `ctx.subwindows` | `presentation.subwindows` | First-party in-process mods with `ui:region.create` |
+| `ctx.tiles` | `presentation.tiles` | First-party in-process mods with `display:replace` |
+| `ctx.keyRepeat` | `presentation.keyRepeat` | First-party in-process mods with `keymap:edit` |
+| `ctx.authoring` | `manage.authoring` | First-party mods with `mod:authoring` |
 | `ctx.keybindings` | `manage.keys` | First-party only |
 | `ctx.look` | `manage.look` | First-party only |
 | `ctx.saves` | `manage.saves` | First-party only |
@@ -67,19 +67,19 @@ Nearly every member of the old `ctx` has a home in API 2. Find each member your 
 | `ctx.reloadGame` | `manage.reloadGame` | First-party only |
 | `ctx.loadModForSession` | `manage.loadForSession` | First-party only |
 | `ctx.readMod` | `manage.mods.discover` | First-party only |
-| `ctx.wizard` | `manage.wizard` | First-party only, with `debug:wizard` |
-| `ctx.shared` | None, because values shared between mods are not in API 2 yet | No one |
-| `ctx.debug` | None, because it is retired from public mods and debug tooling is first-party | No one |
+| `ctx.wizard` | `manage.wizard` | First-party mods with `debug:wizard` |
+| `ctx.shared` | None. API 2 has no values shared between mods yet | No one |
+| `ctx.debug` | None. It is retired from public mods, and debug tooling is first-party | No one |
 
 The entries of the plugin object itself move onto the definition:
 
 | Old plugin entry | Definition entry |
 | --- | --- |
-| `controller` | The definition's `controller(mod, input)` member, with `armed`, `onKey`, and `onDeath` |
-| `register(host, ctx)` | `start(mod)`. While `start` runs, the registry host it was given is `mod.engine?.registry` (`engine:access` for every author, in-process only) |
-| `menu`, `screen`, `hud`, `birth` | The `presentation` member (`menu`, `screen`, `hud`, `birth`) and the `birth` member |
-| Game-menu rows | The `actions` member, or `ui.gameMenu.register` |
-| Title rows | The `titleActions` member, or `ui.title.registerRow` |
+| `controller` | The definition's `controller(mod, input)` member, holding `armed`, `onKey`, and `onDeath` |
+| `register(host, ctx)` | `start(mod)`. While `start` runs, `mod.engine?.registry` is the registry host that `register` used to receive. Any author can reach it with `engine:access`, in-process only |
+| `menu`, `screen`, `hud`, `birth` | The `presentation` member's `menu`, `screen`, `hud`, and `birth` entries, plus the `birth` member |
+| Game-menu rows | The `actions` member or `ui.gameMenu.register` |
+| Title rows | The `titleActions` member or `ui.title.registerRow` |
 
 The hooks that pass live game objects stay reachable through `engineHooks(context)` (see Step 8).
 
@@ -480,7 +480,7 @@ if (!response.ok) mod.meta.log(response.message);
 | `ctx.options` | The `optionsChanged` hook, after the player changes an option |
 | `ctx.profiles`, `ctx.session` | `manage.profiles`, `manage.session`, first-party only |
 
-`meta.engine` is for diagnostics: decide on `meta.api`, never on the game version. Any Worker mod, first-party or third-party, can hold the management grants (`profiles:manage`, `session:control`, `options:manage`, `saves:manage`, `screens:manage`), the truth reads (`state:map-actual.read`, `state:monsters-actual.read`), and the other brokered grants, with the player's consent. A truth read marks the character unscorable before it returns any data. `mod.manage` and `mod.truth` are absent from a mod that does not hold them, so test for each one before you use it:
+Branch on `meta.api`, never on the game version, and read `meta.engine` only for diagnostics. With the player's consent, any Worker mod, first-party or third-party, can hold the management grants (`profiles:manage`, `session:control`, `options:manage`, `saves:manage`, `screens:manage`), the truth reads (`state:map-actual.read`, `state:monsters-actual.read`), and the other brokered grants. A truth read marks the character unscorable before it returns any data. A mod without these grants has no `mod.manage` or `mod.truth` at all, so check that each one exists before you call it:
 
 ## Runtime tiers
 
