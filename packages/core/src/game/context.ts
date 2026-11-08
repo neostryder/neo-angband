@@ -449,6 +449,11 @@ export interface GameState {
   /** turn (game-world.c): the game-turn counter. */
   turn: number;
   /**
+   * How many world ticks counted any player timed effect down. Not part of the C game and not saved: a
+   * mod reads it through the known player to tell a status running out inside one grade from a stall.
+   */
+  timedTicks?: number;
+  /**
    * cave->num_repro (cave.h): the count of RF_MULTIPLY breeders on the current
    * level, the denominator gate of monster_turn_multiply's cap. Reset and
    * recounted by countMonsterRaces on level load, bumped by placeMonsterLive

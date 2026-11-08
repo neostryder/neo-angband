@@ -168,6 +168,11 @@ export interface KnownPlayerStatus {
   readonly food: number;
   /** The food grade ("Hungry", "Fed", "Full"). */
   readonly foodGrade: string | null;
+  /**
+   * How many game ticks have counted a timed effect down since the game started. It rises while any effect is
+   * running out, even inside one grade, and says nothing about how many turns an effect has left.
+   */
+  readonly countdown: number;
   readonly fast: string | null;
   readonly sprint: string | null;
   readonly protEvil: string | null;
@@ -515,7 +520,7 @@ export function knownMonsters(state: GameState, deps: AgentViewDeps = {}): Known
  * The player, items and the target.
  * ------------------------------------------------------------------ */
 
-const STATUS_EFFECTS: ReadonlyArray<readonly [Exclude<keyof KnownPlayerStatus, "food" | "foodGrade" | "fearful" | "timed">, number]> = [
+const STATUS_EFFECTS: ReadonlyArray<readonly [Exclude<keyof KnownPlayerStatus, "food" | "foodGrade" | "fearful" | "timed" | "countdown">, number]> = [
   ["blind", TMD.BLIND],
   ["confused", TMD.CONFUSED],
   ["afraid", TMD.AFRAID],
@@ -572,6 +577,7 @@ function knownPlayer(state: GameState, player: PlayerView): KnownPlayer {
         (state.actor.player.timed[index] ?? 0) > 0 ? gradeName(state, index) ?? "active" : null])),
       food: Math.trunc((state.actor.player.timed[TMD.FOOD] ?? 0) / 100),
       foodGrade: gradeName(state, TMD.FOOD),
+      countdown: state.timedTicks ?? 0,
       fearful: status.fearful ?? false,
     },
     recall: recall > 0,

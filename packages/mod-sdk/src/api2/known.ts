@@ -45,6 +45,11 @@ export interface KnownPlayerStatus {
   readonly food: number;
   /** The food grade ("Hungry", "Fed", "Full"). */
   readonly foodGrade: string | null;
+  /**
+   * How many game ticks have counted a timed effect down since the game started. It rises while any effect is
+   * running out, even inside one grade, and says nothing about how many turns an effect has left.
+   */
+  readonly countdown: number;
   readonly fast: string | null;
   readonly sprint: string | null;
   readonly protEvil: string | null;

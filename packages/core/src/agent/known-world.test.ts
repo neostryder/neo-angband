@@ -305,6 +305,25 @@ describe("KnownWorld paired worlds", () => {
     expect(observed(b.state)).not.toBe(observed(a.state));
   });
 
+  it("shows that a status is running out inside one grade without showing how long it has left", () => {
+    const [a, b] = pair();
+    a.state.actor.player.timed[TMD.SLOW] = 10;
+    b.state.actor.player.timed[TMD.SLOW] = 20;
+    a.state.timedTicks = 4;
+    b.state.timedTicks = 4;
+    /* Different counters, same history: the same observation. */
+    expect(observed(b.state)).toBe(observed(a.state));
+    expect(buildKnownWorld(a.state).player!.status.countdown).toBe(4);
+
+    /* A tick moves the countdown even though the grade has not changed. */
+    const before = buildKnownWorld(a.state).player!.status;
+    a.state.actor.player.timed[TMD.SLOW] = 9;
+    a.state.timedTicks = 5;
+    const after = buildKnownWorld(a.state).player!.status;
+    expect(after.timed["SLOW"]).toBe(before.timed["SLOW"]);
+    expect(after.countdown).toBe(before.countdown + 1);
+  });
+
   it("uninspected store stock produces identical observations", () => {
     const [a, b] = pair();
     for (const game of [a, b]) game.changeLevel(0);

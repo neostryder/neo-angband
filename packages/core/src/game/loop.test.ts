@@ -336,6 +336,23 @@ describe("process_world upkeep", () => {
     expect(p.timed[TMD.FOOD]).toBe(5000);
   });
 
+  it("counts a tick only when an effect actually counted down", () => {
+    const state = makeState();
+    const p = state.actor.player;
+    decreaseTimeouts(state);
+    expect(state.timedTicks ?? 0).toBe(0);
+
+    /* Food alone does not count down here. */
+    p.timed[TMD.FOOD] = 5000;
+    decreaseTimeouts(state);
+    expect(state.timedTicks ?? 0).toBe(0);
+
+    p.timed[TMD.AFRAID] = 5;
+    decreaseTimeouts(state);
+    decreaseTimeouts(state);
+    expect(state.timedTicks).toBe(2);
+  });
+
   it("recovers from stun, poison and cuts at the rate of the derived CON, gear included", () => {
     const state = makeState();
     const p = state.actor.player;

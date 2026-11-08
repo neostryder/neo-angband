@@ -307,6 +307,7 @@ export function decreaseTimeouts(state: GameState): void {
   const table = env?.timedTable;
   const thooks = env?.timedHooks ?? {};
 
+  let ticked = false;
   for (let i = 0; i < TMD_MAX; i++) {
     const cur = p.timed[i] ?? 0;
     if (!cur) continue;
@@ -341,7 +342,9 @@ export function decreaseTimeouts(state: GameState): void {
     const eff = table?.[i];
     if (eff) playerDecTimed(p, eff, decr, false, true, thooks);
     else p.timed[i] = Math.max(0, cur - decr);
+    if ((p.timed[i] ?? 0) !== cur) ticked = true;
   }
+  if (ticked) state.timedTicks = (state.timedTicks ?? 0) + 1;
 
   /* Curse effects always decrement by 1, and fire when they hit zero
    * (game-world.c L343-364). Runs after the timed loop, matching upstream. */
