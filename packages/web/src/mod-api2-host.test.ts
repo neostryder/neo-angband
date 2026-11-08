@@ -918,6 +918,60 @@ describe("API 2 backup folders", () => {
   });
 });
 
+describe("API 2 view snapshots", () => {
+  it("serves one frozen read to every call under the same input token", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const api = host(game, READS);
+    const first = await api.view.player();
+    const second = await api.view.player();
+    if (!first.ok || !second.ok) throw new Error("refused");
+    expect(second.value).toBe(first.value);
+    expect(Object.isFrozen(first.value)).toBe(true);
+    const monsters = await api.view.monsters();
+    const again = await api.view.monsters();
+    if (!monsters.ok || !again.ok) throw new Error("refused");
+    expect(again.value).toBe(monsters.value);
+  });
+
+  it("builds a fresh read once the input token moves", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const api = host(game, READS);
+    const before = await api.view.player();
+    if (!before.ok) throw new Error("refused");
+    game.state.actor.player.chp = Math.max(0, game.state.actor.player.chp - 1);
+    bumpInputRevision(game.state);
+    const after = await api.view.player();
+    if (!after.ok) throw new Error("refused");
+    expect(after.value).not.toBe(before.value);
+    expect(after.value.hp).toBe(before.value.hp - 1);
+  });
+
+  it("builds a fresh read inside a game event, where the token has not moved yet", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    game.state.events = new GameEvents();
+    const api = host(game, [...READS, "event:message"]);
+    const cached = await api.view.player();
+    if (!cached.ok) throw new Error("refused");
+    const seen: Promise<unknown>[] = [];
+    const sub = await api.events.on("message", () => {
+      game.state.actor.player.chp = Math.max(0, game.state.actor.player.chp - 1);
+      seen.push(api.view.player());
+    });
+    if (!sub.ok) throw new Error("refused");
+    game.state.events.emit("message", { type: 0, msg: "hit" });
+    const duringEvent = (await seen[0]) as { ok: true; value: { hp: number } };
+    expect(duringEvent.value.hp).toBe(cached.value.hp - 1);
+  });
+
+  it("does not hand out a read built for another character key", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const api = host(game, READS);
+    const a = await api.view.player();
+    if (!a.ok) throw new Error("refused");
+    expect(structuredClone(a.value)).toEqual(a.value);
+  });
+});
+
 describe("API 2 events", () => {
   it("hear a granted event as plain data and stop after off", async () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });

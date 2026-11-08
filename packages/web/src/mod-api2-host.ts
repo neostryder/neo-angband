@@ -37,6 +37,7 @@ import {
   squareIsSeen,
   trueMonsterViews,
   tokenIsCurrent,
+  inputToken,
   provenanceOf,
   type AgentCapabilities,
   type AgentViewDeps,
@@ -436,11 +437,31 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     player: world.player ? { ...world.player, key: ctx.character?.key() ?? null } : null });
   const viewDeps = (state: GameState): AgentViewDeps => ({ ...state.knownWorldDeps, ...options.viewDeps });
   /* One part of the known world, built with only that part readable. */
-  const part = (state: GameState, domain: string): KnownWorldData =>
+  const buildPart = (state: GameState, domain: string): KnownWorldData =>
     keyed(buildKnownWorld(state, viewDeps(state), {
       has: (c) => (c === `state:${domain}.read` && readable(domain)) ||
         (domain === "map" && c === "state:floor.read" && readable("floor")),
     }));
+  /* The game cannot change between two input waits except inside the game loop, and the loop raises the input
+   * token when it does (core/agent/boundary.ts). So one frozen part serves every read made under the same token.
+   * A read made while a game event is being delivered runs inside the loop, where the token has not moved yet,
+   * so it is always built fresh. */
+  let eventDepth = 0;
+  const duringEvent = (body: () => void): void => {
+    eventDepth += 1;
+    try { body(); } finally { eventDepth -= 1; }
+  };
+  let partKey = "";
+  const partCache = new Map<string, KnownWorldData>();
+  const part = (state: GameState, domain: string): KnownWorldData => {
+    if (eventDepth > 0) return buildPart(state, domain);
+    const token = inputToken(state);
+    const key = `${token.epoch}:${token.revision}:${ctx.character?.key() ?? ""}`;
+    if (key !== partKey) { partCache.clear(); partKey = key; }
+    let built = partCache.get(domain);
+    if (!built) { built = buildPart(state, domain); partCache.set(domain, built); }
+    return built;
+  };
   const inspectRead = <T>(domains: readonly string[], read: (state: GameState, view: AgentView) => T): Api2Call<T> =>
     withState((state) => {
       for (const domain of domains) if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
@@ -890,7 +911,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         const type = name as GameEventType;
         const handler = (_type: GameEventType, raw: unknown): void => {
           const payload = api2EventPayload(name, raw as never);
-          if (!stopped && payload !== undefined) listener(payload as Parameters<typeof listener>[0]);
+          if (!stopped && payload !== undefined) duringEvent(() => listener(payload as Parameters<typeof listener>[0]));
         };
         ctx.events.on(type, handler as never);
         const id = `${ctx.id}:${nextSubscription++}`;
