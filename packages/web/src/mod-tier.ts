@@ -308,7 +308,8 @@ export function needsOwnConfirmation(capability: string): boolean {
  * which is what its runtime provides, including bounded spawning and published JSON.
  */
 export function tierRefusal(capability: string, tier: ModTier): string | null {
-  if (capability === "engine:access" && tier.execution === "worker") return "this needs a live engine mechanism Workers do not have yet";
+  if (capability === "registry:*" && tier.execution === "worker") return "registry:monster, registry:projection, registry:effect-info, and registry:rune have no Worker mechanism yet";
+  if (capability === "engine:access" && tier.execution === "worker") return "the save writer cannot atomically commit engine state and roster metadata; Workers need a production bridge adapter with atomic persistence";
   if (capability === "engine:access" && tier.trust !== "first-party" && !tier.developerInProcess) return "this needs a live engine mechanism Workers do not have yet";
   const entry = entryOf(capability);
   if (!entry) return "the game does not know this permission";

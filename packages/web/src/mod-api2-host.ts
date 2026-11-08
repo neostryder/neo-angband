@@ -14,6 +14,7 @@
  */
 
 import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
+import { WorkerGameplay, type WorkerGameplayHost } from "./mod-worker/gameplay";
 import { gameplayIntent } from "./mod-gameplay-intents";
 import {
   AgentCapabilityError,
@@ -376,6 +377,37 @@ export function api2MayObserveKeys(ctx: Pick<ModPluginContext, "snapshot">): boo
   if (typeof document === "undefined") return true;
   const focus = document.activeElement;
   return focus === null || focus === document.body || focus === document.documentElement || focus.id === "game" || focus.id === "game-view";
+}
+
+let workerGameplayHost: WorkerGameplayHost | undefined;
+const workerGameplayHosts = new WeakMap<ModApi2, WorkerGameplay>();
+
+export function setApi2WorkerGameplayHost(host: WorkerGameplayHost | undefined): void {
+  workerGameplayHost = host;
+}
+
+function registerWorkerGameplay(api: ModApi2, ctx: ModPluginContext, options: Api2HostOptions, stopped: () => boolean): WorkerGameplay | undefined {
+  const binding = consentBinding(ctx.id);
+  const state = ctx.state;
+  if (!workerGameplayHost || !state || typeof binding !== "string") return undefined;
+  const player = state.actor.player;
+  const character = ctx.character?.key() ?? null;
+  const gameplay = new WorkerGameplay({ id: ctx.id, installation: binding, state, host: workerGameplayHost,
+    held: (capability) => !stopped() && state === ctx.state && player === state.actor.player && character === (ctx.character?.key() ?? null) &&
+      binding === consentBinding(ctx.id) && options.grants.has(capability) && modHolds(ctx.id, capability),
+  });
+  workerGameplayHosts.set(api, gameplay);
+  return gameplay;
+}
+
+export function revokeWorkerGameplay(api: ModApi2, epoch?: number): void {
+  const host = workerGameplayHosts.get(api);
+  if (epoch === undefined) host?.stop();
+  else host?.advanceEpoch(epoch);
+}
+
+export function serveWorkerGameplayCall(api: ModApi2, method: string, args: readonly WorkerJson[], epoch: number, current: () => boolean): Api2Call<unknown> {
+  return workerGameplayHosts.get(api)?.call(method, args, epoch, current) ?? Promise.resolve(api2Unavailable("The gameplay bridge is unavailable."));
 }
 
 /** Build the API 2 domains for one in-process mod over its API 1 context. */
@@ -1016,7 +1048,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       }),
       gameMenu: frozen({
         register: (action, label, run) => guarded(() => {
-          if (!granted("ui:menu.row") && !granted("registry:menu")) return api2NotGranted("ui:menu.row");
+          if (!granted("ui:menu.row") && !(options.execution !== "worker" && granted("registry:menu"))) return api2NotGranted("ui:menu.row");
           if (!/^[a-z][a-z0-9-]{0,63}$/.test(action) || !label.trim() || /[\r\n]/.test(label) || typeof run !== "function") {
             return api2Refused("bad-action", "a menu action needs an id, a label and a handler");
           }
@@ -1156,6 +1188,10 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   };
   if (options.execution === "worker") workerManagementCalls.set(api, workerManageDomain(ctx, options, () => stopped));
   if (options.execution === "worker") spawnSharedWorkerCalls.set(api, spawnSharedWorkerDomain(ctx, options, () => stopped));
+  if (options.execution === "worker") {
+    const gameplay = registerWorkerGameplay(api, ctx, options, () => stopped);
+    if (gameplay) cleanups.add(() => gameplay.stop());
+  }
   if (options.execution === "worker") {
     const simple: SimpleWorkerHost = { ctx, held: (capability) => !stopped && granted(capability), capturing: false, filter: null,
       ...(ctx.state ? { keys: createModKeybindings(ctx.state, { worker: true }) } : {}) };

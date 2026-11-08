@@ -476,7 +476,7 @@ describe("the consent read renders exactly what its hand-laid version did", () =
     expect(lines[2]).toEqual({ text: expect.stringMatching(/^ {2}- Add new player commands\. Without it: /u), color: UI_TEXT });
     const elevated = lines.find((line) => line.text.includes("[elevated]"));
     expect(elevated?.color).toBe(UI_GOLD);
-    expect(elevated?.text.startsWith("  - Override effect, combat, and magic logic.")).toBe(true);
+      expect(elevated?.text.startsWith("  - Page mechanism: Override effect, combat, and magic logic.")).toBe(true);
     expect(elevated?.text.indexOf("[elevated]")).toBe(69);
     expect(
       lines.filter((line) => line.color === UI_BAD).map((line) => line.text).join(" "),
@@ -525,7 +525,7 @@ describe("the consent read renders exactly what its hand-laid version did", () =
     expect(view.title).toBe("Capability approval");
     expect(table.rows.map((r) => r.cells.text?.text?.split(". Without it: ")[0])).toEqual([
       "Quality of Life: Add new player commands",
-      "ModForge: Override effect, combat, and magic logic",
+        "ModForge: Page mechanism: Override effect, combat, and magic logic. Worker mechanism: Install bounded heal, damage, and message effect programs; affected characters become permanently unscorable and stop being replayable",
     ]);
     expect(table.rows.map((r) => r.semantic?.data?.modId)).toEqual(["qol", "forge"]);
   });

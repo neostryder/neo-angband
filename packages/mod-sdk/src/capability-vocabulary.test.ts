@@ -24,6 +24,15 @@ const granting = (...capabilities: string[]): CapabilitySet =>
   CapabilitySet.fromManifest({ id: "m", name: "M", version: "1.0.0", shape: "plugin", capabilities });
 
 describe("the capability vocabulary", () => {
+  it("opens the eight data registry grants and discloses their permanent consequences", () => {
+    for (const domain of ["effect", "room", "profile", "blow", "glyph", "randart", "vocab", "menu"]) {
+      const capability = `registry:${domain}`;
+      expect(capabilityTiers(capability)).toContain("worker");
+      expect(consentText(matchCapability(capability)!)).toContain("permanently unscorable");
+    }
+    expect(capabilityTiers("registry:*")).not.toContain("worker");
+    expect(capabilityTiers("engine:access")).not.toContain("worker");
+  });
   it("opens only the implemented simple option, keybinding, and filter grants", () => {
     for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create", "display:replace", "ui:menu.replace", "ui:screen.replace", "screens:manage", "mod:install", "mod:session", "mod:read", "debug:wizard", "session:control"]) expect(capabilityTiers(capability)).toContain("worker");
     for (const capability of ["ui:*.replace", "ui:birth.replace", "engine:access"]) expect(capabilityTiers(capability)).not.toContain("worker");
@@ -47,7 +56,7 @@ describe("the capability vocabulary", () => {
       expect(capabilityTiers(kind.capability), kind.name).toContain("worker");
       expect(granting(kind.capability).has(kind.capability)).toBe(true);
     }
-    expect(capabilityTiers("registry:*")).toContain("worker");
+    expect(capabilityTiers("registry:*")).not.toContain("worker");
   });
 
   it("has a complete entry for every capability, each spelled once", () => {

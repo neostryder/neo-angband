@@ -39,6 +39,20 @@ it("lets Workers stage pure authoring without opening management", () => {
   expect(tierRefusal("ui:birth.replace", tier)).not.toBeNull();
 });
 
+it("opens the eight data registry mechanisms for every Worker author and keeps broad or live access closed", () => {
+  for (const id of ["anybandui", "other"]) {
+    const tier = assignTier({ id, source: "folder", execution: "worker" });
+    for (const domain of ["effect", "room", "profile", "blow", "glyph", "randart", "vocab", "menu"]) {
+      const capability = `registry:${domain}`;
+      expect(tierRefusal(capability, tier)).toBeNull();
+      expect(effectiveGrants([capability], tier, { granted: [capability], refused: [] }).granted).toEqual([capability]);
+      expect(effectiveGrants([capability], tier, { granted: [capability], refused: [capability] }).granted).toEqual([]);
+    }
+    expect(tierRefusal("registry:*", tier)).toContain("registry:monster");
+    expect(tierRefusal("engine:access", tier)).toContain("atomic");
+  }
+});
+
 it("applies Worker eligibility to first-party grants and refuses broad replacements", () => {
   for (const id of ["anybandui", "other"]) {
     const tier = id === "anybandui" ? assignTier(installed({ execution: "worker" })) : assignTier({ id, source: "folder", execution: "worker" });
@@ -331,7 +345,7 @@ describe("the seam policy", () => {
     for (const cap of ["registry:effect", "registry:*", "state:*.read", "network:*", "command:add"]) {
       expect(tierRefusal(cap, sideloaded)).toBeNull();
     }
-    expect(tierRefusal("registry:effect", worker)).toBe("this needs a mechanism Worker mods do not have yet");
+    expect(tierRefusal("registry:effect", worker)).toBeNull();
   });
 
   it("never grants a capability the vocabulary does not know", () => {

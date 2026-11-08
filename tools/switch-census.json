@@ -372,6 +372,13 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - keypress routing in a birth screen (MOD_REACH gap 23). Two screens, same finding."
+    },
+    {
+      "file": "packages/web/src/mod-worker/registry-declarations.ts",
+      "cases": 8,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "INTERNAL - schema dispatch for eight consented Worker registry declarations. Mods choose bounded data, never host code or new operation names; extending this grammar requires a host change so a Worker cannot widen its own authority."
     }
   ]
 }

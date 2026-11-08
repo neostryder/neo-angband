@@ -189,6 +189,17 @@ const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
   ["tiles", "Supply tiles for creatures and items your tile set does not draw", false],
 ];
 
+const WORKER_REGISTRY_CONSENT: Readonly<Record<string, string>> = {
+  effect: "Install bounded heal, damage, and message effect programs; affected characters become permanently unscorable and stop being replayable",
+  room: "Select host room builders for named room types; affected characters become permanently unscorable and stop being replayable",
+  profile: "Add weighted dungeon profiles copied from existing profiles; affected characters become permanently unscorable and stop being replayable",
+  blow: "Set fixed damage and visibility for monster blow effects; affected characters become permanently unscorable and stop being replayable",
+  glyph: "Map room or vault symbols to existing symbol behavior; affected characters become permanently unscorable and stop being replayable",
+  randart: "Set bounded combat stats for random artifact abilities and item preparation; affected characters become permanently unscorable and stop being replayable",
+  vocab: "Declare mod-owned vocabulary terms and labels; affected characters become permanently unscorable and stop being replayable",
+  menu: "Rename or hide existing rows in supported gameplay menus; permissions remain host-controlled, and affected characters become permanently unscorable and stop being replayable",
+};
+
 /** What the player would call each HUD region or screen family `ui:<region>.replace` hands over. */
 const UI_REGIONS: readonly (readonly [string, string, string])[] = [
   ["messages", "message line at the top of the screen", "The game draws its own message line."],
@@ -304,10 +315,10 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   fixed("network:local", { kind: "network", host: "local" }, "Send network requests to servers on this computer or your local network",
     "The mod cannot reach servers on this computer or your local network.", { powerful: true, tiers: ALL_TIERS }),
   fixed("registry:*", { kind: "registry", domain: "*" }, "Override ANY game system - effects, level and dungeon generation, monster attacks, shops, commands, monster AI, what spells and breaths do, what a vault symbol means, and vocabulary (full trusted, in-process access)",
-    "None of the game systems this mod changes are changed, and the mod does not start.", { powerful: true, canRunWithout: false, wildcard: true, tiers: ALL_TIERS }),
+    "None of the game systems this mod changes are changed, and the mod does not start.", { powerful: true, canRunWithout: false, wildcard: true, tiers: IN_PROCESS }),
   ...REGISTRY_DOMAINS.map(([domain, consent, powerful]) =>
-    fixed(`registry:${domain}`, { kind: "registry", domain }, consent,
-      "The mod does not start, because it installs this change as it loads.", { powerful, canRunWithout: false, tiers: POLICY_CAPABILITIES.has(`registry:${domain}`) ? ALL_TIERS : IN_PROCESS })),
+    fixed(`registry:${domain}`, { kind: "registry", domain }, WORKER_REGISTRY_CONSENT[domain] ? `Page mechanism: ${consent}. Worker mechanism: ${WORKER_REGISTRY_CONSENT[domain]}` : consent,
+      "The mod does not start, because it installs this change as it loads.", { powerful: powerful || Object.hasOwn(WORKER_REGISTRY_CONSENT, domain), canRunWithout: false, tiers: POLICY_CAPABILITIES.has(`registry:${domain}`) || Object.hasOwn(WORKER_REGISTRY_CONSENT, domain) ? ALL_TIERS : IN_PROCESS })),
 
   /* The management namespace has bounded Worker operations for the eligible
    * grants; broader mechanisms still require first-party page execution. */
@@ -461,5 +472,26 @@ export function capabilityTiers(cap: string): readonly CapabilityTier[] {
     return matchCapability(cap)?.entry.tiers ?? [];
   } catch {
     return [];
+  }
+}
+
+interface WorkerRegistrySchemas {
+  effect: { readonly code: string | number; readonly program: readonly (
+    { readonly op: "heal" | "damage"; readonly amount: number } | { readonly op: "message"; readonly text: string })[] };
+  room: { readonly name: string; readonly primitive: "simple" | "circular" | "overlap" | "crossed" | "large" };
+  profile: { readonly name: string; readonly base: string; readonly minLevel: number; readonly alloc: number };
+  blow: { readonly name: string; readonly damage: number; readonly obvious: boolean };
+  glyph: { readonly kind: "template" | "vault"; readonly glyph: string; readonly source: string };
+  randart: { readonly table: "abilities" | "prep"; readonly key: number; readonly toH: number; readonly toD: number; readonly toA: number };
+  vocab: { readonly kind: string; readonly term: string; readonly label: string };
+  menu: { readonly id: string; readonly rows: readonly { readonly id: string; readonly label: string; readonly hidden: boolean }[] };
+}
+
+declare module "./api2/domains.js" {
+  interface ModApi2 {
+    /** Worker declarations contain data; synchronous callbacks stay with the host. */
+    readonly registry?: { readonly [K in keyof WorkerRegistrySchemas]?: {
+      declare(value: WorkerRegistrySchemas[K]): import("./api2/result.js").Api2Call<null>;
+    } };
   }
 }
