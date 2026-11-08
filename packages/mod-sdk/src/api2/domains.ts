@@ -623,7 +623,7 @@ export interface Api2StoreKnowledge {
  * A real object on the level. It carries the turns left until it recharges
  * (`timeout`) where a known item carries only what its name says.
  */
-export type Api2TrueItem = Omit<KnownItem, "charging" | "unknownRunes" | "baseName" | "carried" | "artifactId" | "fuel"> & { readonly timeout: number };
+export type Api2TrueItem = Omit<KnownItem, "charging" | "unknownRunes" | "baseName" | "carried" | "artifactId" | "fuel" | "objectId" | "trapKnown"> & { readonly timeout: number };
 
 export interface Api2TrueCell {
   readonly x: number;

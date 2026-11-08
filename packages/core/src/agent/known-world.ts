@@ -63,7 +63,7 @@ import { distance } from "../loc.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { objectKnownShadow, objectRunesKnownUpstream } from "../obj/known-object.js";
 import type { GameObject } from "../obj/object.js";
-import { tvalCanHaveCharges, tvalCanHaveFlavor, tvalIsLight, tvalIsRod } from "../obj/object.js";
+import { tvalCanHaveCharges, tvalCanHaveFlavor, tvalIsChest, tvalIsLight, tvalIsRod } from "../obj/object.js";
 import { playerTimedGrade } from "../player/timed.js";
 import { captureCoreSnapshot } from "./boundary.js";
 import type { InputToken } from "./boundary.js";
@@ -224,6 +224,17 @@ export type KnownItem = Omit<ItemView, "timeout"> & {
   readonly unknownRunes: boolean;
   readonly artifactId?: number;
   readonly fuel?: number;
+  /**
+   * Names this object from the first read that shows it to the end of the session, whether it is carried, worn,
+   * dropped or left behind on another level. Not saved, and absent for a shop's ware. A split stack gives the
+   * dropped part its own id.
+   */
+  readonly objectId?: number;
+  /**
+   * Chests only: whether the player has learned its trap, so `pval` is the real trap value and 0 means no
+   * trap. False while the trap is undiscovered, when `pval` reads 0 whatever the chest holds.
+   */
+  readonly trapKnown?: boolean;
 };
 
 /** One ware in a shop, or one item in the home. */
@@ -376,6 +387,25 @@ function handleBook(state: GameState): HandleBook {
     handleBooks.set(state, book);
   }
   return book;
+}
+
+/* Item identities. An object keeps its id from the first read that shows it, through a pickup, a drop and a trip
+ * to another level, so a mod can tell the stack it dropped from the stack lying at its feet. Nothing here is
+ * saved, and a reloaded game starts a fresh book. Ids are handed out in the order the mod first reads each item. */
+interface ItemBook { next: number; ids: WeakMap<GameObject, number>; }
+const itemBooks = new WeakMap<GameState, ItemBook>();
+
+function itemBook(state: GameState): ItemBook {
+  let book = itemBooks.get(state);
+  if (!book) { book = { next: 1, ids: new WeakMap() }; itemBooks.set(state, book); }
+  return book;
+}
+
+function knownObjectId(state: GameState, obj: GameObject): number {
+  const book = itemBook(state);
+  let id = book.ids.get(obj);
+  if (id === undefined) { id = book.next++; book.ids.set(obj, id); }
+  return id;
 }
 
 /** Whether the player hallucinates (TMD_IMAGE), which hides every monster's identity. */
@@ -622,6 +652,8 @@ export function knownItem(state: GameState, deps: AgentViewDeps, item: ItemView,
       ODESC.BASE | ODESC.SINGULAR | ODESC.NOEGO | (shopWare ? ODESC.STORE : 0), state.actor.player, state.runeEnv,
       { ...knownDescOf(state, true), isAware: () => item.aware }) : item.label,
     carried: false,
+    ...(obj && !shopWare ? { objectId: knownObjectId(state, obj) } : {}),
+    ...(obj && tvalIsChest(obj.tval) ? { trapKnown: obj.knownPval !== undefined } : {}),
     ...(item.artifact && obj?.artifact ? { artifactId: obj.artifact.aidx } : {}),
     ...(fuel ? { fuel: Number(fuel[1]) } : {}),
     charging: obj ? chargingShown(state, deps, obj, shopWare) : 0,
@@ -639,6 +671,8 @@ export function knownFloorItems(state: GameState, grid: { x: number; y: number }
     if (entry.sensed) return [];
     const seen = squareIsSeen(state.chunk, grid) && pile.includes(entry.obj);
     const obj = seen ? entry.obj : entry.remembered ?? entry.obj;
+    /* The remembered copy shares the id of the object it was copied from, so the id outlasts line of sight. */
+    if (seen && entry.remembered) itemBook(state).ids.set(entry.remembered, knownObjectId(state, entry.obj));
     const item = itemView(0, obj, state, deps);
     return [knownItem(state, deps, { ...item, name: describeObject(state, obj, ODESC.PREFIX | ODESC.FULL),
       itemKey: `memory:${grid.x},${grid.y}:${index}`, ...(seen ? { floorIndex: pile.indexOf(entry.obj) } : {}) }, obj)];

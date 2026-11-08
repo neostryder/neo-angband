@@ -19,6 +19,7 @@ import { deleteMonster, monsterSwap } from "../game/context.js";
 import { describeObject } from "../game/describe.js";
 import { floorCarry, floorExcise } from "../game/floor.js";
 import { invenCarry } from "../game/gear.js";
+import { invenDrop } from "../game/obj-cmd.js";
 import { becomeAware, squareKnowPile, squareMemorize, updateMon, updateMonsters } from "../game/known.js";
 import { squareIsEmptyLive } from "../game/mon-place.js";
 import { emitCombatOutcome, emitHeal, emitMotion } from "../game/resolved-events.js";
@@ -322,6 +323,51 @@ describe("KnownWorld paired worlds", () => {
     const after = buildKnownWorld(a.state).player!.status;
     expect(after.timed["SLOW"]).toBe(before.timed["SLOW"]);
     expect(after.countdown).toBe(before.countdown + 1);
+  });
+
+  it("keeps one object id from the pack to the floor and back out of sight", () => {
+    const [a] = pair();
+    const dagger = carry(a, kindNamed(a, TV.SWORD, "Dagger"));
+    const handle = [...a.state.gear.store.entries()].find(([, o]) => o === dagger)![0];
+    const idCarried = buildKnownWorld(a.state, a.state.knownWorldDeps).inventory!.find((i) => i.handle === handle)!.objectId;
+    expect(idCarried).toEqual(expect.any(Number));
+
+    expect(invenDrop(a.state, handle, 1)).not.toBeNull();
+    const grid = a.state.actor.grid;
+    squareKnowPile(a.state, grid);
+    const onFloor = buildKnownWorld(a.state, a.state.knownWorldDeps).floorHere!.find((i) => i.tval === TV.SWORD)!;
+    expect(onFloor.carried).toBe(false);
+    expect(onFloor.objectId).toBe(idCarried);
+
+    /* Out of sight the remembered copy still answers to the same id. */
+    a.state.chunk.sqinfoOff(grid, SQUARE.SEEN);
+    const remembered = buildKnownWorld(a.state, a.state.knownWorldDeps).floorHere!.find((i) => i.tval === TV.SWORD)!;
+    expect(remembered.objectId).toBe(idCarried);
+
+    /* A different object gets a different id. */
+    const other = carry(a, kindNamed(a, TV.SWORD, "Dagger"));
+    const otherId = buildKnownWorld(a.state, a.state.knownWorldDeps).inventory!.find((i) => i.tval === TV.SWORD)!.objectId;
+    expect(other).not.toBe(dagger);
+    expect(otherId).not.toBe(idCarried);
+  });
+
+  it("says whether a chest's trap is known without revealing it", () => {
+    const [a, b] = pair();
+    for (const game of [a, b]) {
+      const chest = carry(game, kindNamed(game, TV.CHEST, "Small wooden chest"));
+      chest.pval = game === a ? 0 : 5;
+    }
+    const chests = (g: StartedGame) => buildKnownWorld(g.state, g.state.knownWorldDeps).inventory!.filter((i) => i.tval === TV.CHEST);
+    /* An untrapped chest and a trapped one look alike until the trap is found. */
+    expect(chests(a)[0]!.trapKnown).toBe(false);
+    expect(chests(b)[0]!.trapKnown).toBe(false);
+    expect(chests(b)[0]!.pval).toBe(chests(a)[0]!.pval);
+    const found = [...b.state.gear.store.values()].find((o) => o.tval === TV.CHEST)!;
+    found.knownPval = found.pval;
+    expect(chests(b)[0]!.trapKnown).toBe(true);
+    expect(chests(b)[0]!.pval).toBe(5);
+    /* Nothing else carries the field. */
+    expect(buildKnownWorld(b.state, b.state.knownWorldDeps).equipment!.every((i) => !i || !("trapKnown" in i))).toBe(true);
   });
 
   it("uninspected store stock produces identical observations", () => {

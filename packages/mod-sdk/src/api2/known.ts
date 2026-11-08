@@ -175,6 +175,17 @@ export interface KnownItem {
   readonly unknownRunes: boolean;
   readonly inscription: string | null;
   readonly floorIndex?: number;
+  /**
+   * Names this object from the first read that shows it to the end of the session, whether it is carried, worn,
+   * dropped or left behind on another level. Not saved, and absent for a shop's ware. A split stack gives the
+   * dropped part its own id.
+   */
+  readonly objectId?: number;
+  /**
+   * Chests only: whether the player has learned its trap, so `pval` is the real trap value and 0 means no
+   * trap. False while the trap is undiscovered, when `pval` reads 0 whatever the chest holds.
+   */
+  readonly trapKnown?: boolean;
   readonly name?: string;
   readonly ignored?: boolean;
   readonly kindId?: string;
