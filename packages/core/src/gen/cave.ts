@@ -2964,7 +2964,6 @@ export interface ChooseProfileOptions {
 export class DungeonProfiles {
   private readonly builders = new Map<string, CaveBuilder>();
   private readonly profiles: DunProfile[] = [];
-  private readonly activation = new WeakMap<DunProfile, () => boolean>();
 
   registerBuilder(key: string, builder: CaveBuilder): void {
     this.builders.set(key, builder);
@@ -2980,21 +2979,16 @@ export class DungeonProfiles {
     return this.builders.has(key);
   }
 
-  addProfile(profile: DunProfile, active?: () => boolean): void {
-    if (active) this.activation.set(profile, active);
+  addProfile(profile: DunProfile): void {
     this.profiles.push(profile);
   }
 
   find(name: string): DunProfile | null {
-    return this.profiles.find((p) => p.name === name && this.enabled(p)) ?? null;
+    return this.profiles.find((p) => p.name === name) ?? null;
   }
 
   list(): readonly DunProfile[] {
-    return this.profiles.filter((profile) => this.enabled(profile));
-  }
-
-  private enabled(profile: DunProfile): boolean {
-    return this.activation.get(profile)?.() ?? true;
+    return this.profiles;
   }
 
   /** choose_profile: select a dungeon profile for the given depth. */
@@ -3023,7 +3017,6 @@ export class DungeonProfiles {
     } else {
       let totalAlloc = 0;
       for (const test of this.profiles) {
-        if (!this.enabled(test)) continue;
         if (test.alloc <= 0 || depth < test.minLevel) continue;
         totalAlloc += test.alloc;
         if (rng.randint0(totalAlloc) < test.alloc) profile = test;

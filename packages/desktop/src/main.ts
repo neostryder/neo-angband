@@ -711,6 +711,10 @@ function installBackupChannel(): void {
       const win = BrowserWindow.getAllWindows().find((window) => window.webContents.id === owner);
       return win ? confirmAction(win.webContents, `Read backup ${name} for ${entry.modId}?`, "Read") : false;
     },
+    confirmWrite: async (entry, name, folder, owner) => {
+      const win = BrowserWindow.getAllWindows().find((window) => window.webContents.id === owner);
+      return win ? confirmAction(win.webContents, `Write backup ${name} for ${entry.modId}?\nFolder: ${folder}`, "Write") : false;
+    },
   });
   ipcMain.handle(BACKUP_CHANNEL, async (event, op: unknown, arg: unknown) => {
     if (!isGameBridgeFrame(event.senderFrame, event.sender.mainFrame)) return { ok: false };

@@ -189,17 +189,6 @@ const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
   ["tiles", "Supply tiles for creatures and items your tile set does not draw", false],
 ];
 
-const WORKER_REGISTRY_CONSENT: Readonly<Record<string, string>> = {
-  effect: "Install bounded heal, damage, and message effect programs; affected characters become permanently unscorable and stop being replayable",
-  room: "Select host room builders for named room types; affected characters become permanently unscorable and stop being replayable",
-  profile: "Add weighted dungeon profiles copied from existing profiles; affected characters become permanently unscorable and stop being replayable",
-  blow: "Set fixed damage and visibility for monster blow effects; affected characters become permanently unscorable and stop being replayable",
-  glyph: "Map room or vault symbols to existing symbol behavior; affected characters become permanently unscorable and stop being replayable",
-  randart: "Set bounded combat stats for random artifact abilities and item preparation; affected characters become permanently unscorable and stop being replayable",
-  vocab: "Declare mod-owned vocabulary terms and labels; affected characters become permanently unscorable and stop being replayable",
-  menu: "Rename or hide existing rows in supported gameplay menus; permissions remain host-controlled, and affected characters become permanently unscorable and stop being replayable",
-};
-
 /** What the player would call each HUD region or screen family `ui:<region>.replace` hands over. */
 const UI_REGIONS: readonly (readonly [string, string, string])[] = [
   ["messages", "message line at the top of the screen", "The game draws its own message line."],
@@ -220,6 +209,7 @@ const WORKER_TEXT_CONSENT: Readonly<Record<string, string>> = {
   status: "Replace the status line with text; it can hide harmful conditions",
   menu: "Replace gameplay menus with host-drawn text and choices; it can mislabel choices and hide options, while permission dialogs remain controlled by the game",
   screen: "Replace gameplay screens with host-drawn text and local choices; it can misrepresent inventory and character information, while game actions and permission dialogs stay with the game",
+  birth: "Replace character creation with host-drawn text and propose legal choices; birth options stay locked, and the game shows the actual character summary and asks before starting it",
 };
 
 const FIXED_ENTRIES: readonly FixedEntry[] = [
@@ -251,8 +241,8 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The game draws the map itself and this mod's view is not used.", { powerful: true, canRunWithout: false, tiers: ALL_TIERS }),
   fixed("display:filter", { kind: "display", action: "filter" }, "Change how the game looks; it can make details difficult to see, while host permission dialogs keep their own appearance",
     "The game's screen is shown without this mod's filter.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("ui:*.replace", { kind: "ui", region: "*", action: "replace" }, "Draw the whole interface around the map - your messages, your vitals, the status line, every menu and every full screen all come from this mod",
-    "The game draws its own interface around the map.", { powerful: true, wildcard: true }),
+  fixed("ui:*.replace", { kind: "ui", region: "*", action: "replace" }, "Replace messages, vitals, status, gameplay menus, gameplay screens, and character creation with host-drawn text and choices; it can mislead you, while the game owns permissions, birth options, and final character acceptance",
+    "The game draws its own interface around the map.", { powerful: true, wildcard: true, tiers: ALL_TIERS }),
   ...UI_REGIONS.map(([region, words, withoutIt]) =>
     fixed(`ui:${region}.replace`, { kind: "ui", region, action: "replace" }, WORKER_TEXT_CONSENT[region] ?? `Draw the ${words} instead of the game`,
       withoutIt, { powerful: true, ...(Object.hasOwn(WORKER_TEXT_CONSENT, region) ? { tiers: ALL_TIERS } : {}) })),
@@ -270,8 +260,8 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
     "The text area this mod fills on the game screen stays empty.", { powerful: true, tiers: ALL_TIERS }),
   fixed("ui:panel", { kind: "ui-panel", action: "write" }, "Show panels of buttons and text that the game draws for this mod",
     "The panels this mod asks the game to draw do not appear.", { powerful: false, tiers: ALL_TIERS }),
-  fixed("backup:folder", { kind: "backup", action: "folder" }, "Write files into a folder you pick (it never learns the folder's real path, only whether a write succeeded)",
-    "The mod cannot write backups to a folder you pick.", { powerful: false }),
+  fixed("backup:folder", { kind: "backup", action: "folder" }, "Receive character backup notices, list backup file names, and request bounded writes in a folder you pick; for Workers, the desktop asks before each write and keeps files in this installation's subfolder without revealing its path or save contents",
+    "The mod cannot write backups to a folder you pick.", { powerful: false, tiers: ALL_TIERS }),
   fixed("mod:read", { kind: "mod-read", action: "read" }, "Ask the game to contact a GitHub repository to read public mod metadata and file names after your confirmation; GitHub learns about the lookup. This returns no file text and installs nothing",
     "The mod cannot look up other mods by their repository address.", { powerful: true, tiers: ALL_TIERS }),
   fixed("debug:spawn", { kind: "debug", action: "spawn" }, "Conjure items and creatures into your game, the way the debug commands do - it asks first, and the character it happens to is marked for good and can no longer be scored",
@@ -315,10 +305,10 @@ const FIXED_ENTRIES: readonly FixedEntry[] = [
   fixed("network:local", { kind: "network", host: "local" }, "Send network requests to servers on this computer or your local network",
     "The mod cannot reach servers on this computer or your local network.", { powerful: true, tiers: ALL_TIERS }),
   fixed("registry:*", { kind: "registry", domain: "*" }, "Override ANY game system - effects, level and dungeon generation, monster attacks, shops, commands, monster AI, what spells and breaths do, what a vault symbol means, and vocabulary (full trusted, in-process access)",
-    "None of the game systems this mod changes are changed, and the mod does not start.", { powerful: true, canRunWithout: false, wildcard: true, tiers: IN_PROCESS }),
+    "None of the game systems this mod changes are changed, and the mod does not start.", { powerful: true, canRunWithout: false, wildcard: true, tiers: ALL_TIERS }),
   ...REGISTRY_DOMAINS.map(([domain, consent, powerful]) =>
-    fixed(`registry:${domain}`, { kind: "registry", domain }, WORKER_REGISTRY_CONSENT[domain] ? `Page mechanism: ${consent}. Worker mechanism: ${WORKER_REGISTRY_CONSENT[domain]}` : consent,
-      "The mod does not start, because it installs this change as it loads.", { powerful: powerful || Object.hasOwn(WORKER_REGISTRY_CONSENT, domain), canRunWithout: false, tiers: POLICY_CAPABILITIES.has(`registry:${domain}`) || Object.hasOwn(WORKER_REGISTRY_CONSENT, domain) ? ALL_TIERS : IN_PROCESS })),
+    fixed(`registry:${domain}`, { kind: "registry", domain }, consent,
+      "The mod does not start, because it installs this change as it loads.", { powerful, canRunWithout: false, tiers: POLICY_CAPABILITIES.has(`registry:${domain}`) ? ALL_TIERS : IN_PROCESS })),
 
   /* The management namespace has bounded Worker operations for the eligible
    * grants; broader mechanisms still require first-party page execution. */
@@ -472,26 +462,5 @@ export function capabilityTiers(cap: string): readonly CapabilityTier[] {
     return matchCapability(cap)?.entry.tiers ?? [];
   } catch {
     return [];
-  }
-}
-
-interface WorkerRegistrySchemas {
-  effect: { readonly code: string | number; readonly program: readonly (
-    { readonly op: "heal" | "damage"; readonly amount: number } | { readonly op: "message"; readonly text: string })[] };
-  room: { readonly name: string; readonly primitive: "simple" | "circular" | "overlap" | "crossed" | "large" };
-  profile: { readonly name: string; readonly base: string; readonly minLevel: number; readonly alloc: number };
-  blow: { readonly name: string; readonly damage: number; readonly obvious: boolean };
-  glyph: { readonly kind: "template" | "vault"; readonly glyph: string; readonly source: string };
-  randart: { readonly table: "abilities" | "prep"; readonly key: number; readonly toH: number; readonly toD: number; readonly toA: number };
-  vocab: { readonly kind: string; readonly term: string; readonly label: string };
-  menu: { readonly id: string; readonly rows: readonly { readonly id: string; readonly label: string; readonly hidden: boolean }[] };
-}
-
-declare module "./api2/domains.js" {
-  interface ModApi2 {
-    /** Worker declarations contain data; synchronous callbacks stay with the host. */
-    readonly registry?: { readonly [K in keyof WorkerRegistrySchemas]?: {
-      declare(value: WorkerRegistrySchemas[K]): import("./api2/result.js").Api2Call<null>;
-    } };
   }
 }

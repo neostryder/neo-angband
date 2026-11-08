@@ -374,11 +374,11 @@
       "verdict": "UI - keypress routing in a birth screen (MOD_REACH gap 23). Two screens, same finding."
     },
     {
-      "file": "packages/web/src/mod-worker/registry-declarations.ts",
+      "file": "packages/web/src/mod-worker/protocol.ts",
       "cases": 8,
       "hasDefault": true,
       "kind": "SWITCH",
-      "verdict": "INTERNAL - schema dispatch for eight consented Worker registry declarations. Mods choose bounded data, never host code or new operation names; extending this grammar requires a host change so a Worker cannot widen its own authority."
+      "verdict": "INTERNAL - explicit Worker backup argument schemas preserve desktop authority. Mods select supported backup operations; they cannot supply filesystem paths or native authority handles."
     }
   ]
 }

@@ -3,12 +3,13 @@ import type { InstalledMenu } from "../menu-runtime";
 import type { InstalledScreen } from "../screen-runtime";
 import type { MenuAnswer, MenuQuestion } from "../menu-view";
 import type { ScreenView } from "../screen-view";
+import type { ModBirthSession } from "../birth-session";
 import { isCoreDrawn } from "../core-drawn";
 import { addControlDomOwner, inputEvents } from "../input-door";
-import { modPanelsSuspended, modPresentationSuspended, onModPanelSuspension, onModPermissionSuspension } from "../panel-runtime";
+import { modPanelsSuspended, modPresentationSuspended, onModPanelSuspension, onModPermissionSuspension, suspendModPanels } from "../panel-runtime";
 import { toWorkerJson, payloadBytes } from "./clone";
 import { gridCommands, GRID_COLORS, presentationDescription } from "./presenter-schema";
-import { PRESENTER_WORKER_CALLS, type WorkerJson, type WorkerPresenterQuestion, type WorkerPresentationDescription } from "./protocol";
+import { BIRTH_WORKER_CALLS, PRESENTER_WORKER_CALLS, type WorkerJson, type WorkerPresenterQuestion, type WorkerPresentationDescription } from "./protocol";
 
 interface Owner {
   readonly id: string;
@@ -16,17 +17,19 @@ interface Owner {
   readonly menu?: InstalledMenu;
   readonly screen?: InstalledScreen;
   readonly management?: () => Promise<boolean>;
+  readonly birth?: (session: ModBirthSession) => Promise<boolean>;
 }
 
 const owners = new Map<symbol, Owner>();
 interface Visibility { yielded: boolean; refresh?: () => void }
-function lastOwner(family: "menu" | "screen" | "management"): Owner | undefined {
+function lastOwner(family: "menu" | "screen" | "management" | "birth"): Owner | undefined {
   return [...owners.values()].filter((owner) => owner.current() && owner[family]).at(-1);
 }
 
 export function workerMenuOwner(): InstalledMenu | null { return lastOwner("menu")?.menu ?? null; }
 export function workerScreenOwner(): InstalledScreen | null { return lastOwner("screen")?.screen ?? null; }
 export function openWorkerManagementScreen(): Promise<boolean> | undefined { return lastOwner("management")?.management?.(); }
+export function workerBirthOwner(): Owner["birth"] { return lastOwner("birth")?.birth; }
 
 /** The host retains the display, input handlers, and action implementations. */
 export function createWorkerPresenters(options: {
@@ -181,6 +184,106 @@ export function createWorkerPresenters(options: {
     }
     throw new Error("the screen refresh limit was reached");
   };
+  const confirmBirth = async (session: ModBirthSession, current: () => boolean): Promise<boolean> => {
+    if (!current() || !visible()) return false;
+    const draft = session.draft();
+    if (!draft.ready) return false;
+    const snapshot = JSON.stringify(draft);
+    const restore = suspendModPanels();
+    const dialog = doc.createElement("dialog");
+    const heading = doc.createElement("h2");
+    heading.textContent = "Start this character?";
+    const summary = doc.createElement("pre");
+    summary.textContent = [`Name: ${draft.name}`, `Race: ${draft.race}`, `Class: ${draft.cls}`,
+      `Stats (${draft.method}): ${draft.stats.join(", ")}`, `Background: ${draft.history}`,
+      ...draft.options.map((option) => `${option.name}: ${option.value ? "yes" : "no"}`)].join("\n");
+    const accept = doc.createElement("button");
+    accept.textContent = "Start character";
+    const decline = doc.createElement("button");
+    decline.textContent = "Back to creation";
+    dialog.append(heading, summary, accept, decline);
+    doc.body.append(dialog);
+    try {
+      return await new Promise<boolean>((resolve) => {
+        let finished = false;
+        const finish = (value: boolean) => { if (finished) return; finished = true; clearInterval(timer); open.delete(cancel); resolve(value); };
+        const cancel = () => finish(false);
+        const timer = setInterval(() => { if (!current()) cancel(); }, 25);
+        open.add(cancel);
+        accept.addEventListener("click", () => {
+          if (finished) return;
+          // A proposal cannot accept a character or alter the draft behind this summary.
+          if (dialog.open && current() && doc.querySelectorAll("dialog[open]").length === 1 && doc.querySelector("dialog[open]") === dialog && snapshot === JSON.stringify(session.draft())) finish(session.accept().ok);
+          else cancel();
+        });
+        decline.addEventListener("click", cancel);
+        dialog.addEventListener("cancel", (event) => { event.preventDefault(); cancel(); });
+        dialog.addEventListener("close", cancel);
+        try { dialog.showModal(); } catch { cancel(); }
+      });
+    } finally { dialog.remove(); restore(); }
+  };
+  const birth = async (callbackId: number, session: ModBirthSession, current: () => boolean): Promise<boolean> => {
+    let stage = "race";
+    const catalogue = session.catalogue();
+    if (catalogue.races.length > 64 || catalogue.classes.length > 64) return false;
+    try {
+      for (let step = 0; step < 64; step += 1) {
+        const stepId = crypto.randomUUID();
+        const choices = new Map<string, { label: string; value?: number; run(value?: string): boolean }>();
+        const add = (label: string, run: (value?: string) => boolean, value?: number) => {
+          choices.set(crypto.randomUUID(), { label, run, ...(value === undefined ? {} : { value }) });
+        };
+        const draft = session.draft();
+        if (stage === "race") for (const race of catalogue.races) add(race.name, () => {
+          if (!session.chooseRace(race.name).ok) return false;
+          stage = "class";
+          return true;
+        });
+        else if (stage === "class") for (const cls of catalogue.classes) add(cls.name, () => {
+          if (!session.chooseClass(cls.name).ok) return false;
+          stage = "draft";
+          return true;
+        });
+        else {
+          add("Review character", () => true);
+          add("Choose race", () => { stage = "race"; return true; });
+          add("Choose class", () => { stage = "class"; return true; });
+          add("Use point-buy", () => session.usePointBuy().ok);
+          add("Suggested stats", () => session.suggest().ok);
+          add("Reset stats", () => session.reset().ok);
+          add("Roll stats", () => session.roll().ok);
+          if (draft.canPreviousRoll) add("Previous roll", () => session.previousRoll().ok);
+          draft.statCosts.forEach((cost, index) => {
+            if (cost.canBuy) add(`Buy ${catalogue.stats[index]}`, () => session.buy(index).ok);
+            if (cost.canSell) add(`Sell ${catalogue.stats[index]}`, () => session.sell(index).ok);
+          });
+          if (!catalogue.namePinned) {
+            add("Name", (value) => value !== undefined && session.setName(value).ok, catalogue.nameMax);
+            add("Random name", () => session.randomName().ok);
+          }
+          add("Background", (value) => value !== undefined && session.setHistory(value).ok, 1024);
+          add("Restore background", () => session.restoreHistory().ok);
+          add("New background", () => session.regenerateHistory().ok);
+        }
+        const input = { kind: "birth", stepId, stage, draft, choices: [...choices].map(([id, choice]) => ({ id, label: choice.label, ...(choice.value === undefined ? {} : { valueMax: choice.value }) })) };
+        const description = await describe(callbackId, stepId, input, current);
+        const selected = await show(description, current, false);
+        if (!selected) { session.cancel(); return true; }
+        const proposal = await request(callbackId, stepId, "select", { ...selected, stepId }, current);
+        if (!proposal || typeof proposal !== "object" || Array.isArray(proposal) ||
+          Object.keys(proposal).some((key) => !["stepId", "choice", "value"].includes(key)) || proposal.stepId !== stepId || typeof proposal.choice !== "string") return false;
+        const choice = choices.get(proposal.choice);
+        if (!choice || (choice.value === undefined ? proposal.value !== undefined : typeof proposal.value !== "string" ||
+          proposal.value.length > choice.value || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(proposal.value))) return false;
+        if (choice.label === "Review character" && stage === "draft") {
+          if (await confirmBirth(session, current)) return true;
+          if (!current() || !visible()) return false;
+        } else if (!choice.run(proposal.value as string | undefined)) return false;
+      }
+    } catch { return false; }
+    return false;
+  };
   const frame = (callbackId: number, current: () => boolean): (() => void) => {
     let busy = false;
     let root: HTMLDivElement | undefined;
@@ -238,7 +341,7 @@ export function createWorkerPresenters(options: {
   };
   return {
     replace(method: string, callbackId: number | null, epochCurrent: () => boolean): void {
-      const capability = PRESENTER_WORKER_CALLS[method];
+      const capability = BIRTH_WORKER_CALLS[method] ?? PRESENTER_WORKER_CALLS[method];
       if (!capability || !allowed(capability) || !visible()) throw new Error("the presenter is not authorized");
       const time = Date.now();
       while (requests[0] !== undefined && requests[0] <= time - 1000) requests.shift();
@@ -255,6 +358,7 @@ export function createWorkerPresenters(options: {
       if (method === "display.replace") cleanup = frame(callbackId, current);
       else owners.set(token, {
         id: options.id, current,
+        ...(method === "ui.birth.replace" ? { birth: (session: ModBirthSession) => birth(callbackId, session, current) } : {}),
         ...(method === "ui.menu.replace" ? { menu: { id: options.id, presenter: { ask: (question) => menu(callbackId, question, current) } } } : {}),
         ...(method === "ui.screen.replace" ? { screen: { id: options.id, presenter: {
           show: (view) => {

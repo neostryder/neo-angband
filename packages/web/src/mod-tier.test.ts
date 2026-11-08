@@ -15,6 +15,7 @@ import {
   installedDigestsMatch,
   isUnreviewed,
   modStartGrants,
+  modHolds,
   needsOwnConfirmation,
   playerHeld,
   resetModTiers,
@@ -36,35 +37,39 @@ import { MODELLED_SCREENS } from "./screen-view";
 it("lets Workers stage pure authoring without opening management", () => {
   const tier = assignTier({ id: "author", source: "folder", execution: "worker" });
   expect(tierRefusal("mod:authoring", tier)).toBeNull();
-  expect(tierRefusal("ui:birth.replace", tier)).not.toBeNull();
+  expect(tierRefusal("ui:birth.replace", tier)).toBeNull();
 });
 
-it("opens the eight data registry mechanisms for every Worker author and keeps broad or live access closed", () => {
-  for (const id of ["anybandui", "other"]) {
-    const tier = assignTier({ id, source: "folder", execution: "worker" });
-    for (const domain of ["effect", "room", "profile", "blow", "glyph", "randart", "vocab", "menu"]) {
-      const capability = `registry:${domain}`;
-      expect(tierRefusal(capability, tier)).toBeNull();
-      expect(effectiveGrants([capability], tier, { granted: [capability], refused: [] }).granted).toEqual([capability]);
-      expect(effectiveGrants([capability], tier, { granted: [capability], refused: [capability] }).granted).toEqual([]);
-    }
-    expect(tierRefusal("registry:*", tier)).toContain("registry:monster");
-    expect(tierRefusal("engine:access", tier)).toContain("atomic");
-  }
-});
-
-it("applies Worker eligibility to first-party grants and refuses broad replacements", () => {
+it("applies Worker eligibility to first-party grants and refuses live engines", () => {
   for (const id of ["anybandui", "other"]) {
     const tier = id === "anybandui" ? assignTier(installed({ execution: "worker" })) : assignTier({ id, source: "folder", execution: "worker" });
     for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create", "mod:authoring", "debug:spawn", "shared:read", "shared:publish", "debug:wizard", "mod:install", "mod:session", "mod:read", "session:control", "ui:menu.replace", "ui:screen.replace", "display:replace", "screens:manage"]) {
       expect(tierRefusal(capability, tier)).toBeNull();
       expect(effectiveGrants([capability], tier, { granted: [], refused: [] }).granted).toEqual([]);
     }
-    for (const capability of ["ui:*.replace", "ui:birth.replace", "engine:access"]) {
+    for (const capability of ["ui:*.replace", "ui:birth.replace", "backup:folder"]) {
+      expect(tierRefusal(capability, tier)).toBeNull();
+      expect(effectiveGrants([capability], tier, { granted: [], refused: [] }).granted).toEqual([]);
+      expect(effectiveGrants([capability], tier, { granted: [capability], refused: [] }).granted).toEqual([capability]);
+    }
+    for (const capability of ["engine:access"]) {
       expect(tierRefusal(capability, tier)).not.toBeNull();
       expect(effectiveGrants([capability], tier, { granted: [capability], refused: [] }).granted).toEqual([]);
     }
   }
+});
+
+it("expands only the six UI replacement families and honors every family refusal for Workers", () => {
+  const tier = assignTier({ id: "probe", source: "folder", execution: "worker" });
+  const families = ["messages", "sidebar", "status", "menu", "screen", "birth"].map((family) => `ui:${family}.replace`);
+  setModGrants(new Map([["probe", effectiveGrants(["ui:*.replace"], tier, { granted: ["ui:*.replace"], refused: [] })]]));
+  for (const family of families) expect(modHolds("probe", family)).toBe(true);
+  for (const capability of ["ui:region.create", "ui:panel.mount", "display:replace", "screens:manage", "backup:folder"]) expect(modHolds("probe", capability)).toBe(false);
+  for (const family of families) {
+    const held = effectiveGrants(["ui:*.replace"], tier, { granted: ["ui:*.replace"], refused: [family] });
+    expect(held.granted).toEqual([]); setModGrants(new Map([["probe", held]])); expect(modHolds("probe", family)).toBe(false);
+  }
+  resetModTiers();
 });
 import { consentSessionMod, rowLabel, unreviewedNoticeDue, unreviewedNoticeScreen } from "./mods";
 import * as overlay from "./overlay";
@@ -345,7 +350,7 @@ describe("the seam policy", () => {
     for (const cap of ["registry:effect", "registry:*", "state:*.read", "network:*", "command:add"]) {
       expect(tierRefusal(cap, sideloaded)).toBeNull();
     }
-    expect(tierRefusal("registry:effect", worker)).toBeNull();
+    expect(tierRefusal("registry:effect", worker)).toBe("this needs a mechanism Worker mods do not have yet");
   });
 
   it("never grants a capability the vocabulary does not know", () => {

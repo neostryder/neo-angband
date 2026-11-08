@@ -26,11 +26,16 @@ import { startModWorker, type ModWorkerLike } from "./host";
 import { cloneWorkerJson } from "./clone";
 import { gridCommands, presentationDescription } from "./presenter-schema";
 import { MOD_WORKER_PROTOCOL_VERSION, PRESENTER_WORKER_CALLS, type HostToModWorker, type ModWorkerToHost } from "./protocol";
+import { BIRTH_WORKER_CALLS } from "./protocol";
+import { Rng, startGame } from "@rpgm-tools/neo-angband-core";
+import { createBirthSession } from "../birth-session";
+import { offerBirth } from "../birth-runtime";
+import { loadGamePack } from "../pack";
 
 type Handler = (value: unknown, id: string) => unknown;
 type Replace = (describe: Handler | null, select?: Handler) => Promise<{ ok: boolean }>;
-type Proxy = ModApi2 & { display: { replace: Replace }; ui: ModApi2["ui"] & { menu: { replace: Replace }; screen: { replace: Replace }; management: { replace: Replace } } };
-const methods = Object.entries(PRESENTER_WORKER_CALLS);
+type Proxy = ModApi2 & { display: { replace: Replace }; ui: ModApi2["ui"] & { menu: { replace: Replace }; screen: { replace: Replace }; management: { replace: Replace }; birth: { replace: Replace } } };
+const methods: [string, string][] = [...Object.entries(PRESENTER_WORKER_CALLS), ...Object.entries(BIRTH_WORKER_CALLS), ["ui.birth.replace", "ui:*.replace"]];
 const description = { title: "<script>bad()</script>", lines: ["<img src=x onerror=bad()>", "javascript:bad()"], rows: [{ id: "pick", label: "<b>Pick</b>" }] };
 const commands = [{ col: 0, row: 0, glyph: "<", color: "normal" }];
 const question = () => buildMenuQuestion({ id: "game:main", title: "Game", footer: "", rows: [{ id: "choice", label: "Choice" }], style: "screen", cursor: 0, browseOnly: false, commandKeys: [], ctrlCommandKeys: [] });
@@ -38,6 +43,16 @@ const view = () => ({ ...linesScreen("Inventory", [{ text: "An item" }], "Close"
 const cleanups: (() => void)[] = [];
 const priorShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal");
 const priorClose = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close");
+const { booted, players } = startGame(loadGamePack(), { seed: 7, depth: 1 });
+function newBirth(pinnedName: string | null = "Host character") {
+  const created = createBirthSession({ races: players.races, classes: players.classes, rng: new Rng(11), quickstart: null, birthOptions: {},
+    randomName: () => "Randal", pinnedName, deps: {
+      bodyFor: (name) => { const race = players.raceByName(name); return race ? players.bodies[race.body] ?? null : null; },
+      historyChartFor: (name) => { const race = players.raceByName(name); return race ? players.historyChart(race) : null; },
+      properties: players.properties, elementNames: (booted.registries.projections ?? []).map((entry) => entry.name),
+    } });
+  return { ...created, session: { ...created.session, accept: vi.fn(created.session.accept) } };
+}
 
 async function flush() { for (let i = 0; i < 40; i += 1) await Promise.resolve(); }
 function button(label: string) {
@@ -91,6 +106,7 @@ async function fixture(grants: string[], handler: Handler = () => description, s
     if (method === "display.replace") return api.display.replace(describe, onSelect);
     if (method === "ui.menu.replace") return api.ui.menu.replace(describe, onSelect);
     if (method === "ui.screen.replace") return api.ui.screen.replace(describe, onSelect);
+    if (method === "ui.birth.replace") return api.ui.birth.replace(describe, onSelect);
     return api.ui.management.replace(describe, onSelect);
   };
   let next = 100;
@@ -104,6 +120,7 @@ async function fixture(grants: string[], handler: Handler = () => description, s
     if (method === "ui.menu.replace") return askInstalledPresenter(question());
     if (method === "ui.screen.replace") return showThroughPresenter(view())?.then(() => true, () => false);
     if (method === "ui.management.replace") return openTakenScreen("mods");
+    if (method === "ui.birth.replace") { const created = newBirth(); return offerBirth(created.session, created.outcome); }
     await vi.advanceTimersByTimeAsync(100);
     return undefined;
   };
@@ -442,5 +459,143 @@ describe("serialized Worker presenters", () => {
     expect(() => gridCommands([{ col: 0, row: 0, glyph: "x", color: "url(https://bad.test)" }])).toThrow();
     expect(() => presentationDescription({ ...description, rows: [description.rows[0], description.rows[0]] })).toThrow();
     const restore = suspendModPanels(); restore();
+  });
+
+  it.each(["ui:birth.replace", "ui:*.replace"])("keeps final birth acceptance in a host modal with %s", async (capability) => {
+    let model!: { stepId: string; choices: { id: string; label: string }[] };
+    const select = vi.fn<Handler>((value) => ({ stepId: model.stepId, choice: (value as { action: string }).action }));
+    const f = await fixture([capability], (value) => {
+      model = value as typeof model;
+      return { title: description.title, lines: description.lines, rows: model.choices.map(({ id, label }) => ({ id, label })) };
+    }, select);
+    Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function(this: HTMLDialogElement) { this.open = true; } });
+    const registered = f.replace("ui.birth.replace"); await flush(); await registered;
+    const created = newBirth();
+    const accept = created.session.accept;
+    const answer = offerBirth(created.session, created.outcome); await flush();
+    expect(document.querySelector("script,img")).toBeNull();
+    button("Human").click(); await flush(); button("Warrior").click(); await flush();
+    expect(created.session.draft()).toMatchObject({ race: "Human", cls: "Warrior", name: "Host character" });
+    expect(accept).not.toHaveBeenCalled();
+    expect(model.choices.some((choice) => /option|accept|start/i.test(choice.label))).toBe(false);
+    const panels = createModWorkerPanelRenderer(); cleanups.push(() => panels.teardown("cover"));
+    panels.apply("cover", "mount", { id: "cover", modal: true, root: { type: "text", text: "A covering panel" } });
+    button("Review character").click(); await flush();
+    const dialog = document.querySelector("dialog[open]")!;
+    expect(dialog.textContent).toContain("Race: Human"); expect(dialog.textContent).toContain("Class: Warrior");
+    expect(dialog.textContent).toContain("Name: Host character");
+    for (const option of created.session.draft().options) expect(dialog.textContent).toContain(`${option.name}: ${option.value ? "yes" : "no"}`);
+    expect(document.querySelector("[role=region]")).toBeNull();
+    const panel = document.querySelector<HTMLElement>("[data-mod-panel]")!;
+    expect(panel.inert).toBe(true); expect(panel.style.visibility).toBe("hidden");
+    const calls = select.mock.calls.length;
+    for (const key of ["Enter", "F5", "F11", "F12", "z"]) dispatchUiInput({ key: { key, modifiers: { ctrl: key === "z", shift: false, alt: false, meta: false }, repeat: false } });
+    await flush(); expect(select).toHaveBeenCalledTimes(calls); expect(accept).not.toHaveBeenCalled();
+    expect(await f.raw("ui.birth.accept", [])).toMatchObject({ ok: false });
+    expect(await f.raw("ui.birth.replace", [1])).toMatchObject({ result: { ok: false } });
+    button("Start character").click(); await flush();
+    expect(await answer).toMatchObject({ raceName: "Human", className: "Warrior", name: "Host character" });
+    expect(accept).toHaveBeenCalledTimes(1); expect(document.querySelector("dialog")).toBeNull();
+  });
+
+  it.each(["foreign", "accept", "setOption", "stats", "stale", "extra"])("refuses a %s birth proposal without mutating the draft", async (attack) => {
+    let model!: { stepId: string; choices: { id: string; label: string }[] };
+    const f = await fixture(["ui:birth.replace"], (value) => {
+      model = value as typeof model;
+      return { title: "Birth", lines: [], rows: [{ id: "pick", label: "Pick" }] };
+    }, () => ({ stepId: attack === "stale" ? "old-step" : model.stepId,
+      choice: ["extra", "stats"].includes(attack) ? model.choices[0]!.id : attack,
+      ...(attack === "extra" ? { accept: true } : attack === "stats" ? { stats: [999, 999, 999, 999, 999] } : {}) }));
+    const registered = f.replace("ui.birth.replace"); await flush(); await registered;
+    const created = newBirth(); const before = created.session.draft();
+    const answer = offerBirth(created.session, created.outcome); await flush(); button("Pick").click(); await flush();
+    expect(await answer).toBeUndefined(); expect(created.session.draft()).toEqual(before);
+  });
+
+  it("refuses an old birth step id after a legal race proposal", async () => {
+    let model!: { stepId: string; choices: { id: string; label: string }[] };
+    let previous = "";
+    const f = await fixture(["ui:birth.replace"], (value) => {
+      model = value as typeof model;
+      return { title: "Birth", lines: [], rows: model.choices.map(({ id, label }) => ({ id, label })) };
+    }, (value) => {
+      const proposal = { stepId: previous || model.stepId, choice: (value as { action: string }).action };
+      previous = model.stepId;
+      return proposal;
+    });
+    const registered = f.replace("ui.birth.replace"); await flush(); await registered;
+    const created = newBirth(); const answer = offerBirth(created.session, created.outcome); await flush();
+    button("Human").click(); await flush(); const before = created.session.draft();
+    button("Warrior").click(); await flush(); expect(await answer).toBeUndefined(); expect(created.session.draft()).toEqual(before);
+    expect(created.session.draft().cls).toBeNull();
+  });
+
+  it.each(["revoke", "binding", "session", "dialog"])("refuses birth acceptance after a %s change during the summary", async (change) => {
+    let model!: { stepId: string; choices: { id: string; label: string }[] };
+    const f = await fixture(["ui:birth.replace"], (value) => {
+      model = value as typeof model; return { title: "Birth", lines: [], rows: model.choices.map(({ id, label }) => ({ id, label })) };
+    }, (value) => ({ stepId: model.stepId, choice: (value as { action: string }).action }));
+    Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function(this: HTMLDialogElement) { this.open = true; } });
+    const registered = f.replace("ui.birth.replace"); await flush(); await registered;
+    const created = newBirth(); const accept = created.session.accept;
+    const answer = offerBirth(created.session, created.outcome); await flush();
+    button("Human").click(); await flush(); button("Warrior").click(); await flush(); button("Review character").click(); await flush();
+    const stale = button("Start character");
+    if (change === "revoke") f.authorize([]);
+    else if (change === "binding") setConsentBindings(new Map([["probe", "changed"]]));
+    else if (change === "dialog") { const dialog = document.createElement("dialog"); dialog.open = true; document.body.append(dialog); }
+    else f.changeSession();
+    stale.click(); await flush(); expect(await answer).toBeUndefined(); expect(accept).not.toHaveBeenCalled();
+  });
+
+  it.each(["x".repeat(32), "<b>Name</b>\n", "x".repeat(1025)])("rejects an invalid birth text proposal without changing the draft", async (value) => {
+    let model!: { stepId: string; choices: { id: string; label: string }[] };
+    let proposed = false;
+    const f = await fixture(["ui:birth.replace"], (input) => {
+      model = input as typeof model; return { title: "Birth", lines: [], rows: model.choices.map(({ id, label }) => ({ id, label })) };
+    }, (input) => ({ stepId: model.stepId, choice: (input as { action: string }).action, ...(proposed ? { value } : {}) }));
+    const registered = f.replace("ui.birth.replace"); await flush(); await registered;
+    const created = newBirth(null); const answer = offerBirth(created.session, created.outcome); await flush();
+    button("Human").click(); await flush(); button("Warrior").click(); await flush();
+    const before = created.session.draft(); proposed = true;
+    button(value.length > 1024 ? "Background" : "Name").click(); await flush();
+    expect(await answer).toBeUndefined(); expect(created.session.draft()).toEqual(before);
+  });
+
+  it("bounds a birth presenter that keeps editing without accepting a character", async () => {
+    let model!: { stepId: string; choices: { id: string; label: string }[] };
+    const describe = vi.fn((input) => { model = input as typeof model; return { title: "Birth", lines: [], rows: model.choices.map(({ id, label }) => ({ id, label })) }; });
+    const f = await fixture(["ui:birth.replace"], describe, (input) => ({ stepId: model.stepId, choice: (input as { action: string }).action }));
+    const registered = f.replace("ui.birth.replace"); await flush(); await registered;
+    const created = newBirth(); const answer = offerBirth(created.session, created.outcome); await flush();
+    button("Human").click(); await flush(); button("Warrior").click(); await flush();
+    const stale = button("Roll stats");
+    for (let i = 0; i < 62; i += 1) { button("Roll stats").click(); await flush(); }
+    expect(await answer).toBeUndefined(); expect(describe).toHaveBeenCalledTimes(64); expect(created.session.accept).not.toHaveBeenCalled();
+    const before = created.session.draft(); stale.click(); await flush(); expect(created.session.draft()).toEqual(before);
+  });
+
+  it("drops a birth choice revoked while its selection is pending", async () => {
+    let model!: { stepId: string; choices: { id: string; label: string }[] };
+    let resolve!: (value: unknown) => void;
+    const f = await fixture(["ui:birth.replace"], (input) => { model = input as typeof model; return { title: "Birth", lines: [], rows: model.choices }; },
+      () => new Promise((done) => { resolve = done; }));
+    const registered = f.replace("ui.birth.replace"); await flush(); await registered;
+    const created = newBirth(); const before = created.session.draft(); const answer = offerBirth(created.session, created.outcome); await flush();
+    button("Human").click(); await flush(); f.authorize([]);
+    resolve({ stepId: model.stepId, choice: model.choices.find((choice) => choice.label === "Human")!.id }); await flush();
+    expect(await answer).toBeUndefined(); expect(created.session.draft()).toEqual(before);
+  });
+
+  it.each(["messages", "sidebar", "status"])("rechecks the UI wildcard before %s text mutations and redraws", async (family) => {
+    const f = await fixture(["ui:*.replace"]);
+    Object.assign(f.snapshot.regions, { [family]: f.snapshot.regions.map });
+    expect(await f.raw(`ui.${family}.replace`, [[{ text: "<script>original()</script>" }]])).toMatchObject({ result: { ok: true } });
+    const root = document.querySelector<HTMLElement>("[role=region]")!;
+    expect(root.textContent).toBe("<script>original()</script>"); expect(document.querySelector("script")).toBeNull();
+    f.authorize([]);
+    expect(await f.raw(`ui.${family}.replace`, [[{ text: "revoked" }]])).toMatchObject({ result: { ok: false, reason: "not-granted" } });
+    for (const listener of f.listeners) listener();
+    expect(root.textContent).toBe("<script>original()</script>"); expect(root.hidden).toBe(true);
   });
 });

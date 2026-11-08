@@ -27,7 +27,7 @@ describe("API-2 declarative panel schema", () => {
   it.each(["messages", "sidebar", "status"] as const)("draws Worker %s text and fixed tokens without interpreting markup", async (name) => {
     let held = true;
     const display = textDisplay();
-    const api = createApi2Host({ ...modPluginContext("text-probe", {}), display }, { execution: "worker", grants: { has: () => held } });
+    const api = createApi2Host({ ...modPluginContext("text-probe", {}), display }, { execution: "worker", grants: { has: (capability) => held && capability === `ui:${name}.replace` } });
     const call = (value: unknown, current = true) => serveSimpleWorkerCall(api, `ui.${name}.replace`, [value as WorkerJson], () => current);
     expect(await call([{ text: "<img src=x onerror=alert(1)>", style: "warning" }])).toEqual({ ok: true, value: null });
     const root = document.querySelector<HTMLElement>('[role="region"]')!;

@@ -19,6 +19,7 @@ import type { BirthChoice } from "./birth";
 import type { ModBirthSession } from "./birth-session";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import { pushRegion, type RegionSpec } from "./ui-stack";
+import { workerBirthOwner } from "./mod-worker/presenters";
 
 /** What a mod must hold in its manifest before it may show character creation. */
 export const BIRTH_CAPABILITY = "ui:birth.replace";
@@ -125,7 +126,12 @@ export function currentBirthPresenter(): InstalledBirth | null {
 export function offerBirth(
   session: ModBirthSession,
   outcome: Promise<BirthChoice | null>,
-): Promise<BirthChoice | null> | undefined {
+): Promise<BirthChoice | null | undefined> | undefined {
+  const worker = workerBirthOwner();
+  if (worker) {
+    const region = pushRegion(regionSpec("worker"));
+    return worker(session).then((taken) => taken ? outcome : undefined).finally(() => region.release());
+  }
   const owner = currentBirthPresenter();
   if (!owner) return undefined;
   let taken: boolean | undefined;

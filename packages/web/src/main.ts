@@ -2141,19 +2141,6 @@ function saveTruthUse(id: string, capability: TruthCapability): boolean {
 setTruthSaveWriter((id, capability, current) => current === game.state && modHolds(id, capability) && saveTruthUse(id, capability));
 import { drawWorkerSpawnConsent, setApi2WorkerSpawnSharedHost, spawnWorkerContent } from "./mod-api2-host";
 import { recordCapabilityUse } from "./mod-controller-record";
-import { setApi2WorkerGameplayHost } from "./mod-api2-host";
-
-setApi2WorkerGameplayHost({
-  targets: (id) => ({ effects: game.effects, rooms: booted.registries.rooms, profiles: booted.registries.profiles,
-    blows: state.blowEffects ?? null, glyphs: booted.registries.rooms.glyphs, randart: randartRegistry(), menus: menuRegistry.forOwner(id) }),
-  mark: (_id, _capability, current, authorized) => {
-    if (current !== state || !authorized() || suppressSave || birthPending || !attachedSlot() || dead || sessionTaint()) return false;
-    game.manifest.modNoscore = true;
-    game.manifest.determinism = advanceDeterminism(game.manifest.determinism, true);
-    state.actor.player.noscore = markNoscore(state.actor.player.noscore, NOSCORE.DEBUG);
-    return persistSave(false, true);
-  },
-});
 
 function saveSpawnSharedUse(id: string, capability: "debug:spawn" | "shared:publish"): boolean {
   if (suppressSave || birthPending || !attachedSlot() || dead || sessionTaint()) return false;
@@ -13381,8 +13368,9 @@ async function maybeBirth(): Promise<BootStep> {
       msg: (text) => say(text),
     });
     const offered = offerBirth(modBirth.session, modBirth.outcome);
-    const choice = offered
-      ? await offered
+    const offeredChoice = offered ? await offered : undefined;
+    const choice = offeredChoice !== undefined
+      ? offeredChoice
       : await runBirth(term, players.races, players.classes, {
         // ui-birth.c draws random race/class/*/@/roller from the main game RNG.
         rng: state.rng,

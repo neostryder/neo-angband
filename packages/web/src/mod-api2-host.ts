@@ -14,7 +14,6 @@
  */
 
 import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
-import { WorkerGameplay, type WorkerGameplayHost } from "./mod-worker/gameplay";
 import { gameplayIntent } from "./mod-gameplay-intents";
 import {
   AgentCapabilityError,
@@ -120,6 +119,10 @@ import { cloneWorkerJson, payloadBytes } from "./mod-worker/clone";
 import { SPAWN_SHARED_WORKER_CALLS } from "./mod-worker/protocol";
 import { createWorkerPresenters } from "./mod-worker/presenters";
 import { PRESENTER_WORKER_CALLS, type WorkerPresenterQuestion } from "./mod-worker/protocol";
+import { BIRTH_WORKER_CALLS } from "./mod-worker/protocol";
+import { validWorkerBackupCall } from "./mod-worker/protocol";
+import { backupBridge } from "./mod-backup";
+import { desktopInstallation } from "./host-electron";
 
 /** Asks the player for the real map on behalf of a mod; the game wires it at boot (main.ts). */
 type TruthConsentAsk = (modId: string, reason: string) => Promise<"granted" | "declined" | "unavailable">;
@@ -377,37 +380,6 @@ export function api2MayObserveKeys(ctx: Pick<ModPluginContext, "snapshot">): boo
   if (typeof document === "undefined") return true;
   const focus = document.activeElement;
   return focus === null || focus === document.body || focus === document.documentElement || focus.id === "game" || focus.id === "game-view";
-}
-
-let workerGameplayHost: WorkerGameplayHost | undefined;
-const workerGameplayHosts = new WeakMap<ModApi2, WorkerGameplay>();
-
-export function setApi2WorkerGameplayHost(host: WorkerGameplayHost | undefined): void {
-  workerGameplayHost = host;
-}
-
-function registerWorkerGameplay(api: ModApi2, ctx: ModPluginContext, options: Api2HostOptions, stopped: () => boolean): WorkerGameplay | undefined {
-  const binding = consentBinding(ctx.id);
-  const state = ctx.state;
-  if (!workerGameplayHost || !state || typeof binding !== "string") return undefined;
-  const player = state.actor.player;
-  const character = ctx.character?.key() ?? null;
-  const gameplay = new WorkerGameplay({ id: ctx.id, installation: binding, state, host: workerGameplayHost,
-    held: (capability) => !stopped() && state === ctx.state && player === state.actor.player && character === (ctx.character?.key() ?? null) &&
-      binding === consentBinding(ctx.id) && options.grants.has(capability) && modHolds(ctx.id, capability),
-  });
-  workerGameplayHosts.set(api, gameplay);
-  return gameplay;
-}
-
-export function revokeWorkerGameplay(api: ModApi2, epoch?: number): void {
-  const host = workerGameplayHosts.get(api);
-  if (epoch === undefined) host?.stop();
-  else host?.advanceEpoch(epoch);
-}
-
-export function serveWorkerGameplayCall(api: ModApi2, method: string, args: readonly WorkerJson[], epoch: number, current: () => boolean): Api2Call<unknown> {
-  return workerGameplayHosts.get(api)?.call(method, args, epoch, current) ?? Promise.resolve(api2Unavailable("The gameplay bridge is unavailable."));
 }
 
 /** Build the API 2 domains for one in-process mod over its API 1 context. */
@@ -1048,7 +1020,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
       }),
       gameMenu: frozen({
         register: (action, label, run) => guarded(() => {
-          if (!granted("ui:menu.row") && !(options.execution !== "worker" && granted("registry:menu"))) return api2NotGranted("ui:menu.row");
+          if (!granted("ui:menu.row") && !granted("registry:menu")) return api2NotGranted("ui:menu.row");
           if (!/^[a-z][a-z0-9-]{0,63}$/.test(action) || !label.trim() || /[\r\n]/.test(label) || typeof run !== "function") {
             return api2Refused("bad-action", "a menu action needs an id, a label and a handler");
           }
@@ -1189,11 +1161,8 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   if (options.execution === "worker") workerManagementCalls.set(api, workerManageDomain(ctx, options, () => stopped));
   if (options.execution === "worker") spawnSharedWorkerCalls.set(api, spawnSharedWorkerDomain(ctx, options, () => stopped));
   if (options.execution === "worker") {
-    const gameplay = registerWorkerGameplay(api, ctx, options, () => stopped);
-    if (gameplay) cleanups.add(() => gameplay.stop());
-  }
-  if (options.execution === "worker") {
-    const simple: SimpleWorkerHost = { ctx, held: (capability) => !stopped && granted(capability), capturing: false, filter: null,
+    const simple: SimpleWorkerHost = { ctx, held: (capability) => !stopped && granted(capability) &&
+      (!(capability.startsWith("ui:") && capability.endsWith(".replace") && granted("ui:*.replace")) || modHolds(ctx.id, capability)), capturing: false, filter: null,
       ...(ctx.state ? { keys: createModKeybindings(ctx.state, { worker: true }) } : {}) };
     simpleWorkerHosts.set(api, simple);
     const off = onModPanelSuspension((suspended) => {
@@ -1202,6 +1171,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
     cleanups.add(() => { off(); if (simple.filter !== null) ctx.display?.setVisualFilter(null); });
     cleanups.add(() => { simple.text?.teardown(); });
     cleanups.add(() => { workerPresenterHosts.get(api)?.teardown(); workerPresenterHosts.delete(api); });
+    cleanups.add(() => { workerBackupFiles.delete(api); });
     cleanups.add(() => { ctx.keybindings?.cancelCapture(); });
     cleanups.add(() => { simple.keys?.cancelCapture(); });
   }
@@ -1235,7 +1205,7 @@ export function attachWorkerPresenters(api: ModApi2, ask: (question: WorkerPrese
 }
 
 export function serveWorkerPresenterCall(api: ModApi2, method: string, args: readonly WorkerJson[], current: () => boolean): Api2Result<unknown> {
-  const capability = PRESENTER_WORKER_CALLS[method];
+  const capability = BIRTH_WORKER_CALLS[method] ?? PRESENTER_WORKER_CALLS[method];
   if (!capability || !api.meta.granted(capability)) return api2NotGranted(capability ?? "ui:screen.replace");
   if (!current()) return api2Refused("revoked", "the presenter request has expired");
   if (args.length !== 1 || (args[0] !== null && (typeof args[0] !== "number" || !Number.isSafeInteger(args[0]) || args[0] <= 0))) return api2Refused("bad-call", "a presenter takes one positive callback id or null");
@@ -2042,4 +2012,67 @@ async function workerContentOperation(
   const command = method.slice("manage.wizard.".length) as keyof NonNullable<ModPluginContext["wizard"]>;
   const run = ctx.wizard[command] as (...values: readonly WorkerJson[]) => unknown;
   return api2Ok(data(run(...args)));
+}
+
+/** A native confirmation cannot authorize work from a superseded Worker connection. */
+export function workerBackupAuthorization(api: ModApi2, current: () => boolean): () => boolean {
+  const host = simpleWorkerHosts.get(api);
+  const binding = host && consentBinding(host.ctx.id);
+  const state = host?.ctx.state;
+  const bridge = backupBridge();
+  return () => !!host && !!bridge && bridge === backupBridge() && typeof binding === "string" && binding === consentBinding(host.ctx.id) &&
+    state === host.ctx.state && current() && host.held("backup:folder") && modHolds(host.ctx.id, "backup:folder");
+}
+
+const workerBackupBudgets = new WeakMap<ModApi2, { busy: boolean; times: number[] }>();
+const workerBackupFiles = new WeakMap<ModApi2, { id: string; file: { readonly name: string; readonly text: string }; authorized: () => boolean }>();
+
+/** A host-held file avoids uploading save data through the smaller Worker call envelope. */
+export function rememberWorkerBackupFile(api: ModApi2, file: { readonly name: string; readonly text: string }, authorized: () => boolean): string {
+  const previous = workerBackupFiles.get(api);
+  if (previous?.authorized() && previous.file.name === file.name && previous.file.text === file.text) return previous.id;
+  const id = crypto.randomUUID();
+  workerBackupFiles.set(api, { id, file: { name: file.name, text: file.text }, authorized });
+  return id;
+}
+
+export async function serveWorkerBackupCall(api: ModApi2, method: string, args: readonly WorkerJson[], current: () => boolean): Promise<Api2Result<unknown>> {
+  if (!validWorkerBackupCall(method, args)) return api2Refused("bad-call", "backup calls cannot supply a path, purpose, or installation");
+  const scopeCurrent = workerBackupAuthorization(api, current);
+  const retained = method === "backupFolder.writeSaved" ? workerBackupFiles.get(api) : undefined;
+  if (method === "backupFolder.writeSaved" && (!retained || retained.id !== args[0] || !retained.authorized())) return api2Refused("bad-file", "the backup file id is unknown or expired");
+  const authorized = () => scopeCurrent() && (!retained || workerBackupFiles.get(api) === retained && retained.authorized());
+  if (!authorized()) return api2NotGranted("backup:folder");
+  const bridge = backupBridge()!;
+  const budget = workerBackupBudgets.get(api) ?? { busy: false, times: [] };
+  workerBackupBudgets.set(api, budget);
+  budget.times = budget.times.filter((stamp) => Date.now() - stamp < 60_000);
+  if (budget.busy || budget.times.length >= 16) return api2Refused("quota", "backup permits one pending operation and 16 requests per minute");
+  budget.times.push(Date.now());
+  budget.busy = true;
+  const restore = suspendModPanels();
+  try {
+    const installation = await desktopInstallation(api.meta.id, bridge);
+    if (!installation || !authorized()) return api2Refused("revoked", "the backup request expired");
+    const operation = method.slice("backupFolder.".length);
+    const write = operation === "write" || operation === "writeSaved";
+    if (operation === "choose" || write) {
+      const plan = await bridge.backup(operation === "choose" ? "prepareChoose" : "prepareWrite", { ...installation,
+        ...(write ? retained ? retained.file : { name: args[0], text: args[1] } : {}) }) as { ok?: boolean; ticket?: unknown } | null;
+      if (!authorized() || !plan?.ok || typeof plan.ticket !== "string" || !/^[a-f0-9]{64}$/.test(plan.ticket)) return api2Refused("cancelled", "the backup request was declined or revoked");
+      const result = await bridge.backup("commit", { ...installation, ticket: plan.ticket }) as { ok?: boolean; name?: unknown } | null;
+      if (!authorized()) return api2Refused("revoked", "the backup request expired");
+      return write ? api2Ok(result?.ok === true) : api2Ok(result?.ok === true && typeof result.name === "string" ? result.name : null);
+    }
+    const result = await bridge.backup(operation, installation);
+    if (!authorized()) return api2Refused("revoked", "the backup request expired");
+    if (operation === "name") return api2Ok(typeof result === "string" ? result : null);
+    if (operation === "forget") return api2Ok(null);
+    if (operation === "list" && Array.isArray(result)) return api2Ok(result.slice(0, 200).flatMap((entry: unknown) => {
+      if (!entry || typeof entry !== "object" || !("name" in entry) || typeof entry.name !== "string") return [];
+      return [{ name: entry.name, characterName: "", level: 0 }];
+    }));
+    return api2Unavailable("desktop backup metadata is unavailable");
+  } catch { return api2Unavailable("desktop backup is unavailable"); }
+  finally { restore(); budget.busy = false; }
 }

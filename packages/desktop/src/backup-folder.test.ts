@@ -368,4 +368,64 @@ describe("installation backup allocations", () => {
     expect(await reading).toEqual({ ok: false });
     expect(fs.existsSync(path.join(base, key, "extra.neochar"))).toBe(false);
   });
+
+  it("keeps a folder plan inert until a single host commit and rejects foreign or widened authority", async () => {
+    const { authority, relay, a, b } = await fixture();
+    const key = authority.lookup(a, 1)!.key;
+    const plan = await relay.handle("prepareChoose", a, 1) as { ticket: string };
+    expect(fs.existsSync(path.join(base, key))).toBe(false);
+    expect(readBackupFolder(path.join(base, "records"), key)).toBeNull();
+    for (const identity of [b, { ...a, modId: "b" }, { ...a, grants: ["backup:folder", "network:*"] }]) {
+      expect(await relay.handle("commit", { ...identity, ticket: plan.ticket }, 1)).toEqual({ ok: false });
+    }
+    expect(await relay.handle("commit", { ...a, ticket: plan.ticket }, 2)).toEqual({ ok: false });
+    expect(await relay.handle("commit", { ...a, ticket: plan.ticket }, 1)).toEqual({ ok: true, name: path.basename(base) });
+    expect(await relay.handle("commit", { ...a, ticket: plan.ticket }, 1)).toEqual({ ok: false });
+  });
+
+  it("binds prepared writes to the confirmed bytes, folder, and current native authorization", async () => {
+    const { authority, relay, a } = await fixture();
+    await relay.handle("choose", a, 1);
+    const confirmWrite = vi.fn(async (_entry: unknown, _name: string, _folder: string, _owner: number) => true);
+    const guarded = createBackupRelay({ authority, userBase: path.join(base, "records"), choose: async () => base,
+      confirmReplace: async () => true, confirmRead: async () => false, confirmWrite });
+    const key = authority.lookup(a, 1)!.key;
+    const plan = await guarded.handle("prepareWrite", { ...a, name: "own.neochar", text: "confirmed" }, 1) as { ticket: string };
+    expect(confirmWrite).toHaveBeenCalledWith(expect.objectContaining({ modId: "a" }), "own.neochar", path.join(base, key), 1);
+    expect(fs.existsSync(path.join(base, key, "own.neochar"))).toBe(false);
+    expect(await guarded.handle("commit", { ...a, ticket: plan.ticket, name: "spoof.neochar", text: "bad" }, 1)).toEqual({ ok: false });
+    expect(await guarded.handle("commit", { ...a, ticket: plan.ticket }, 1)).toEqual({ ok: true });
+    expect(fs.readFileSync(path.join(base, key, "own.neochar"), "utf8")).toBe("confirmed");
+    const old = await guarded.handle("prepareWrite", { ...a, name: "own.neochar", text: "bad" }, 1) as { ticket: string };
+    await authority.report({ ...decision("a"), revoke: true }, 1, async () => true);
+    const renewed = await authority.report(decision("a"), 1, async () => true) as Record<string, unknown>;
+    expect(await guarded.handle("commit", { ...renewed, ticket: old.ticket }, 1)).toEqual({ ok: false });
+    expect(fs.readFileSync(path.join(base, key, "own.neochar"), "utf8")).toBe("confirmed");
+  });
+
+  it("refuses oversized, malformed, and path-bearing native plans before confirmation", async () => {
+    const { authority, relay, a } = await fixture(); await relay.handle("choose", a, 1);
+    const confirmWrite = vi.fn(async () => true);
+    const guarded = createBackupRelay({ authority, userBase: path.join(base, "records"), choose: async () => base,
+      confirmReplace: async () => true, confirmRead: async () => false, confirmWrite });
+    for (const extra of [{ name: "../out.neochar", text: "bad" }, { name: "x.neochar", text: "x".repeat(BACKUP_LIMITS.fileBytes + 1) },
+      { name: "x.neochar", text: "bad", folder: base }, { name: "x.neochar", text: "bad", purpose: "victim" }, { name: "x.neochar", text: {} }]) {
+      expect(await guarded.handle("prepareWrite", { ...a, ...extra }, 1)).toEqual({ ok: false });
+    }
+    expect(confirmWrite).not.toHaveBeenCalled(); expect(await guarded.handle("list", a, 1)).toEqual([]);
+  });
+
+  it("expires native plans and refuses excess confirmation requests without a folder mutation", async () => {
+    const { relay, a, authority } = await fixture();
+    const key = authority.lookup(a, 1)!.key;
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+    try {
+      const plan = await relay.handle("prepareChoose", a, 1) as { ticket: string };
+      now.mockReturnValue(31_001);
+      expect(await relay.handle("commit", { ...a, ticket: plan.ticket }, 1)).toEqual({ ok: false });
+      for (let i = 0; i < 30; i += 1) expect(await relay.handle("prepareChoose", a, 1)).toMatchObject({ ok: true });
+      expect(await relay.handle("prepareChoose", a, 1)).toEqual({ ok: false });
+      expect(fs.existsSync(path.join(base, key))).toBe(false);
+    } finally { now.mockRestore(); }
+  });
 });

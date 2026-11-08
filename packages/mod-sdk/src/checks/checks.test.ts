@@ -203,7 +203,7 @@ const titleRow = (id: string): Files => ({
 
 const OK = "export default { api: 1, register(host, ctx) { ctx.log('hello'); } };";
 const NET = ["network:api.example.com"];
-const WORKER_ONLY_IN_PROCESS = ["ui:birth.replace", "ui:*.replace"].find((c) => !capabilityTiers(c).includes("worker"));
+const WORKER_ONLY_IN_PROCESS = ["engine:access", "ui:birth.replace", "ui:*.replace"].find((c) => !capabilityTiers(c).includes("worker"));
 const LONG = (n: number): string => `export default { api: 1, register(host, ctx) { const t = [${Array.from({ length: n }, (_, i) => `() => ${i}`).join(", ")}]; ctx.log(t); } };`;
 const token = ["gh", "p_", "Ab3".repeat(12)].join("");
 

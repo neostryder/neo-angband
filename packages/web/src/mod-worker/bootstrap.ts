@@ -35,6 +35,7 @@ export function installModWorkerBootstrap(
 ): void {
   type Pending = { readonly epoch: number; resolve(value: unknown): void; reject(reason: Error): void };
   type Listener = (payload: unknown) => void;
+  type BackupFile = { readonly id: string; readonly name: string; readonly size: number };
   const NOTIFY = ["optionsChanged", "abilityGained", "monsterBecameVisible", "artifactIdentified"];
   let id: string | null = null;
   let epoch = 0;
@@ -49,7 +50,7 @@ export function installModWorkerBootstrap(
   const pending = new Map<number, Pending>();
   const listeners = new Map<number, Listener>();
   const callbacks = new Map<number, (action: string, value?: string | boolean) => void>();
-  const backupCallbacks = new Map<number, (file: { readonly name: string; readonly text: string }) => void>();
+  const backupCallbacks = new Map<number, (file: BackupFile) => void>();
 
   const freeze = <T>(value: T): T => {
     if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
@@ -74,8 +75,6 @@ export function installModWorkerBootstrap(
     const requestId = nextRequest;
     return new Promise((resolve, reject) => {
       try {
-        const gameplay = method.startsWith("engine.") || method.startsWith("registry.");
-        if (gameplay) validateGameplay(list);
         const message = { type: "call", requestId, method, args: list.map(plain), protocolVersion, pluginId: id, epoch };
         if (new TextEncoder().encode(JSON.stringify(message)).byteLength > 64 * 1024) {
           throw new Error("refused worker payload larger than 65536 bytes");
@@ -100,9 +99,6 @@ export function installModWorkerBootstrap(
 
   const buildApi = (m: WorkerMeta, active: readonly string[]): ModApi2 => {
     const api = {
-      registry: Object.fromEntries(["effect", "room", "profile", "blow", "glyph", "randart", "vocab", "menu"]
-        .filter((domain) => m.granted.includes(`registry:${domain}`))
-        .map((domain) => [domain, { declare: method(`registry.${domain}.declare`) }])),
       options: { set: method("options.set") },
       display: { filter: method("display.filter"), replace: presenter("display.replace") },
       keybindings: {
@@ -189,6 +185,7 @@ export function installModWorkerBootstrap(
         lookup: method("content.lookup"),
       },
       ui: {
+        birth: { replace: presenter("ui.birth.replace") },
         menu: { replace: presenter("ui.menu.replace") },
         screen: { replace: presenter("ui.screen.replace") },
         management: { replace: presenter("ui.management.replace") },
@@ -287,8 +284,8 @@ export function installModWorkerBootstrap(
       ...(m.granted.includes("backup:folder") ? {
         backupFolder: {
           name: method("backupFolder.name"), choose: method("backupFolder.choose"), forget: method("backupFolder.forget"),
-          write: method("backupFolder.write"), list: method("backupFolder.list"),
-          onSave: async (listener: (file: { readonly name: string; readonly text: string }) => void) => {
+          write: method("backupFolder.write"), writeSaved: method("backupFolder.writeSaved"), list: method("backupFolder.list"),
+          onSave: async (listener: (file: BackupFile) => void) => {
             const callbackId = ++nextCallback;
             backupCallbacks.set(callbackId, listener);
             const result = await call("backupFolder.onSave", [callbackId]) as { ok: boolean };
@@ -544,30 +541,5 @@ export function installModWorkerBootstrap(
         throw error;
       }
     };
-  }
-
-  function validateGameplay(value: unknown): void {
-    const ancestors = new Set<object>();
-    let nodes = 0;
-    const visit = (item: unknown, depth: number): void => {
-      if (++nodes > 4096 || depth > 12) throw new Error("Gameplay data exceeds its structural limits.");
-      if (item === null || typeof item === "boolean" || typeof item === "string" || typeof item === "number" && Number.isFinite(item)) return;
-      if (!item || typeof item !== "object") throw new Error("Gameplay accepts only JSON data.");
-      const array = Array.isArray(item);
-      const proto: unknown = Object.getPrototypeOf(item);
-      if (proto !== (array ? Array.prototype : Object.prototype) && !(proto === null && !array) || ancestors.has(item)) throw new Error("Gameplay accepts only acyclic plain data.");
-      ancestors.add(item);
-      const keys = Reflect.ownKeys(item);
-      if (array && keys.length !== item.length + 1) throw new Error("Gameplay arrays must be dense.");
-      for (const key of keys) {
-        if (array && key === "length") continue;
-        if (typeof key !== "string" || ["__proto__", "prototype", "constructor"].includes(key)) throw new Error("Gameplay rejects prototype keys.");
-        const descriptor = Object.getOwnPropertyDescriptor(item, key)!;
-        if (!descriptor.enumerable || !("value" in descriptor)) throw new Error("Gameplay rejects accessors.");
-        visit(descriptor.value, depth + 1);
-      }
-      ancestors.delete(item);
-    };
-    visit(value, 0);
   }
 }

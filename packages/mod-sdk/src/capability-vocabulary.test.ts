@@ -24,18 +24,9 @@ const granting = (...capabilities: string[]): CapabilitySet =>
   CapabilitySet.fromManifest({ id: "m", name: "M", version: "1.0.0", shape: "plugin", capabilities });
 
 describe("the capability vocabulary", () => {
-  it("opens the eight data registry grants and discloses their permanent consequences", () => {
-    for (const domain of ["effect", "room", "profile", "blow", "glyph", "randart", "vocab", "menu"]) {
-      const capability = `registry:${domain}`;
-      expect(capabilityTiers(capability)).toContain("worker");
-      expect(consentText(matchCapability(capability)!)).toContain("permanently unscorable");
-    }
-    expect(capabilityTiers("registry:*")).not.toContain("worker");
-    expect(capabilityTiers("engine:access")).not.toContain("worker");
-  });
   it("opens only the implemented simple option, keybinding, and filter grants", () => {
     for (const capability of ["options:write", "keymap:edit", "display:filter", "ui:messages.replace", "ui:sidebar.replace", "ui:status.replace", "ui:region.create", "display:replace", "ui:menu.replace", "ui:screen.replace", "screens:manage", "mod:install", "mod:session", "mod:read", "debug:wizard", "session:control"]) expect(capabilityTiers(capability)).toContain("worker");
-    for (const capability of ["ui:*.replace", "ui:birth.replace", "engine:access"]) expect(capabilityTiers(capability)).not.toContain("worker");
+    for (const capability of ["engine:access"]) expect(capabilityTiers(capability)).not.toContain("worker");
     expect(consentText(matchCapability("options:write")!)).toContain("birth, cheat, or score");
     expect(consentText(matchCapability("keymap:edit")!)).toContain("permission-dialog input");
   });
@@ -56,7 +47,7 @@ describe("the capability vocabulary", () => {
       expect(capabilityTiers(kind.capability), kind.name).toContain("worker");
       expect(granting(kind.capability).has(kind.capability)).toBe(true);
     }
-    expect(capabilityTiers("registry:*")).not.toContain("worker");
+    expect(capabilityTiers("registry:*")).toContain("worker");
   });
 
   it("has a complete entry for every capability, each spelled once", () => {
@@ -150,8 +141,18 @@ describe("the capability vocabulary", () => {
 
 it("opens only bounded spawning and explicit shared JSON in this stage", () => {
   for (const capability of ["debug:spawn", "shared:read", "shared:publish"]) expect(capabilityTiers(capability)).toContain("worker");
-  for (const capability of ["engine:access", "ui:*.replace"]) expect(capabilityTiers(capability)).not.toContain("worker");
+  for (const capability of ["engine:access"]) expect(capabilityTiers(capability)).not.toContain("worker");
   expect(consentText(matchCapability("shared:read")!)).toContain("does not expose private mod storage");
   expect(consentText(matchCapability("shared:publish")!)).toContain("all other mods holding shared:read");
   expect(consentText(matchCapability("debug:spawn")!)).toContain("can no longer be scored");
+});
+
+it("opens serialized birth, all six replacement families, and desktop backup requests", () => {
+  for (const capability of ["ui:birth.replace", "ui:*.replace", "backup:folder"]) expect(capabilityTiers(capability)).toContain("worker");
+  const wildcard = consentText(matchCapability("ui:*.replace")!);
+  expect(CAPABILITY_VOCABULARY.filter((entry) => entry.capability.startsWith("ui:") && entry.capability.endsWith(".replace") && !entry.wildcard)
+    .map((entry) => entry.capability)).toEqual(["messages", "sidebar", "status", "menu", "screen", "birth"].map((family) => `ui:${family}.replace`));
+  for (const family of ["messages", "vitals", "status", "gameplay menus", "gameplay screens", "character creation"]) expect(wildcard).toContain(family);
+  expect(consentText(matchCapability("ui:birth.replace")!)).toContain("asks before starting");
+  expect(consentText(matchCapability("backup:folder")!)).toContain("desktop asks before each write");
 });

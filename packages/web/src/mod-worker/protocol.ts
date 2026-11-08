@@ -126,6 +126,7 @@ export const WORKER_CALLS = [
   "backupFolder.choose",
   "backupFolder.forget",
   "backupFolder.write",
+  "backupFolder.writeSaved",
   "backupFolder.list",
   "backupFolder.onSave",
   "backupFolder.off",
@@ -198,7 +199,7 @@ export type HostToModWorker =
   | (Addressed & { readonly type: "event"; readonly listenerId: number; readonly payload: WorkerJson })
   | (Addressed & { readonly type: "ui.action"; readonly callbackId: number; readonly action: string; readonly value?: string | boolean })
   | (Addressed & { readonly type: "ui.dismissed"; readonly callbackId: number })
-  | (Addressed & { readonly type: "backup.save"; readonly callbackId: number; readonly file: { readonly name: string; readonly text: string } })
+  | (Addressed & { readonly type: "backup.save"; readonly callbackId: number; readonly file: { readonly id: string; readonly name: string; readonly size: number } })
   | (Addressed & { readonly type: "ask"; readonly askId: number; readonly question: WorkerQuestion })
   | (Addressed & { readonly type: "notify"; readonly hook: string; readonly args: readonly WorkerJson[] })
   /** `policyHooks`: the hooks the host applies from the mod's policy tables, for `hooks.active`. */
@@ -376,7 +377,30 @@ export interface WorkerGridCommand {
   readonly color: "normal" | "muted" | "warning" | "danger" | "good";
 }
 
-export const GAMEPLAY_WORKER_CALLS: Readonly<Record<string, string>> = Object.freeze({
-  ...Object.fromEntries(["effect", "room", "profile", "blow", "glyph", "randart", "vocab", "menu"]
-    .map((domain) => [`registry.${domain}.declare`, `registry:${domain}`])),
+/** Host-issued ids prevent a proposal from widening its birth authority. */
+export interface WorkerBirthProposal {
+  readonly stepId: string;
+  readonly choice: string;
+  readonly value?: string;
+}
+
+export const MAX_WORKER_BACKUP_FILE_BYTES = 8 * 1024 * 1024;
+
+export const BIRTH_WORKER_CALLS: Readonly<Record<string, string>> = Object.freeze({
+  "ui.birth.replace": "ui:birth.replace",
 });
+
+/** The desktop must retain directory and installation authority. */
+export function validWorkerBackupCall(method: string, args: readonly WorkerJson[]): boolean {
+  switch (method) {
+    case "backupFolder.name": case "backupFolder.choose": case "backupFolder.forget": case "backupFolder.list": return args.length === 0;
+    case "backupFolder.write": return args.length === 2 && typeof args[0] === "string" && args[0].length <= 255 &&
+      /^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*\.neochar$/.test(args[0]) && !args[0].includes("..") &&
+      !/^(con|prn|aux|nul|conin\$|conout\$|com[1-9]|lpt[1-9])\./i.test(args[0]) && typeof args[1] === "string" && args[1].length <= 32768;
+    case "backupFolder.writeSaved": return args.length === 1 && typeof args[0] === "string" && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(args[0]);
+    case "backupFolder.onSave": return args.length === 1 && Number.isSafeInteger(args[0]) && (args[0] as number) > 0;
+    case "backupFolder.off": return args.length === 1 && args[0] !== null && typeof args[0] === "object" && !Array.isArray(args[0]) &&
+      Object.keys(args[0]).length === 1 && typeof args[0].id === "string" && /^[1-9][0-9]{0,15}$/.test(args[0].id);
+    default: return false;
+  }
+}

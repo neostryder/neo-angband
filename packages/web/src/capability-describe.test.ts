@@ -27,8 +27,8 @@ describe("describeCapability", () => {
     expect(describeCapability("registry:profile")).toMatchObject({ elevated: true });
     expect(describeCapability("registry:command")).toMatchObject({ elevated: true });
     expect(describeCapability("registry:monster")).toMatchObject({ elevated: true });
-    // Worker vocabulary activation permanently changes scoring eligibility.
-    expect(describeCapability("registry:vocab").elevated).toBe(true);
+    // vocabulary is additive, not an override of core logic -> not elevated.
+    expect(describeCapability("registry:vocab").elevated).toBe(false);
     expect(describeCapability("registry:*").elevated).toBe(true);
     expect(describeCapability("registry:*").text).toMatch(/ANY game system/i);
   });
@@ -140,6 +140,6 @@ describe("describeCapabilities / hasElevatedCapability", () => {
     const caps = ["command:add", "registry:vocab", "registry:effect"];
     expect(describeCapabilities(caps).map((d) => d.cap)).toEqual(caps);
     expect(hasElevatedCapability(caps)).toBe(true);
-    expect(hasElevatedCapability(["command:add", "registry:vocab"])).toBe(true);
+    expect(hasElevatedCapability(["command:add", "registry:vocab"])).toBe(false);
   });
 });

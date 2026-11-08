@@ -28,6 +28,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { randomBytes } from "node:crypto";
 import { backupFolderFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { DesktopAuthority, DesktopAuthorityEntry } from "./net-relay.js";
 
@@ -277,21 +278,67 @@ export function createBackupRelay(deps: {
   readonly choose: (entry: DesktopAuthorityEntry, owner: number) => Promise<string | null>;
   readonly confirmReplace: (entry: DesktopAuthorityEntry, name: string, owner: number) => Promise<boolean>;
   readonly confirmRead: (entry: DesktopAuthorityEntry, name: string, owner: number) => Promise<boolean>;
+  readonly confirmWrite?: (entry: DesktopAuthorityEntry, name: string, folder: string, owner: number) => Promise<boolean>;
 }) {
   const busy = new Set<string>();
+  const plans = new Map<string, { token: string; expires: number; folder: string; previousFolder: string | null; signal: AbortSignal; name?: string; text?: string }>();
+  const hits = new Map<string, number[]>();
   return {
     async handle(op: unknown, arg: unknown, owner: number): Promise<unknown> {
       const entry = deps.authority.lookup(arg, owner);
       if (!entry || !entry.grants.includes("backup:folder")) return { ok: false };
       const a = arg as Record<string, unknown>;
+      if (Object.keys(a).some((key) => !["ok", "installation", "modId", "digest", "grants", "ext", "name", "text", "ticket"].includes(key))) return { ok: false };
       if (a["purpose"] !== undefined) return { ok: false };
       const ext = entry.modId === "@host/mod-profile-sync" ? ".ndelve" : ".neochar";
       if (a["ext"] !== undefined && a["ext"] !== ext) return { ok: false };
       const slot = `${owner}:${entry.key}`;
+      if (["prepareChoose", "prepareWrite", "commit"].includes(op as string)) {
+        const fields = op === "prepareWrite" ? ["name", "text"] : op === "commit" ? ["ticket"] : [];
+        if (Object.keys(a).some((key) => !["ok", "installation", "modId", "digest", ...fields].includes(key))) return { ok: false };
+        const recent = (hits.get(slot) ?? []).filter((stamp) => Date.now() - stamp < 60_000);
+        for (const [key, stamps] of hits) if (stamps.at(-1)! < Date.now() - 60_000) hits.delete(key);
+        for (const [key, plan] of plans) if (plan.expires < Date.now()) plans.delete(key);
+        if (recent.length >= 32 || hits.size >= 128 && !hits.has(slot)) return { ok: false };
+        hits.set(slot, [...recent, Date.now()]);
+      }
       if (busy.has(slot)) return { ok: false };
       busy.add(slot);
       try {
         const folder = readBackupFolder(deps.userBase, entry.key);
+        if (op === "prepareChoose" || op === "prepareWrite") {
+          plans.delete(slot);
+          if (plans.size >= 128) return { ok: false };
+          let selected: string;
+          if (op === "prepareChoose") {
+            const chosen = await deps.choose(entry, owner);
+            if (chosen === null || entry.signal.aborted || !plainFolder(chosen)) return { ok: false };
+            selected = path.join(chosen, entry.key);
+          } else {
+            if (!folder || !plainFolder(folder) || !isHostFolderFileName(a["name"], ext) || typeof a["text"] !== "string" || Buffer.byteLength(a["text"], "utf8") > BACKUP_LIMITS.fileBytes ||
+              !deps.confirmWrite || !(await deps.confirmWrite(entry, a["name"], folder, owner)) || entry.signal.aborted) return { ok: false };
+            selected = folder;
+          }
+          const token = randomBytes(32).toString("hex");
+          plans.set(slot, { token, expires: Date.now() + 30_000, folder: selected, previousFolder: folder, signal: entry.signal,
+            ...(op === "prepareWrite" ? { name: a["name"] as string, text: a["text"] as string } : {}) });
+          return { ok: true, ticket: token };
+        }
+        if (op === "commit") {
+          const plan = plans.get(slot);
+          if (!plan || a["ticket"] !== plan.token || plan.expires < Date.now() || entry.signal.aborted || plan.signal !== entry.signal || plan.previousFolder !== folder) return { ok: false };
+          plans.delete(slot);
+          // Confirmation alone must not commit a request whose Worker authority expired while the dialog was open.
+          if (plan.name !== undefined) {
+            if (folder !== plan.folder) return { ok: false };
+            return { ok: await writeBackupFile(plan.folder, plan.name, plan.text, ext, async () => true, () => !entry.signal.aborted) };
+          }
+          if (!plainFolder(path.dirname(plan.folder))) return { ok: false };
+          if (!fs.existsSync(plan.folder)) fs.mkdirSync(plan.folder);
+          if (!plainFolder(plan.folder)) return { ok: false };
+          writeBackupFolder(deps.userBase, plan.folder, entry.key);
+          return { ok: true, name: backupFolderDisplayName(path.dirname(plan.folder)) };
+        }
         if (op === "name") return folder === null ? null : backupFolderDisplayName(path.dirname(folder));
         if (op === "choose") {
           const chosen = await deps.choose(entry, owner);
