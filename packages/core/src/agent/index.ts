@@ -75,6 +75,7 @@ export type {
   KnownMonsterStatus,
   KnownPlayer,
   KnownPlayerStatus,
+  KnownSlainUnique,
   KnownStore,
   KnownStoreItem,
   KnownTarget,

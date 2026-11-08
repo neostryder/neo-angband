@@ -26,6 +26,13 @@ export interface KnownGrid {
   readonly y: number;
 }
 
+/** A unique the character has killed, as the knowledge menu lists it. */
+export interface KnownSlainUnique {
+  readonly raceIndex: number;
+  readonly raceId?: string;
+  readonly name: string;
+}
+
 /**
  * The player's timed effects as the status line shows them: the name of the
  * grade each active effect is in ("Graze", "Heavy Stun", "Haste"), or null
@@ -107,6 +114,11 @@ export interface KnownPlayer {
   readonly light: number;
   readonly grid: KnownGrid;
   readonly status: KnownPlayerStatus;
+  /**
+   * The uniques this character has killed, in race order. A unique killed by anything else, or killed before this
+   * character was started, is not listed: the game shows the player only their own kills.
+   */
+  readonly slainUniques: readonly KnownSlainUnique[];
   readonly dead: boolean;
   readonly winner: boolean;
   /** The low hit point warning threshold in hit points; 0 means the warning is off. */

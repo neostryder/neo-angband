@@ -194,8 +194,20 @@ export interface KnownPlayerStatus {
   readonly image: string | null;
 }
 
+/** A unique the character has killed, as the knowledge menu lists it. */
+export interface KnownSlainUnique {
+  readonly raceIndex: number;
+  readonly raceId?: string;
+  readonly name: string;
+}
+
 /** The player as the character sheet and status line show them. */
 export type KnownPlayer = Omit<PlayerView, "status" | "recall" | "descent"> & {
+  /**
+   * The uniques this character has killed, in race order. A unique killed by anything else, or killed before this
+   * character was started, is not listed: the game shows the player only their own kills.
+   */
+  readonly slainUniques: readonly KnownSlainUnique[];
   readonly noscore: number;
   readonly shopnum: number | null;
   readonly depthText: string;
@@ -587,7 +599,19 @@ function gradeName(state: GameState, tmd: number): string | null {
   return effect.grades.length > 0 ? (playerTimedGrade(effect, v).name || null) : null;
 }
 
-function knownPlayer(state: GameState, player: PlayerView): KnownPlayer {
+function slainUniques(state: GameState, deps: AgentViewDeps | undefined): KnownSlainUnique[] {
+  const races = (deps ?? state.knownWorldDeps)?.inspect?.races ?? [];
+  const resolver = (deps ?? state.knownWorldDeps)?.resolver;
+  const out: KnownSlainUnique[] = [];
+  for (const race of races) {
+    if (!race.flags.has(RF.UNIQUE) || (state.lore.get(race.ridx)?.pkills ?? 0) <= 0) continue;
+    const raceId = resolver?.raceIdOrNull(race.ridx) ?? null;
+    out.push({ raceIndex: race.ridx, ...(raceId !== null ? { raceId } : {}), name: race.name });
+  }
+  return out;
+}
+
+function knownPlayer(state: GameState, player: PlayerView, deps?: AgentViewDeps): KnownPlayer {
   const { status, recall, descent, ...rest } = player;
   const named = {} as Record<(typeof STATUS_EFFECTS)[number][0], string | null>;
   for (const [key, tmd] of STATUS_EFFECTS) named[key] = gradeName(state, tmd);
@@ -601,6 +625,7 @@ function knownPlayer(state: GameState, player: PlayerView): KnownPlayer {
     autoplayed: (state.actor.player.noscore & NOSCORE.BORG) !== 0,
     key: null,
     extraMoves: state.knownPlayerState?.numMoves ?? 0,
+    slainUniques: slainUniques(state, deps),
     status: {
       ...named,
       timed: Object.fromEntries(PLAYER_TIMED_ENTRIES.map((effect, index) => [effect.name,
@@ -819,7 +844,7 @@ export function buildKnownWorld(
     version: KNOWN_WORLD_VERSION,
     token: snap.token,
     turn: snap.turn,
-    player: snap.player ? knownPlayer(state, snap.player) : null,
+    player: snap.player ? knownPlayer(state, snap.player, deps) : null,
     inventory: snap.inventory?.map((item) => carried(state, deps, item)) ?? null,
     equipment: snap.equipment?.map((item) => (item ? carried(state, deps, item) : null)) ?? null,
     equipmentSlots: snap.equipmentSlots,

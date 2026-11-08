@@ -370,6 +370,31 @@ describe("KnownWorld paired worlds", () => {
     expect(buildKnownWorld(b.state, b.state.knownWorldDeps).equipment!.every((i) => !i || !("trapKnown" in i))).toBe(true);
   });
 
+  it("lists the uniques the character has killed and no others", () => {
+    const [a, b] = pair();
+    const races = a.booted.registries.monsters.races;
+    /* The web client's deps carry the monster races under `inspect`; the pair here has none by default. */
+    for (const g of [a, b]) g.state.knownWorldDeps = { ...g.state.knownWorldDeps, inspect: { races } as unknown as NonNullable<AgentViewDeps["inspect"]> };
+    const unique = races.find((r) => r.flags.has(RF.UNIQUE) && r.name.startsWith("Fang"))!;
+    const plain = races.find((r) => !r.flags.has(RF.UNIQUE) && r.ridx > 0)!;
+    const slain = (g: StartedGame) => buildKnownWorld(g.state, g.state.knownWorldDeps).player!.slainUniques;
+    expect(slain(a)).toEqual([]);
+
+    /* Kills of an ordinary race, and a unique only seen, do not count. */
+    getLore(a.state.lore, plain.ridx === 0 ? races[1]! : plain).pkills = 7;
+    getLore(a.state.lore, unique).sights = 3;
+    expect(slain(a)).toEqual([]);
+    expect(observed(a.state)).toBe(observed(b.state));
+
+    getLore(a.state.lore, unique).pkills = 1;
+    expect(slain(a)).toEqual([{ raceIndex: unique.ridx, raceId: expect.any(String), name: unique.name }]);
+    expect(observed(a.state)).not.toBe(observed(b.state));
+
+    /* How many times it was killed is not part of the record. */
+    getLore(b.state.lore, unique).pkills = 5;
+    expect(observed(a.state)).toBe(observed(b.state));
+  });
+
   it("uninspected store stock produces identical observations", () => {
     const [a, b] = pair();
     for (const game of [a, b]) game.changeLevel(0);

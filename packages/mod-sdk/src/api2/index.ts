@@ -30,6 +30,7 @@ export type {
   KnownObjectAura,
   KnownPlayer,
   KnownPlayerStatus,
+  KnownSlainUnique,
   KnownRememberedCell,
   KnownRememberedObject,
   KnownSpell,
