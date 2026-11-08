@@ -377,6 +377,11 @@ export interface WorkerGridCommand {
   readonly color: "normal" | "muted" | "warning" | "danger" | "good";
 }
 
+export const GAMEPLAY_WORKER_CALLS: Readonly<Record<string, string>> = Object.freeze({
+  ...Object.fromEntries(["effect", "room", "profile", "blow", "glyph", "randart", "vocab", "menu"]
+    .map((domain) => [`registry.${domain}.declare`, `registry:${domain}`])),
+});
+
 /** Host-issued ids prevent a proposal from widening its birth authority. */
 export interface WorkerBirthProposal {
   readonly stepId: string;

@@ -210,7 +210,7 @@ describe("the switch census", () => {
        * listed: host-internal, since a mod can name an operation but never
        * add one or widen what its arguments may be. */
       /* Backup argument schemas stay host-owned so a mod cannot add filesystem authority. */
-      INTERNAL: 9,
+      INTERNAL: 10,
       /* 3 until the i18n sweep (neostryder/neo-angband#95) added shop.ts's
        * commentWelcome, the greeting-tier-to-translated-line switch that keeps
        * COMMENT_WELCOME's English array intact for its RNG-parity-relevant

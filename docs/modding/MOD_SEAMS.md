@@ -39,6 +39,10 @@ Every `selectFromMenu` caller declares a stable, non-localized id, such as `core
 
 Trusted plugin code with `registry:menu` can register a transformer per menu id. `menus.handlerFor(id)` returns the transform installed at that point in load order, so a later mod wraps an earlier one instead of discarding it. If a transformer throws, or returns anything other than an array of valid rows, its result is refused and reported on that mod's row, and the original menu still opens. The seam covers screen data only. No graphical or 3D front end ships yet, and choosing a total front end is a later phase.
 
+Workers use `mod.registry.menu.declare({ id, rows })` for the gameplay menu allowlist documented in `API2.md`. Rules can rename or hide existing rows; they cannot introduce semantic targets or edit permission, management, game-menu, or death-menu rows. The host retains the previous transformer as a fallback and checks authorization before each application. `registry:menu` alone does not open the Worker's game-menu action callback door; that door requires `ui:menu.row`.
+
+The other Worker registry declarations cover effects, rooms, profiles, blows, glyphs, randarts, and vocabulary. Each uses bounded data interpreted by host code, with permanent save marking before activation and no Worker callback during a synchronous tick. Profiles copied for a Worker carry an activation predicate; lookup, listing, and weighted selection omit a profile after its connection loses authority. Arbitrary engine callbacks still require a separate isolated gameplay runtime. The engine prototype remains unwired pending atomic persistence.
+
 ## 0b. The live world is a frame stream
 
 `packages/web/src/world-view.ts` defines the renderer-neutral `WorldFrame`. The extracted `world-render-data.ts`, called from the real `render()` path, produces one per map repaint and passes it to a single `WorldFrameSink`. A frame holds the viewport geometry and every in-bounds grid in order, unknown grids included. Each cell has the player's knowledge of it (`seen`, `remembered` or `unknown`), a semantic terrain feature id, ordered trap/object/monster/path layers, and the look cursor. The player is a separate layer painted last, matching upstream's glyph paint order, and is still part of the stream.
@@ -244,7 +248,7 @@ Rules read by one-time plugin setup, such as `register(host, ctx)`, work differe
 
 So `default: true` on a rule means "on once its own mod is enabled". It never means "on in a fresh install", and it never means a flag is sitting in core waiting to be switched; core has no flag to switch.
 
-> An earlier build implemented rules with a trusted in-process plugin plus a `registry:rules` capability and a `RulesFacade`. The declarative manifest field above replaced it. `registry:*` capabilities remain for other trusted-plugin seams that carry code (effect, room, command, monster, vocab); `MOD_REACH.md` lists which of those have real, mod-reachable code today and which are still a design note.
+> An earlier build implemented rules with a trusted in-process plugin plus a `registry:rules` capability and a `RulesFacade`. The declarative manifest field above replaced it. Individual registry grants also support the Worker data mechanisms described above. The `registry:*` wildcard remains in-process because some covered domains still require synchronous mod callbacks; `MOD_REACH.md` lists the broader live seams.
 
 ## 3. `StartGameOptions` / `LoadGameOptions`: `modHooks`, and the now-opaque `modRules`
 

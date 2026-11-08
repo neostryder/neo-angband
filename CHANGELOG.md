@@ -48,6 +48,7 @@ still calls itself.
 
 ## [Unreleased]
 
+- [Visible] [Security] **Worker mods can declare bounded behavior in eight registry domains after player consent.** Effects, rooms, profiles, blows, glyphs, randarts, vocabulary, and gameplay menu rows use validated data and host primitives. The host saves permanent unscorable and nondeterministic marks before activation, rejects stale or revoked requests, and falls back after revocation or a stalled Worker. Engine access remains closed pending atomic persistence, and the registry wildcard remains closed until every covered domain has a Worker mechanism.
 - [Visible] [Security] **Worker mods can propose character creation and request desktop backups after consent.** Birth uses legal host-owned steps and a final host-drawn summary that only the player can accept. The UI replacement wildcard now covers all six families. Desktop backup writes use native confirmation and single-use plans checked against current authority, with bounded filenames and text inside each installation's subfolder. Save backups can use opaque ids for host-held files without uploading their bytes.
 
 - [Visible] [Security] **Workers can request bounded spawning and share published JSON after consent.** Each spawn asks the player and persists its permanent scoring consequence before creation. Shared publication uses the host-owned publisher id, JSON copies, quotas, and a permanent publication record. Saves and run reports retain both consequences, and the SDK now types the Worker profile rename method.

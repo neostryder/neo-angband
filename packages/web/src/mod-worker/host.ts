@@ -25,6 +25,9 @@
  */
 
 import { decideAutoplayerKey } from "../autoplayer-keys";
+import { revokeWorkerGameplay, serveWorkerGameplayCall } from "../mod-api2-host";
+import { GAMEPLAY_WORKER_CALLS } from "./protocol";
+import { copyBridgeJson } from "../engine-bridge/values";
 import { callWorkerManage, disposeApi2Host, serveSimpleWorkerCall, serveSpawnSharedWorkerCall } from "../mod-api2-host";
 import {
   API2_HOOK_NAMES,
@@ -200,7 +203,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   const heartbeatMs = deps.timing?.heartbeatMs ?? HEARTBEAT_MS;
   const stallMs = deps.timing?.stallMs ?? STALL_MS;
   const maxCalls = deps.timing?.maxCallsPerSecond ?? MAX_CALLS_PER_SECOND;
-  const grants = deps.grants.filter((g) => g !== "*" && g !== "engine:access");
+  const grants = deps.grants.filter((g) => g !== "*" && g !== "engine:access" && g !== "registry:*");
   const capabilities = CapabilitySet.fromManifest({
     id: deps.id, name: deps.id, version: "0.0.0", shape: "plugin", capabilities: grants,
   });
@@ -270,6 +273,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
    * (its answer will be stale) and the next beat sends a fresh one. */
   const supersede = (): void => {
     epoch += 1;
+    if (api) revokeWorkerGameplay(api, epoch);
     for (const [askId, pending] of asks) {
       if (pending.site !== "ping") continue;
       clearTimeout(pending.timeout);
@@ -340,6 +344,10 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     receivedTimes.push(time);
     let bytes: number;
     try {
+      if (raw !== null && typeof raw === "object") {
+        const method = Object.getOwnPropertyDescriptor(raw, "method");
+        if (method && "value" in method && typeof method.value === "string" && Object.hasOwn(GAMEPLAY_WORKER_CALLS, method.value)) copyBridgeJson(raw);
+      }
       cloneWorkerJson(raw);
       bytes = payloadBytes(raw);
     } catch (err) {
@@ -484,6 +492,11 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
 
   /** Serve one call. Every path answers with an Api2Result or an error. */
   const serve = async (host: ModApi2, method: string, args: readonly WorkerJson[], current: () => boolean): Promise<Api2Result<unknown>> => {
+    if (Object.hasOwn(GAMEPLAY_WORKER_CALLS, method)) {
+      const capability = GAMEPLAY_WORKER_CALLS[method]!;
+      if (!capabilities.has(capability) || !host.meta.granted(capability) || !modHolds(deps.id, capability)) return api2NotGranted(capability);
+      return serveWorkerGameplayCall(host, method, args, epoch, current);
+    }
     if (method.startsWith("backupFolder.")) {
       if (!capabilities.has("backup:folder") || !host.meta.granted("backup:folder")) return api2NotGranted("backup:folder");
       if (!validWorkerBackupCall(method, args)) return api2Refused("bad-call", "backup arguments cannot name a folder, purpose, or installation");
@@ -659,15 +672,19 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
   const called = (message: Extract<ModWorkerToHost, { type: "call" }>): void => {
     let truthAdmitted = false;
     let spawnSharedAdmitted = false;
+    let gameplayAdmitted = false;
+    const gameplayCapability = Object.hasOwn(GAMEPLAY_WORKER_CALLS, message.method) ? GAMEPLAY_WORKER_CALLS[message.method] : undefined;
     let backupAuthorized: (() => boolean) | undefined;
     const binding = consentBinding(deps.id);
-    const authorized = (): boolean => state === "running" && message.epoch === epoch && api !== null && (spawnSharedAdmitted
+    const authorized = (): boolean => state === "running" && message.epoch === epoch && api !== null && (gameplayCapability
+      ? binding === consentBinding(deps.id) && capabilities.has(gameplayCapability) && api.meta.granted(gameplayCapability) && modHolds(deps.id, gameplayCapability)
+      : spawnSharedAdmitted
       ? binding === consentBinding(deps.id) && api.meta.granted(SPAWN_SHARED_WORKER_CALLS[message.method]!) && modHolds(deps.id, SPAWN_SHARED_WORKER_CALLS[message.method]!)
       : truthCapability(api, message.method) !== null);
     const respond = (result: Api2Result<unknown> | Error): void => {
       if (backupAuthorized && !backupAuthorized()) return;
-      if ((truthAdmitted || spawnSharedAdmitted) && !authorized()) return;
-      reply(message.requestId, message.epoch, result, backupAuthorized ?? (truthAdmitted || spawnSharedAdmitted ? authorized : undefined));
+      if ((truthAdmitted || spawnSharedAdmitted || gameplayAdmitted) && !authorized()) return;
+      reply(message.requestId, message.epoch, result, backupAuthorized ?? (truthAdmitted || spawnSharedAdmitted || gameplayAdmitted ? authorized : undefined));
     };
     if (message.epoch !== epoch) {
       stale += 1;
@@ -683,7 +700,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       respond(api2NotGranted("engine:access"));
       return;
     }
-    if (!(WORKER_CALLS as readonly string[]).includes(message.method) && !Object.hasOwn(WORKER_MANAGE_CALLS, message.method) && !Object.hasOwn(SIMPLE_WORKER_CALLS, message.method) && !Object.hasOwn(CONTENT_WORKER_CALLS, message.method) && !Object.hasOwn(SPAWN_SHARED_WORKER_CALLS, message.method) && !Object.hasOwn(PRESENTER_WORKER_CALLS, message.method) && !Object.hasOwn(BIRTH_WORKER_CALLS, message.method)) {
+    if (!(WORKER_CALLS as readonly string[]).includes(message.method) && !Object.hasOwn(WORKER_MANAGE_CALLS, message.method) && !Object.hasOwn(SIMPLE_WORKER_CALLS, message.method) && !Object.hasOwn(CONTENT_WORKER_CALLS, message.method) && !Object.hasOwn(SPAWN_SHARED_WORKER_CALLS, message.method) && !Object.hasOwn(PRESENTER_WORKER_CALLS, message.method) && !Object.hasOwn(BIRTH_WORKER_CALLS, message.method) && !gameplayCapability) {
       fail(`refused call to "${message.method}", which a Worker mod cannot make`);
       respond(new Error(`"${message.method}" is not part of the API a Worker mod holds${message.method.startsWith("manage.") ? "; this operation has no isolated Worker mechanism, and exit, quit, and wizard require proven detachment from saves" : ""}`));
       return;
@@ -696,6 +713,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     }
     callTimes.push(t);
     const host = controllerApi && (message.method === "act.submit" || message.method === "act.answer") ? controllerApi : api;
+    gameplayAdmitted = !!gameplayCapability && capabilities.has(gameplayCapability) && host.meta.granted(gameplayCapability) && modHolds(deps.id, gameplayCapability);
     if (message.method.startsWith("backupFolder.") && capabilities.has("backup:folder") && host.meta.granted("backup:folder") && modHolds(deps.id, "backup:folder")) {
       const check = workerBackupAuthorization(host, () => state === "running" && epoch === message.epoch);
       if (check()) backupAuthorized = check;
