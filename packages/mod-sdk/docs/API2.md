@@ -305,7 +305,7 @@ A mod running in a Worker cannot hold the grants in this table. The consent scre
 | --- | --- | --- |
 | `ui:birth.replace`, `ui:*.replace` | The serialized birth state machine and host-owned acceptance do not exist. The wildcard covers every replace family, including birth. | A serialized birth state machine and host-owned acceptance. The wildcard also needs every family it covers to be implemented. |
 | `engine:access` | `writeSlot` writes save bytes and roster metadata separately and can report failure after changing the save. A live adapter cannot satisfy the prototype's atomic commit contract through that writer. | An atomic persistence primitive, a production safe-point adapter, consequence marking, and Worker handle lifecycle tests over that adapter. |
-| `registry:*` | The wildcard also covers `monster`, `projection`, `effect-info`, and `rune`, which have no Worker mechanisms. | Every covered domain must have a bounded isolated mechanism before the wildcard opens. |
+| `registry:*` | The wildcard also covers `monster`, `projection`, `effect-info`, and `rune`. A Worker holds those four only for the fixed policy tables that name them; monster AI, projection handlers, and similar callbacks that run inside a turn have no Worker mechanism. | Every covered domain must have a bounded isolated mechanism before the wildcard opens. |
 | `backup:folder` | The desktop shell owns the backup folder and relays requests through its own authority table. | A Worker grant for the folder. None exists. |
 
 ### Worker registry declarations
