@@ -1,0 +1,27 @@
+version: 2
+updates:
+- package-ecosystem: npm
+  directory: /
+  schedule:
+    interval: daily
+  cooldown:
+    default-days: 3
+  open-pull-requests-limit: 20
+  versioning-strategy: increase
+  groups:
+    minor-and-patch:
+      update-types:
+      - minor
+      - patch
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: daily
+  cooldown:
+    default-days: 3
+  open-pull-requests-limit: 20
+  groups:
+    minor-and-patch:
+      update-types:
+      - minor
+      - patch
