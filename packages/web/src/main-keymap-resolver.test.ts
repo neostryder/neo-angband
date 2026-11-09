@@ -16,7 +16,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   clearKeymaps,

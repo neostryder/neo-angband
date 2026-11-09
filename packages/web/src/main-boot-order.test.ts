@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it, vi } from "vitest";
 import { coreOnlyManifest, inputToken, Rng, StoreBehaviourRegistry, TvalRegistry, type ModRegistryHost, type TvalValueAdjustContext } from "@rpgm-tools/neo-angband-core";
 import { CapabilitySet, type Api2PolicyRegistrations } from "@rpgm-tools/neo-angband-mod-sdk";

@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it } from "vitest";
 
 const mainSource = readFileSync(new URL("./main.ts", import.meta.url), "utf8");

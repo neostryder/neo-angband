@@ -30,9 +30,9 @@
     "@rpgm-tools/neo-angband-mod-sdk": "workspace:*"
   },
   "devDependencies": {
-    "electron": "^43.2.0",
-    "electron-builder": "^26.15.3",
-    "esbuild": "^0.28.1"
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2"
   },
   "_buildNote": [
     "linux.executableName is REQUIRED and is not cosmetic. Left unset,",

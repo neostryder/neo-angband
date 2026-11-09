@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
+import { ModuleKind, ScriptTarget, transpileModule } from "@typescript/typescript6";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HandleTable } from "./handles";
 import { BRIDGE_LIMITS } from "./types";

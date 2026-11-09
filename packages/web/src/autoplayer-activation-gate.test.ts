@@ -27,7 +27,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { GameEvents, installController, type AgentController, type GameState } from "@rpgm-tools/neo-angband-core";
 import { modPluginContext, setModDriverControl } from "./mod-context";
 import { hideAutoplayerBanner, showAutoplayerBanner } from "./autoplayer-banner";

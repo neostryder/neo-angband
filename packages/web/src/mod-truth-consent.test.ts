@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { coreOnlyManifest, NOSCORE, type SaveManifest } from "@rpgm-tools/neo-angband-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setConsentBindings } from "./mod-consent-binding";

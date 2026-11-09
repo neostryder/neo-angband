@@ -22,8 +22,8 @@ import * as path from "node:path";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
 
-/* Electron 38 ships Node 22. */
-const TARGET = "node22";
+/* Electron 45 ships Node 24. */
+const TARGET = "node24";
 
 const common = {
   bundle: true,

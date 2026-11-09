@@ -7,7 +7,7 @@
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { describe, expect, it, afterEach } from "vitest";
 import {
   chooseCommand,

@@ -21,7 +21,7 @@
   "type": "module",
   "sideEffects": false,
   "engines": {
-    "node": ">=22"
+    "node": ">=26"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -82,9 +82,9 @@
     "game bundle leaves it out."
   ],
   "dependencies": {
-    "acorn": "^8.18.0"
+    "acorn": "^8.19.0"
   },
   "devDependencies": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.2"
   }
 }

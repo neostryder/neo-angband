@@ -16,7 +16,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@rpgm-tools/neo-angband-cli": "workspace:*",
     "@rpgm-tools/neo-angband-core": "workspace:*"
   }

@@ -7,7 +7,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 import { afterEach, describe, expect, it } from "vitest";
 /* Use source here: the focused web test is intentionally runnable before the
  * workspace package has emitted its dist/ entrypoint. */

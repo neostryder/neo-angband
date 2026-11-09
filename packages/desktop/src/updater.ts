@@ -42,7 +42,7 @@ import { UPDATE_ARCHIVE_LIMITS, unpackArchive, validateArchive } from "./unpack.
  * platform. That is a function that cannot be tested, which is how it stays
  * wrong.
  */
-function paths(platform: string): path.PlatformPath {
+function paths(platform: string): typeof path.posix {
   return platform === "win32" ? path.win32 : path.posix;
 }
 
