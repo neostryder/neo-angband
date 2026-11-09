@@ -23,7 +23,7 @@ keep it faithful. Read it once before your first change.
 
 ## Prerequisites
 
-- **Node** `>=22` (the `.nvmrc` pins `26`; use it if you run `nvm`). CI runs 26 here and the mod repositories run 22, so the `>=22` floor is tested as well.
+- **Node** `>=26`, the floor in the root and in the three published packages (core, content, and mod-sdk). The `.nvmrc` pins `26`, so use it if you run `nvm`, and CI and the mod repositories run 26 to match.
 - **pnpm** `12.3.4`, the version in the root `package.json` `packageManager` field. Install it with **`npm install -g @pnpm/exe`** and let that field choose the version: pnpm reads it on every run when `manage-package-manager-versions` is enabled, which is the default, so you never track this number by hand.
 
   `corepack enable pnpm` no longer works. Corepack was removed from Node in 25, so the pinned 26 does not have it, and instructions elsewhere that still recommend it were written before the removal.
