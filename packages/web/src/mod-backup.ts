@@ -197,11 +197,11 @@ async function browserBackupFiles(id: string, scope: unknown, requireReadable = 
     if (requireReadable) throw new Error("The backup folder could not be read.");
     return [];
   }
-  return listBrowserBackupFiles(handle, ".neochar", requireReadable);
+  return listBrowserBackupFiles(handle, ".neochar", requireReadable, MAX_TRANSFER_TEXT_BYTES);
 }
 
 /** Metadata ceilings bound reads before a File is decoded into text. */
-export async function listBrowserBackupFiles(handle: BackupDirHandle, ext: string, requireReadable = false): Promise<RawBackupFile[]> {
+export async function listBrowserBackupFiles(handle: BackupDirHandle, ext: string, requireReadable = false, fileLimit: number = BACKUP_LIMITS.fileBytes): Promise<RawBackupFile[]> {
   const files: RawBackupFile[] = [];
   let total = 0;
   try {
@@ -216,9 +216,9 @@ export async function listBrowserBackupFiles(handle: BackupDirHandle, ext: strin
         if (!entry.getFile) throw new Error("The backup folder could not be read.");
         const file = await entry.getFile();
         const size = file.size;
-        /* A character file is held to the 5 MiB import limit, which is below the
-         * facade's general per-file ceiling (#473). */
-        const limit = ext === ".neochar" ? Math.min(MAX_TRANSFER_TEXT_BYTES, BACKUP_LIMITS.fileBytes) : BACKUP_LIMITS.fileBytes;
+        /* The boot character scan passes the 5 MiB import limit, which is below
+         * the facade's general per-file ceiling (#473). */
+        const limit = Math.min(fileLimit, BACKUP_LIMITS.fileBytes);
         const tooLarge = typeof size === "number" && Number.isSafeInteger(size) && size > limit;
         if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0 || tooLarge || total + size > BACKUP_LIMITS.totalBytes) {
           if (requireReadable) throw new Error(tooLarge && limit === MAX_TRANSFER_TEXT_BYTES ? "The file is larger than the 5 MiB limit." : "The backup folder could not be read.");

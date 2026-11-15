@@ -442,12 +442,13 @@ describe("browser backup facade limits", () => {
   });
 
   it("bounds browser reads by count, file bytes, and aggregate bytes", async () => {
-    const large = fixture({ "large.neochar": { size: 8 * 1024 * 1024 + 1, text: "unreadable" } });
+    /* Character files are held to the 5 MiB import limit (#473). */
+    const large = fixture({ "large.neochar": { size: 5 * 1024 * 1024 + 1, text: "unreadable" } });
     expect(await readBackupFiles("qol", large.scope)).toEqual([]);
     const many = fixture(Object.fromEntries(Array.from({ length: 201 }, (_, i) => [i + ".neochar", { size: 1 }])));
     expect(await readBackupFiles("qol", many.scope)).toHaveLength(200);
-    const total = fixture(Object.fromEntries(Array.from({ length: 33 }, (_, i) => [i + ".neochar", { size: 8 * 1024 * 1024 }])));
-    expect(await readBackupFiles("qol", total.scope)).toHaveLength(32);
+    const total = fixture(Object.fromEntries(Array.from({ length: 52 }, (_, i) => [i + ".neochar", { size: 5 * 1024 * 1024 }])));
+    expect(await readBackupFiles("qol", total.scope)).toHaveLength(51);
   });
 
   it("refuses a lock failure or a decision failure without writing", async () => {
