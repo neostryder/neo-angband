@@ -206,6 +206,8 @@ export interface Api2Policies {
   readonly purgeInput?: Api2PurgeInputPolicy;
   readonly walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   readonly messageText?: readonly Api2TextRule[];
+  /** Literal prefixes of messages to pause after; 0 to 256 entries of 1 to 256 characters. */
+  readonly messagePauseAfter?: readonly string[];
   /** `where` may name `screen`, `part` and `column`. */
   readonly screenText?: readonly Api2TextRule[];
   readonly characterBackground?: readonly Api2TextRule[];
@@ -534,6 +536,22 @@ const LIST_KEYS: readonly string[] = ["dy", "-dy", "dx", "-dx"];
  * policies.test.ts, and list it under Policy tables in docs/modding/API2.md.
  */
 export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
+  {
+    name: "messagePauseAfter",
+    capability: "registry:message",
+    summary: "Requests a pause after messages matching literal prefixes.",
+    target: { hook: "messagePauseAfter" },
+    check(value) {
+      if (!Array.isArray(value) || value.length > 256 || value.some((v) => typeof v !== "string" || v.length < 1 || v.length > 256)) {
+        return "messagePauseAfter is a list of 0 to 256 literal prefixes of 1 to 256 characters";
+      }
+      return null;
+    },
+    apply(value, out) {
+      const prefixes = [...value as readonly string[]];
+      if (prefixes.length) out.hooks.messagePauseAfter = (raw) => prefixes.some((prefix) => raw.startsWith(prefix));
+    },
+  },
   {
     name: "monsterArcheryFrequency",
     capability: "registry:monster",

@@ -599,6 +599,8 @@ export interface ModHooks {
    * Serves: the bug-fixes mod's cosmetic string corrections.
    */
   messageText?: (raw: string) => string;
+  /** The web message sink marks this message for a pause when any mod requests it. */
+  messagePauseAfter?: (raw: string) => boolean;
 
   /**
    * Screen text drawn outside the message line (the host's screen and prompt
@@ -874,6 +876,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   completeRestEffects: "last-answer",
   levelRevisited: "all-observe",
   messageText: "chained",
+  messagePauseAfter: "any-yes",
   screenText: "chained",
   characterBackground: "chained",
   objectInfoText: "chained",
@@ -1114,6 +1117,9 @@ export function guardModHooks(
   }
 
   const text = hooks.messageText;
+  if (hooks.messagePauseAfter) {
+    out.messagePauseAfter = (raw) => guard("messagePauseAfter", () => hooks.messagePauseAfter!(raw), false);
+  }
   if (text) {
     /* The raw message, unrestated - never an empty string, which would silently
      * eat a message the player needed to read. */
@@ -1379,6 +1385,8 @@ export function composeModHooks(
   }
 
   const text = list.map((c) => c.messageText).filter(isFn);
+  const pauseAfter = list.map((c) => c.messagePauseAfter).filter(isFn);
+  if (pauseAfter.length) out.messagePauseAfter = (raw) => pauseAfter.some((fn) => fn(raw));
   if (text.length > 0) {
     out.messageText = (raw): string => text.reduce((s, fn) => fn(s), raw);
   }

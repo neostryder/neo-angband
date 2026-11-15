@@ -1321,6 +1321,7 @@ describe("a Worker mod's hooks", () => {
     purgeInput: { kind: "purge-input", trigger: "F2", modifiers: [], freshOnly: true, escapeCount: 3 },
     walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
     messageText: [{ find: "a", replace: "b" }], screenText: [{ find: "a", replace: "b" }],
+    messagePauseAfter: ["You feel that"],
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],
     effectIntro: [{ find: "a", replace: "b" }], historyAdd: [{ find: "a", replace: "b" }],
     historyDisplay: [{ find: "a", replace: "b" }], objectListOrder: ["dy"], saveNoiseScent: true,
@@ -1369,16 +1370,18 @@ describe("a Worker mod's hooks", () => {
   it("applies its policy tables synchronously, answering neutrally until the Worker is ready", async () => {
     const pending = workerModHooks("probe");
     expect(pending?.messageText?.("You feel better.")).toBe("You feel better.");
+    expect(pending?.messagePauseAfter?.("You feel that")).toBe(false);
     const wired = wire({
       api: API,
-      policies: () => ({ messageText: [{ find: "You feel", replace: "You sense", match: "prefix" }] }),
+      policies: () => ({ messageText: [{ find: "You feel", replace: "You sense", match: "prefix" }], messagePauseAfter: ["You feel that"] }),
       hooks: () => ({ messageText: (text: string) => text.toUpperCase() }),
     }, { grants: ["registry:message"] });
     await wired.session.ready;
     /* The hook the game composed before the Worker loaded now reads the table, with no await. */
     expect(pending?.messageText?.("You feel better.")).toBe("You sense better.");
     const settled = workerModHooks("probe");
-    expect(Object.keys(settled ?? {})).toEqual(["messageText"]);
+    expect(Object.keys(settled ?? {}).sort()).toEqual(["messagePauseAfter", "messageText"]);
+    expect(pending?.messagePauseAfter?.("You feel that this place is special.")).toBe(true);
     expect(settled?.messageText?.("You feel worse.")).toBe("You sense worse.");
     expect(wired.problems.join("\n")).toMatch(/declares messageText as hook functions/u);
   });

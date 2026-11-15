@@ -107,6 +107,7 @@ function plain<T>(value: T): T {
  */
 export function api2ToModHooks(hooks: Api2Hooks): ModHooks {
   const out: ModHooks = {};
+  if (hooks.messagePauseAfter) out.messagePauseAfter = (raw) => hooks.messagePauseAfter!(raw);
   if (hooks.messageText) {
     const f = hooks.messageText.bind(hooks);
     out.messageText = (raw) => f(raw);

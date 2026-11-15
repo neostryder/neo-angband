@@ -23,6 +23,19 @@ describe("checkApi2Policies", () => {
     expect(api2PolicyEffects({ [name]: true }, () => false).registrations).toEqual({});
   });
 
+  it("bounds pause prefixes and installs them only with message consent", () => {
+    const p = { messagePauseAfter: ["You feel that"] };
+    expect(checkApi2Policies(p)).toBeNull();
+    expect(api2PolicyEffects(p, () => false).hooks).toEqual({});
+    const h = api2PoliciesToHooks(p);
+    expect(h.messagePauseAfter?.("You feel that this place is special.")).toBe(true);
+    expect(h.messagePauseAfter?.("You feel better.")).toBe(false);
+    expect(api2PoliciesToHooks({}).messagePauseAfter).toBeUndefined();
+    for (const value of [[""], ["a".repeat(257)], Array(257).fill("a"), true]) {
+      expect(checkApi2Policies({ messagePauseAfter: value })).toContain("messagePauseAfter is a list of 0 to 256");
+    }
+  });
+
   it("accepts every table in its own grammar", () => {
     const policies: Api2Policies = {
       prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
@@ -33,6 +46,7 @@ describe("checkApi2Policies", () => {
       walkBlockedByDiggable: { kind: "walk-blocked-by-diggable", attempt: "tunnel", energy: "move", step: false },
       valueFloor: { kind: "valueFloor", tvals: [10, 11], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" },
       messageText: [{ find: "You feel", replace: "You sense", match: "prefix" }],
+      messagePauseAfter: ["You feel that"],
       screenText: [{ find: "a", replace: "b", where: { screen: "char", column: 2 } }],
       historyAdd: [{ find: "Found", drop: true, match: "prefix", where: { duplicate: true } }],
       objectListOrder: ["-dy", "dx"],
@@ -254,6 +268,7 @@ describe("API2_POLICY_KINDS", () => {
       displayOptions: "registry:ui-entry",
       purgeInput: "registry:command",
       walkBlockedByDiggable: "registry:command",
+      messagePauseAfter: "registry:message",
       messageText: "registry:message", screenText: "registry:ui-entry", characterBackground: "registry:message",
       objectInfoText: "registry:effect-info", effectIntro: "registry:effect-info", historyAdd: "registry:message",
       historyDisplay: "registry:message", objectListOrder: "registry:tval", saveNoiseScent: "registry:monster",

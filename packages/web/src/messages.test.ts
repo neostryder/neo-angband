@@ -20,6 +20,16 @@ import { messageHistoryLines } from "./screens";
 describe("paginateMessages (-more- packing, ui-input.c display_message)", () => {
   const m = (text: string, count = 1) => ({ text, count });
 
+  it("flushes a marked final message once and starts following messages on a fresh page", () => {
+    const marked = { ...m("You feel that this place is worthwhile."), pauseAfter: true as const };
+    expect(packMessages([marked], 80)).toEqual({ pages: [marked.text], pauseAfterFinal: true, pendingFrom: 1, pendingOffset: 0 });
+    expect(packMessages([marked, m("Next message.")], 80)).toEqual({ pages: [marked.text, "Next message."], pendingFrom: 1, pendingOffset: 0 });
+    expect(packMessages([m(marked.text)], 80)).toEqual({ pages: [marked.text], pendingFrom: 0, pendingOffset: 0 });
+    const log = new MessageLog();
+    log.push(marked.text, undefined, true);
+    expect(log.rawSince(0)[0]).toMatchObject({ pauseAfter: true });
+  });
+
   it("keeps messages that fit on one line as a single page (no -more-)", () => {
     const pages = paginateMessages([m("You hit it."), m("It dies.")], 80);
     expect(pages).toEqual(["You hit it. It dies."]);
@@ -295,8 +305,9 @@ describe("the shell feeds the top line from the raw stream", () => {
     // message_flush (ui-input.c L609-635) prompts for the pending line as well,
     // then erases row 0 - unlike ordinary paging, which leaves it standing.
     const pump = body("pumpMessages");
-    expect(pump).toContain("msgPending = force ? msglog.rawLength() : preLen + pendingFrom;");
-    expect(pump).toContain("const prompts = autoMore ? 0 : force ? pages.length : pages.length - 1;");
+    expect(pump).toContain("const flushed = force || pauseAfterFinal === true;");
+    expect(pump).toContain("msgPending = flushed ? msglog.rawLength() : preLen + pendingFrom;");
+    expect(pump).toContain("const prompts = autoMore ? 0 : flushed ? pages.length : pages.length - 1;");
   });
 });
 

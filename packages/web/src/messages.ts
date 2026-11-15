@@ -28,6 +28,7 @@ import type { MessageType } from "@rpgm-tools/neo-angband-core";
 
 export interface LoggedMessage {
   text: string;
+  pauseAfter?: true;
   /** CSS color; defaults applied by the renderer. */
   color?: string;
   /** Run-length count for repeated identical messages (message__count). */
@@ -51,8 +52,9 @@ export function pushTypedMessage(
   type: MessageType | undefined,
   typeColor: (type: number) => number,
   colorToCss: (attr: number) => string,
+  pauseAfter = false,
 ): void {
-  log.push(text, colorToCss(typeColor(messageTypeCode(type))));
+  log.push(text, colorToCss(typeColor(messageTypeCode(type))), pauseAfter);
 }
 
 export class MessageLog {
@@ -75,9 +77,10 @@ export class MessageLog {
    * produce byte-identical text, which nothing in 4.2.6 does: the text is built
    * from the situation that chose the type.
    */
-  push(text: string, color?: string): void {
+  push(text: string, color?: string, pauseAfter = false): void {
     if (!text) return;
     this.raw.push(color === undefined ? { text, count: 1 } : { text, color, count: 1 });
+    if (pauseAfter) this.raw[this.raw.length - 1]!.pauseAfter = true;
     if (this.raw.length > MAX_MESSAGES) {
       const dropped = this.raw.length - MAX_MESSAGES;
       this.raw.splice(0, dropped);
@@ -199,6 +202,8 @@ export function format(m: LoggedMessage): string {
 export interface PackedMessages {
   /** One string per page; the last one is still pending on the top line. */
   pages: string[];
+  /** The final message requested a flush, so its page also needs acknowledgement. */
+  pauseAfterFinal?: true;
   /** Index into `msgs` of the first message on that final, unflushed page. */
   pendingFrom: number;
   /**
@@ -273,10 +278,18 @@ export function packMessages(
 
     line = column === 0 ? t : `${line} ${t}`;
     column += n + 1;
+    if (msgs[i]!.pauseAfter) {
+      pages.push(line);
+      line = "";
+      column = 0;
+      lineFromIndex = i + 1;
+      lineFromOffset = 0;
+    }
   }
   if (line !== "") pages.push(line);
   return {
     pages,
+    ...(line === "" && msgs[msgs.length - 1]?.pauseAfter ? { pauseAfterFinal: true as const } : {}),
     pendingFrom: line === "" ? msgs.length : lineFromIndex,
     pendingOffset: line === "" ? 0 : lineFromOffset,
   };

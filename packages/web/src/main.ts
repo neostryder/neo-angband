@@ -3174,7 +3174,7 @@ let msgPending = 0;
  * tail is what gets re-packed rather than the whole message from its start.
  */
 let msgPendingOffset = 0;
-function say(text: string, type?: MessageType): void {
+function say(text: string, type?: MessageType, pauseAfter = false): void {
   if (!text) return;
   if (state.messages) {
     pushTypedMessage(
@@ -3183,9 +3183,10 @@ function say(text: string, type?: MessageType): void {
       type,
       (code) => state.messages!.typeColor(code),
       colorToCss,
+      pauseAfter,
     );
   } else {
-    msglog.push(text, UI_TEXT);
+    msglog.push(text, UI_TEXT, pauseAfter);
   }
   message = msglog.latest();
   messageColor = msglog.latestEntry()?.color ?? UI_TEXT;
@@ -3213,7 +3214,7 @@ state.msg = (raw: string, type?: MessageType): void => {
   // "message", then render it. state.events is attached below; before that
   // (early boot) the emit is simply skipped.
   state.events?.emit("message", { msg: text, type: code });
-  say(text, type);
+  say(text, type, state.modHooks?.messagePauseAfter?.(raw) ?? false);
   /* msgt's OTHER HALF (message.c:428-445): a typed message plays the sound bound
    * to its type. This sink is the port's msgt, and it is the only place that can
    * be, because it is the one point every msg()/msgt() in core and the shell
@@ -11307,7 +11308,8 @@ async function pumpMessages(preLen: number, force = false): Promise<void> {
   const fresh = msglog.rawSince(preLen);
   // `preLen` is always the caller's snapshot of `msgPending`, so `msgPendingOffset`
   // still names how far into `fresh[0]` (if any) the pending cursor sits.
-  const { pages, pendingFrom, pendingOffset } = packMessages(fresh, term.size().cols, msgPendingOffset);
+  const { pages, pendingFrom, pendingOffset, pauseAfterFinal } = packMessages(fresh, term.size().cols, msgPendingOffset);
+  const flushed = force || pauseAfterFinal === true;
   const autoMore = state.options?.get("auto_more") ?? false;
   /* `force` is message_flush (ui-input.c L609-635), which the caller signals
    * before replacing the screen: it flushes the PENDING line too, so nothing is
@@ -11319,8 +11321,8 @@ async function pumpMessages(preLen: number, force = false): Promise<void> {
    * Either way the flushed pages are gone: msg_flush erases row 0 and zeroes
    * message_column, and this cursor is that erasure - only the unflushed tail
    * may be shown again on the next step of a self-continuing command. */
-  msgPending = force ? msglog.rawLength() : preLen + pendingFrom;
-  msgPendingOffset = force ? 0 : pendingOffset;
+  msgPending = flushed ? msglog.rawLength() : preLen + pendingFrom;
+  msgPendingOffset = flushed ? 0 : pendingOffset;
   if (fresh.length > 0) {
     messageColor = fresh[fresh.length - 1]?.color ?? UI_TEXT;
   }
@@ -11328,7 +11330,7 @@ async function pumpMessages(preLen: number, force = false): Promise<void> {
   /* How many pages end in a "-more-" the player has to answer. auto_more (and a
    * keymap's auto-more) skips msg_flush's anykey() but not its erase, so the
    * pages still happen; only the waiting does not. */
-  const prompts = autoMore ? 0 : force ? pages.length : pages.length - 1;
+  const prompts = autoMore ? 0 : flushed ? pages.length : pages.length - 1;
   const last = pages[pages.length - 1] ?? "";
   if (prompts === 0) {
     // display_message packs the whole turn's messages onto row 0 (ui-input.c
@@ -11336,7 +11338,7 @@ async function pumpMessages(preLen: number, force = false): Promise<void> {
     // acid!" + "You feel your life draining away!") shows them concatenated -
     // not just the newest one, which is all render() drew. Put the packed page
     // on the top line so no earlier message is dropped.
-    message = force ? "" : last;
+    message = flushed ? "" : last;
     render();
     return;
   }
@@ -11363,7 +11365,7 @@ async function pumpMessages(preLen: number, force = false): Promise<void> {
   });
   // Term_erase(0, 0, 255) at the tail of the forced flush; otherwise the last
   // page stays on row 0, which is where display_message left it.
-  message = force ? "" : last;
+  message = flushed ? "" : last;
   render();
 }
 

@@ -77,6 +77,7 @@ function pendingHooks(id: string): ModHooks {
   const hooks = (): ModHooks | undefined => entry()?.hooks;
   return {
     messageText: (raw) => hooks()?.messageText?.(raw) ?? raw,
+    messagePauseAfter: (raw) => hooks()?.messagePauseAfter?.(raw) ?? false,
     screenText: (raw, site) => hooks()?.screenText?.(raw, site) ?? raw,
     characterBackground: (text) => hooks()?.characterBackground?.(text) ?? text,
     objectInfoText: (text, site) => hooks()?.objectInfoText?.(text, site) ?? text,

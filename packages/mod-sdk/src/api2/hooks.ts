@@ -148,6 +148,8 @@ export interface Api2ListOffset {
 export interface Api2Hooks {
   /** Restate a message before it is shown. Chained in load order. */
   messageText?(raw: string): string;
+  /** True requests a pause after this message, including the final page. Any yes wins. */
+  messagePauseAfter?(raw: string): boolean;
   /** Restate one piece of a screen's text. Chained in load order. */
   screenText?(raw: string, site: Api2ScreenTextSite): string;
   /** Restate the character background text. Chained in load order. */
@@ -190,6 +192,7 @@ export type Api2HookName = keyof Api2Hooks;
 /** Every API 2 hook name, in the order ModHooks declares them. */
 export const API2_HOOK_NAMES: readonly Api2HookName[] = Object.freeze([
   "messageText",
+  "messagePauseAfter",
   "screenText",
   "characterBackground",
   "objectInfoText",

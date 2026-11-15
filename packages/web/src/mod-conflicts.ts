@@ -296,6 +296,7 @@ function hookDescription(hook: keyof ModHooks): string {
     completeRestEffects: "which timed effects a complete rest waits out",
     levelRevisited: "what happens to transient tracking when a frozen level returns",
     messageText: "the wording of game messages",
+    messagePauseAfter: "which messages pause for a key",
     screenText: "the wording of help pages, screens and prompts",
     characterBackground: "the wording of your character's background",
     objectInfoText: "the wording of item descriptions",

@@ -917,6 +917,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.levelRevisited?.(CHUNK, 19, 50),
     },
+    messagePauseAfter: {
+      yes: (log, tag) => ({ messagePauseAfter: () => { log.push(tag); return true; } }),
+      no: (log, tag) => ({ messagePauseAfter: () => { log.push(tag); return false; } }),
+      run: (h) => h.messagePauseAfter?.("You feel that"),
+    },
     messageText: {
       yes: (log, tag) => ({
         messageText: (raw) => {

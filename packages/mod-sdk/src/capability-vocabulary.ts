@@ -186,7 +186,7 @@ const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
   ["tval", "Change how items are priced and how floor items are ordered, and teach the game about a new kind of item - whether it can be worn or wielded and whether it has an unidentified flavour", true],
   ["vocab", "Add new vocabulary - flags, stats, and other terms", false],
   ["menu", "Rewrite one named game menu's semantic rows and layout", true],
-  ["message", "Change message text and character history, add message types, and choose which sounds play for them", false],
+  ["message", "Change message text and character history, request pauses after messages, add message types, and choose which sounds play for them", false],
   ["tiles", "Supply tiles for creatures and items your tile set does not draw", false],
 ];
 
