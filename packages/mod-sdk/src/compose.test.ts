@@ -437,6 +437,21 @@ describe("composePacks with an onRefuse reporter: one bad op costs that op", () 
    * be pinned on it and EVERY installed mod was dropped when it could not,
    * since a raw TypeError names no pack.
    */
+  it("reports an oversized array index at load time and leaves the record unchanged", () => {
+    const { onRefuse, seen } = refusing();
+    const mod: PackContent = {
+      manifest: manifest("hostile", { core: "*" }),
+      files: { monster: { fieldPatches: { "core:kobold": [
+        { op: "set", path: "blows.4294967294.method", value: "HIT" },
+        { op: "removeValue", path: "blows", value: null },
+      ] } } },
+    };
+    const table = composePacks([core, mod], { onRefuse }).get("monster");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.[1]).toMatch(/array index.*out of bounds/);
+    expect(table?.get("core:kobold")?.value["blows"]).toEqual([{ method: "HIT" }]);
+  });
+
   it("costs only the malformed op, not the whole pack", () => {
     const { onRefuse, seen } = refusing();
     const mod: PackContent = {

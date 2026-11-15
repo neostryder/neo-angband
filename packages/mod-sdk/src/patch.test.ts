@@ -298,6 +298,16 @@ describe("touchedFields", () => {
  * a fresh object, destroying the whole list without a word.
  */
 describe("applyFieldPatch through array indices", () => {
+  it.each(["2", "65536", "4294967294", "9007199254740992"])("rejects the out-of-bounds array index %s", (index) => {
+    const base = { slots: [{ value: 1 }] };
+    expect(() => applyFieldPatch(base, [{ op: "set", path: `slots.${index}.value`, value: 2 }])).toThrow(/array index.*out of bounds/);
+    expect(base).toEqual({ slots: [{ value: 1 }] });
+  });
+
+  it("allows a dense append at the current array length", () => {
+    expect(applyFieldPatch({ slots: [1] }, [{ op: "set", path: "slots.1", value: 2 }])).toEqual({ slots: [1, 2] });
+  });
+
   const constants = (): JsonRecord => ({
     "level-max": [
       { label: "monsters", value: 1024 },

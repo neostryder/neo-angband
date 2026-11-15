@@ -86,6 +86,15 @@ function arrayIndex(part: string): number | null {
   return /^(?:0|[1-9][0-9]*)$/.test(part) ? Number(part) : null;
 }
 
+function boundedArrayIndex(part: string, length: number, path: string): number | null {
+  const at = arrayIndex(part);
+  // Dense growth keeps later list operations bounded by the supplied content.
+  if (at !== null && (!Number.isSafeInteger(at) || at > 65535 || at > length)) {
+    throw new PatchError(`patch: array index "${part}" is out of bounds in "${path}" (length ${length}, maximum 65535)`);
+  }
+  return at;
+}
+
 /**
  * A path segment naming an inherited Object.prototype property. `cur[part]`
  * for one of these resolves through the prototype chain instead of an own
@@ -107,7 +116,7 @@ function checkPathSegment(part: string, path: string): void {
 function childOf(cur: JsonValue | undefined, part: string, path: string): JsonValue | undefined {
   checkPathSegment(part, path);
   if (Array.isArray(cur)) {
-    const at = arrayIndex(part);
+    const at = boundedArrayIndex(part, cur.length, path);
     return at === null ? undefined : cur[at];
   }
   if (typeof cur === "object" && cur !== null) {
@@ -134,7 +143,7 @@ function assignAt(
 ): void {
   checkPathSegment(part, path);
   if (Array.isArray(container)) {
-    const at = arrayIndex(part);
+    const at = boundedArrayIndex(part, container.length, path);
     if (at === null) {
       throw new PatchError(
         `patch: "${part}" is not an array index, and the value at that point is an array`,
