@@ -185,6 +185,13 @@
       "verdict": "REACHABLE - monster blow effects go through registry:blow (MOD_REACH gaps 9/10); this switch is the fallback path behind it."
     },
     {
+      "file": "packages/web/src/mod-manager/classic-actions.ts",
+      "cases": 12,
+      "hasDefault": false,
+      "kind": "IF_CHAIN",
+      "verdict": "UI - action routing for the mod manager's detail menu, including rollback, version retention, and the unreviewed-mod notice. These branches belong to Core's mod menu and do not dispatch game content."
+    },
+    {
       "file": "packages/core/src/mon/lore-file.ts",
       "cases": 11,
       "hasDefault": true,
@@ -211,13 +218,6 @@
       "hasDefault": true,
       "kind": "SWITCH",
       "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
-    },
-    {
-      "file": "packages/web/src/mod-manager/classic-actions.ts",
-      "cases": 11,
-      "hasDefault": false,
-      "kind": "IF_CHAIN",
-      "verdict": "UI - action routing for the mod manager's detail menu, including rollback and version retention. These branches belong to Core's mod menu and do not dispatch game content."
     },
     {
       "file": "packages/core/src/host/args.ts",

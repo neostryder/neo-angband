@@ -34,6 +34,8 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 
 import { runModManager, runModOptionsBrowser, type ModManagerDeps } from "./mods";
 import { ModStore, buildCatalog } from "./mod-store";
+import { setConsentBindings } from "./mod-consent-binding";
+import { assignTier } from "./mod-tier";
 import type { GlyphTerm } from "./term";
 
 /* --- the fakes, same shape as mod-viewport.test.ts / mod-list-long.test.ts */
@@ -679,5 +681,48 @@ describe("rule application modes", () => {
     const result = await raceTimeout(done);
     expect(result.timedOut, "the options browser did not return").toBe(false);
     expect(requestReload).not.toHaveBeenCalled();
+  });
+});
+
+describe("the unreviewed-mod notice can be read from the mod's own menu (#483)", () => {
+  afterEach(() => setConsentBindings(new Map()));
+
+  it("offers the notice for an enabled unreviewed mod that has not read it, and records the yes", async () => {
+    setConsentBindings(new Map([["imported", "bound"]]));
+    const store = new ModStore(fakeStorage());
+    store.setEnabled(["imported"]);
+    const plugin = { id: "imported", name: "Imported", version: "1.0.0", shape: "plugin" } as CatalogManifest;
+    const tier = assignTier({ id: "imported", source: "installed", execution: "worker", listing: "file" });
+    const { win, term, done } = open([], {
+      listCatalog: () =>
+        buildCatalog({
+          content: [],
+          sandbox: [],
+          trusted: [plugin],
+          enabled: store.getEnabled(),
+          consents: store.getConsents(),
+          tierOf: () => tier,
+        }),
+    }, store);
+    await flush();
+    press(win, "Enter"); // the mod's own menu
+    await flush();
+    expect(term.snapshot().join("\n")).toContain("Read the unreviewed-mod notice (it is not running)");
+    press(win, "Enter"); // the notice row comes first
+    await flush();
+    expect(term.snapshot().join("\n")).toContain("Unreviewed mod: Imported");
+    press(win, "Escape"); // past the notice
+    await flush();
+    press(win, "a"); // "Turn it on"
+    await flush();
+    expect(store.sawUnreviewedNotice("imported")).toBe(true);
+    /* Read once, the row is gone. */
+    expect(term.snapshot().join("\n")).not.toContain("Read the unreviewed-mod notice");
+    press(win, "Escape"); // Back
+    await flush();
+    press(win, "Escape"); // Done
+    await flush();
+    press(win, "Escape"); // the apply prompt, if one is up
+    await raceTimeout(done);
   });
 });

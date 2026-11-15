@@ -1,4 +1,4 @@
-import { declaredConflicts } from "./state-rules";
+import { declaredConflicts, unreviewedNoticeDue } from "./state-rules";
 import { classicCatalog, classicManager } from "./classic-service";
 import { type GridSurface, type GridPointerInput } from "../term";
 import { type ModManagerDeps } from "./classic-types";
@@ -436,6 +436,22 @@ export async function manageMod(
         });
         acts.push("regrant");
       }
+      /* #483: an enabled mod can be waiting on the unreviewed notice without
+       * passing through the enable path that shows it - its payload changed
+       * since the notice was read, or it was switched on by the mods folder's
+       * load order. Its code stays off until the notice is read, so the notice
+       * has to be reachable from here too. */
+      if (unreviewedNoticeDue(m, deps.store)) {
+        items.push({
+          label: t("modsScreen.manageMod.unreviewedNotice", "Read the unreviewed-mod notice (it is not running)"),
+          color: C_DANGER,
+          hint: t(
+            "modsScreen.manageMod.unreviewedNoticeHint",
+            "Its code stays off until you read the notice and agree.",
+          ),
+        });
+        acts.push("unreviewed");
+      }
       items.push({ label: t("modsScreen.manageMod.disable", "Disable"), color: C_WARN });
       acts.push("disable");
       if (showOptionsRow) {
@@ -565,6 +581,10 @@ export async function manageMod(
       if (await enableMod(term, deps, m)) changed = true;
     } else if (act === "regrant") {
       if (await regrantConsent(term, deps, m, tileModsAtEntry)) changed = true;
+    } else if (act === "unreviewed") {
+      /* A no or ESC changes nothing: the mod stays as it was, and Disable is
+       * the row below. A yes records the notice, which takes effect on reload. */
+      if (await confirmUnreviewed(term, deps, [m])) changed = true;
     } else if (act === "permissions") {
       const decided = await decidePermissions(term, [{ mod: m, caps: decidableCapabilities(m) }], {
         oneByOne: true,
