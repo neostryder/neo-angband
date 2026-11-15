@@ -193,6 +193,9 @@ export function waitFromAnswer(status: number, header: (name: string) => string 
   const reset = Number(header("x-ratelimit-reset"));
   const exhausted = remaining !== null && remaining.trim() === "0";
   const refused = status === 429 || status === 403;
+  /* Only a refusal or a good answer can ask for a wait. A 404 or a 500 that happens
+   * to spend the last request of the hour is that error, not a rate limit. */
+  if (!refused && (status < 200 || status >= 300)) return null;
   let until: number | null = null;
   if (refused && header("retry-after") !== null && Number.isFinite(retryAfter) && retryAfter >= 0) until = now + retryAfter * 1000;
   else if (exhausted && Number.isFinite(reset) && reset > 0) until = reset * 1000;
@@ -266,7 +269,8 @@ export function createGithubReader(deps: GithubReaderDeps): GithubReader {
         until = memoryWait;
       }
     }
-    return until !== null && Number.isFinite(until) && until > now() ? until : null;
+    /* A deadline past the cap was written under a wrong clock or by hand: ignore it. */
+    return until !== null && Number.isFinite(until) && until > now() && until <= now() + MAX_BACKOFF_MS ? until : null;
   };
 
   const waitUntil = (until: number): void => {
@@ -352,11 +356,10 @@ export function createGithubReader(deps: GithubReaderDeps): GithubReader {
     const key = `${options.stale === false ? "fresh-only" : "any"} ${url}`;
     const shared = options.signal === undefined ? inFlight.get(key) : undefined;
     if (shared) return shared;
-    const pending = ask(url, options);
-    if (options.signal === undefined) {
-      inFlight.set(key, pending);
-      void pending.then(() => undefined, () => undefined).finally(() => inFlight.delete(key));
-    }
+    if (options.signal !== undefined) return ask(url, options);
+    /* Cleared before the read settles, so a read made right after it sends its own request. */
+    const pending = ask(url, options).finally(() => inFlight.delete(key));
+    inFlight.set(key, pending);
     return pending;
   };
 

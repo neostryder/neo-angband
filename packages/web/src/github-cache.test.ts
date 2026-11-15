@@ -159,6 +159,37 @@ describe("github-cache: one cached, rate-limit aware reader (#493)", () => {
     expect(waitFromAnswer(403, h({ "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(10 ** 10) }), "", 0)).toBe(MAX_BACKOFF_MS);
   });
 
+  it("returns a 404 or a 500 as itself, with no wait, even when it spends the last request", async () => {
+    const storage = new MemoryStorage();
+    let clock = 0;
+    const exhausted = { "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "1800" };
+    const gh = fakeGithub({ [TAGS]: [{ status: 200, body: [{ name: "v1.0.0" }] }, { status: 404, body: { message: "Not Found" }, headers: exhausted }, { status: 500, headers: exhausted }] });
+    const reader = createGithubReader({ fetch: gh.fetch, storage, now: () => clock });
+    await (await reader.read(TAGS)).text();
+    clock += FRESH_MS;
+    const gone = await reader.read(TAGS);
+    expect(gone.status).toBe(404);
+    expect(gone.source).toBe("network");
+    expect(reader.waitingUntil()).toBeNull();
+    const broken = await reader.read(TAGS);
+    expect(broken.status).toBe(500);
+    expect(reader.waitingUntil()).toBeNull();
+    const h = (headers: Record<string, string>) => (name: string) => headers[name.toLowerCase()] ?? null;
+    expect(waitFromAnswer(404, h({ "x-ratelimit-remaining": "0", "x-ratelimit-reset": "1800" }), "", 0)).toBeNull();
+  });
+
+  it("ignores a stored wait longer than the cap, as a clock corrected after the write leaves it", async () => {
+    const storage = new MemoryStorage();
+    const clock = 1_000_000;
+    storage.setItem(GITHUB_BACKOFF_KEY, String(clock + MAX_BACKOFF_MS + 60_000));
+    const gh = fakeGithub({ [TAGS]: { status: 200, body: [] } });
+    const reader = createGithubReader({ fetch: gh.fetch, storage, now: () => clock });
+    expect(reader.waitingUntil()).toBeNull();
+    expect((await reader.read(TAGS, { stale: false })).source).toBe("network");
+    storage.setItem(GITHUB_BACKOFF_KEY, String(clock + MAX_BACKOFF_MS));
+    expect(reader.waitingUntil()).toBe(clock + MAX_BACKOFF_MS);
+  });
+
   it("shares one request between two callers asking for the same document at once", async () => {
     const gh = fakeGithub({ [TAGS]: { status: 200, body: [{ name: "v1.0.0" }] } });
     const reader = createGithubReader({ fetch: gh.fetch, storage: new MemoryStorage(), now: () => 0 });
