@@ -97,6 +97,7 @@ The `Fold` column uses the code's own vocabulary. `MOD_HOOK_FOLDS` (`packages/co
 | --- | --- | --- | --- |
 | `walkBlockedByDiggable(state, grid, deps)` | `last-answer` | `game/cave-cmd.ts` (`movementAutoDig`), reached from `walkAction` in `game/player-turn.ts` | `?? null` - bump the wall, spend nothing, draw no RNG |
 | `objectListTiebreak(a, b)` | `last-answer` | `game/obj-list.ts` | `?? 0`, i.e. leave the entries equal (stable sort keeps collect order) |
+| `monsterOwnDropThefts()` | `any-yes` | `mon/steal.ts` through `game/steal.ts` (`makeStealEnv`) | false counts every successful player theft without saturation |
 | `monsterLoreCompleteness()` | `any-yes` | `mon/lore.ts` through `bindMonsterLoreCompleteness` in `session/game.ts`, and `game/known.ts` (`updateMon`) | false keeps older masks, byte completeness, and first-sight behavior |
 | `forgetUnlitImpassableTerrain()` | `any-yes` | `game/known.ts` (`noteSpots`) | false keeps the blind-only impassable terrain forget rule |
 | `forceFromBlastCenter()` | `any-yes` | `world/project.ts` through `castProjection`, `game/project-monster.ts`, `game/player-side.ts`, and `game/thrust.ts` | false keeps source-based thrust and its coincident-angle behavior |

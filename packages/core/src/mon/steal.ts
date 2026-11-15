@@ -83,6 +83,8 @@ export function getRandomMonsterObject(
  * the exact point upstream draws them.
  */
 export interface StealEnv {
+  /** steal_monster_item: count only the monster's own drops, up to 65535. */
+  monsterOwnDropThefts?: () => boolean;
   /** msg(): route messages to the game's sink. */
   msg(text: string): void;
   /** add_monster_message for the victim's "wakes up." line. */
@@ -215,6 +217,12 @@ export function stealMonsterItem(
     /* Try and steal. */
     if (monsterReaction < stealSkill) {
       const wake = 35 - env.stealthSkill;
+      const ownDrops = env.monsterOwnDropThefts?.() ?? false;
+      /* A carry or drop can merge the object and change its origin (9f5b723ad). */
+      if (ownDrops && obj.originRace === mon.race.ridx) {
+        const record = getLore(lore, mon.race);
+        if (record.thefts < 65535) record.thefts++;
+      }
 
       /* Success! */
       obj.heldMIdx = 0;
@@ -233,7 +241,7 @@ export function stealMonsterItem(
       }
 
       /* Track thefts. */
-      getLore(lore, mon.race).thefts++;
+      if (!ownDrops) getLore(lore, mon.race).thefts++;
 
       /* Monster wakes a little. */
       monDecTimed(rng, mon, MON_TMD.SLEEP, wake, MON_TMD_FLG_NOTIFY, env.timedMessage);

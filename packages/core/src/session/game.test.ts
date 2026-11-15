@@ -87,12 +87,6 @@ const pack: GamePack = {
   },
 };
 
-/**
- * Issue #118: shape_learn_on_assume must not require a worn item to teach a
- * flag that the assumed shape itself grants.  This is deliberately a live
- * startGame/effect-stack check: state.runeEnv has the bound object-property
- * table and the effect sees the game's real shape registry.
- */
 describe("monster lore completeness wiring", () => {
   it("binds new and loaded lore to live hooks without persisting a function", () => {
     const game = startGame(pack, { seed: 299, depth: 1 });
@@ -117,6 +111,12 @@ describe("monster lore completeness wiring", () => {
   });
 });
 
+/**
+ * Issue #118: shape_learn_on_assume must not require a worn item to teach a
+ * flag that the assumed shape itself grants.  This is deliberately a live
+ * startGame/effect-stack check: state.runeEnv has the bound object-property
+ * table and the effect sees the game's real shape registry.
+ */
 describe("issue #118: shape-granted flag learning", () => {
   it("reproduces the missing rune after a real fox shapechange", () => {
     const game = startGame(pack, { seed: 118, depth: 1, className: "Warrior" });

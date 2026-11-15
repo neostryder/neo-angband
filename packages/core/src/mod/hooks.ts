@@ -299,6 +299,8 @@ export interface KnownArtifactFind {
 }
 
 export interface ModHooks {
+  /** steal_monster_item, through game/steal.ts: own-drop provenance and 16-bit saturation. */
+  monsterOwnDropThefts?: () => boolean;
   /** lore_update/lore_is_fully_known and update_mon: select the 29985cd05 lore rules. */
   monsterLoreCompleteness?: () => boolean;
   /** noteSpots (update_view): light <= 0 without UNLIGHT also forgets impassable player terrain. */
@@ -839,6 +841,7 @@ export type ModHookFold =
  * interface without adding it here does not compile.
  */
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
+  monsterOwnDropThefts: "any-yes",
   monsterLoreCompleteness: "any-yes",
   forgetUnlitImpassableTerrain: "any-yes",
   forceFromBlastCenter: "any-yes",
@@ -954,6 +957,9 @@ export function guardModHooks(
       return neutral;
     }
   }
+
+  const ownDropThefts = hooks.monsterOwnDropThefts;
+  if (ownDropThefts) out.monsterOwnDropThefts = () => guard("monsterOwnDropThefts", () => ownDropThefts(), false);
 
   const loreCompleteness = hooks.monsterLoreCompleteness;
   if (loreCompleteness) out.monsterLoreCompleteness = () => guard("monsterLoreCompleteness", () => loreCompleteness(), false);
@@ -1193,6 +1199,9 @@ export function composeModHooks(
       return null;
     };
   }
+
+  const ownDropThefts = list.map((c) => c.monsterOwnDropThefts).filter(isFn);
+  if (ownDropThefts.length > 0) out.monsterOwnDropThefts = () => ownDropThefts.some((fn) => fn());
 
   const loreCompleteness = list.map((c) => c.monsterLoreCompleteness).filter(isFn);
   if (loreCompleteness.length > 0) out.monsterLoreCompleteness = () => loreCompleteness.some((fn) => fn());

@@ -645,6 +645,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
   }
 
   const PROBES: Record<keyof ModHooks, Probe> = {
+    monsterOwnDropThefts: {
+      yes: (log, tag) => ({ monsterOwnDropThefts: () => { log.push(tag); return true; } }),
+      no: (log, tag) => ({ monsterOwnDropThefts: () => { log.push(tag); return false; } }),
+      run: (h) => h.monsterOwnDropThefts?.(),
+    },
     monsterLoreCompleteness: {
       yes: (log, tag) => ({ monsterLoreCompleteness: () => { log.push(tag); return true; } }),
       no: (log, tag) => ({ monsterLoreCompleteness: () => { log.push(tag); return false; } }),

@@ -166,6 +166,7 @@ Each table needs its matching registry permission from the list below, in both r
 | `cursedLightRadius` | the same | not a rule table | `registry:ui-entry` |
 | `completeRestEffects` | the same | not a rule table | `registry:command` |
 | `projectionRadiusClamp` | `projectionRadius` | not a rule table | `registry:projection` |
+| `monsterOwnDropThefts` | host-owned theft accounting | boolean | `registry:monster` |
 | `monsterLoreCompleteness` | host-owned lore rules | boolean | `registry:monster` |
 | `forgetUnlitImpassableTerrain` | host-owned terrain memory | boolean | `registry:projection` |
 | `forceFromBlastCenter` | host-owned FORCE and thrust handlers | boolean | `registry:projection` |
@@ -183,6 +184,8 @@ A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whol
 `completeRestEffects` lists timed-effect names, from none up to 64. A complete rest waits until each named effect has run out, in place of the ten effects the game waits for when the table is left out. A name this game does not have does not count. An empty list waits on none of them. Hit points, spell points, word of recall and deep descent stay as they are, and the other rest modes do not read the list. The later mod's list is the one used.
 
 `cursedLightRadius` is `true` or `false`. `true` gives a wielded item no light when it carries an active curse or the sticky flag. This game has no light-curse flag. An active curse is one whose power is above zero on the item itself, and a sticky item is one with the sticky flag and no curse record. `false`, or leaving the table out, leaves that light as it is. One mod asking is enough.
+
+`monsterOwnDropThefts: true` selects upstream `steal_monster_item()` (9f5b723ad): successful player thefts count only when the item's internal origin race matches the victim's race, and the counter stops at 65535. Core checks before inventory transfers can merge the item. The mod receives no provenance or lore write access. An absent or false policy keeps the unconditional increment.
 
 `monsterLoreCompleteness: true` selects upstream 29985cd05 in `lore_update()`, `lore_is_fully_known()`, and the first sighting in `update_mon()`. Display flags join obvious flags, generation flags are learned at death, learned flags must contain the race flags, and spell sets must match. The session binds the live policy to its lore store, including loaded records; Core keeps race truth inside the host. An absent policy keeps the older masks, byte check, and sighting behavior.
 

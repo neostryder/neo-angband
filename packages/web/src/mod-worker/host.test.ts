@@ -1288,6 +1288,8 @@ describe("a Worker mod's hooks", () => {
     shapeLearnObviousFlagsDirectly: true, cursedLightRadius: true, completeRestEffects: ["AMNESIA"],
     storeDiscountRoll: { tiers: [{ oneIn: 1, percent: 20 }] },
     tileMap: [{ monster: 2, like: 1 }], projectionRadiusClamp: true, levelRevisitTracking: true,
+    monsterArcheryFrequency: { greaterThan: 25 }, forceFromBlastCenter: true,
+    forgetUnlitImpassableTerrain: true, monsterLoreCompleteness: true, monsterOwnDropThefts: true,
     valueFloor: { kind: "valueFloor", tvals: [10, 11], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" },
   };
 

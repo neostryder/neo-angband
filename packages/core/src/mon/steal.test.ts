@@ -143,6 +143,40 @@ describe("get_random_monster_object (mon-util.c L1405)", () => {
 });
 
 describe("steal_monster_item (mon-util.c L1430) - player path", () => {
+  it.each([
+    [false, "own", 0, 1], [false, "other", 0, 1], [false, "none", 65535, 65536],
+    [true, "own", 0, 1], [true, "own", 65534, 65535], [true, "own", 65535, 65535],
+    [true, "other", 0, 0], [true, "none", 0, 0],
+  ])("counts own drops and saturates only under policy: %s %s %i (9f5b723ad)", (enabled, origin, before, after) => {
+    const lore: LoreStore = new Map();
+    const mon = makeThiefTarget();
+    const obj = heldObject();
+    obj.originRace = origin === "own" ? mon.race.ridx : origin === "other" ? mon.race.ridx + 1 : 0;
+    mon.heldObj = [obj];
+    getLore(lore, mon.race).thefts = before;
+    const { env, calls } = mockEnv();
+    env.monsterOwnDropThefts = () => enabled;
+    stealMonsterItem(new Rng(1), lore, mon, -1, env);
+    expect(calls.carried).toEqual([obj]);
+    expect(getLore(lore, mon.race).thefts).toBe(after);
+  });
+
+  it("counts provenance before a carry merges or consumes the object", () => {
+    const lore: LoreStore = new Map();
+    const mon = makeThiefTarget();
+    const obj = heldObject();
+    obj.originRace = mon.race.ridx;
+    mon.heldObj = [obj];
+    const { env } = mockEnv();
+    env.monsterOwnDropThefts = () => true;
+    env.carry = (item) => {
+      expect(getLore(lore, mon.race).thefts).toBe(1);
+      item.originRace = 0;
+    };
+    stealMonsterItem(new Rng(1), lore, mon, -1, env);
+    expect(getLore(lore, mon.race).thefts).toBe(1);
+  });
+
   it("no object: emits the nothing-to-steal message and does not increment thefts", () => {
     const rng = new Rng(1);
     const lore: LoreStore = new Map();

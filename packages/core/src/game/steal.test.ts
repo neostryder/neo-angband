@@ -11,6 +11,7 @@ import type { ObjPackJson } from "../obj/types.js";
 import { objectPrep } from "../obj/make.js";
 import type { GameObject } from "../obj/object.js";
 import type { PlayerState } from "../player/calcs.js";
+import { getLore } from "../mon/lore.js";
 import { monsterCarry } from "../mon/make.js";
 import { createDefaultRegistry } from "./player-turn.js";
 import { installSteal } from "./steal.js";
@@ -73,6 +74,19 @@ function runSteal(
 }
 
 describe("do_cmd_steal (cmd-cave.c L1016)", () => {
+  it.each([false, true])("wires own-drop theft accounting through the player command: %s", (enabled) => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    grantSteal(state);
+    state.modHooks = enabled ? { monsterOwnDropThefts: () => true } : {};
+    const mon = addMon(state, makeRace({ level: 5 }), loc(11, 10));
+    const obj = makeObj(TV.POTION);
+    obj.originRace = 0;
+    monsterCarry(mon.heldObj, obj, mon.midx);
+    runSteal(state, 6);
+    expect(mon.heldObj).toHaveLength(0);
+    expect(getLore(state.lore, mon.race).thefts).toBe(enabled ? 0 : 1);
+  });
+
   it("a PF_STEAL player lifts a held item into the pack, spending a turn", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     grantSteal(state);

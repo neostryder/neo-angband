@@ -87,6 +87,7 @@ function makeStealEnv(state: GameState, deps: StealCmdDeps): StealEnv {
   };
 
   return {
+    monsterOwnDropThefts: () => state.modHooks?.monsterOwnDropThefts?.() ?? false,
     msg,
     timedMessage: monsterTimedMessage(state),
     /* monster_desc(mon, MDESC_TARG) / MDESC_STANDARD (mon-util.c L1438/1524). */

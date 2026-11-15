@@ -565,6 +565,7 @@
     "bindConstants",
     "bindCore",
     "bindMonsterCategories",
+    "bindMonsterLoreCompleteness",
     "bindMonsters",
     "bindPlayer",
     "bindProjections",
