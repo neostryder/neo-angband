@@ -274,6 +274,7 @@ function hookDescription(hook: keyof ModHooks): string {
     monsterOwnDropThefts: "how stolen items reduce a monster's later treasure",
     monsterLoreCompleteness: "the point at which monster lore counts as complete",
     forgetUnlitImpassableTerrain: "forgetting impassable terrain you stand on without light",
+    missileCritFromState: "the state used for missile criticals in item descriptions",
     forcedDescentStairs: "whether forced descent prevents new up stairs",
     forceFromBlastCenter: "the spot a blast pushes its targets away from",
     monsterArcheryFrequency: "how often an archer shoots before it keeps its distance",

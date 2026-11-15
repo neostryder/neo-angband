@@ -309,6 +309,8 @@ export interface ModHooks {
   forceFromBlastCenter?: () => boolean;
   /** generateLevel and CREATE_STAIRS: suppress new up stairs under forced descent. */
   forcedDescentStairs?: () => boolean;
+  /** object-info.ts: computed missile critical inputs stay with their supplied state. */
+  missileCritFromState?: () => boolean;
   /** monster_loves_archery (mon/predicate.ts, reached from getMoveFindRange).
    * Null keeps the faithful freqInnate < 4 test. No random draws. */
   monsterArcheryFrequency?: (frequency: number) => boolean | null;
@@ -850,6 +852,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   forgetUnlitImpassableTerrain: "any-yes",
   forceFromBlastCenter: "any-yes",
   forcedDescentStairs: "any-yes",
+  missileCritFromState: "any-yes",
   monsterArcheryFrequency: "last-answer",
   newCharacter: "all-observe",
   walkBlockedByDiggable: "last-answer",
@@ -973,6 +976,8 @@ export function guardModHooks(
   const unlitTerrain = hooks.forgetUnlitImpassableTerrain;
   if (unlitTerrain) out.forgetUnlitImpassableTerrain = () => guard("forgetUnlitImpassableTerrain", () => unlitTerrain(), false);
 
+  const missileState = hooks.missileCritFromState;
+  if (missileState) out.missileCritFromState = () => guard("missileCritFromState", () => missileState(), false);
   const forcedStairs = hooks.forcedDescentStairs;
   if (forcedStairs) out.forcedDescentStairs = () => guard("forcedDescentStairs", () => forcedStairs(), false);
   const forceCentre = hooks.forceFromBlastCenter;
@@ -1220,6 +1225,8 @@ export function composeModHooks(
   const unlitTerrain = list.map((c) => c.forgetUnlitImpassableTerrain).filter(isFn);
   if (unlitTerrain.length > 0) out.forgetUnlitImpassableTerrain = () => unlitTerrain.some((fn) => fn());
 
+  const missileState = list.map((c) => c.missileCritFromState).filter(isFn);
+  if (missileState.length > 0) out.missileCritFromState = () => missileState.some((fn) => fn());
   const forcedStairs = list.map((c) => c.forcedDescentStairs).filter(isFn);
   if (forcedStairs.length > 0) out.forcedDescentStairs = () => forcedStairs.some((fn) => fn());
   const forceCentre = list.map((c) => c.forceFromBlastCenter).filter(isFn);

@@ -245,6 +245,14 @@ describe("engine tiles", () => {
 });
 
 describe("trap allocation policy", () => {
+  it("releases the missile critical state policy when its mod stops", () => {
+    let active = true;
+    const hooks = api2PolicyModHooks({ missileCritFromState: true }, () => active);
+    expect(hooks.missileCritFromState?.()).toBe(true);
+    active = false;
+    expect(hooks.missileCritFromState?.()).toBe(false);
+    expect(api2PolicyModHooks({}, () => true).missileCritFromState).toBeUndefined();
+  });
   it("installs forced descent stairs only while the declaration is active", () => {
     let active = true;
     const hooks = api2PolicyModHooks({ forcedDescentStairs: true }, () => active);
@@ -611,6 +619,7 @@ describe("policy tables that install registrations", () => {
   });
 
   const tables: Api2Policies = {
+    missileCritFromState: true,
     forcedDescentStairs: true,
     trapAllocation: { kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" },
     randartSetSize: { multiplier: 2 },
@@ -643,7 +652,7 @@ describe("policy tables that install registrations", () => {
       () => ({ grants: capabilities("tables", [capability]) }));
     const hooks = load("tables", plugin).hooks;
     const registrations = api2PluginRegistrations(plugin, "tables", { loud: true });
-    const policyHook: Partial<Record<string, string>> = { forcedDescentStairs: "forcedDescentStairs", trapAllocation: "trapAllocation", monsterOwnDropThefts: "monsterOwnDropThefts", monsterLoreCompleteness: "monsterLoreCompleteness", forgetUnlitImpassableTerrain: "forgetUnlitImpassableTerrain", forceFromBlastCenter: "forceFromBlastCenter", monsterArcheryFrequency: "monsterArcheryFrequency", walkBlockedByDiggable: "walkBlockedByDiggable", startingOptions: "newCharacter", projectionRadiusClamp: "projectionRadius", levelRevisitTracking: "levelRevisited" };
+    const policyHook: Partial<Record<string, string>> = { missileCritFromState: "missileCritFromState", forcedDescentStairs: "forcedDescentStairs", trapAllocation: "trapAllocation", monsterOwnDropThefts: "monsterOwnDropThefts", monsterLoreCompleteness: "monsterLoreCompleteness", forgetUnlitImpassableTerrain: "forgetUnlitImpassableTerrain", forceFromBlastCenter: "forceFromBlastCenter", monsterArcheryFrequency: "monsterArcheryFrequency", walkBlockedByDiggable: "walkBlockedByDiggable", startingOptions: "newCharacter", projectionRadiusClamp: "projectionRadius", levelRevisitTracking: "levelRevisited" };
     expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : policyHook[name] ? [policyHook[name]] : []);
     expect(Object.keys(registrations ?? {})).toEqual("registration" in target ? [target.registration] : []);
     plugin.uninstall?.();

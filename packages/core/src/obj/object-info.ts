@@ -309,7 +309,7 @@ export interface ObjectInfoDeps {
    * effectIntro), taken from GameState.modHooks by makeObjectInfoDeps. Absent
    * means faithful 4.2.6 wording, and so does an absent member.
    */
-  hooks?: Pick<ModHooks, "objectInfoText" | "effectIntro">;
+  hooks?: Pick<ModHooks, "objectInfoText" | "effectIntro" | "missileCritFromState">;
 }
 
 /* ------------------------------------------------------------------ *
@@ -723,14 +723,15 @@ function calculateMissileCrits(
     RANGED_CRIT.chanceTohScl * (state.toH + plus) +
     RANGED_CRIT.chanceLevelScl * deps.player.lev +
     RANGED_CRIT.chanceOffset;
+  const skills = (deps.hooks?.missileCritFromState?.() ?? false) ? state.skills : deps.currentState.skills;
   if (launched) {
     critChance +=
       RANGED_CRIT.chanceLaunchedTohSkillScl *
-      (deps.currentState.skills[SKILL.TO_HIT_BOW] ?? 0);
+      (skills[SKILL.TO_HIT_BOW] ?? 0);
   } else {
     critChance +=
       RANGED_CRIT.chanceThrownTohSkillScl *
-      (deps.currentState.skills[SKILL.TO_HIT_THROW] ?? 0);
+      (skills[SKILL.TO_HIT_THROW] ?? 0);
   }
   critChance = Math.min(RANGED_CRIT.chanceRange, Math.max(0, critChance));
   return critScale(
@@ -1048,11 +1049,11 @@ function objKnownDamage(deps: ObjectInfoDeps, obj: GameObject, throwIt: boolean)
     crit = calculateMeleeCrits(deps, state, weight, plus);
     oldBlows = state.numBlows;
   } else if (ammo) {
-    crit = calculateMissileCrits(deps, deps.currentState, weight, plus, true);
+    crit = calculateMissileCrits(deps, (deps.hooks?.missileCritFromState?.() ?? false) ? state : deps.currentState, weight, plus, true);
     dam += objToDam(shadow, env) * 10;
     if (bow) dam += objToDam(shadowOf(deps, bow), env) * 10;
   } else {
-    crit = calculateMissileCrits(deps, deps.currentState, weight, plus, false);
+    crit = calculateMissileCrits(deps, (deps.hooks?.missileCritFromState?.() ?? false) ? state : deps.currentState, weight, plus, false);
     dam += objToDam(shadow, env) * 10;
     dam *= 2 + Math.trunc(weight / 12);
   }

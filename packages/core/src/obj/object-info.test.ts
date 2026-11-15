@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SKILL } from "../player/types.js";
 import { Rng } from "../rng.js";
-import { OBJ_MOD, TV, RF } from "../generated/index.js";
+import { OBJ_MOD, TV, RF, OF } from "../generated/index.js";
 import { TMD } from "../generated/player-timed.js";
 import { startGame } from "../session/game.js";
 import type { GamePack } from "../session/game.js";
@@ -11,13 +12,22 @@ import {
   objectInfoTextblock,
   type ObjectInfoExtras,
 } from "../game/object-inspect.js";
-import { objectInfo, OINFO, textblockToString } from "./object-info.js";
+import { objectInfo, objectCombatInfo, OINFO, textblockToString } from "./object-info.js";
 import { OBJ_NOTICE, playerLearnAllRunes } from "./knowledge.js";
 import { ORIGIN } from "../generated/origins.js";
 import type { GameObject } from "./object.js";
 import type { GameState } from "../game/context.js";
 import type { EffectIntro, ObjectInfoTextSite } from "../mod/hooks.js";
 import { tvals } from "./tval-table.js";
+
+const critSkills = vi.hoisted(() => ({ scale: 0 }));
+vi.mock("../combat/hit.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../combat/hit.js")>();
+  return { ...actual, RANGED_CRIT: { ...actual.RANGED_CRIT,
+    get chanceLaunchedTohSkillScl() { return critSkills.scale; },
+    get chanceThrownTohSkillScl() { return critSkills.scale; },
+  } };
+});
 
 function loadJson<T>(name: string): T {
   return JSON.parse(
@@ -120,6 +130,44 @@ function boot(): {
 function info(state: GameState, obj: GameObject, extras: ObjectInfoExtras): string {
   return textblockToString(objectInfoTextblock(state, obj, extras));
 }
+
+describe("missile critical state policy", () => {
+  afterEach(() => { critSkills.scale = 0; });
+  it.each([true, false])("uses the computed critical inputs for launched=%s", (launched) => {
+    critSkills.scale = 4;
+    const { state, extras, prep } = boot();
+    const obj = prep("rounded pebble", TV.SHOT);
+    obj.flags.on(OF.THROWING);
+    const deps = makeObjectInfoDeps(state, obj, extras);
+    const computed = deps.deriveState(deps.equipObjects, 0, 0);
+    computed.skills[launched ? SKILL.TO_HIT_BOW : SKILL.TO_HIT_THROW] = 1000;
+    const bow = launched ? prep("sling", TV.BOW) : null;
+    deps.bow = bow;
+    deps.currentState.ammoTval = launched ? TV.SHOT : 0;
+    deps.currentState.ammoMult = 2;
+    deps.currentState.numShots = 10;
+    computed.ammoMult = 2;
+    computed.numShots = 10;
+    computed.ammoTval = deps.currentState.ammoTval;
+    deps.deriveState = () => computed;
+    const faithful = objectCombatInfo(obj, deps);
+    const expected = objectCombatInfo(obj, { ...deps, currentState: computed });
+    expect(expected).not.toEqual(faithful);
+    deps.hooks = { missileCritFromState: () => true };
+    expect(objectCombatInfo(obj, deps)).toEqual(expected);
+    expect(textblockToString(objectInfo(obj, OINFO.SUBJ, deps))).not.toBe(textblockToString(objectInfo(obj, OINFO.SUBJ, { ...deps, hooks: {} })));
+  });
+
+  it("keeps the undeclared text and RNG byte-identical", () => {
+    const { state, extras, prep } = boot();
+    const obj = prep("arrow", TV.ARROW);
+    const before = state.rng.getState();
+    const faithful = objectInfoTextblock(state, obj, extras).runs;
+    state.modHooks = { missileCritFromState: () => false };
+    expect(objectInfoTextblock(state, obj, extras).runs).toEqual(faithful);
+    expect(state.rng.getState()).toEqual(before);
+  });
+});
 
 describe("objectInfo / object_info_out (obj-info.c L2315)", () => {
   it("a plain dagger: combat info, blows and average damage", () => {

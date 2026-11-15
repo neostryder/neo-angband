@@ -171,6 +171,7 @@ Each table needs its matching registry permission from the list below, in both r
 | `monsterOwnDropThefts` | host-owned theft accounting | boolean | `registry:monster` |
 | `monsterLoreCompleteness` | host-owned lore rules | boolean | `registry:monster` |
 | `forgetUnlitImpassableTerrain` | host-owned terrain memory | boolean | `registry:projection` |
+| `missileCritFromState` | host-owned item information critical calculations | boolean | `registry:effect-info` |
 | `forcedDescentStairs` | host-owned generation and CREATE_STAIRS handlers | boolean | `registry:room` |
 | `forceFromBlastCenter` | host-owned FORCE and thrust handlers | boolean | `registry:projection` |
 | `monsterArcheryFrequency` | host-owned archery predicate | `{ greaterThan: 0..100 }` | `registry:monster` |
@@ -195,6 +196,8 @@ A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whol
 `monsterLoreCompleteness: true` selects upstream 29985cd05 in `lore_update()`, `lore_is_fully_known()`, and the first sighting in `update_mon()`. Display flags join obvious flags, generation flags are learned at death, learned flags must contain the race flags, and spell sets must match. The session binds the live policy to its lore store, including loaded records; Core keeps race truth inside the host. An absent policy keeps the older masks, byte check, and sighting behavior.
 
 `forgetUnlitImpassableTerrain: true` applies upstream `update_view()` (1d2ad35a2, fc29847fd) before seen grids are noted: Core forgets the player's remembered impassable terrain when light is zero or negative and UNLIGHT is absent. Blindness still forgets it with any light or UNLIGHT state. A false or absent policy keeps the blind-only rule.
+
+`missileCritFromState: true` uses the computed inspection state for missile critical inputs, including bow and throw skills, instead of the live player state. The host applies the rule in both runtimes and folds declarations `any-yes`. The policy changes item information only; O-combat and combat rolls keep their rules. An absent or false policy keeps the original text and RNG. The stock bow and throw skill coefficients are zero.
 
 `forcedDescentStairs: true` prevents new up stairs when `birth_force_descend` is on. Random allocation skips up stairs, random stair placement selects down stairs, and CREATE_STAIRS refuses quest and bottom levels with "Nothing happens!" before moving objects. The host keeps reciprocal stair connectors already seeded from the previous level, including the arrival stair; it does not suppress and rebuild them, so a seed reproduces its level. An absent or false policy preserves terrain and RNG. Both runtimes install the same host rule, folded `any-yes`.
 
