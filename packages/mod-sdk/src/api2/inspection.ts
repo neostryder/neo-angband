@@ -84,6 +84,10 @@ export interface LoadoutView {
   readonly equipment: readonly (KnownItem | null)[];
   readonly inventory: readonly KnownItem[];
   readonly stats: DerivedStatsView;
+  /** Known blows per round and average weapon damage per round, including known brands and slays. */
+  readonly combat: { readonly blows: number; readonly damage: ObjectDamage | null };
+  /** Learned spells only; absent without state:spells.read. Mana is the spell cost. */
+  readonly spells?: readonly { readonly index: number; readonly mana: number; readonly failChance: number }[];
 }
 
 export interface LoadoutSimulation {

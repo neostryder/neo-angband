@@ -276,6 +276,8 @@ attempt with the upstream roll, messages, and payouts).
 
 ## 4a. `simulateLoadout` - a loadout the character is not wearing
 
+`simulateLoadout(state, change)` adds known combat and spell summaries to both `before` and `after`. `combat.blows` is blows per round to one decimal place, and `combat.damage` is the equipped weapon's average damage per round with known brand and slay lines, or null when unarmed. Core runs `obj_known_damage` on that loadout with its known-only derive. `spells` lists learned, unforgotten spells as `{ index, mana, failChance }`, using `spell_chance` with the hypothetical casting stats, known fear and player flags, and current mana capped at that loadout's maximum. The spell list is absent without `state:spells.read`. The calculation spends no energy or random numbers and changes no player knowledge.
+
 The seams above let a mod change the game. `simulateLoadout` lets a mod ask what a character would be like wearing something else, which the engine could not answer before.
 
 `calc_bonuses` (`packages/core/src/player/calcs.ts`) derives that for the gear the character has on, and every read surface comes from it: `GameState.playerState`, `PlayerActor.combat`, `PlayerView`. There was no version for a loadout nobody is wearing. A caller that wanted one had to sum the candidate item's own bonuses, which is a second implementation of `calc_bonuses` that misses the interactions (a ring of strength changing the blow count, a cuirass costing a caster half their mana, weight costing speed) and can drift from the first with nothing to catch it.

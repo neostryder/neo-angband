@@ -415,6 +415,11 @@ export interface GameState {
    * "nothing is known", exactly as an absent playerState does.
    */
   knownPlayerState?: import("../player/calcs.js").PlayerState;
+  /** Known weapon damage uses the session's bound inspection constants. */
+  loadoutDamageFor?: (
+    equipment: readonly (GameObject | null)[],
+    derived: import("../player/calcs.js").PlayerState,
+  ) => import("../obj/object-info.js").ObjectDamage | null;
   /**
    * calc_bonuses for a loadout the player is NOT wearing: the derive behind
    * "what would this item do for me". Installed by wireGame, which is the only

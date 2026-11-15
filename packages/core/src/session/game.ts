@@ -18,6 +18,8 @@
  * then prepare_next_level generation.
  */
 
+import { makeObjectInfoDeps } from "../game/object-inspect.js";
+import { objectCombatInfo } from "../obj/object-info.js";
 import { DDGRID, loc, locSum } from "../loc.js";
 import type { Loc } from "../loc.js";
 import { MessageLog } from "../msg.js";
@@ -968,6 +970,23 @@ function wireGame(
     }
   };
   state.updateBonuses = refreshDerived;
+
+  state.loadoutDamageFor = (equipment, derived) => {
+    const p = state.actor.player;
+    const weaponSlot = p.body.slots.findIndex((slot) => slot.type === "WEAPON");
+    const weapon = equipment[weaponSlot];
+    if (!weapon) return null;
+    const info = makeObjectInfoDeps(state, weapon, { constants: reg.constants, projections: [] }, true);
+    const bowSlot = p.body.slots.findIndex((slot) => slot.type === "BOW");
+    return objectCombatInfo(objectKnownShadow(weapon, p, state.runeEnv, knownDescOf(state, true)), {
+      ...info,
+      env: { ...info.env, slotObject: (slot) => equipment[slot] ?? null },
+      currentState: derived,
+      equipObjects: equipment,
+      bow: equipment[bowSlot] ?? null,
+      deriveState: () => derived,
+    })?.damage ?? null;
+  };
 
   /**
    * calc_bonuses for a loadout the player is NOT wearing (update=false, so the

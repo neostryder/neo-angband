@@ -520,7 +520,8 @@ export function createAgentView(
       D.player,
       (change: LoadoutChange): LoadoutSimulation | null => {
         requireLoadoutReads(caps, loadoutChangeRefs(change), "perceive");
-        return simulateLoadout(state, change, { viewDeps: deps });
+        return simulateLoadout(state, change, { viewDeps: deps,
+          includeSpells: !caps || caps.has("state:spells.read") || caps.has("state:*.read") });
       },
     ),
   };

@@ -29,7 +29,7 @@ import { characterPanels } from "../game/char-sheet.js";
 import type { GameState } from "../game/context.js";
 import { derivedStatsView, diffDerivedStats } from "../player/loadout.js";
 import { toCombatState, weightLimit } from "../player/calcs.js";
-import { maxManaFrom, wornArmorWeight } from "../player/spell.js";
+import { PY_SPELL, spellByIndex, spellChance, maxManaFrom, wornArmorWeight } from "../player/spell.js";
 import { Rng } from "../rng.js";
 import { objectSeeAt, squareSensePile } from "../game/known.js";
 import { createAgentView } from "./perceive.js";
@@ -376,6 +376,92 @@ describe("simulateLoadout runs the engine's own derive on gear nobody is wearing
     expect(sim.after.player.ac).toBe(sim.after.stats.ac);
     expect(sim.after.player.ac).toBeGreaterThan(sim.before.player.ac);
     expect(sim.before.player.ac).toBe(view.player().ac);
+  });
+
+  it("summarizes known obj_known_damage and spell_chance for hypothetical gear without changing play", () => {
+    const state = startGame(pack, { seed: 909, depth: 1, raceName: "Human", className: "Mage" }).state;
+    const p = state.actor.player;
+    const spell = spellByIndex(p.cls, 0)!;
+    p.spellFlags[0] = PY_SPELL.LEARNED;
+    p.csp = p.msp;
+    const armor = invenCarry(state.gear, p, make(Number.MAX_SAFE_INTEGER, TV.HARD_ARMOR), limits);
+    const beforeRng = state.rng.getState();
+    const playerBefore = structuredClone(p);
+    const sim = simulateLoadout(state, { wield: [{ from: "gear", handle: armor }] })!;
+    expect(sim.before.combat.blows).toBe(Math.trunc(sim.before.stats.blows / 10) / 10);
+    expect(sim.before.combat.damage!.normal).toBeGreaterThan(0);
+    expect(sim.before.spells).toEqual([{ index: 0, mana: spell.mana,
+      failChance: spellChance(p, sim.before.stats.statInd, 0) }]);
+    expect(sim.after.spells).toEqual([{ index: 0, mana: spell.mana,
+      failChance: spellChance({ ...p, csp: Math.min(p.csp, sim.after.stats.maxSp) }, sim.after.stats.statInd, 0) }]);
+    expect(sim.after.spells![0]!.failChance).toBeGreaterThan(sim.before.spells![0]!.failChance);
+    expect(p).toEqual(playerBefore);
+    expect(state.rng.getState()).toEqual(beforeRng);
+    const caps = { has: (cap: string) => cap === "state:player.read" || cap === "state:inventory.read" };
+    expect(createAgentView(state, undefined, {}, caps).simulateLoadout!({})!.before.spells).toBeUndefined();
+    expect(deriveLoadout(state, {}, { capabilities: caps })!.before.spells).toBeUndefined();
+    expect(createAgentView(state, undefined, {}, caps).compareLoadoutSlots!({ from: "gear", handle: armor }).slots[0]!.comparison.before.spells).toBeUndefined();
+    reallyWield(state, armor);
+    expect(sim.after.combat).toEqual(simulateLoadout(state, {})!.before.combat);
+    expect(sim.after.spells).toEqual(simulateLoadout(state, {})!.before.spells);
+  });
+
+  it("uses hypothetical off-weapon brands in obj_known_damage", () => {
+    const state = newGame();
+    const p = state.actor.player;
+    const brand = state.runeEnv.brands.findIndex((entry) => entry?.code === "FIRE_3");
+    expect(brand).toBeGreaterThan(0);
+    const gloves = make(0, TV.GLOVES);
+    gloves.notice |= OBJ_NOTICE.ASSESSED;
+    gloves.brands = state.runeEnv.brands.map((_entry, index) => index === brand);
+    p.objKnown.brands[brand] = true;
+    const handle = invenCarry(state.gear, p, gloves, limits);
+    const sim = simulateLoadout(state, { wield: [{ from: "gear", handle }] })!;
+    expect(sim.before.combat.damage!.vs).toEqual([]);
+    expect(sim.after.combat.damage!.vs).toHaveLength(1);
+    expect(sim.after.combat.damage!.offWeapon).toBe(true);
+    reallyWield(state, handle);
+    expect(sim.after.combat).toEqual(simulateLoadout(state, {})!.before.combat);
+    const slot = p.body.slots.findIndex((entry) => entry.type === "GLOVES");
+    expect(simulateLoadout(state, { remove: [slot] })!.after.combat.damage!.vs).toEqual([]);
+  });
+
+  it("keeps unknown O-combat to-hit out of hypothetical critical damage", () => {
+    const options = { seed: 4242, depth: 1, optionOverrides: { birth_percent_damage: true } };
+    const a = startGame(pack, options).state;
+    const b = startGame(pack, options).state;
+    expect(a.options!.get("birth_percent_damage")).toBe(true);
+    a.actor.player.objKnown.toH = 0;
+    b.actor.player.objKnown.toH = 0;
+    const swordA = make(0, TV.SWORD);
+    const swordB = make(0, TV.SWORD);
+    swordA.notice |= OBJ_NOTICE.ASSESSED;
+    swordB.notice |= OBJ_NOTICE.ASSESSED;
+    swordB.toH = 100;
+    const sim = simulateLoadout(a, { wield: [{ from: "object", object: swordA }] })!;
+    const change = { wield: [{ from: "object" as const, object: swordB }] };
+    expect(sim.after.combat).toEqual(simulateLoadout(b, change)!.after.combat);
+    playerLearnCombat(b.actor.player, b.runeEnv, "toH", false);
+    expect(simulateLoadout(b, change)!.after.combat.damage!.normal).toBeGreaterThan(sim.after.combat.damage!.normal);
+  });
+
+  it("keeps unlearned weapon damage identical and reveals learned damage runes", () => {
+    const a = newGame();
+    const b = newGame();
+    a.actor.player.objKnown.toD = 0;
+    b.actor.player.objKnown.toD = 0;
+    const swordA = make(0, TV.SWORD);
+    const swordB = make(0, TV.SWORD);
+    swordA.notice |= OBJ_NOTICE.ASSESSED;
+    swordB.notice |= OBJ_NOTICE.ASSESSED;
+    swordB.toD = 30;
+    const changeA = { wield: [{ from: "object" as const, object: swordA }] };
+    const changeB = { wield: [{ from: "object" as const, object: swordB }] };
+    const sim = simulateLoadout(a, changeA)!;
+    expect(sim.after.combat.damage!.normal).toBeGreaterThan(0);
+    expect(sim.after.combat).toEqual(simulateLoadout(b, changeB)!.after.combat);
+    playerLearnCombat(b.actor.player, b.runeEnv, "toD", false);
+    expect(simulateLoadout(b, changeB)!.after.combat.damage!.normal).toBeGreaterThan(sim.after.combat.damage!.normal);
   });
 
   it("moves max mana when armour weight starts costing a caster", () => {

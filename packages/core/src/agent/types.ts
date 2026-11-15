@@ -715,6 +715,10 @@ export interface LoadoutView {
    * projection of the same derive.
    */
   readonly stats: import("../player/loadout.js").DerivedStatsView;
+  /** Known weapon damage per round, from obj_known_damage; null when unarmed. */
+  readonly combat: { readonly blows: number; readonly damage: import("../obj/object-info.js").ObjectDamage | null };
+  /** Learned spells only; absent without state:spells.read. */
+  readonly spells?: readonly { readonly index: number; readonly mana: number; readonly failChance: number }[];
 }
 
 /** The stat difference between two loadouts, and whether it may be incomplete. */

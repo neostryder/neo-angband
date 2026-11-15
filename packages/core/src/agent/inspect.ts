@@ -310,7 +310,8 @@ export function createInspectView(state: GameState, deps: AgentViewDeps, caps?: 
     compareLoadoutSlots: gate(caps, "player", (ref: Exclude<LoadoutItemRef, { from: "object" }>): LoadoutSlotsResult => {
       requireLoadoutReads(caps, [ref], "inspect");
       const slots = state.actor.player.body.slots.flatMap(({ name }, slot) => {
-        const comparison = simulateLoadout(state, { wieldAt: [{ item: ref, slot }] }, { viewDeps: deps });
+        const comparison = simulateLoadout(state, { wieldAt: [{ item: ref, slot }] }, { viewDeps: deps,
+          includeSpells: !caps || caps.has("state:spells.read") || caps.has("state:*.read") });
         return comparison?.placements.some((placement) => placement.slot === slot)
           ? [{ slot, name, comparison }] : [];
       });

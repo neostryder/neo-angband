@@ -59,9 +59,9 @@
 
 import { calcHitpoints } from "../player/calcs.js";
 import type { PlayerState } from "../player/calcs.js";
-import { maxManaFrom, wornArmorWeight } from "../player/spell.js";
+import { PY_SPELL, spellByIndex, spellChance, maxManaFrom, wornArmorWeight } from "../player/spell.js";
 import { derivedStatsView, diffDerivedStats } from "../player/loadout.js";
-import { FEAT, STAT } from "../generated/index.js";
+import { FEAT, OF, STAT, TMD } from "../generated/index.js";
 import { toCombatState, weightLimit } from "../player/calcs.js";
 import { gearGet, wieldSlot } from "../game/gear.js";
 import { knownFloorObject } from "../game/known.js";
@@ -71,6 +71,7 @@ import { objectKnownShadow, objectRunesKnownUpstream } from "../obj/known-object
 import { knownDescOf } from "../game/describe.js";
 import type { GameObject } from "../obj/object.js";
 import type { GameState } from "../game/context.js";
+import { makeSpellChanceEnv } from "../game/spell-cmd.js";
 import { itemView, playerViewFor } from "./entity-views.js";
 import { AGENT_STATE_DOMAINS, AgentCapabilityError } from "./types.js";
 import type {
@@ -159,6 +160,8 @@ export function loadoutChangeRefs(change: LoadoutChange): LoadoutItemRef[] {
 
 /** What simulateLoadout may be told rather than reading off the state. */
 export interface LoadoutSimOptions {
+  /** A capability-gated view omits spell reads without their grant. */
+  includeSpells?: boolean;
   /**
    * The same AgentViewDeps the live view was built with, so the ItemViews in the
    * result carry the same `value` / `kindId` fields the live ones do. Omitted
@@ -199,7 +202,8 @@ export function deriveLoadout(
   return simulateLoadout(state, {
     ...(change.wear ? { wield: change.wear } : {}),
     ...(change.takeoff ? { remove: change.takeoff } : {}),
-  }, options.viewDeps ? { viewDeps: options.viewDeps } : {});
+  }, { ...(options.viewDeps ? { viewDeps: options.viewDeps } : {}),
+    includeSpells: !caps || caps.has("state:spells.read") || caps.has("state:*.read") });
 }
 
 /**
@@ -475,6 +479,7 @@ function describe(
   state: GameState,
   w: Working,
   derive: LoadoutDerive,
+  includeSpells: boolean,
 ): LoadoutView {
   const p = state.actor.player;
   const equipObjects = w.equip.map((c) => c?.obj ?? null);
@@ -498,7 +503,21 @@ function describe(
     totalWeight: w.weight,
     weightLimit: weightLimit(derived),
   });
+  const damage = state.loadoutDamageFor?.(equipObjects, derived) ?? null;
+  const spellPlayer = { ...p, msp: maxSp, csp: Math.min(p.csp, maxSp) };
+  const spellEnv = {
+    ...makeSpellChanceEnv(state),
+    hasPf: (flag: number) => derived.pflags.has(flag),
+    afraid: () => derived.flags.has(OF.AFRAID) || (p.timed[TMD.AFRAID] ?? 0) > 0,
+  };
+  const spells = includeSpells ? p.spellFlags.flatMap((flags, index) => {
+    if (!(flags & PY_SPELL.LEARNED) || (flags & PY_SPELL.FORGOTTEN)) return [];
+    const spell = spellByIndex(p.cls, index);
+    return spell ? [{ index, mana: spell.mana, failChance: spellChance(spellPlayer, derived.statInd, index, spellEnv) }] : [];
+  }) : undefined;
   return {
+    combat: { blows: Math.trunc(derived.numBlows / 10) / 10, damage },
+    ...(spells ? { spells } : {}),
     player: playerViewFor(state, w.deps, {
       playerState: derived,
       combat: toCombatState(derived),
@@ -550,11 +569,11 @@ export function simulateLoadout(
   const deps = opts.viewDeps ?? {};
 
   const beforeWork = liveLoadout(state, deps);
-  const before = describe(state, beforeWork, derive);
+  const before = describe(state, beforeWork, derive, opts.includeSpells !== false);
 
   const afterWork = liveLoadout(state, deps);
   const placements = applyChange(state, afterWork, change);
-  const after = describe(state, afterWork, derive);
+  const after = describe(state, afterWork, derive, opts.includeSpells !== false);
 
   /* The objects put on or taken off: worn on one side and not the other. */
   const wornBefore = new Set(beforeWork.equip.flatMap((c) => (c ? [c.obj] : [])));
