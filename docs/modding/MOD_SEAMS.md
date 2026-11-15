@@ -120,6 +120,7 @@ The `Fold` column uses the code's own vocabulary. `MOD_HOOK_FOLDS` (`packages/co
 | `completeRestEffects()` | `last-answer` | `game/world.ts` (`playerRestingCompleteSpecial`) | `null` or absent - wait out the ten 4.2.6 effects (blind, confused, poisoned, afraid, terror, stun, cut, slow, paralyzed, image) |
 | `levelRevisited(chunk, frozenAt, now)` | `all-observe` | `session/game.ts` (persistent-level and single-combat restore paths) | nothing: resume the frozen chunk unchanged |
 | `messagePauseAfter(raw)` | `any-yes` | `packages/web/src/main.ts` (message sink) and `messages.ts` (packer) | absent or false keeps the final page pending |
+| `runEndLine(report)` | `last-answer` | `packages/web/src/run-report.ts` (`runEndLineFor`) | null or absent adds no line to end screens or dumps |
 | `messageText(raw)` | `chained` | `packages/web/src/main.ts` (the HOST's single message sink, not core) | `?? raw` - show what core was given, warts and all |
 | `screenText(raw, site)` | `chained` | `packages/web/src/overlay.ts` (the HOST's `showTextScreen`, through `restateView` in `screen-view.ts`, and its row-0 prompt functions) | `?? raw` - show the screen text or prompt as built |
 | `characterBackground(text)` | `chained` | `packages/web/src/screens.ts` (the HOST's `historyTextBlock`, which feeds the character sheet, the birth screen and the character dump) | `?? text` - show the background get_history stored |

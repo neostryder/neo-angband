@@ -115,6 +115,7 @@ import { promptRequest } from "./prompt-view";
 import { promptText, menuNav, getFile, screenFault, screenRegionSpec } from "./overlay";
 import { popRegion, pushRegion, regionSurface } from "./ui-stack";
 import { argForceName } from "./launch";
+import { runEndLineFor } from "./run-report";
 import { userTextLinesToFile, exportUserFile, userPath } from "./user-io";
 import type { ScreenLine } from "./overlay";
 import { UI_TEXT, UI_DIM } from "./ui-colors";
@@ -673,6 +674,10 @@ export function buildCharacterDump(
   }
 
   /* Equipment (L1081-1092). */
+  if (extras.messages?.length) {
+    const line = runEndLineFor(state, name);
+    if (line) out.splice(out.length - 1, 0, line);
+  }
   out.push(t("charsheet.dump.equipment", "  [Character Equipment]"), "");
   {
     let label = 0;

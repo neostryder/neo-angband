@@ -601,6 +601,8 @@ export interface ModHooks {
   messageText?: (raw: string) => string;
   /** The web message sink marks this message for a pause when any mod requests it. */
   messagePauseAfter?: (raw: string) => boolean;
+  /** The host adds this line to end screens and the dump. The last non-null answer wins. */
+  runEndLine?: (report: Pick<import("./host-abi.js").RunReport, "outcome" | "name" | "turn" | "seed">) => string | null;
 
   /**
    * Screen text drawn outside the message line (the host's screen and prompt
@@ -877,6 +879,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   levelRevisited: "all-observe",
   messageText: "chained",
   messagePauseAfter: "any-yes",
+  runEndLine: "last-answer",
   screenText: "chained",
   characterBackground: "chained",
   objectInfoText: "chained",
@@ -1117,6 +1120,7 @@ export function guardModHooks(
   }
 
   const text = hooks.messageText;
+  if (hooks.runEndLine) out.runEndLine = (report) => guard("runEndLine", () => hooks.runEndLine!({ ...report }), null);
   if (hooks.messagePauseAfter) {
     out.messagePauseAfter = (raw) => guard("messagePauseAfter", () => hooks.messagePauseAfter!(raw), false);
   }
@@ -1385,6 +1389,14 @@ export function composeModHooks(
   }
 
   const text = list.map((c) => c.messageText).filter(isFn);
+  const endLines = list.map((c) => c.runEndLine).filter(isFn).reverse();
+  if (endLines.length) out.runEndLine = (report) => {
+    for (const fn of endLines) {
+      const line = fn(report);
+      if (line !== null) return line;
+    }
+    return null;
+  };
   const pauseAfter = list.map((c) => c.messagePauseAfter).filter(isFn);
   if (pauseAfter.length) out.messagePauseAfter = (raw) => pauseAfter.some((fn) => fn(raw));
   if (text.length > 0) {

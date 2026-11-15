@@ -78,6 +78,7 @@ function pendingHooks(id: string): ModHooks {
   return {
     messageText: (raw) => hooks()?.messageText?.(raw) ?? raw,
     messagePauseAfter: (raw) => hooks()?.messagePauseAfter?.(raw) ?? false,
+    runEndLine: (report) => hooks()?.runEndLine?.(report) ?? null,
     screenText: (raw, site) => hooks()?.screenText?.(raw, site) ?? raw,
     characterBackground: (text) => hooks()?.characterBackground?.(text) ?? text,
     objectInfoText: (text, site) => hooks()?.objectInfoText?.(text, site) ?? text,

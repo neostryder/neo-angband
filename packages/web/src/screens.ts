@@ -2269,6 +2269,7 @@ function deathFooter(): string {
 
 /** The fields display_exit_screen centres over the tombstone. */
 export interface TombstoneDeps {
+  runEndLine?: string | null;
   fullName: string;
   /** class->title[(lev-1)/5], or "Magnificent" when a winner. */
   title: string;
@@ -2369,6 +2370,7 @@ export function tombstoneScreen(deps: TombstoneDeps): ScreenView {
     text: t("screens.tombstone.date", "on {deathTime}", { deathTime: deps.deathTime.slice(0, 24) }),
     row: 18, x1: 8, x2: 8 + 31,
   });
+  if (deps.runEndLine) fields.push({ key: "run-end-line", text: deps.runEndLine, row: DEAD_TOMB_ART.length });
   return freezeView({
     id: "core:tombstone",
     title: "",
@@ -2391,7 +2393,7 @@ export function tombstoneLines(deps: TombstoneDeps): ScreenLine[] {
  * in the C - centred on the terminal rather than on the crown, and one row past
  * the picture. That is why an art field's band is optional.
  */
-export function winnerScreen(): ScreenView {
+export function winnerScreen(runEndLine?: string | null): ScreenView {
   return freezeView({
     id: "core:winner",
     title: "",
@@ -2410,6 +2412,7 @@ export function winnerScreen(): ScreenView {
             text: t("screens.winner.hail", "All Hail the Mighty Champion!"),
             row: CROWN_ART.length,
           },
+          ...(runEndLine ? [{ key: "run-end-line", text: runEndLine, row: CROWN_ART.length + 1 }] : []),
         ],
       },
     ],

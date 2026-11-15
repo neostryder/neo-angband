@@ -753,7 +753,7 @@ import {
   type FakeRecallDeps,
 } from "./knowledge";
 import { createModKnowledge, type KnowledgeSources } from "./knowledge-read";
-import { buildRunReport, createRunReports } from "./run-report";
+import { buildRunReport, createRunReports, runEndLineFor } from "./run-report";
 import { notifyModSettingChanged, setModSettingSource } from "./mod-settings-values";
 import { retireSharedValues, setSharedValueFaultReporter } from "./mod-shared-values";
 import {
@@ -8414,12 +8414,14 @@ async function gameMenuOnce(): Promise<boolean> {
  */
 async function showTombstone(diedFrom: string): Promise<void> {
   const p = state.actor.player;
+  const runEndLine = runEndLineFor(state, playerName);
   if (p.totalWinner) {
-    await showTextScreen(term, winnerScreen());
+    await showTextScreen(term, winnerScreen(runEndLine));
   }
   const title = p.cls.titles[Math.trunc((p.lev - 1) / 5)] ?? "";
   const retired = diedFrom === "Retiring";
   const view = tombstoneScreen({
+    runEndLine,
     fullName: p.fullName || playerName || "",
     title,
     className: p.cls.name,

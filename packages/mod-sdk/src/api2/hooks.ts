@@ -14,6 +14,9 @@
  */
 
 import type { KnownMonster } from "./known.js";
+import type { RunReport } from "./character.js";
+
+export type Api2RunEndFacts = Pick<RunReport, "outcome" | "name" | "turn" | "seed">;
 
 /** Where a piece of screen text sits (ModHooks.screenText). */
 export interface Api2ScreenTextSite {
@@ -150,6 +153,8 @@ export interface Api2Hooks {
   messageText?(raw: string): string;
   /** True requests a pause after this message, including the final page. Any yes wins. */
   messagePauseAfter?(raw: string): boolean;
+  /** One plain line of at most 72 characters for end screens and the dump; null declines. */
+  runEndLine?(report: Api2RunEndFacts): string | null;
   /** Restate one piece of a screen's text. Chained in load order. */
   screenText?(raw: string, site: Api2ScreenTextSite): string;
   /** Restate the character background text. Chained in load order. */
@@ -193,6 +198,7 @@ export type Api2HookName = keyof Api2Hooks;
 export const API2_HOOK_NAMES: readonly Api2HookName[] = Object.freeze([
   "messageText",
   "messagePauseAfter",
+  "runEndLine",
   "screenText",
   "characterBackground",
   "objectInfoText",

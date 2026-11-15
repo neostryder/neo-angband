@@ -922,6 +922,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       no: (log, tag) => ({ messagePauseAfter: () => { log.push(tag); return false; } }),
       run: (h) => h.messagePauseAfter?.("You feel that"),
     },
+    runEndLine: {
+      yes: (log, tag) => ({ runEndLine: () => { log.push(tag); return tag; } }),
+      no: (log, tag) => ({ runEndLine: () => { log.push(tag); return null; } }),
+      run: (h) => h.runEndLine?.({ outcome: "death", name: "Fred", turn: 10 }),
+    },
     messageText: {
       yes: (log, tag) => ({
         messageText: (raw) => {

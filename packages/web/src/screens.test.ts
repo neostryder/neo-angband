@@ -1599,6 +1599,12 @@ describe("tombstoneLines (display_exit_screen, ui-death.c L63-113)", () => {
     expect(lines[16]!.text).toContain("by a giant white mouse.");
     expect(lines[18]!.text).toContain("on Wed Jun 30 21:49:08 1993");
   });
+  it("adds a supplied end line below the untouched tomb art", () => {
+    const faithful = tombstoneLines(baseDeps);
+    const marked = tombstoneLines({ ...baseDeps, runEndLine: "A quiet end." });
+    expect(marked.slice(0, faithful.length)).toEqual(faithful);
+    expect(marked[faithful.length]?.text).toContain("A quiet end.");
+  });
 
   it("centres within the [8,39] band (put_str_centred x = 23 - len/2)", () => {
     const lines = tombstoneLines(baseDeps);

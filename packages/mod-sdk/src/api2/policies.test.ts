@@ -23,6 +23,16 @@ describe("checkApi2Policies", () => {
     expect(api2PolicyEffects({ [name]: true }, () => false).registrations).toEqual({});
   });
 
+  it("selects a bounded end line deterministically from report facts", () => {
+    const p = { runEndLine: ["A quiet end.", "A long road."] };
+    expect(checkApi2Policies(p)).toBeNull();
+    const facts = { outcome: "death", name: "Fred", turn: 21, seed: 4 } as const;
+    const a = api2PoliciesToHooks(p).runEndLine!(facts);
+    expect(p.runEndLine).toContain(a);
+    expect(api2PoliciesToHooks(p).runEndLine!(facts)).toBe(a);
+    expect(api2PolicyEffects(p, () => false).hooks).toEqual({});
+    for (const value of [[], [""], ["x".repeat(73)], ["two\nlines"], Array(257).fill("x")]) expect(checkApi2Policies({ runEndLine: value })).toContain("runEndLine is a list of 1 to 256");
+  });
   it("bounds pause prefixes and installs them only with message consent", () => {
     const p = { messagePauseAfter: ["You feel that"] };
     expect(checkApi2Policies(p)).toBeNull();
@@ -47,6 +57,7 @@ describe("checkApi2Policies", () => {
       valueFloor: { kind: "valueFloor", tvals: [10, 11], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" },
       messageText: [{ find: "You feel", replace: "You sense", match: "prefix" }],
       messagePauseAfter: ["You feel that"],
+      runEndLine: ["A quiet end."],
       screenText: [{ find: "a", replace: "b", where: { screen: "char", column: 2 } }],
       historyAdd: [{ find: "Found", drop: true, match: "prefix", where: { duplicate: true } }],
       objectListOrder: ["-dy", "dx"],
@@ -269,6 +280,7 @@ describe("API2_POLICY_KINDS", () => {
       purgeInput: "registry:command",
       walkBlockedByDiggable: "registry:command",
       messagePauseAfter: "registry:message",
+      runEndLine: "registry:ui-entry",
       messageText: "registry:message", screenText: "registry:ui-entry", characterBackground: "registry:message",
       objectInfoText: "registry:effect-info", effectIntro: "registry:effect-info", historyAdd: "registry:message",
       historyDisplay: "registry:message", objectListOrder: "registry:tval", saveNoiseScent: "registry:monster",

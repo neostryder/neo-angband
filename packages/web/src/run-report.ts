@@ -35,6 +35,26 @@ export type { HistoryKind, CharacterHistoryEntry, RunOutcome, RunBelonging, RunR
 /** How many of the final messages a report keeps. */
 export const RUN_REPORT_MESSAGES = 40;
 
+const endLines = new WeakMap<GameState, { key: string; hook: GameState["modHooks"]; line: string | null }>();
+
+/** End screens and later dumps must keep the same provider answer for this run. */
+export function runEndLineFor(state: GameState, name: string): string | null {
+  if (!state.modHooks?.runEndLine) return null;
+  const p = state.actor.player;
+  const facts = Object.freeze({
+    outcome: p.diedFrom === "Retiring" ? "retired" as const : p.totalWinner ? "winner" as const : "death" as const,
+    name: p.fullName || name, turn: state.turn,
+    ...(state.masterSeed === undefined ? {} : { seed: state.masterSeed }),
+  });
+  const key = JSON.stringify(facts);
+  const prior = endLines.get(state);
+  if (prior?.key === key && prior.hook === state.modHooks) return prior.line;
+  const answer = state.modHooks.runEndLine(facts);
+  const line = typeof answer === "string" ? answer.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").slice(0, 72).trim() || null : null;
+  endLines.set(state, { key, hook: state.modHooks, line });
+  return line;
+}
+
 function kindOf(e: HistoryInfo): HistoryKind {
   if (histHas(e.type, HIST.PLAYER_BIRTH)) return "birth";
   if (histHas(e.type, HIST.GAIN_LEVEL)) return "level";

@@ -208,6 +208,8 @@ export interface Api2Policies {
   readonly messageText?: readonly Api2TextRule[];
   /** Literal prefixes of messages to pause after; 0 to 256 entries of 1 to 256 characters. */
   readonly messagePauseAfter?: readonly string[];
+  /** Deterministic end-of-run alternatives: 1 to 256 plain lines of 1 to 72 characters. */
+  readonly runEndLine?: readonly string[];
   /** `where` may name `screen`, `part` and `column`. */
   readonly screenText?: readonly Api2TextRule[];
   readonly characterBackground?: readonly Api2TextRule[];
@@ -536,6 +538,26 @@ const LIST_KEYS: readonly string[] = ["dy", "-dy", "dx", "-dx"];
  * policies.test.ts, and list it under Policy tables in docs/modding/API2.md.
  */
 export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
+  {
+    name: "runEndLine",
+    capability: "registry:ui-entry",
+    summary: "Adds one deterministic plain line to end screens and character dumps.",
+    target: { hook: "runEndLine" },
+    check(value) {
+      if (!Array.isArray(value) || value.length < 1 || value.length > 256 || value.some((v) => typeof v !== "string" || v.length < 1 || v.length > 72 || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(v))) {
+        return "runEndLine is a list of 1 to 256 plain lines of 1 to 72 characters without control characters";
+      }
+      return null;
+    },
+    apply(value, out) {
+      const lines = [...value as readonly string[]];
+      out.hooks.runEndLine = (facts) => {
+        let hash = 2166136261;
+        for (const char of JSON.stringify([facts.outcome, facts.name, facts.turn, facts.seed ?? null])) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
+        return lines[hash % lines.length]!;
+      };
+    },
+  },
   {
     name: "messagePauseAfter",
     capability: "registry:message",

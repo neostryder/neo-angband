@@ -71,6 +71,7 @@ export type {
   Api2ObjectInfoSection,
   Api2ObjectInfoTextSite,
   Api2Options,
+  Api2RunEndFacts,
   Api2ScreenTextSite,
 } from "./hooks.js";
 export {

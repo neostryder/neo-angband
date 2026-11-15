@@ -13,6 +13,33 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, afterEach } from "vitest";
 import { initLaunchArgs, resetLaunchArgs } from "./launch";
+import { runEndLineFor } from "./run-report";
+import { winnerScreen } from "./screens";
+import { screenBodyLines } from "./screen-view";
+
+describe("the end-of-run line", () => {
+  it("uses one plain capped line for the winner and the dump, with no undeclared line", () => {
+    const state = makeTestState(loc(2, 2));
+    state.actor.player.diedFrom = "a test monster";
+    const extras = { messages: ["Last words."], diedFrom: "a test monster" };
+    const before = buildCharacterDump(state, "Fred", extras);
+    expect(runEndLineFor(state, "Fred")).toBeNull();
+    let calls = 0;
+    state.modHooks = { runEndLine: (facts) => {
+      expect(facts).toMatchObject({ outcome: "death", turn: state.turn });
+      calls++;
+      return "A quiet end.\n" + "x".repeat(100);
+    } };
+    const note = runEndLineFor(state, "Fred")!;
+    expect(note).toHaveLength(72);
+    expect(note).not.toMatch(/[\r\n]/u);
+    expect(buildCharacterDump(state, "Fred", extras)).toContain(`Killed by a test monster.\n${note}\n`);
+    expect(screenBodyLines(winnerScreen(note), 80).map((line) => line.text).join("\n")).toContain(note);
+    expect(calls).toBe(1);
+    delete state.modHooks;
+    expect(buildCharacterDump(state, "Fred", extras)).toBe(before);
+  });
+});
 import {
   loc,
   Rng,
