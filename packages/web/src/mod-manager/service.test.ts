@@ -5,6 +5,7 @@ import { modPluginContext } from "../mod-context";
 import type { SaveModList } from "@rpgm-tools/neo-angband-mod-sdk";
 import { buildCatalog, ModStore, setSessionConsents, type StorageLike } from "../mod-store";
 import { setConsentBindings } from "../mod-consent-binding";
+import { log } from "../logging";
 import { assignTier, effectiveGrants, resetModTiers, setModGrants, setModTiers, TRUTH_MAP } from "../mod-tier";
 import type { DiscoveredMod } from "../mod-discover";
 import type { InstalledModMeta } from "../mod-install";
@@ -403,6 +404,41 @@ describe("enablement, permission records, and settings", () => {
 });
 
 describe("updates, removal, restoration, and order", () => {
+  it("plans an installed mod update when the browse catalog omits disabled mods", async () => {
+    const f = fixture(undefined, { listCatalog: () => [] });
+    await f.install(discovered(manifest("a")));
+    f.remote.set("a", manifest("a", { version: "2.0.0" }));
+    expect(await f.service.update("a")).toMatchObject({ status: "confirmation", confirmation: { operation: "update", mods: [{ id: "a", version: "2.0.0" }] } });
+  });
+
+  it("forwards download progress from a confirmed update to the player", async () => {
+    const progress = vi.fn();
+    const file = { done: 1, total: 630, path: "assets/tile.png" };
+    const stagePlan: NonNullable<ModManagerEnvironment["stagePlan"]> = async (_plan, _permissions, report) => {
+      report?.(file);
+      return { ok: true, results: [] };
+    };
+    const f = fixture(undefined, { stagePlan });
+    f.remote.set("a", manifest("a", { version: "2.0.0" }));
+    const pending = await f.service.update("a");
+    expect(pending.status).toBe("confirmation");
+    if (pending.status !== "confirmation") return;
+    expect(await f.core.resolveConfirmation(pending.confirmation.id, { accepted: true }, progress)).toMatchObject({ status: "ok" });
+    expect(progress).toHaveBeenCalledWith(file);
+  });
+
+  it.each([false, true])("reports and logs an update failure when the host throws: %s", async (throws) => {
+    const warning = vi.spyOn(log, "warn");
+    const f = fixture(undefined, { stagePlan: async () => {
+      if (throws) throw new Error("Download timed out.");
+      return { ok: false, problem: "Download timed out." };
+    } });
+    f.remote.set("a", manifest("a", { version: "2.0.0" }));
+    expect(await accept(f.core, await f.service.update("a"))).toMatchObject({ status: "refused", reason: "Download timed out." });
+    expect(warning).toHaveBeenCalledWith("mods", "Download timed out.", expect.anything());
+    expect(f.service.state.staged).toBe(false);
+  });
+
   it("stages update-all as one plan and keeps the current metadata and decisions", async () => {
     const stagePlan = vi.fn(async () => ({ ok: true as const, results: [] }));
     const restart = vi.fn();
@@ -413,7 +449,7 @@ describe("updates, removal, restoration, and order", () => {
     const pending = await f.service.updateAll();
     expect((await accept(f.core, pending, { accepted: true, permissions: { a: { granted: ["ui:sidebar.replace"], refused: [] } } })).status).toBe("ok");
     expect(stagePlan).toHaveBeenCalledTimes(1);
-    expect(stagePlan.mock.calls[0]).toMatchObject([{ downloads: [{ mod: { id: "a" } }, { mod: { id: "b" } }] }, { a: { granted: ["ui:sidebar.replace"] } }]);
+    expect(stagePlan.mock.calls[0]).toMatchObject([{ downloads: [{ mod: { id: "a" } }, { mod: { id: "b" } }] }, { a: { granted: ["ui:sidebar.replace"] } }, undefined]);
     expect(f.install).not.toHaveBeenCalled();
     expect(f.store.getConsent("a")).toEqual([]);
     expect(f.service.state.installed.map((mod) => mod.version)).toEqual(["1.0.0", "1.0.0"]);

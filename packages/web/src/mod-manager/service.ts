@@ -1,6 +1,7 @@
 import { isTruthCapability, modListValidator, resolveSettingValue, sortModOrder, type DeclaredConflict, type SortResult, type SaveModList } from "@rpgm-tools/neo-angband-mod-sdk";
 import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import { consentBinding } from "../mod-consent-binding";
+import { log } from "../logging";
 import { declaredConflicts, undecidedCapabilities, unreviewedNoticeDue, needsGameplayNoscoreWarning } from "./state-rules";
 import { CONSENT_DISCLAIMER, type ModOrigin } from "../mod-consent";
 import { needsOwnConfirmation, playerHeld, tierRefusal, UNKNOWN_TIER } from "../mod-tier";
@@ -29,7 +30,7 @@ export interface CoreConfirmationRequest {
 }
 
 export interface CoreModManager {
-  readonly resolveConfirmation: (id: number, decision: ConfirmationDecision) => Promise<ManagerResult<unknown>>;
+  readonly resolveConfirmation: (id: number, decision: ConfirmationDecision, progress?: (progress: InstallProgress) => void) => Promise<ManagerResult<unknown>>;
   readonly drawConfirmation: <T>(request: CoreConfirmationRequest, draw: () => Promise<T>) => Promise<T>;
   readonly setEnabled: (id: string, on: boolean) => void;
   readonly setOrder: (ids: readonly string[]) => void;
@@ -55,7 +56,7 @@ export class ModManagerService {
   #plans = new Map<number, InstallPlan>();
   #modLists = new Map<number, ModListRestorePlan>();
   #pending: PendingConfirmation | null = null;
-  #pendingAction: ((decision: ConfirmationDecision) => Promise<ManagerResult<unknown>>) | null = null;
+  #pendingAction: ((decision: ConfirmationDecision, progress?: (progress: InstallProgress) => void) => Promise<ManagerResult<unknown>>) | null = null;
   #busy = false;
   #staged = false;
   #listeners = new Set<(state: Immutable<ManagerState>) => void>();
@@ -69,7 +70,7 @@ export class ModManagerService {
     const service = new ModManagerService(env);
     const mutate = (body: () => void): void => { body(); service.#publish(); };
     const core = Object.freeze<CoreModManager>({
-      resolveConfirmation: (id, decision) => service.#resolve(id, decision),
+      resolveConfirmation: (id, decision, progress) => service.#resolve(id, decision, progress),
       drawConfirmation: async <T>(request: CoreConfirmationRequest, draw: () => Promise<T>): Promise<T> => {
         const prior = service.#pending;
         service.#pending = service.#confirmation(request);
@@ -216,7 +217,7 @@ export class ModManagerService {
         ...(plan.downloads.some((d) => d.origin === "third-party") ? CONSENT_DISCLAIMER : []),
         ...(enable ? ["These mods will be enabled on next start. They can make a character unscored."] : []),
       ],
-    }, async (decision) => {
+    }, async (decision, progress) => {
       const results: InstallResult[] = [];
       // Consent and origin pins can change while a confirmation is open.
       const check = await resolveInstallPlan(this.#env, plan.downloads.map((d) => ({ entry: { ok: true as const, ref: { repo: d.mod.repo, tag: d.mod.tag }, mod: d.mod }, origin: d.origin })), this.#env.listCatalog(), this.#metadata, plan.id, plan.operation);
@@ -231,14 +232,14 @@ export class ModManagerService {
           const choices = decision.permissions?.[grant.modId];
           if (!choices || !choices.granted.includes(grant.capability) && !choices.refused.includes(grant.capability)) return refused("permissions", "Choose each new permission before staging this mod.");
         }
-        const staged = await this.#env.stagePlan(enable ? { ...plan, enableIds: plan.downloads.map((download) => download.mod.id) } : plan, decision.permissions ?? {});
+        const staged = await this.#env.stagePlan(enable ? { ...plan, enableIds: plan.downloads.map((download) => download.mod.id) } : plan, decision.permissions ?? {}, progress);
         if (!staged.ok) return refused("install", staged.problem);
         this.#staged = true;
         this.#plans.delete(id);
         return { status: "ok", value: immutable(staged.results) };
       }
       for (const download of plan.downloads) {
-        const result = await this.#env.install!(download.mod, download.origin, () => {});
+        const result = await this.#env.install!(download.mod, download.origin, progress ?? (() => {}));
         results.push(result);
         if (!result.ok) return refused("install", result.problem);
         this.#metadata = [...this.#metadata.filter((m) => m.id !== result.meta.id), result.meta];
@@ -664,7 +665,10 @@ export class ModManagerService {
 
   async #updateSet(ids: readonly string[] | null, requestedBy: string | null): Promise<ManagerResult<unknown>> {
     return this.#guard(async () => {
-      if (ids?.some((id) => !this.#find(id))) return this.#missing();
+      if (ids?.some((id) => !this.#find(id))) {
+        if (this.#env.installedMetadata) this.#metadata = await this.#env.installedMetadata();
+        if (ids.some((id) => !this.#find(id) && !this.#metadata.some((mod) => mod.id === id))) return this.#missing();
+      }
       if (!this.#env.refreshUpdates || !this.#env.curated) return refused("unavailable", "The host cannot check mod updates.");
       this.#updates = await this.#env.refreshUpdates();
       this.#publish();
@@ -686,25 +690,29 @@ export class ModManagerService {
     return immutable({ id: ++this.#nextId, operation: request.operation, requestedBy: request.requestedBy ?? null, mods: request.mods ?? [], permissions: request.permissions ?? [], riskNotice: request.riskNotice ?? [], conflicts: request.conflicts ?? [], ...(request.planId !== undefined ? { planId: request.planId } : {}), ...(request.downloads ? { downloads: request.downloads } : {}) });
   }
 
-  #request(request: CoreConfirmationRequest, action: (decision: ConfirmationDecision) => Promise<ManagerResult<unknown>>): ManagerResult<unknown> {
+  #request(request: CoreConfirmationRequest, action: (decision: ConfirmationDecision, progress?: (progress: InstallProgress) => void) => Promise<ManagerResult<unknown>>): ManagerResult<unknown> {
     if (this.#pending || this.#busy) return refused("busy", "A mod operation is already waiting for confirmation.");
     this.#pending = this.#confirmation(request);
     const bindings = (request.mods ?? []).map((mod) => [mod.id, consentBinding(mod.id)] as const);
-    this.#pendingAction = (decision) => bindings.some(([id, binding]) => consentBinding(id) !== binding)
-      ? Promise.resolve(refused("changed", MOD_PERMISSION_TEXT.changed)) : action(decision);
+    this.#pendingAction = (decision, progress) => bindings.some(([id, binding]) => consentBinding(id) !== binding)
+      ? Promise.resolve(refused("changed", MOD_PERMISSION_TEXT.changed)) : action(decision, progress);
     this.#publish();
     return { status: "confirmation", confirmation: this.#pending };
   }
 
-  async #resolve(id: number, decision: ConfirmationDecision): Promise<ManagerResult<unknown>> {
+  async #resolve(id: number, decision: ConfirmationDecision, progress?: (progress: InstallProgress) => void): Promise<ManagerResult<unknown>> {
     if (!this.#pending || this.#pending.id !== id || !this.#pendingAction) return refused("confirmation", "This confirmation is no longer pending.");
     const action = this.#pendingAction;
+    const pending = this.#pending;
     this.#pending = null;
     this.#pendingAction = null;
     this.#busy = true;
     try {
       if (!decision.accepted) return refused("cancelled", "The mod operation was cancelled.");
-      return await this.#guard(() => action(immutable(decision)));
+      log.info("mods", `Starting ${pending.operation}.`, { mods: pending.mods.map((mod) => ({ id: mod.id, version: mod.version })) });
+      const result = await this.#guard(() => action(immutable(decision), progress));
+      if (result.status === "ok") log.info("mods", `Completed ${pending.operation}.`, { staged: this.#staged });
+      return result;
     } finally { this.#busy = false; this.#publish(); }
   }
 

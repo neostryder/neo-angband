@@ -326,7 +326,7 @@ import {
   loadInstalledMods,
   uninstallMod,
 } from "./mod-install";
-import { activateModTransaction, stageModPlan, stageModRollback, previousModVersion, releasePreviousModVersions, type ModTransactionEnvironment } from "./mod-transactions";
+import { activateModTransaction, stageModPlan, stageModRollback, previousModVersion, releasePreviousModVersions, prepareModTransactionPermissions, type ModTransactionEnvironment } from "./mod-transactions";
 import { loadSessionMods } from "./mod-session";
 import type { ModUpgradeDeps } from "./mod-browse";
 import { pendingUpgrades, refreshInstalledMods, type ModUpgrade } from "./mod-refresh";
@@ -14097,7 +14097,8 @@ async function chooseGameUpdatePass(
  */
 function modTransactionEnvironment(): ModTransactionEnvironment {
   return {
-    install: { fetch: (url) => fetch(url), subtle: crypto.subtle, scope: globalThis, now: () => new Date().toISOString() },
+    preparePermissions: (payloads) => prepareModTransactionPermissions(payloads, crypto.subtle),
+    install: { fetch: (url) => fetch(url, { signal: AbortSignal.timeout(30_000) }), subtle: crypto.subtle, scope: globalThis, now: () => new Date().toISOString() },
     store: defaultModStore(), profileId: profileStore.activeId(), allowed: () => readConsent(channelStore()),
     configurationStore: (id) => new ModStore(realGameStorage ? scopedStorage(realGameStorage, id) : null),
     saveReferences: (id, tag) => savedModReferences(id, tag, realGameStorage),
@@ -14125,7 +14126,7 @@ function modBrowseDeps(): ModUpgradeDeps {
     fetch: githubDiscoverFetch(false),
   };
   const installEnv = {
-    fetch: (url: string) => fetch(url),
+    fetch: (url: string) => fetch(url, { signal: AbortSignal.timeout(30_000) }),
     subtle: crypto.subtle,
     scope: globalThis,
     now: () => new Date().toISOString(),

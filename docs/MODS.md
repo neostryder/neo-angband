@@ -16,6 +16,8 @@ The recommended list holds only repository addresses. Names, versions, descripti
 
 You are not always offered a mod's newest release. A mod that ships code declares which builds of the game it was written for, and the game refuses a release outside that range instead of loading it ([modding/MOD_COMPATIBILITY.md](modding/MOD_COMPATIBILITY.md) explains why). The screen therefore tries the mod's releases from the newest down, up to eight of them, and offers the newest one this build will run. When it skips a newer release, it tells you which one and why, and it suggests updating the game only when that would get you the newer release. If none of the releases it tried will run, the mod is refused and the screen says how many releases it checked. **Update installed mods** works the same way: it never offers an update this build would refuse to load, and a mod already on the newest release your game can run is shown as current rather than out of date.
 
+After you confirm an install or update and choose its permissions, the screen shows download progress for each mod and file. The game stages the complete mod set and applies it on the next start; it does not change the active versions during the download. Your permission answers are saved against the verified replacement files before those files activate. A failed download displays its reason and writes it to the game log. Each file request times out after 30 seconds.
+
 Three more ways to add a mod are on the same screen, all behind **Allow third-party mods**:
 
 - **Add from a registry address** - a list someone else maintains, in the same format.

@@ -1,6 +1,7 @@
 import { capabilityWithoutIt, describeCapability } from "../capability-describe";
 import { canRunWithout } from "../mod-tier";
 import type { PermissionConfirmation } from "./types";
+import { log } from "../logging";
 
 export function immutable<T>(value: T): T {
   const copy = structuredClone(value);
@@ -24,5 +25,6 @@ export function permissionConfirmation(modId: string, capability: string): Permi
 }
 
 export function refused(code: string, reason: string): { readonly status: "refused"; readonly code: string; readonly reason: string } {
+  if (code !== "cancelled") log.warn("mods", reason, { code });
   return { status: "refused", code, reason };
 }

@@ -1,6 +1,10 @@
 import { installedModFormat, satisfies, validateManifest, type InstallListing, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
+import { log } from "./logging";
 import { STORE_HANDLES, STORE_MODS, STORE_MOD_META, STORE_MOD_VERSIONS, idbApply, idbGet, idbKeys, idbPut, openDb } from "./idb";
-import { archiveCurrent, archivedMod, archivedVersions, readArchivedVersion, restoreArchivedVersion, versionKey, markInstallRevision, installModFromRepo, installedMeta, installedMods, sha256Hex, type ArchivedVersion, type InstallEnv, type InstallProgress, type InstallResult, type InstalledModMeta } from "./mod-install";
+import { archiveCurrent, archivedMod, archivedVersions, readArchivedVersion, restoreArchivedVersion, versionKey, markInstallRevision, installModFromRepo, installedMeta, installedMods, installedModSource, sha256Hex, type ArchivedVersion, type InstallEnv, type InstallProgress, type InstallResult, type InstalledModMeta } from "./mod-install";
+import { readModDir } from "./disk-packs";
+import { prepareModPayloads } from "./mod-code-snapshot";
+import { consentBinding } from "./mod-consent-binding";
 import { installedDigestsMatch } from "./mod-tier";
 import type { ModConfiguration, ModStore, ConsentRecord } from "./mod-store";
 import type { InstallPlan } from "./mod-manager/types";
@@ -40,6 +44,23 @@ export interface ModTransactionEnvironment {
   readonly allowed: () => boolean;
   readonly listing?: (repo: string, origin: ModOrigin) => InstallListing;
   readonly saveReferences?: (id: string, tag: string) => boolean | Promise<boolean>;
+  readonly preparePermissions?: (payloads: readonly Version[]) => Promise<void>;
+}
+
+/** Boot has no live bindings yet; only the verified replacement bytes can supply them. */
+export async function prepareModTransactionPermissions(payloads: readonly Version[], subtle: SubtleCrypto): Promise<void> {
+  const files = new Map<string, Uint8Array>(payloads.flatMap((payload) => payload.files.map(([file, bytes]) => [`${payload.meta.id}/${file}`, bytes] as const)));
+  const source = installedModSource(payloads.map((payload) => payload.meta), async (id, file) => files.get(`${id}/${file}`) ?? null);
+  const report = await readModDir(source);
+  if (report.packs.length !== payloads.length) throw new Error("The updated mod's permissions could not be verified.");
+  const { measureModTiers } = await import("./mod-code");
+  const tiers = await measureModTiers(report.packs, { session: new Set(), folder: new Set() }, source.records, (id) => source.verifyDigests(id, subtle));
+  await prepareModPayloads({ ...report, assetUrl: async (id, file) => `${id}/${file}` }, (id) => tiers.get(id)!, async (file) => {
+    const bytes = files.get(file);
+    if (!bytes) throw new Error("The updated mod's permissions could not be verified.");
+    return bytes;
+  }, subtle);
+  if (payloads.some((payload) => typeof consentBinding(payload.meta.id) !== "string")) throw new Error("The updated mod's permissions could not be verified.");
 }
 
 export type StageResult = { readonly ok: true; readonly results: readonly InstallResult[] } | { readonly ok: false; readonly problem: string };
@@ -194,6 +215,7 @@ export async function stageModPlan(
       try {
         const results: InstallResult[] = [];
         for (const download of plan.downloads) {
+          log.info("mods", `Downloading ${download.mod.id} ${download.mod.tag}.`, { files: download.files.length });
           const current = metas.find((meta) => meta.id === download.mod.id) ?? null;
           const blocked = installBlocked(download.origin, env.allowed()) ?? originConflict(current, download.mod.repo);
           if (blocked) throw new Error(blocked);
@@ -214,12 +236,13 @@ export async function stageModPlan(
           const cached = await archivedMod({ repo: download.mod.repo, tag: download.mod.tag.startsWith("archive:") ? download.mod.tag : download.mod.sha ?? download.mod.tag }, env.install.scope ?? globalThis);
           if (download.mod.tag.startsWith("archive:") && !cached) throw new Error("The saved mod version is unavailable.");
           const result = cached ? await restoreArchivedVersion(cached.meta, env.install.scope ?? globalThis, install.stage, env.install.subtle)
-            : await installModFromRepo(download.mod, current, install, { origin: download.origin, allowed: env.allowed(), ...(env.listing ? { listing: env.listing(download.mod.repo, download.origin) } : {}) }, progress);
+            : await installModFromRepo(download.mod, current, install, { origin: download.origin, allowed: env.allowed(), ...(env.listing ? { listing: env.listing(download.mod.repo, download.origin) } : {}) }, (file) => progress({ ...file, path: `${download.mod.name}: ${file.path}` }));
           if (!result.ok) throw new Error(result.problem);
           results.push(result);
         }
         const stored = transaction(await idbGet(db, STORE_HANDLES, PENDING));
         if (!stored) throw new Error("The staged mod set is incomplete.");
+        progress({ done: 0, total: 0, path: "Checking downloaded mods..." });
         await verifySet(stored, env);
         if (plan.configurationRevision && plan.configurationRevision !== env.store.configurationRevision()) throw new Error("The mod configuration changed in another window. Review it again.");
         await save(db, { ...stored, phase: "ready" });
@@ -248,6 +271,7 @@ export async function activateModTransaction(env: ModTransactionEnvironment): Pr
   return locked(env, async (db) => {
     const pending = transaction(await idbGet(db, STORE_HANDLES, PENDING));
     if (!pending) return null;
+    log.info("mods", `Applying mod transaction: ${pending.phase}.`);
     if (pending.phase === "downloading" || pending.phase === "committed") {
       if (pending.phase === "committed") markInstallRevision(env.install.scope ?? globalThis);
       await clear(db);
@@ -275,10 +299,22 @@ export async function activateModTransaction(env: ModTransactionEnvironment): Pr
         for (const payload of pending.payloads) archive.push([versionKey(payload.meta), { meta: { format: installedModFormat.format, schemaVersion: installedModFormat.schemaVersion, data: payload.meta }, files: payload.files, sequence: 0 }]);
         if (pending.restore && !store.restoreConfiguration(pending.restore)) throw new Error("The previous mod configuration could not be restored.");
         if (pending.plan.modList && !store.applyModList(pending.plan.modList, store.configurationRevision(), pending.plan.effectiveEnabled)) throw new Error("The mod list could not be activated.");
+        if (env.preparePermissions && Object.keys(pending.permissions).length > 0) {
+          const payloads = await Promise.all(Object.keys(pending.permissions).map(async (id) => {
+            const updated = pending.payloads.find((payload) => payload.meta.id === id);
+            if (updated) return updated;
+            const installed = current.find((meta) => meta.id === id);
+            if (!installed) throw new Error("The updated mod's permissions could not be verified.");
+            return version(db, installed);
+          }));
+          await env.preparePermissions(payloads);
+        }
         for (const [id, choices] of Object.entries(pending.permissions)) {
           const manifest = pending.plan.downloads.find((download) => download.mod.id === id)?.manifest ?? pending.plan.keptManifests?.find((entry) => entry.id === id) ?? manifestOf(await version(db, current.find((meta) => meta.id === id)!));
           if (!choices) continue;
-          store.setDecisions(id, choices, manifest.version);
+          const binding = consentBinding(id);
+          if (env.preparePermissions && typeof binding !== "string") throw new Error("The updated mod's permissions could not be verified.");
+          store.setDecisions(id, env.preparePermissions ? { ...choices, binding: binding as string } : choices, manifest.version);
           const written = store.getDecisions(id);
           if (choices.granted.some((cap) => !written.granted.includes(cap)) || choices.refused.some((cap) => !written.refused.includes(cap)) || store.getConsentVersion(id) !== manifest.version) {
             throw new Error("The mod permissions could not be saved.");
@@ -297,12 +333,15 @@ export async function activateModTransaction(env: ModTransactionEnvironment): Pr
           { store: STORE_HANDLES, put: [[PENDING, document({ ...activating, phase: "committed" })]] },
         ])) throw new Error("The staged mod set could not be activated.");
         markInstallRevision(env.install.scope ?? globalThis);
+        log.info("mods", "Activated staged mods.");
       } catch (error) {
+        log.error("mods", "Mod activation failed.", error);
         if (!store.restoreConfiguration(configuration)) throw new Error("The previous mod configuration could not be restored.", { cause: error });
         await clear(db);
         return notice(pending);
       }
     } catch (error) {
+      log.error("mods", "Mod activation failed.", error);
       const recovery = transaction(await idbGet(db, STORE_HANDLES, PENDING));
       if (recovery?.phase === "activating") throw error;
       await clear(db);

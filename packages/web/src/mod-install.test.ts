@@ -19,12 +19,12 @@ import { zipSync } from "fflate";
 import { discoverMod, type DiscoverEnv, type DiscoveredMod, type PayloadEntry } from "./mod-discover";
 import { classifyModPin, classifyModTag } from "./mod-updates";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setConsentBindings } from "./mod-consent-binding";
+import { consentBinding, setConsentBindings } from "./mod-consent-binding";
 import * as snapshots from "./mod-code-snapshot";
 
 import { STORE_HANDLES, STORE_MODS, STORE_MOD_META, STORE_MOD_VERSIONS } from "./idb";
-import { activateModTransaction, stageModPlan, stageModRollback, previousModVersion, releasePreviousModVersions, type ModTransactionEnvironment } from "./mod-transactions";
-import { buildCatalog, ModStore, MOD_STATE_STORAGE_KEY, MOD_SETTINGS_STORAGE_KEY } from "./mod-store";
+import { activateModTransaction, stageModPlan, stageModRollback, previousModVersion, releasePreviousModVersions, prepareModTransactionPermissions, type ModTransactionEnvironment } from "./mod-transactions";
+import { buildCatalog, ModStore, MOD_STATE_STORAGE_KEY, MOD_SETTINGS_STORAGE_KEY, type ConsentRecord } from "./mod-store";
 import type { InstallPlan } from "./mod-manager/types";
 import { createModManagerService } from "./mod-manager/service";
 import { classicManager } from "./mod-manager/classic-service";
@@ -62,7 +62,7 @@ import { badPath, rawUrl } from "./mod-registry";
 import { originConflict } from "./mod-source";
 import { ZIP_LIMITS } from "./mod-archive";
 import { contributedTileModes, mergeModSources } from "./tile-mods";
-import { loadModCode, type ModCodeReport } from "./mod-code";
+import { loadModCode, measureModTiers, type ModCodeReport } from "./mod-code";
 import { modPluginContext, setModInstallDoor } from "./mod-context";
 import { CapabilitySet, validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { createWorkerContentBroker } from "./install-runtime";
@@ -440,7 +440,7 @@ function transactionFixture(failPut?: (store: string, key: string, value: unknow
       },
     },
   };
-  const stage = (plan: InstallPlan, permissions: Record<string, { granted: string[]; refused: string[] }> = {}) => {
+  const stage = (plan: InstallPlan, permissions: Record<string, ConsentRecord> = {}) => {
     let index = 0;
     fetching = plan.downloads[0]?.mod.id ?? "demo";
     return stageModPlan(plan, permissions, env, (progress) => {
@@ -505,6 +505,37 @@ function classicRestoreManager(f: ReturnType<typeof transactionFixture>, saveRef
 }
 
 describe("staged mod transactions", () => {
+  it("keeps approved update permissions after the runtime measures the installed replacement", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const plan = f.makePlan("2.0.0", ["demo"], { demo: { capabilities: ["ui:sidebar.replace"] } });
+    await f.stage(plan, { demo: { granted: ["ui:sidebar.replace"], refused: [], binding: "measured-fixture" } });
+    setConsentBindings(new Map());
+    expect(await activateModTransaction({ ...f.env, preparePermissions: (payloads) => prepareModTransactionPermissions(payloads, subtle as SubtleCrypto) })).toBeNull();
+    const updatedBinding = consentBinding("demo");
+    expect(typeof updatedBinding).toBe("string");
+    expect(f.store.getConsent("demo")).toEqual(["ui:sidebar.replace"]);
+    const report = await loadInstalledMods(f.scope);
+    const tiers = await measureModTiers(report.packs, { session: new Set(), folder: new Set() }, report.records, (id) => report.verifyDigests(id, subtle as SubtleCrypto));
+    await snapshots.prepareModPayloads(report, (id) => tiers.get(id)!, undefined, subtle as SubtleCrypto);
+    expect(consentBinding("demo")).toBe(updatedBinding);
+    expect(f.store.getConsent("demo")).toEqual(["ui:sidebar.replace"]);
+  });
+
+  it("binds update permission answers to verified new files on a fresh boot", async () => {
+    const f = transactionFixture();
+    await f.installInitial();
+    const plan = f.makePlan("2.0.0", ["demo"], { demo: { capabilities: ["ui:sidebar.replace"] } });
+    expect(await f.stage(plan, { demo: { granted: ["ui:sidebar.replace"], refused: [], binding: "measured-fixture" } })).toMatchObject({ ok: true });
+    setConsentBindings(new Map());
+    const preparePermissions = vi.fn(async () => { setConsentBindings(new Map([["demo", "verified-new-files"]])); });
+    expect(await activateModTransaction({ ...f.env, preparePermissions })).toBeNull();
+    expect(preparePermissions).toHaveBeenCalledOnce();
+    expect((await installedMeta("demo", f.scope))?.tag).toBe("v2.0.0");
+    expect(f.store.getConsent("demo")).toEqual(["ui:sidebar.replace"]);
+    expect(f.store.getConsentVersion("demo")).toBe("2.0.0");
+  });
+
   it("keeps the installed set unchanged until the whole verified set activates at boot", async () => {
     const f = transactionFixture();
     await f.installInitial();

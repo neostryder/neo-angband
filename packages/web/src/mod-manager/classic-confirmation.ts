@@ -2,7 +2,8 @@ import { t } from "@rpgm-tools/neo-angband-core";
 import { buildCatalog, type CatalogMod, type ConsentRecord } from "../mod-store";
 import type { PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { SCREEN_FOOTER } from "../screen-view";
-import { selectFromMenu, showTextScreen, type ScreenLine } from "../overlay";
+import { selectFromMenu, showTextScreen, screenRegionSpec, type ScreenLine } from "../overlay";
+import { pushRegion, regionSurface, popRegion } from "../ui-stack";
 import type { GridPointerInput, GridSurface } from "../term";
 import { UI_GOLD, UI_TEXT, UI_DIM } from "../ui-colors";
 import { refused } from "./confirmation";
@@ -58,5 +59,20 @@ export async function drawPendingManagementConfirmation(
     if (!decisions) return core.resolveConfirmation(pending.id, { accepted: false });
     for (const [id, choices] of decisions) permissions[id] = choices;
   }
-  return core.resolveConfirmation(pending.id, { accepted: true, permissions });
+  if (!["install", "update", "restore"].includes(pending.operation)) return core.resolveConfirmation(pending.id, { accepted: true, permissions });
+  const handle = pushRegion(screenRegionSpec(), term.size());
+  const progress = regionSurface(term, handle.cells);
+  const draw = (message: string): void => {
+    for (let row = 0; row < progress.size().rows; row++) progress.eraseToEol(0, row);
+    progress.print(0, 1, pending.operation === "update" ? "Updating mods" : "Installing mods", UI_TEXT);
+    progress.print(0, 3, message, UI_DIM);
+    progress.print(0, progress.size().rows - 1, t("modBrowse.progress.pleaseWait", "[ please wait ]"), UI_DIM);
+    progress.flush?.();
+  };
+  try {
+    draw("Preparing mods...");
+    return await core.resolveConfirmation(pending.id, { accepted: true, permissions }, (file) => {
+      draw(file.total > 0 ? t("modBrowse.progress.fileOf", "{done} of {total}: {path}", { done: file.done, total: file.total, path: file.path }) : file.path);
+    });
+  } finally { popRegion(handle); }
 }
