@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import { planRequest, readStaticFile, safeJoin } from "./routes.js";
 
 const ROOTS = {
@@ -203,8 +204,7 @@ it("serves packaged ASAR assets through Electron's filesystem", async () => {
   const builder = createRequire(require.resolve("electron-builder"));
   const asar = createRequire(builder.resolve("app-builder-lib"))("@electron/asar") as { createPackageFromStreams(dest: string, entries: object[]): Promise<fs.WriteStream> };
   const electronPath = (await import("electron")).default as unknown as string;
-  const base = fs.mkdtempSync(path.join(process.cwd(), "neo-static-asar-"));
-  if (path.dirname(path.resolve(base)) !== process.cwd()) throw new Error("The fixture left the workspace.");
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "neo-static-asar-")));
   try {
     const payload = path.join(base, "payload");
     fs.mkdirSync(path.join(payload, "web"), { recursive: true });
@@ -251,6 +251,7 @@ it("serves packaged ASAR assets through Electron's filesystem", async () => {
     expect(run.stdout).toContain("unpacked asset");
     expect(run.stdout).toContain("linked assets refused");
   } finally {
-    fs.rmSync(base, { recursive: true, force: true });
+    /* Electron can hold its logs folder for a moment after it exits. */
+    fs.rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 }, 45_000);
