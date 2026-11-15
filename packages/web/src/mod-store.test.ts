@@ -775,6 +775,25 @@ describe("readEnabledModIds (the one live reader)", () => {
       readEnabledModIds({ discovered: ["a", "b"], diskOrder: ["b", "a"] }),
     ).toEqual(["b", "a"]);
   });
+
+  describe("a persisted-only read (#491)", () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("ignores this page's ?mods= override and the session's staged mods", () => {
+      vi.stubGlobal("location", { search: "?mods=url-mod" });
+      expect(readEnabledModIds({ discovered: ["url-mod", "staged"], forced: ["staged"] })).toEqual(["url-mod", "staged"]);
+      expect(
+        readEnabledModIds({ discovered: ["url-mod", "staged"], forced: [], persistedOnly: true }),
+      ).toEqual([]);
+    });
+
+    it("still reads the profile's own disk order", () => {
+      vi.stubGlobal("location", { search: "?mods=url-mod" });
+      expect(
+        readEnabledModIds({ discovered: ["url-mod", "kept"], diskOrder: ["kept"], persistedOnly: true }),
+      ).toEqual(["kept"]);
+    });
+  });
 });
 
 /**

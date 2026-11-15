@@ -411,10 +411,16 @@ export function readEnabledModIds(input: {
    * active one: a profile switch asks what the destination will load.
    */
   storage?: StorageLike | null;
+  /**
+   * Only what the profile itself keeps: its saved set, its choices and the disk
+   * order, never the page's `?mods=` override. A decision made for another profile
+   * must not follow this page's URL.
+   */
+  persistedOnly?: boolean;
 }): string[] {
   if (safeLaunch() && input.ignoreSafeLaunch !== true) return [];
   let url: string[] | null = null;
-  try {
+  if (input.persistedOnly !== true) try {
     const raw = new URLSearchParams(location.search).get("mods");
     if (raw !== null) url = raw.split(",").map((s) => s.trim()).filter(Boolean);
   } catch {

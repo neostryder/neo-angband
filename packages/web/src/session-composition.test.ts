@@ -102,6 +102,9 @@ describe("a session-only pack composes into the running game", () => {
     /* THE FORCED-ENABLE HALF. Staging is the gesture; there is no row to switch
      * on, so a staged id that is not in this list composes nothing at all. */
     expect(pack.enabledModIds()).toContain("session-draft");
+    /* A profile switch asks what the destination keeps, and a mod staged in this
+     * page's session is not part of that profile (#491). */
+    expect(pack.enabledModIds({ ignoreSafeLaunch: true, persistedOnly: true })).not.toContain("session-draft");
 
     /* THE COMPOSITION HALF, read off the same function the mod-authoring seam
      * publishes and the game is built from. */

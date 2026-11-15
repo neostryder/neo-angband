@@ -7502,7 +7502,7 @@ setModProfilesControl((id, caps) => createModProfiles(id, caps, {
     ...[...discoverTrustedPlugins().values()].map((p) => p.manifest),
     ...diskPacks().packs.map((p) => p.manifest)],
   hasController: (modId) => activeModCode().plugins.some((p) => p.id === modId && !!p.plugin.controller),
-  enabledIn: (storage) => enabledModIds({ ignoreSafeLaunch: true, storage }),
+  enabledIn: (storage) => enabledModIds({ ignoreSafeLaunch: true, storage, persistedOnly: true }),
   canSwitch: () => gameScreenLive
     ? { ok: false, reason: "Profiles can be switched before play begins." }
     : { ok: true },

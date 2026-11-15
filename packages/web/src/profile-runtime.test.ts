@@ -303,7 +303,7 @@ describe("a title-row start reads the same enabled set as the loader (#491)", ()
 
   it("is wired to the loader's resolver in the shell", () => {
     const source = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
-    expect(source).toContain("enabledIn: (storage) => enabledModIds({ ignoreSafeLaunch: true, storage })");
+    expect(source).toContain("enabledIn: (storage) => enabledModIds({ ignoreSafeLaunch: true, storage, persistedOnly: true })");
     expect(readFileSync(new URL("./profile-runtime.ts", import.meta.url), "utf8")).not.toMatch(/\.isEnabled\(id\)/u);
   });
 });

@@ -347,7 +347,7 @@ export function modConflictLines(
  * In safe mode the set is empty, unless `ignoreSafeLaunch` asks for the set a
  * normal start would load (the Mods screen shows that one).
  */
-export function enabledModIds(options: { ignoreSafeLaunch?: boolean; storage?: StorageLike | null } = {}): string[] {
+export function enabledModIds(options: { ignoreSafeLaunch?: boolean; storage?: StorageLike | null; persistedOnly?: boolean } = {}): string[] {
   /* The URL/localStorage reading, the player's explicit per-mod decisions and the
    * external manager's load-order.json all live in mod-store.readEnabledModIds, so
    * this surface and the tile discovery cannot answer differently. */
@@ -357,7 +357,9 @@ export function enabledModIds(options: { ignoreSafeLaunch?: boolean; storage?: S
     /* Staging a mod for one session IS enabling it - there is no row to turn on,
      * and a leftover "off" choice from a copy the player once installed must not
      * silence the copy they just asked to try (mod-session.ts). */
-    forced: sessionPacks().packs.map((p) => p.manifest.id),
+    /* A persisted-only read leaves out this session's staged mods too. */
+    forced: options.persistedOnly === true ? [] : sessionPacks().packs.map((p) => p.manifest.id),
+    ...(options.persistedOnly === true ? { persistedOnly: true } : {}),
     ...(options.ignoreSafeLaunch === true ? { ignoreSafeLaunch: true } : {}),
     ...(options.storage === undefined ? {} : { storage: options.storage }),
   });
