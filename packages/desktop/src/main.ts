@@ -55,7 +55,7 @@ import {
 import { createBackupRelay, readBackupFolder } from "./backup-folder.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
 import { MOD_AUTHORITY_CHANNEL, capLogBatch, confirmHostAction, desktopConsentReport, hostFsCallIsSafe, hostFsFailure, updateCallIsSafe } from "./bridge-guard.js";
-import { createCheckedFetch } from "./net-guard.js";
+import { confirmExternalOpen, createCheckedFetch } from "./net-guard.js";
 import * as dns from "node:dns";
 import { LOG_DIRNAME, openLogFile, writeReportFile } from "./log-file.js";
 import { describeValue, formatLogLine } from "@rpgm-tools/neo-angband-core/log";
@@ -64,7 +64,6 @@ import {
   UPDATE_REPO,
   downloadArchive,
   isAllowedRevealUrl,
-  isHttpUrl,
   launchSwap,
   releaseTagFromRenderer,
   resolveReleaseAsset,
@@ -2066,16 +2065,7 @@ async function createWindow(): Promise<void> {
   // External links open in the user's real browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isGameUrl(url)) return { action: "allow" };
-    /* `url` is whatever the renderer asked to open with `window.open` (or a
-     * target="_blank" click) - the renderer's own choice, not this process's,
-     * and a mod's plugin.js runs in that same page. A scheme other than http or
-     * https would reach the operating system's own handler for it rather than a
-     * browser, so it is refused here and logged rather than opened silently. */
-    if (isHttpUrl(url)) {
-      void shell.openExternal(url);
-    } else {
-      mainLog("warn", "window-open", "refused to open a non-http url in the real browser", url);
-    }
+    void confirmExternalOpen(url, (message, accept) => confirmAction(win.webContents, message, accept), (href) => shell.openExternal(href));
     return { action: "deny" };
   });
 

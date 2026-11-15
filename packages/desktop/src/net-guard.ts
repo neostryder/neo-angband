@@ -234,3 +234,25 @@ function mappedV4(ip: string): string | null {
   if (!Number.isFinite(hi) || !Number.isFinite(lo)) return null;
   return `${(hi >>> 8) & 255}.${hi & 255}.${(lo >>> 8) & 255}.${lo & 255}`;
 }
+
+
+export async function confirmExternalOpen(
+  raw: string,
+  confirm: (message: string, accept: string) => Promise<boolean>,
+  open: (url: string) => Promise<void>,
+  resolve: (hostname: string) => Promise<dns.LookupAddress[]> = (hostname) => dns.promises.lookup(hostname, { all: true }),
+): Promise<void> {
+  try {
+    const url = new URL(raw);
+    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password || isBlockedHostname(url.hostname)) return;
+    const publicDestination = async (): Promise<boolean> => {
+      const answers = await resolve(bareHost(url.hostname));
+      return answers.length > 0 && answers.every(({ address, family }) => net.isIP(address) === family && !isBlockedIp(address));
+    };
+    if (!(await publicDestination())) return;
+    if (!(await confirm("Open this URL in your browser?\n" + url.href, "Open"))) return;
+    if (await publicDestination()) await open(url.href);
+  } catch {
+    /* A failed lookup or decision cannot authorize a browser launch. */
+  }
+}

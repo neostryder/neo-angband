@@ -4,8 +4,8 @@
  */
 
 import * as dns from "node:dns";
-import { describe, expect, it } from "vitest";
-import { createCheckedFetch, guardLookup, isBlockedHostname, isBlockedIp } from "./net-guard.js";
+import { describe, expect, it, vi } from "vitest";
+import { confirmExternalOpen, createCheckedFetch, guardLookup, isBlockedHostname, isBlockedIp } from "./net-guard.js";
 
 describe("blocked addresses", () => {
   it("refuses loopback, link-local, private, metadata, and the odd literal forms", () => {
@@ -76,5 +76,48 @@ describe("blocked addresses", () => {
     }) as typeof dns.lookup;
     await expect(createCheckedFetch(fake)("http://api.example.com/")).rejects.toThrow(/refused/u);
     expect(calls).toBe(1);
+  });
+});
+
+
+describe("external browser decisions", () => {
+  it("requires confirmation of the full help or release URL before opening", async () => {
+    const resolve = vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]);
+    const open = vi.fn(async () => {});
+    for (const url of ["https://www.angband.live/", "https://github.com/neostryder/neo-angband/releases?x=1#latest"]) {
+      const confirm = vi.fn(async () => false);
+      await confirmExternalOpen(url, confirm, open, resolve);
+      expect(confirm).toHaveBeenCalledWith("Open this URL in your browser?\n" + url, "Open");
+      expect(open).not.toHaveBeenCalled();
+      await confirmExternalOpen(url, async () => true, open, resolve);
+      expect(open).toHaveBeenLastCalledWith(url);
+      open.mockClear();
+    }
+  });
+
+  it("refuses local names, address literals, credentials, and private DNS answers", async () => {
+    const confirm = vi.fn(async () => true);
+    const open = vi.fn(async () => {});
+    const resolve = vi.fn(async () => [{ address: "10.0.0.1", family: 4 }]);
+    for (const url of ["http://localhost/", "http://metadata.google.internal/", "http://printer.local/", "http://127.1/", "http://0x7f000001/", "http://[::ffff:127.0.0.1]/", "http://169.254.169.254/", "http://192.168.1.1/", "https://user:credential@example.com/", "file:///test", "broken", "https://private.example/"]) {
+      await confirmExternalOpen(url, confirm, open, resolve);
+    }
+    expect(confirm).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    await confirmExternalOpen("https://example.com/", confirm, open, async () => { throw new Error("DNS failed"); });
+    await confirmExternalOpen("https://example.com/", confirm, open, async () => []);
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("checks DNS again after the decision and contains dialog and shell failures", async () => {
+    const open = vi.fn(async () => {});
+    let calls = 0;
+    const resolve = async () => [{ address: ++calls === 1 ? "93.184.216.34" : "127.0.0.1", family: 4 }];
+    await confirmExternalOpen("https://example.com/", async () => true, open, resolve);
+    expect(open).not.toHaveBeenCalled();
+    const publicDns = async () => [{ address: "93.184.216.34", family: 4 }];
+    await confirmExternalOpen("https://example.com/", async () => { throw new Error("closed"); }, open, publicDns);
+    expect(open).not.toHaveBeenCalled();
+    await expect(confirmExternalOpen("https://example.com/", async () => true, async () => { throw new Error("shell failed"); }, publicDns)).resolves.toBeUndefined();
   });
 });
