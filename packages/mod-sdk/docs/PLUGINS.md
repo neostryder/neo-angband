@@ -1188,9 +1188,10 @@ register(host, ctx) {
 }
 ```
 
-`core:game-menu` is the only action location in this API version. A callback
-that throws is reported against its mod and returns the player to the Game menu;
-it never falls through to a similarly positioned core row.
+`core:game-menu` is the only action location in this API version. The Game menu
+closes before the callback runs, so the callback can open a panel. A callback
+that throws is reported against its mod; it never falls through to a similarly
+positioned core row.
 
 Plugin code runs **in process, synchronously**, with the same access to the rng,
 the chunk, the player and the monster that core has, because a deep override

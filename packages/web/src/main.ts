@@ -8260,12 +8260,18 @@ let gameMenuCursor = 0;
  */
 async function openGameMenu(): Promise<void> {
   for (;;) {
-    if (!(await gameMenuOnce())) return;
+    let action: (() => Promise<void>) | undefined;
+    const again = await openModal(() => gameMenuOnce((run) => { action = run; }));
+    if (action) {
+      await action();
+      return;
+    }
+    if (!again) return;
   }
 }
 
 /** One pass of the game menu. False means "stop showing it". */
-async function gameMenuOnce(): Promise<boolean> {
+async function gameMenuOnce(onModAction: (run: () => Promise<void>) => void): Promise<boolean> {
   const entries = gameMenuEntries({ canQuit: desktopQuitAvailable() });
   const pick = await selectFromMenu(
     term,
@@ -8274,6 +8280,7 @@ async function gameMenuOnce(): Promise<boolean> {
     entries.map((e) => e.item),
     gameMenuFooter(),
     {
+      onModAction,
       initialCursor: gameMenuCursor,
       onHighlight: (i) => {
         gameMenuCursor = i;
@@ -12670,7 +12677,7 @@ inputEvents.addEventListener("keydown", (ev) => {
     // (so a player who does not know the keys is never stuck).
     if (ev.key === "Escape") {
       ev.preventDefault();
-      void openModal(openGameMenu);
+      void openGameMenu();
       return;
     }
   }

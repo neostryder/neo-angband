@@ -617,7 +617,8 @@ function mountPanel(
    * declaration loudly. */
   if (fault !== undefined) throw new Error(fault);
   if (modPresentationSuspended()) {
-    throw new Error(`panel "${spec.id}": the game is asking the player about mod permissions; open it again afterwards`);
+    const reason = modPanelsSuspended() ? "is asking the player about mod permissions" : "has a dialog open";
+    throw new Error(`panel "${spec.id}": the game ${reason}; open it again afterwards`);
   }
   if (revoked) {
     throw new Error(

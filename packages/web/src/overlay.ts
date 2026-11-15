@@ -1912,6 +1912,8 @@ export interface MenuItem extends Omit<MenuTransformRow, "id" | "semantic"> {
  * ESC exits.
  */
 export interface SelectMenuOptions {
+  /** The caller must close its host modal before running a mod's action. */
+  onModAction?: (run: () => Promise<void>) => void;
   /** Keep a destructive host confirmation on the host's own menu. */
   hostOnly?: boolean;
   /** Spell values supplied by bookSpellMenu, the same source as the visible rows. */
@@ -2175,7 +2177,7 @@ export function selectFromMenu(
           if (pickedId === null) return null;
           const source = originalIndex.get(pickedId);
           if (source !== undefined) return source;
-          if (await menuRegistry.runAction(id, pickedId)) return MENU_ACTION;
+          if (await menuRegistry.runAction(id, pickedId, extra.onModAction)) return MENU_ACTION;
         }
       })();
     }
@@ -2423,11 +2425,10 @@ export function selectFromMenu(
        * to occupy the same ordinal slot. */
       const source = originalIndex.get(it.id ?? "");
       if (source === undefined) {
-        /* This starts synchronously inside the menu-selection gesture. That is
-         * what lets a callback ask the browser for a folder before the gesture
-         * expires; it is awaited only to keep this modal from leaking input. */
+        /* The caller can defer the action until its host modal closes, so a
+         * panel opened by the action does not inherit the modal's suspension. */
         actionRunning = true;
-        void menuRegistry.runAction(id, it.id ?? "").then((ran) => {
+        void menuRegistry.runAction(id, it.id ?? "", extra?.onModAction).then((ran) => {
           if (ran) finish(MENU_ACTION);
           else actionRunning = false;
         });
@@ -2768,7 +2769,7 @@ async function askThroughPresenter(deps: {
        * it is said out loud, because a presenter cannot see why nothing
        * happened. */
       if (source === undefined) {
-        if (await menuRegistry.runAction(question.id, row.id ?? "")) return MENU_ACTION;
+        if (await menuRegistry.runAction(question.id, row.id ?? "", extra?.onModAction)) return MENU_ACTION;
         return refuse(`"${answer.choice}", which no game action stands behind`);
       }
       return source;

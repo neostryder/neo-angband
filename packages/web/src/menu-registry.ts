@@ -144,14 +144,18 @@ export class MenuRegistry implements MenuRegistryTarget {
   }
 
   /** Run only a row this registry itself installed; forged semantic tags are inert. */
-  async runAction(id: string, rowId: string): Promise<boolean> {
+  async runAction(id: string, rowId: string, defer?: (run: () => Promise<void>) => void): Promise<boolean> {
     const action = [...(this.#actions.get(id)?.values() ?? [])].find((candidate) => candidate.rowId === rowId);
     if (!action) return false;
-    try {
-      await action.handler();
-    } catch (err) {
-      this.report(action.owner, `menu action "${action.action}" failed: ${message(err)}`);
-    }
+    const run = async (): Promise<void> => {
+      try {
+        await action.handler();
+      } catch (err) {
+        this.report(action.owner, `menu action "${action.action}" failed: ${message(err)}`);
+      }
+    };
+    if (defer) defer(run);
+    else await run();
     return true;
   }
 }
