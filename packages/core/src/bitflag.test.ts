@@ -357,3 +357,41 @@ describe("FlagSet wrapper", () => {
     expect(f.next(18)).toBe(NO_FLAG);
   });
 });
+
+
+describe("flag intersection result context", () => {
+  const context = { flagIntersectionResult: () => true };
+
+  it.each([
+    [[1, 128], [1, 128], false],
+    [[1, 0], [3, 128], false],
+    [[3, 128], [1, 0], true],
+    [[0, 0], [3, 128], false],
+    [[0, 0], [0, 0], false],
+  ] as const)("reports removed bits for %j intersected with %j", (left, right, changed) => {
+    const a = Uint8Array.from(left);
+    expect(flagInter(a, Uint8Array.from(right), context)).toBe(changed);
+    expect([...a]).toEqual(left.map((v, i) => v & right[i]!));
+    const set = new FlagSet(Uint8Array.from(left), context);
+    expect(set.inter(new FlagSet(Uint8Array.from(right)))).toBe(changed);
+    expect([...set.bits]).toEqual([...a]);
+  });
+
+  it("threads the context through masks and clones without changing another caller", () => {
+    expect(flagsMask(Uint8Array.of(1, 0), context, 1, 2, 16)).toBe(false);
+    const set = new FlagSet(Uint8Array.of(1, 0), context);
+    expect(set.clone().mask(1, 2, 16)).toBe(false);
+    expect(FlagSet.forFlags(16, context).mask(1)).toBe(false);
+    expect(flagsMask(Uint8Array.of(1, 0), 1, 2, 16)).toBe(true);
+    expect(new FlagSet(Uint8Array.of(1, 0)).mask(1, 2, 16)).toBe(true);
+    expect(flagsMask(Uint8Array.of(1, 0), context)).toBe(true);
+  });
+
+  it("reads a live context and preserves the default result when disabled", () => {
+    let active = true;
+    const set = new FlagSet(Uint8Array.of(1), { flagIntersectionResult: () => active });
+    expect(set.inter(new FlagSet(Uint8Array.of(3)))).toBe(false);
+    active = false;
+    expect(set.inter(new FlagSet(Uint8Array.of(3)))).toBe(true);
+  });
+});

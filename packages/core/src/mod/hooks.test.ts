@@ -656,6 +656,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
   }
 
   const PROBES: Record<keyof ModHooks, Probe> = {
+    flagIntersectionResult: {
+      yes: (log, tag) => ({ flagIntersectionResult: () => { log.push(tag); return true; } }),
+      no: (log, tag) => ({ flagIntersectionResult: () => { log.push(tag); return false; } }),
+      run: (h) => h.flagIntersectionResult?.(),
+    },
     helpText: {
       yes: (log, tag) => ({ helpText: (text) => { log.push(tag); return text + tag; } }),
       no: (log, tag) => ({ helpText: (text) => { log.push(tag); return text; } }),
@@ -1551,4 +1556,10 @@ describe("the modding docs count the hooks MOD_HOOK_FOLDS has", () => {
       `\`ModHooks\` is a closed interface of ${String(total)} members`,
     );
   });
+});
+
+
+it("flagIntersectionResult declines when its provider throws", () => {
+  const { hooks } = guarded({ flagIntersectionResult: THROWS });
+  expect(hooks.flagIntersectionResult?.()).toBe(false);
 });

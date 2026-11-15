@@ -1355,6 +1355,7 @@ describe("a Worker mod's hooks", () => {
     expect(restateHelpView(view, hooks.helpText!)).toEqual(result);
   });
   const tables: Api2Policies = {
+    flagIntersectionResult: "removedBits",
     trapAllocation: { kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" },
     classicSearch: true,
     missileCritFromState: true,

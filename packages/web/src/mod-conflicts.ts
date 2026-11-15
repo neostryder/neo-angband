@@ -272,6 +272,7 @@ function hudRegionDescription(region: string): string {
 function hookDescription(hook: keyof ModHooks): string {
   const words: Record<keyof ModHooks, string> = {
     monsterOwnDropThefts: "how stolen items reduce a monster's later treasure",
+    flagIntersectionResult: "Reports whether a flag intersection removed bits.",
     monsterLoreCompleteness: "the point at which monster lore counts as complete",
     forgetUnlitImpassableTerrain: "forgetting impassable terrain you stand on without light",
     classicSearch: "host-owned classic searching and continuous search mode",

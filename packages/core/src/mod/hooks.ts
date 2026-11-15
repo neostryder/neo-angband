@@ -321,6 +321,8 @@ export interface ModHooks {
   birthConfirmNote?: (choice: { readonly name: string; readonly raceName: string; readonly className: string; readonly birthOptions: Readonly<Record<string, boolean>> }) => string | null;
   /** steal_monster_item, through game/steal.ts: own-drop provenance and 16-bit saturation. */
   monsterOwnDropThefts?: () => boolean;
+  /** The caller supplies this context to flag utilities to report removed bits. */
+  flagIntersectionResult?: () => boolean;
   /** lore_update/lore_is_fully_known and update_mon: select the 29985cd05 lore rules. */
   monsterLoreCompleteness?: () => boolean;
   /** noteSpots (update_view): light <= 0 without UNLIGHT also forgets impassable player terrain. */
@@ -878,6 +880,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   birthOptionHighlight: "all-observe",
   birthConfirmNote: "last-answer",
   monsterOwnDropThefts: "any-yes",
+  flagIntersectionResult: "any-yes",
   monsterLoreCompleteness: "any-yes",
   forgetUnlitImpassableTerrain: "any-yes",
   forceFromBlastCenter: "any-yes",
@@ -999,6 +1002,9 @@ export function guardModHooks(
       return neutral;
     }
   }
+
+  const flagIntersectionResult = hooks.flagIntersectionResult;
+  if (flagIntersectionResult) out.flagIntersectionResult = () => guard("flagIntersectionResult", () => flagIntersectionResult(), false);
 
   const ownDropThefts = hooks.monsterOwnDropThefts;
   if (ownDropThefts) out.monsterOwnDropThefts = () => guard("monsterOwnDropThefts", () => ownDropThefts(), false);
@@ -1257,6 +1263,9 @@ export function composeModHooks(
       return null;
     };
   }
+
+  const flagIntersectionResult = list.map((c) => c.flagIntersectionResult).filter(isFn);
+  if (flagIntersectionResult.length > 0) out.flagIntersectionResult = () => flagIntersectionResult.some((fn) => fn());
 
   const ownDropThefts = list.map((c) => c.monsterOwnDropThefts).filter(isFn);
   if (ownDropThefts.length > 0) out.monsterOwnDropThefts = () => ownDropThefts.some((fn) => fn());

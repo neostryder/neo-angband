@@ -280,6 +280,7 @@ describe("randart set size declarations", () => {
 describe("API2_POLICY_KINDS", () => {
   it("maps every table to its matching registry permission", () => {
     expect(Object.fromEntries(API2_POLICY_KINDS.map((kind) => [kind.name, kind.capability]))).toEqual({
+      flagIntersectionResult: "registry:rune",
       classicSearch: "registry:command",
       missileCritFromState: "registry:effect-info",
       forcedDescentStairs: "registry:room",
@@ -310,7 +311,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["classicSearch", "missileCritFromState", "forcedDescentStairs", "randartSetSize", "trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
+      else expect(["flagIntersectionResult", "classicSearch", "missileCritFromState", "forcedDescentStairs", "randartSetSize", "trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
     }
   });
 
@@ -579,5 +580,17 @@ describe("the tile map", () => {
     expect(checkApi2Policies({ tileMap: [{ monster: 1, like: 3, hue: 360 }] })).toMatch(/hue/u);
     expect(checkApi2Policies({ tileMap: [{ monster: 1, like: -1 }] })).toMatch(/like is an index/u);
     expect(checkApi2Policies({ tileMap: [{ monster: 1, like: 2, packs: [] }] })).toMatch(/packs lists/u);
+  });
+});
+
+
+describe("flagIntersectionResult", () => {
+  it("validates the mode and requires the rune registry grant", () => {
+    expect(checkApi2Policies({ flagIntersectionResult: "removedBits" })).toBeNull();
+    for (const value of [true, false, "legacy", {}, null]) {
+      expect(checkApi2Policies({ flagIntersectionResult: value })).toContain("flagIntersectionResult is removedBits");
+    }
+    expect(api2PolicyEffects({ flagIntersectionResult: "removedBits" }).registrations).toEqual({ flagIntersectionResult: "removedBits" });
+    expect(api2PolicyEffects({ flagIntersectionResult: "removedBits" }, () => false).registrations).toEqual({});
   });
 });

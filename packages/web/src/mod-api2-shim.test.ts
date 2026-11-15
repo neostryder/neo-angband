@@ -657,6 +657,7 @@ describe("policy tables that install registrations", () => {
   });
 
   const tables: Api2Policies = {
+    flagIntersectionResult: "removedBits",
     classicSearch: true,
     missileCritFromState: true,
     forcedDescentStairs: true,
@@ -695,7 +696,7 @@ describe("policy tables that install registrations", () => {
       () => ({ grants: capabilities("tables", [capability]) }));
     const hooks = load("tables", plugin).hooks;
     const registrations = api2PluginRegistrations(plugin, "tables", { loud: true });
-    const policyHook: Partial<Record<string, string>> = { classicSearch: "classicSearch", missileCritFromState: "missileCritFromState", forcedDescentStairs: "forcedDescentStairs", trapAllocation: "trapAllocation", monsterOwnDropThefts: "monsterOwnDropThefts", monsterLoreCompleteness: "monsterLoreCompleteness", forgetUnlitImpassableTerrain: "forgetUnlitImpassableTerrain", forceFromBlastCenter: "forceFromBlastCenter", monsterArcheryFrequency: "monsterArcheryFrequency", walkBlockedByDiggable: "walkBlockedByDiggable", startingOptions: "newCharacter", projectionRadiusClamp: "projectionRadius", levelRevisitTracking: "levelRevisited" };
+    const policyHook: Partial<Record<string, string>> = { flagIntersectionResult: "flagIntersectionResult", classicSearch: "classicSearch", missileCritFromState: "missileCritFromState", forcedDescentStairs: "forcedDescentStairs", trapAllocation: "trapAllocation", monsterOwnDropThefts: "monsterOwnDropThefts", monsterLoreCompleteness: "monsterLoreCompleteness", forgetUnlitImpassableTerrain: "forgetUnlitImpassableTerrain", forceFromBlastCenter: "forceFromBlastCenter", monsterArcheryFrequency: "monsterArcheryFrequency", walkBlockedByDiggable: "walkBlockedByDiggable", startingOptions: "newCharacter", projectionRadiusClamp: "projectionRadius", levelRevisitTracking: "levelRevisited" };
     expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : policyHook[name] ? [policyHook[name]] : []);
     expect(Object.keys(registrations ?? {})).toEqual("registration" in target ? [target.registration] : []);
     plugin.uninstall?.();
@@ -868,4 +869,14 @@ describe("policy tables that install registrations", () => {
     expect(stores.discountRollHandler()?.({ rng, cost: 100 })).toBe(0);
     expect(rng.getState()).toEqual(before);
   });
+});
+
+
+it("flagIntersectionResult follows the active policy without sharing a flag context", () => {
+  let active = true;
+  const hooks = api2PolicyModHooks({ flagIntersectionResult: "removedBits" }, () => active);
+  expect(hooks.flagIntersectionResult?.()).toBe(true);
+  active = false;
+  expect(hooks.flagIntersectionResult?.()).toBe(false);
+  expect(api2PolicyModHooks({}, () => true).flagIntersectionResult).toBeUndefined();
 });

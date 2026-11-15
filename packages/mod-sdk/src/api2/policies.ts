@@ -185,6 +185,7 @@ export type Api2CursedLightRadiusPolicy = boolean | { readonly marker: "LIGHT_CU
 
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
+  readonly flagIntersectionResult?: "removedBits";
   /** True counts only a monster's own stolen drops and saturates thefts at 65535. */
   readonly monsterOwnDropThefts?: boolean;
   /** True uses upstream lore masks, completeness checks, and first-sight learning. */
@@ -300,6 +301,7 @@ export type Api2PlayerTileProvider<T = unknown> = (view: Api2PlayerTileView) => 
 
 /** The game registrations a table can install, beside the hooks. */
 export interface Api2PolicyRegistrations {
+  flagIntersectionResult?: "removedBits";
   monsterOwnDropThefts?: true;
   monsterLoreCompleteness?: true;
   forgetUnlitImpassableTerrain?: true;
@@ -545,6 +547,14 @@ const LIST_KEYS: readonly string[] = ["dy", "-dy", "dx", "-dx"];
  * policies.test.ts, and list it under Policy tables in docs/modding/API2.md.
  */
 export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
+  {
+    name: "flagIntersectionResult",
+    capability: "registry:rune",
+    summary: "Reports whether a flag intersection removed bits.",
+    target: { registration: "flagIntersectionResult" },
+    check: (value) => value === "removedBits" ? null : "flagIntersectionResult is removedBits",
+    apply(_value, out) { out.registrations.flagIntersectionResult = "removedBits"; },
+  },
   {
     name: "birthConfirmNote",
     capability: "registry:ui-entry",

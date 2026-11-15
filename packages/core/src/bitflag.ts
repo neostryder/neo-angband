@@ -26,6 +26,11 @@
  *   complement of the second operand.
  */
 
+/** A caller owns its flag rules so separate sessions can select different results. */
+export interface FlagSetContext {
+  readonly flagIntersectionResult?: () => boolean;
+}
+
 /** Bits per bitflag array element (sizeof(uint8_t) * 8). */
 export const FLAG_WIDTH = 8;
 
@@ -234,15 +239,16 @@ export function flagUnion(flags1: Uint8Array, flags2: Uint8Array): boolean {
  * flag_inter: flags1 &= flags2. Upstream quirk kept faithfully: the return
  * value reports whether flags1 and flags2 DIFFERED (per byte), not whether
  * flags1 was actually modified. E.g. flags1 = 0x01, flags2 = 0x03 returns
- * true even though flags1 is unchanged.
+ * true even though flags1 is unchanged. A caller context can select removed bits.
  */
-export function flagInter(flags1: Uint8Array, flags2: Uint8Array): boolean {
+export function flagInter(flags1: Uint8Array, flags2: Uint8Array, context?: FlagSetContext): boolean {
   assertSameSize(flags1, flags2, "flagInter");
+  const removedBits = context?.flagIntersectionResult?.() ?? false;
   let delta = false;
   for (let i = 0; i < flags1.length; i++) {
     const a = flags1[i] as number;
     const b = flags2[i] as number;
-    if (a !== b) delta = true;
+    if (removedBits ? (a & ~b) !== 0 : a !== b) delta = true;
     flags1[i] = a & b;
   }
   return delta;
@@ -371,10 +377,14 @@ export function flagsInit(flags: Uint8Array, ...set: number[]): void {
  * the given flags). Return value keeps the upstream flag_inter inequality
  * quirk, because upstream implements this via flag_inter.
  */
-export function flagsMask(flags: Uint8Array, ...mask: number[]): boolean {
+export function flagsMask(flags: Uint8Array, ...mask: number[]): boolean;
+export function flagsMask(flags: Uint8Array, context: FlagSetContext, ...mask: number[]): boolean;
+export function flagsMask(flags: Uint8Array, ...args: [FlagSetContext, ...number[]] | number[]): boolean {
+  const context = typeof args[0] === "object" ? args[0] : undefined;
+  const mask = (context ? args.slice(1) : args) as number[];
   const m = new Uint8Array(flags.length);
   for (const f of mask) flagOn(m, f);
-  return flagInter(flags, m);
+  return flagInter(flags, m, context);
 }
 
 /**
@@ -386,7 +396,7 @@ export function flagsMask(flags: Uint8Array, ...mask: number[]): boolean {
 export class FlagSet {
   readonly bits: Uint8Array;
 
-  constructor(size: number | Uint8Array) {
+  constructor(size: number | Uint8Array, readonly context?: FlagSetContext) {
     if (typeof size === "number") {
       if (size < 1 || !Number.isInteger(size)) {
         throw new RangeError(`FlagSet: invalid byte size ${size}`);
@@ -398,8 +408,8 @@ export class FlagSet {
   }
 
   /** Size a set to hold flags FLAG_START..maxFlag - 1 (FLAG_SIZE(max)). */
-  static forFlags(maxFlag: number): FlagSet {
-    return new FlagSet(flagSize(maxFlag));
+  static forFlags(maxFlag: number, context?: FlagSetContext): FlagSet {
+    return new FlagSet(flagSize(maxFlag), context);
   }
 
   /** The byte size of the set (the upstream `size` parameter). */
@@ -472,7 +482,7 @@ export class FlagSet {
 
   /** A new FlagSet with the same contents. */
   clone(): FlagSet {
-    return new FlagSet(Uint8Array.from(this.bits));
+    return new FlagSet(Uint8Array.from(this.bits), this.context);
   }
 
   union(other: FlagSet): boolean {
@@ -480,7 +490,7 @@ export class FlagSet {
   }
 
   inter(other: FlagSet): boolean {
-    return flagInter(this.bits, other.bits);
+    return flagInter(this.bits, other.bits, this.context);
   }
 
   diff(other: FlagSet): boolean {
@@ -520,7 +530,7 @@ export class FlagSet {
   }
 
   mask(...mask: number[]): boolean {
-    return flagsMask(this.bits, ...mask);
+    return flagsMask(this.bits, this.context ?? {}, ...mask);
   }
 
   /** Iterate the set flags in ascending order. */
