@@ -25,6 +25,7 @@
  */
 
 import { decideAutoplayerKey } from "../autoplayer-keys";
+import { resolvedModSettings } from "../mod-settings-values";
 import { revokeWorkerGameplay, serveWorkerGameplayCall } from "../mod-api2-host";
 import { GAMEPLAY_WORKER_CALLS } from "./protocol";
 import { copyBridgeJson } from "../engine-bridge/values";
@@ -821,6 +822,7 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
       tier: "public",
       controllerArmed: deps.controllerArmed === true,
       flags: { ...deps.flags },
+      settings: { ...resolvedModSettings(deps.id) },
       newCharacter: deps.newCharacter,
       granted: workerGrants,
       net: deps.net,

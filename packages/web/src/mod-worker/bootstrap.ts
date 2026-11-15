@@ -308,7 +308,7 @@ export function installModWorkerBootstrap(
   };
 
   const summarize = (d: Api2ModDefinition, m: WorkerMeta): WorkerDefinitionSummary => {
-    const context = freeze({ id: m.id, flags: { ...m.flags } });
+    const context = freeze({ id: m.id, flags: { ...m.flags }, settings: { ...m.settings } });
     const hooks = (d.hooks?.(context) ?? {}) as Record<string, unknown>;
     declared = {};
     const misplaced: string[] = [];

@@ -52,6 +52,7 @@ import {
   mergePolicies,
 } from "./mod-api2-shim";
 import { modPluginContext } from "./mod-context";
+import { setModSettingSource } from "./mod-settings-values";
 import { defineModPlugin, validateModPlugin, type ModPlugin } from "./mod-plugin";
 
 afterEach(() => resetTvalRegistry());
@@ -446,6 +447,35 @@ describe("an API 1 plugin", () => {
 });
 
 describe("an API 2 definition through the shim", () => {
+  it("passes only resolved declared settings to policy factories after reload", () => {
+    const declared = [{ id: "multiplier", title: "Multiplier", description: "Artifact count", min: 1, max: 3, step: 1, default: 1, requiresReload: true }];
+    let stored: Record<string, unknown> = { multiplier: 2, undeclared: 99 };
+    const source = { declared: () => declared, stored: () => stored };
+    const seen: unknown[] = [];
+    const plugin = api2Plugin({ api: "^2.0.0", policies: (context) => {
+      seen.push(context.settings);
+      expect(Object.isFrozen(context.settings)).toBe(true);
+      return {};
+    } }, () => ({ grants: capabilities("modern", []) }));
+    try {
+      setModSettingSource(source);
+      load("modern", plugin);
+      stored = { multiplier: 3, undeclared: 99 };
+      load("modern", plugin);
+      setModSettingSource(source);
+      load("modern", plugin);
+      stored = { multiplier: "2" };
+      setModSettingSource(source);
+      load("modern", plugin);
+      stored = {};
+      setModSettingSource(source);
+      load("modern", plugin);
+      expect(seen).toEqual([{ multiplier: 2 }, { multiplier: 2 }, { multiplier: 3 }, { multiplier: 1 }, { multiplier: 1 }]);
+    } finally {
+      setModSettingSource(null);
+    }
+  });
+
   it("offers a birth presenter each creation and lets it decline other characters", () => {
     let take = true;
     const definition = defineApi2Mod({ api: "^2.0.0", birth: (mod) => {

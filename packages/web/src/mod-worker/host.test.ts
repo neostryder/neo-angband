@@ -51,6 +51,7 @@ import { API2_POLICY_KINDS, CapabilitySet, MOD_PERMISSION_TEXT, type Api2ModDefi
 import { api2Plugin, api2RandartSetSize, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "../mod-api2-shim";
 import { createApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
+import { setModSettingSource } from "../mod-settings-values";
 import { TRUTH_MAP, TRUTH_MONSTERS, resetModTiers, setModGrants } from "../mod-tier";
 import { recordTruthUse, setTruthSaveWriter } from "../mod-truth-consent";
 import { browserKeydown } from "../input-door";
@@ -248,6 +249,35 @@ function wire(definition: Api2ModDefinition, deps: Partial<ModWorkerHostDeps> = 
   sessions.push(session);
   return { session, worker, health, problems, switchedOff };
 }
+
+it("passes only resolved declared settings to Worker policy factories after reload", async () => {
+  const declared = [{ id: "multiplier", title: "Multiplier", description: "Artifact count", min: 1, max: 3, step: 1, default: 1, requiresReload: true }];
+  let stored: Record<string, unknown> = { multiplier: 2, undeclared: 99 };
+  const source = { declared: () => declared, stored: () => stored };
+  const seen: unknown[] = [];
+  const definition: Api2ModDefinition = { api: API, policies: (context) => {
+    seen.push(context.settings);
+    expect(Object.isFrozen(context.settings)).toBe(true);
+    return {};
+  } };
+  try {
+    setModSettingSource(source);
+    await wire(definition).session.ready;
+    stored = { multiplier: 3, undeclared: 99 };
+    await wire(definition).session.ready;
+    setModSettingSource(source);
+    await wire(definition).session.ready;
+    stored = { multiplier: "2" };
+    setModSettingSource(source);
+    await wire(definition).session.ready;
+    stored = {};
+    setModSettingSource(source);
+    await wire(definition).session.ready;
+    expect(seen).toEqual([{ multiplier: 2 }, { multiplier: 2 }, { multiplier: 3 }, { multiplier: 1 }, { multiplier: 1 }]);
+  } finally {
+    setModSettingSource(null);
+  }
+});
 
 /** Wait until the Worker's start has run and handed back what it found. */
 async function started<T>(wired: Wired, found: () => T | undefined): Promise<T> {

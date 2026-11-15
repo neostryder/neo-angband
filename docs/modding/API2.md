@@ -29,7 +29,7 @@ export default defineApi2Mod({
 });
 ```
 
-`hooks` is asked once when content composes and gets only the mod's id and flags. `start` runs when the game is ready and gets the API. `stop` runs before the mod is taken down, `migrateBag(data, fromSchema)` brings the mod's character data forward, and `prefs` declares how stored preferences migrate (see Storage).
+`hooks` is asked once when content composes and gets the mod's id, flags and settings. `start` runs when the game is ready and gets the API. `stop` runs before the mod is taken down, `migrateBag(data, fromSchema)` brings the mod's character data forward, and `prefs` declares how stored preferences migrate (see Storage).
 
 `checkApi2Definition`, the check `api2Plugin` runs, refuses a definition with neither `hooks` nor `start`, a member that is not a function, a `prefs.version` that is not a whole number from 1, and an `api` range this host's version does not satisfy.
 
@@ -179,6 +179,8 @@ In-process code registers things with the game itself through `engine.registry`:
 ## Policy tables
 
 `policies(context)` returns changes as data: hook answers, and a few game registrations. The game applies them itself, without calling the mod, so a table works the same in a Worker and in process. Tables do not limit what a mod can change. An in-process mod keeps every hook function it has, and when it declares a function and a table for the same hook, the function is used.
+
+`context.settings` is a frozen `Readonly<Record<string, number | string>>` containing only this mod's declared manifest settings, resolved with the player's stored choices or their defaults. The current manifest declares numeric settings: non-numeric and non-finite stored values use the default, and numbers are clamped and snapped to the declared range and step. Undeclared stored keys are omitted. Both runtimes provide the same snapshot to `hooks`, `policies` and `armed`; a setting marked `requiresReload` takes effect after reload. No capability is needed to read the mod's own settings.
 
 Each table needs its matching registry permission from the list below, in both runtimes. When a grant is missing, only the tables that need it are skipped, and the mod's other tables and hook functions stay available. In-process, `registry:*` covers every table. A Worker has to name each grant individually, and a bare `*` grants nothing. The in-process host evaluates the policies while it composes guarded hooks and reuses the results for startup registrations. If a factory throws, it contributes no tables, and the game still starts.
 

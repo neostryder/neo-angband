@@ -146,6 +146,7 @@ export interface WorkerMeta {
   readonly engine: string;
   readonly tier: "public";
   readonly flags: Readonly<Record<string, boolean>>;
+  readonly settings: Readonly<Record<string, number | string>>;
   readonly newCharacter: boolean;
   readonly controllerArmed?: boolean;
   /** The permissions granted, under their API 2 names. Never "*". */

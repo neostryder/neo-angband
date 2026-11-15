@@ -712,6 +712,7 @@ export interface ModApi2 {
 export interface Api2HookContext {
   readonly id: string;
   readonly flags: Readonly<Record<string, boolean>>;
+  readonly settings: Readonly<Record<string, number | string>>;
   readonly engine?: Api2Engine;
 }
 

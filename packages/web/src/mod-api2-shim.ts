@@ -39,6 +39,7 @@ import { api2Engine, createApi2Host, disposeApi2Host, type Api2HostOptions } fro
 import type { ModPlugin } from "./mod-plugin";
 import { createIntentGate } from "./intent-gate";
 import { gameplayIntents } from "./mod-gameplay-intents";
+import { resolvedModSettings } from "./mod-settings-values";
 
 /** The API 1 plugin version an API 2 mod presents to the loader. */
 const SHIM_PLUGIN_API = 1;
@@ -595,7 +596,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
       releaseRandartSize();
       pluginPolicies.delete(plugin as ModPlugin);
       const engine = api2Engine(ctx, options());
-      const context = { id: ctx.id, flags: plain({ ...ctx.flags }), ...(engine ? { engine } : {}) };
+      const context = { id: ctx.id, flags: plain({ ...ctx.flags }), settings: plain({ ...resolvedModSettings(ctx.id) }), ...(engine ? { engine } : {}) };
       const declared = hooksOf?.(context);
       const policies = policiesOf?.(context);
       let fromTables: Api2Hooks | undefined;
@@ -667,7 +668,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
         !(opts.grants.has("state:interaction.read") || opts.grants.has("state:*.read")) ||
         (opts.execution !== "worker" && !opts.developerInProcess))) return undefined;
       const engine = api2Engine(ctx, opts);
-      if (definition.armed && !definition.armed({ id: ctx.id, flags: plain({ ...ctx.flags }), armed: ctx.controllerArmed === true, ...(engine ? { engine } : {}) })) return undefined;
+      if (definition.armed && !definition.armed({ id: ctx.id, flags: plain({ ...ctx.flags }), settings: plain({ ...resolvedModSettings(ctx.id) }), armed: ctx.controllerArmed === true, ...(engine ? { engine } : {}) })) return undefined;
       const lacking = [
         ...(opts.grants.has("state:interaction.read") || opts.grants.has("state:*.read") ? [] : ["state:interaction.read"]),
         ...(opts.grants.has("input:intent") ? [] : ["input:intent"]),
