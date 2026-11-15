@@ -514,7 +514,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   const ownedMenuActions = new Set<string>();
   /* Returns the callback's own result, so a title action that awaits
    * title.choose holds the title screen until the choice resolves. */
-  const playerAction = <T extends unknown[]>(run: (...args: T) => unknown) => (...args: T): unknown => {
+  const playerAction = <T extends unknown[], R>(run: (...args: T) => R) => (...args: T): R => {
     actionBudget = 8;
     actionUntil = Date.now() + 1000;
     return run(...args);
