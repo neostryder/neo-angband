@@ -340,6 +340,7 @@ import { DEFAULT_AUTHORS_URL, fetchAuthors } from "./mod-authors";
 import { readConsent, writeConsent } from "./mod-consent";
 import { DEFAULT_REGISTRY_URL, fetchRegistry } from "./mod-curated";
 import { discoverMod, type DiscoverEnv } from "./mod-discover";
+import { createGithubReader } from "./github-cache";
 import { rawUrl } from "./mod-registry";
 import { currentPrompt, openPrompt } from "./prompt-wait";
 import {
@@ -1030,6 +1031,22 @@ try {
   scopedGameStorage = null; // no localStorage at all (private mode / no DOM)
 }
 setModStorage(scopedGameStorage);
+/* ONE reader for every release and repository read the game makes from GitHub's API
+ * (#493): the update check, the mod screens and a mod's `mod:read` lookups share its
+ * cache and its wait. Unscoped storage, because GitHub's answer is the same for every profile. */
+const githubReads = createGithubReader({
+  fetch: (url, init) => fetch(url, init),
+  storage: realGameStorage,
+});
+/* The mod screens' fetch, through that reader. `stale: true` lets a row show the last
+ * answer while GitHub asks the game to wait; `false` is for questions whose answer is
+ * "is anything newer", where an old answer would claim currency it does not have. */
+function githubDiscoverFetch(stale: boolean): DiscoverEnv["fetch"] {
+  return async (url) => {
+    const res = await githubReads.read(url, { stale });
+    return { ok: res.ok, status: res.status, retryAt: res.retryAt, source: res.source, text: () => res.text() };
+  };
+}
 const lookStore = new LookStore(scopedGameStorage, defaultModStore());
 setModLookHost({
   read: () => {
@@ -2281,10 +2298,7 @@ setModReadDoor({
   env: () => ({
     engineVersion: ENGINE_VERSION,
     channel: readChannel(channelStore(), ENGINE_VERSION),
-    fetch: async (url) => {
-      const res = await fetch(url);
-      return { ok: res.ok, status: res.status, text: () => res.text() };
-    },
+    fetch: githubDiscoverFetch(true),
   }),
 });
 /* A shop line no item answers is one mod's fault, not a failed launch.
@@ -13712,6 +13726,7 @@ async function runUpdateCheck(channel: UpdateChannel): Promise<UpdateCheck> {
     if (!machine) return { ok: true, update: null };
     return await checkForUpdate({
       fetch: globalThis.fetch.bind(globalThis),
+      read: githubReads.read,
       machine,
       current: ENGINE_VERSION,
       channel,
@@ -14097,10 +14112,16 @@ function modBrowseDeps(): ModUpgradeDeps {
     get channel() {
       return readChannel(channelStore(), ENGINE_VERSION);
     },
-    fetch: async (url) => {
-      const res = await fetch(url);
-      return { ok: res.ok, status: res.status, text: () => res.text() };
+    fetch: githubDiscoverFetch(true),
+  };
+  /* The installed-mod update check: "nothing newer" from an old tag list would be a
+   * claim the game cannot stand behind, so it waits out GitHub's limit instead. */
+  const refreshEnv: DiscoverEnv = {
+    engineVersion: ENGINE_VERSION,
+    get channel() {
+      return readChannel(channelStore(), ENGINE_VERSION);
     },
+    fetch: githubDiscoverFetch(false),
   };
   const installEnv = {
     fetch: (url: string) => fetch(url),
@@ -14187,9 +14208,9 @@ function modBrowseDeps(): ModUpgradeDeps {
     /* One tags call per installed mod, made only when the player opens the update
      * screen. NOT at boot: it is a network round trip per mod against an
      * unauthenticated rate limit of sixty an hour, on the code path whose latency
-     * was the town-map flash, and the alternative - caching the answer - is a
-     * stale claim wearing a fresh one's wording. */
-    refresh: async () => refreshInstalledMods(await installedMods(globalThis), discoverEnv),
+     * was the town-map flash. The shared reader answers a repeat within its fresh
+     * window from the cache, and never answers from an older one (refreshEnv). */
+    refresh: async () => refreshInstalledMods(await installedMods(globalThis), refreshEnv),
   };
 }
 

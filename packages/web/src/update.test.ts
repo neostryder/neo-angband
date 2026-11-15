@@ -461,15 +461,16 @@ describe("the request itself", () => {
     expect(failed(got)).toContain("500");
   });
 
-  it("names the rate limit, because an hour's wait is not a permissions problem", async () => {
+  it("answers the rate limit with one quiet line, because an hour's wait is not a permissions problem", async () => {
     /* The unauthenticated limit is sixty an hour per address, and this game
      * ships no credential on purpose - so a player with other GitHub traffic on
      * the same network hits it through no fault of their own. "403" alone reads
-     * as "you are not allowed", which is the wrong thing to go and investigate. */
+     * as "you are not allowed", which is the wrong thing to go and investigate (#493). */
     for (const status of [403, 429]) {
       const fetch = vi.fn().mockResolvedValue({ ok: false, status } as Response);
       const got = await checkForUpdate({ fetch: fetch as unknown as typeof globalThis.fetch, machine: WIN, current: "0.16.0", channel: "beta" });
-      expect(failed(got), `status=${String(status)}`).toMatch(/too many requests/iu);
+      expect(failed(got), `status=${String(status)}`).toMatch(/^Could not check for updates right now\./u);
+      expect(failed(got), `status=${String(status)}`).not.toMatch(/\b40[0-9]\b|\b429\b/u);
     }
   });
 

@@ -33,6 +33,7 @@ import {
   type TreeEntry,
 } from "./mod-source";
 import type { UpdateChannel } from "./update";
+import { minutesUntil } from "./github-cache";
 import type { PayloadEntry, EngineHeld, DiscoveredMod } from "@rpgm-tools/neo-angband-core";
 export type { PayloadEntry, EngineHeld, DiscoveredMod } from "@rpgm-tools/neo-angband-core";
 
@@ -59,6 +60,12 @@ export interface DiscoverEnv {
 export interface DiscoverResponse {
   readonly ok: boolean;
   readonly status: number;
+  /**
+   * When GitHub will take requests again, if it has asked the game to wait
+   * (github-cache.ts). `waiting` says no request was sent because of that wait.
+   */
+  readonly retryAt?: number | null;
+  readonly source?: string;
   text(): Promise<string>;
 }
 
@@ -87,10 +94,15 @@ async function getText(url: string, what: string, env: DiscoverEnv): Promise<str
   if (!res.ok) {
     /* Each of these needs different advice, so none of them is "it failed". */
     if (res.status === 404) throw new Error(`${what}: not there (HTTP 404)`);
-    if (res.status === 403) {
+    if (res.status === 403 || res.status === 429) {
+      const retryAt = res.retryAt ?? null;
+      const minutes = retryAt === null ? null : minutesUntil(retryAt, Date.now());
       throw new Error(
-        `${what}: GitHub is rate-limiting this connection (HTTP 403). ` +
-          `It clears on its own - try again in a few minutes.`,
+        `${what}: GitHub is rate-limiting this connection` +
+          (res.source === "waiting" ? "." : ` (HTTP ${String(res.status)}).`) +
+          (minutes === null
+            ? ` It clears on its own - try again in a few minutes.`
+            : ` Try again in ${String(minutes)} minute${minutes === 1 ? "" : "s"}.`),
       );
     }
     throw new Error(`${what}: GitHub refused it (HTTP ${String(res.status)})`);

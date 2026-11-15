@@ -26,6 +26,8 @@ A desktop build with updater support requests public release information from Gi
 
 The mod manager requests public GitHub registry, author, tag, tree, manifest, and selected mod-file information when a player uses mod browsing, installation, verification, or update features. The manager retains installed mod files locally so ordinary game startup does not require a mod download.
 
+The game keeps GitHub's recent public answers about releases, tags, and file lists in browser storage, along with any time GitHub asked it to wait before asking again. This lets it reuse an answer for a few minutes and stay within GitHub's request limits.
+
 These requests can reveal ordinary technical information to the hosting service or GitHub, such as an IP address, browser or application request headers, and the requested public URL. The game's source does not add a player account identifier, character name, save content, gameplay record, log content, or problem report to them. The hosting and GitHub providers govern their own handling of request data.
 
 The game's source code does not set or read cookies. Cookies and other practices of a browser, hosting provider, GitHub, Discord, or any other external service fall outside that statement.

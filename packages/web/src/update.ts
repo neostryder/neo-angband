@@ -47,6 +47,7 @@
 
 import { compareSemver } from "@rpgm-tools/neo-angband-mod-sdk";
 import { readSetting, writeSetting, type SettingsWriter } from "./settings-store";
+import { createGithubReader, minutesUntil, type GithubRead } from "./github-cache";
 
 /** The repository releases are cut from. */
 export const UPDATE_REPO = "neostryder/neo-angband";
@@ -448,6 +449,24 @@ export interface UpdateCheckDeps {
   readonly channel: UpdateChannel;
   readonly timeoutMs?: number;
   readonly repo?: string;
+  /**
+   * The shared GitHub reader (github-cache.ts), which caches the releases list and
+   * holds requests while GitHub has asked the game to wait. Absent, the check makes
+   * its one request through `fetch` with no cache.
+   */
+  readonly read?: GithubRead;
+  /** The clock the wait is measured against; tests pass their own. */
+  readonly now?: () => number;
+}
+
+/** What the update screen says when GitHub cannot be asked right now. */
+export const UPDATE_CHECK_UNAVAILABLE = "Could not check for updates right now.";
+
+/** The line for a check GitHub refused or asked to wait on, with the wait when it is known. */
+export function unavailableReason(retryAt: number | null, now: number): string {
+  if (retryAt === null) return `${UPDATE_CHECK_UNAVAILABLE} Try again later.`;
+  const minutes = minutesUntil(retryAt, now);
+  return `${UPDATE_CHECK_UNAVAILABLE} Try again in ${String(minutes)} minute${minutes === 1 ? "" : "s"}.`;
 }
 
 /**
@@ -477,31 +496,35 @@ export async function checkForUpdate(deps: UpdateCheckDeps): Promise<UpdateCheck
     timedOut = true;
     ctl.abort();
   }, deps.timeoutMs ?? UPDATE_TIMEOUT_MS);
+  const now = deps.now ?? Date.now;
+  const read = deps.read ?? createGithubReader({ fetch: deps.fetch as never, storage: null, now }).read;
   try {
-    const res = await deps.fetch(`https://api.github.com/repos/${repo}/releases?per_page=20`, {
+    /* `stale: false`: an old list must not answer "you are up to date" while GitHub
+     * is refusing requests, so a wait reports the check as not made. */
+    const res = await read(`https://api.github.com/repos/${repo}/releases?per_page=20`, {
       signal: ctl.signal,
       headers: { Accept: "application/vnd.github+json" },
+      stale: false,
     });
     if (!res.ok) {
-      const status = typeof res.status === "number" ? res.status : 0;
-      /* 403 and 429 are both how GitHub says "too many requests from this
-       * address this hour" to a caller with no credentials, and the game has
-       * none on purpose. Named, because "GitHub answered 403" reads as a
-       * permissions problem the player cannot fix, and an hour's wait is not
-       * that. */
+      const status = res.status;
+      /* 403 and 429 are both how GitHub says "too many requests from this address
+       * this hour" to a caller with no credentials, and the game has none on
+       * purpose. The player gets one quiet line and, when GitHub said, how long to
+       * wait; the reader holds every request until then. */
       return {
         ok: false,
         reason:
-          status === 403 || status === 429
-            ? `GitHub answered ${String(status)}, which is how it says too many requests have come from this network in the last hour. It clears on its own.`
+          res.source === "waiting" || status === 403 || status === 429
+            ? unavailableReason(res.retryAt, now())
             : `GitHub answered ${status === 0 ? "an error" : String(status)}.`,
       };
     }
     let body: unknown;
     try {
-      body = await res.json();
+      body = JSON.parse(await res.text());
     } catch {
-      return { ok: false, reason: "GitHub's answer could not be read." };
+      return { ok: false, reason: timedOut ? "GitHub did not answer in time." : "GitHub's answer could not be read." };
     }
     return {
       ok: true,

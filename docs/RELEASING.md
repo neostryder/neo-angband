@@ -541,8 +541,17 @@ The one to keep in mind when you touch either half:
   again for exactly this reason, and ENTER on a failed check asks a third time.
 - **403 and 429 are the rate limit,** not a permissions problem. The game ships
   no credential on purpose, so it gets the unauthenticated sixty-an-hour budget
-  shared with everything else on that address. The screen says so in those words,
-  because "403" reads as something the player did wrong.
+  shared with everything else on that address. The screen says "Could not check
+  for updates right now." and how long to wait, because "403" reads as something
+  the player did wrong.
+- **The check and the Mods screen share one cache** (`github-cache.ts`). An
+  answer is reused for ten minutes without a request, then revalidated with
+  `If-None-Match`. For a caller without credentials GitHub counts a 304 like any
+  other request, so the ten minutes are what save the budget. After a refusal,
+  `Retry-After` or `X-RateLimit-Reset` is stored and no request goes out before
+  it, in that launch or the next. The check never answers from an old list while
+  it waits, so a wait is never reported as "up to date". Asking again from the
+  update screen inside the ten minutes reads the stored answer and sends nothing.
 - **The title screen no longer waits for it.** The first `api.github.com` request
   a fresh process makes measured **6.1s** on the shipped Windows build; every
   later one in the same process took 2-5ms. The title used to await the answer
