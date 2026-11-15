@@ -28,6 +28,17 @@ describe("Ctrl-Z names an autoplayer that did not start (#482)", () => {
     expect(result).toEqual({ name: "Test Controller", kind: "failed" });
   });
 
+  it("does not call a deprecation notice on a mod that loaded a failed load", () => {
+    const notice = [{ id: "test-controller", why: "uses an API version that is deprecated" }];
+    expect(autoplayerTrouble([borg], notice, [], ["test-controller"])).toBeNull();
+  });
+
+  it("names a mod with a notice and a consent hold as not running, not failed", () => {
+    const notice = [{ id: "test-controller", why: "uses an API version that is deprecated" }];
+    const skipped = [{ id: "test-controller", why: "awaiting consent for input:controller" }];
+    expect(autoplayerTrouble([borg], notice, skipped)).toEqual({ name: "Test Controller", kind: "not-running" });
+  });
+
   it("says nothing when no enabled mod declares a controller, or the controller mod has no trouble", () => {
     expect(autoplayerTrouble([content], [{ id: "qol", why: "broken" }], [])).toBeNull();
     expect(autoplayerTrouble([borg], [{ id: null, why: "the mods folder could not be read" }], [])).toBeNull();

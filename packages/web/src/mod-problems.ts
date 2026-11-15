@@ -191,10 +191,16 @@ export function autoplayerTrouble(
   mods: readonly { readonly id: string; readonly name?: string; readonly capabilities?: readonly string[] }[],
   problems: readonly ModProblem[],
   skipped: readonly ModProblem[],
+  loaded: readonly string[] = [],
 ): AutoplayerTrouble | null {
   const autoplayers = mods.filter((m) => m.capabilities?.includes("input:controller") === true);
   const nameOf = (m: (typeof autoplayers)[number]): string => m.name?.trim() || m.id;
-  const failed = autoplayers.find((m) => problems.some((p) => p.id === m.id));
+  /* A problem is also where a deprecation or a grant notice goes, and those mods
+   * still load; a mod held back for consent has its reason in `skipped`. Only a
+   * mod with a problem that neither loaded nor was held back failed to load. */
+  const failed = autoplayers.find(
+    (m) => problems.some((p) => p.id === m.id) && !loaded.includes(m.id) && !skipped.some((p) => p.id === m.id),
+  );
   if (failed) return { name: nameOf(failed), kind: "failed" };
   const held = autoplayers.find((m) => skipped.some((p) => p.id === m.id));
   return held ? { name: nameOf(held), kind: "not-running" } : null;

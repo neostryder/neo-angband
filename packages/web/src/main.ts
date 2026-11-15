@@ -13937,6 +13937,7 @@ function tryBorgCommand(): void {
       enabledModIds().flatMap((id) => modManifestFor(id) ?? []),
       status.problems,
       status.skipped,
+      [...activeModCode().plugins, ...activeModCode().workers].map((loaded) => loaded.id),
     );
     say(
       trouble === null
