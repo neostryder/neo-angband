@@ -762,6 +762,26 @@ describe("the first-party seams", () => {
     expect(runtime.list()).toEqual([]);
     expect(createApi2Host(ctx, { grants: caps, tier: "public" }).ui.title).toBeDefined();
   });
+  it("holds a title action open until the choice it awaits resolves", async () => {
+    const caps = capabilities("probe", ["ui:title"]);
+    let answer: (value: number) => void = () => undefined;
+    const runtime = new TitleRuntime(() => new Promise<number>((resolve) => { answer = resolve; }));
+    const ctx = { ...modPluginContext("probe", {}, undefined, {}, { capabilities: caps }), title: runtime.forMod("probe") };
+    const api = createApi2Host(ctx, { grants: caps, tier: "first-party", firstParty: { presentation: true } });
+    let picked: unknown;
+    await api.ui.title!.registerRow({ id: "new-character", label: "New character", run: async () => {
+      picked = await api.ui.title!.choose("Where should the new character live?", ["Here", "There"]);
+    } });
+    let finished = false;
+    const running = runtime.run(runtime.list()[0]!.choice).then(() => { finished = true; });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(finished).toBe(false);
+    answer(1);
+    await running;
+    expect(finished).toBe(true);
+    expect(picked).toEqual({ ok: true, value: 1 });
+    disposeApi2Host(api);
+  });
   it("refuses presentation to a public mod even with a namespace flag", () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     expect(host(game, [], { tier: "public", firstParty: { presentation: true } }).presentation).toBeUndefined();

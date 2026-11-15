@@ -512,10 +512,12 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
   let choosingTitle = false;
   const ownedCommands = new Set<string>();
   const ownedMenuActions = new Set<string>();
-  const playerAction = <T extends unknown[]>(run: (...args: T) => unknown) => (...args: T): void => {
+  /* Returns the callback's own result, so a title action that awaits
+   * title.choose holds the title screen until the choice resolves. */
+  const playerAction = <T extends unknown[]>(run: (...args: T) => unknown) => (...args: T): unknown => {
     actionBudget = 8;
     actionUntil = Date.now() + 1000;
-    void run(...args);
+    return run(...args);
   };
   const inputAllowed = (): boolean => {
     if (modPanelsSuspended()) return false;
