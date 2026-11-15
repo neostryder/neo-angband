@@ -113,6 +113,8 @@ A first-party mod with `ui:title` adds a row to the title screen with `ui.title.
 
 `mod.meta.log(message)` writes an `info` line on the channel `mod:<id>` in the game's log. A release build keeps warnings and errors only, so those lines stay out of the log until the level is raised. There are three ways to raise it: press `L` on the "Report a problem" page, which keeps the choice; launch the desktop game with `--log=info` (or `--log=debug`), which applies to that launch only; or add `?log=info` to the address of the web build. The desktop game writes the log to a file in the `logs` folder beside the saves, one file per launch, and the report page includes the tail.
 
+Command browser rows display `MenuTransformRow.hint` for the selected row on the penultimate terminal line, as other menus do. An absent hint leaves the picker unchanged. Both runtimes use the existing menu transform and `registry:menu` consent; this adds no hook.
+
 ## Events
 
 An event arrives only when the player could know about it. `combat-outcome` reports outcomes against the player or a perceived monster in view; attacking an unseen monster does not reveal its position or outcome. A monster appears as `{ monster: id }` when the player perceived it as the event happened and as `"unseen"` otherwise, even when the event removed it (a kill). Movement or healing by a monster the player cannot perceive in view does not arrive. A movement omits `from` when the player did not perceive the monster at its origin before it moved. Damage and healing amounts are given only for the player, as `playerDamage` and `playerAmount`. Suppressed events assign no monster handles, and healing while the player was away from a persistent level emits no event.

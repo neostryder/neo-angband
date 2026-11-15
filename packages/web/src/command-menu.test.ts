@@ -347,6 +347,23 @@ describe("chooseCommand (textui_action_menu_choose)", () => {
   const open = (term: FakeTerm, rogue = false, ran: string[] = []) =>
     chooseCommand(term, cats(rogue, ran), () => term.clear());
 
+  it("shows the selected transformed row's hint and clears it on navigation", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    menuRegistry.forOwner("hint").register("core:keypress-command:items", (_id, rows) =>
+      rows.map((row, i) => i === 0 ? { ...row, hint: "Choose an inscription." } : row),
+    );
+    const done = open(term);
+    press(win, "Enter");
+    await tick();
+    expect(term.snapshot()[22]).toBe("Choose an inscription.");
+    press(win, "ArrowDown");
+    expect(term.snapshot()[22]).toBe("");
+    press(win, "Enter");
+    await done;
+  });
+
   it("opens on the category list, boxed where window_make puts it", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;

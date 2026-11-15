@@ -132,12 +132,13 @@ function runMenu(
     const paint = (): void => {
       controls.update({
         kind: "menu", label: "Commands",
+        detail: items[cursor]?.hint,
         rows: items.map((item, index) => ({
           id: item.id ?? `row:${index}`, label: item.label,
           disabled: item.disabled, selected: cursor === index, run: () => finish(index),
         })), replies: [cancelAction()],
       });
-      const { cols } = term.size();
+      const { cols, rows } = term.size();
       /* screen_save / screen_load around each menu (ui-context.c:1182, :1230-
        * 1237): the box is drawn OVER the game screen and what it covered comes
        * back when it closes. This port has no screen stack, so the caller hands
@@ -153,6 +154,10 @@ function runMenu(
         if (!item) break;
         const width = Math.max(0, Math.min(box.x1 - col, cols - 1 - col));
         term.print(col, row + i, item.label.slice(0, width), item.disabled ? UI_TEXT : rowColor(top + i === cursor));
+      }
+      if (items.some((item) => item.hint !== undefined)) {
+        term.eraseToEol(0, rows - 2);
+        term.print(0, rows - 2, (items[cursor]?.hint ?? "").slice(0, cols - 1), UI_TEXT);
       }
     };
 
