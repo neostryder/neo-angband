@@ -220,9 +220,10 @@ describe("a tier comes from where the bytes came from", () => {
     expect(assignTier(installed({ listing: "file" })).trust).toBe("sideloaded");
   });
 
-  it("refuses first-party trust for repository metadata without a discovery commit", () => {
-    expect(assignTier(installed({}, ["sha"])).trust).toBe("sideloaded");
-    expect(assignTier(installed({ sha: "" })).trust).toBe("sideloaded");
+  it("keeps a registry install recorded without a commit in the tier it was installed in", () => {
+    /* Repository installs now refuse a missing commit (mod-install.ts), so only an
+     * older record or one written while the tag list was unreadable lacks one. */
+    expect(assignTier(installed({}, ["sha"])).trust).toBe("first-party");
   });
 
   it("counts an old record as fetched only when it holds a commit", () => {

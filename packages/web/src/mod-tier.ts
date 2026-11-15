@@ -134,7 +134,12 @@ export interface ModTier {
  * ever writes.
  */
 function fetchedFromRepo(facts: ModTierFacts): boolean {
-  if (facts.installedByModId !== undefined || !facts.sha) return false;
+  if (facts.installedByModId !== undefined) return false;
+  /* A record from the registry with no commit predates required discovery
+   * commits, or was written while GitHub's tag list could not be read. New
+   * repository installs always record one; demoting the old ones would take a
+   * first-party mod out of the tier it was installed in, and a forged record
+   * could carry a forged commit just as easily. */
   if (facts.listing !== undefined) return facts.listing !== "file";
   return facts.sha !== undefined;
 }
