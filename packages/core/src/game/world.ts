@@ -23,6 +23,7 @@
  */
 
 import { ELEM, MSG, OF, PF, PROJ, RF, STAT, TMD } from "../generated/index.js";
+import { timedNameToIdx } from "../effects/effect.js";
 import type { Loc } from "../loc.js";
 import type { GameObject } from "../obj/object.js";
 import { tvalIsLight } from "../obj/object.js";
@@ -123,6 +124,36 @@ function worldMsg(state: GameState, text: string): void {
   else state.msg?.(text);
 }
 
+/* player_resting_complete_special (player-util.c:1504) hard-codes these ten.
+ * 41319eef9 moved the list onto a COMPLETE_REST flag the shipped data does
+ * not have, so a hook that declines keeps the ten. */
+const COMPLETE_REST_DEFAULT: readonly number[] = [
+  TMD.BLIND,
+  TMD.CONFUSED,
+  TMD.POISONED,
+  TMD.AFRAID,
+  TMD.TERROR,
+  TMD.STUN,
+  TMD.CUT,
+  TMD.SLOW,
+  TMD.PARALYZED,
+  TMD.IMAGE,
+];
+
+function completeRestBlocked(state: GameState): boolean {
+  const named = state.modHooks?.completeRestEffects?.();
+  const t = state.actor.player.timed;
+  if (!Array.isArray(named)) {
+    for (const idx of COMPLETE_REST_DEFAULT) if ((t[idx] ?? 0) > 0) return true;
+    return false;
+  }
+  for (const name of named) {
+    const idx = timedNameToIdx(name);
+    if (idx >= 0 && (t[idx] ?? 0) > 0) return true;
+  }
+  return false;
+}
+
 /** player_of_has over the live derived state (racial + worn object flags). */
 export function playerOfHasWorld(state: GameState, flag: number): boolean {
   return state.playerState?.flags.has(flag) ?? false;
@@ -151,7 +182,6 @@ export function playerRestingCompleteSpecial(state: GameState): void {
   const r = state.resting;
   if (!r || !playerRestingIsSpecial(r.count)) return;
   const p = state.actor.player;
-  const t = p.timed;
 
   if (r.count === REST_ALL_POINTS) {
     if (p.chp === p.mhp && p.csp === p.msp) disturb(state);
@@ -159,16 +189,7 @@ export function playerRestingCompleteSpecial(state: GameState): void {
     if (
       p.chp === p.mhp &&
       (p.csp === p.msp || playerHasWorld(state, PF.COMBAT_REGEN)) &&
-      !(t[TMD.BLIND] ?? 0) &&
-      !(t[TMD.CONFUSED] ?? 0) &&
-      !(t[TMD.POISONED] ?? 0) &&
-      !(t[TMD.AFRAID] ?? 0) &&
-      !(t[TMD.TERROR] ?? 0) &&
-      !(t[TMD.STUN] ?? 0) &&
-      !(t[TMD.CUT] ?? 0) &&
-      !(t[TMD.SLOW] ?? 0) &&
-      !(t[TMD.PARALYZED] ?? 0) &&
-      !(t[TMD.IMAGE] ?? 0) &&
+      !completeRestBlocked(state) &&
       !p.wordRecall &&
       !p.deepDescent
     ) {

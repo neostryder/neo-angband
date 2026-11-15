@@ -174,7 +174,7 @@ const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
   ["profile", "Add new kinds of dungeon level, and change which kind you get at a depth", true],
   ["blow", "Change what monster attacks do to you, and add new kinds of attack", true],
   ["store", "Change what shops buy from you and what they keep in stock", true],
-  ["command", "Change what player commands do, add commands, tunnel when a walk meets diggable rock, and purge input with F2", true],
+  ["command", "Change what player commands do, add commands, tunnel when a walk meets diggable rock, purge input with F2, and name the timed effects a complete rest waits out", true],
   ["monster", "Override monster AI (take over monster turns), keep monster noise and scent in saves, and clear the noise and age the scent of a level you come back to", true],
   ["projection", "Change what spells, breaths and other elements do to the dungeon, to items on the floor, and to you, and stop a blast growing past the longest range a spell can reach", true],
   ["ui-entry", "Change how your resistances, abilities and stat modifiers are worked out and drawn on the character sheet and the equipment comparison, rewrite screen text, choose how preference errors are handled, set new-character options, ignore matching items, and choose store and monster-list displays", true],

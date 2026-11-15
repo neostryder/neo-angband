@@ -91,6 +91,7 @@ describe("composeModHooks: nothing in, nothing out", () => {
     expect(composed?.objectListTiebreak).toBeUndefined();
     expect(composed?.projectionRadius).toBeUndefined();
     expect(composed?.shapeLearnObviousFlagsDirectly).toBeUndefined();
+    expect(composed?.completeRestEffects).toBeUndefined();
     expect(composed?.monsterBecameVisible).toBeUndefined();
     expect(composed?.artifactIdentified).toBeUndefined();
     expect(composed?.screenText).toBeUndefined();
@@ -455,6 +456,42 @@ describe("any-hooks are disjunctive", () => {
   });
 });
 
+describe("completeRestEffects is last-answer", () => {
+  it("uses the later mod's list and skips an earlier one", () => {
+    const seen: string[] = [];
+    const composed = composeModHooks([
+      {
+        completeRestEffects: () => {
+          seen.push("early");
+          return ["SLOW"];
+        },
+      },
+      {
+        completeRestEffects: () => {
+          seen.push("late");
+          return ["AMNESIA"];
+        },
+      },
+    ]);
+    expect(composed?.completeRestEffects?.()).toEqual(["AMNESIA"]);
+    expect(seen).toEqual(["late"]);
+  });
+
+  it("keeps an empty list, and a null from the later mod falls through", () => {
+    const empty = composeModHooks([
+      { completeRestEffects: () => ["SLOW"] },
+      { completeRestEffects: () => [] },
+    ]);
+    expect(empty?.completeRestEffects?.()).toEqual([]);
+
+    const decline = composeModHooks([
+      { completeRestEffects: () => ["SLOW"] },
+      { completeRestEffects: () => null },
+    ]);
+    expect(decline?.completeRestEffects?.()).toEqual(["SLOW"]);
+  });
+});
+
 describe("notification hooks are observed by every contributor", () => {
   it("levelRevisited: observes the same live chunk and exact turn endpoints in load order", () => {
     const seen: unknown[][] = [];
@@ -775,6 +812,21 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.shapeLearnObviousFlagsDirectly?.(),
     },
+    completeRestEffects: {
+      yes: (log, tag, nth) => ({
+        completeRestEffects: () => {
+          log.push(tag);
+          return nth === 1 ? ["SLOW"] : ["BLIND"];
+        },
+      }),
+      no: (log, tag) => ({
+        completeRestEffects: () => {
+          log.push(tag);
+          return null;
+        },
+      }),
+      run: (h) => h.completeRestEffects?.(),
+    },
     levelRevisited: {
       yes: (log, tag) => ({
         levelRevisited: () => void log.push(tag),
@@ -1002,6 +1054,11 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
     expect(hooks.shapeLearnObviousFlagsDirectly?.()).toBe(false);
   });
 
+  it("completeRestEffects declines, so the ten 4.2.6 effects stay", () => {
+    const { hooks } = guarded({ completeRestEffects: THROWS });
+    expect(hooks.completeRestEffects?.()).toBeNull();
+  });
+
   it("levelRevisited leaves the frozen level untouched when its observer throws", () => {
     const { hooks } = guarded({ levelRevisited: THROWS });
     expect(hooks.levelRevisited?.(CHUNK, 19, 50)).toBeUndefined();
@@ -1178,6 +1235,7 @@ describe("guardModHooks: it wraps, and does not invent", () => {
     expect(hooks.walkBlockedByDiggable).toBeUndefined();
     expect(hooks.objectListTiebreak).toBeUndefined();
     expect(hooks.shapeLearnObviousFlagsDirectly).toBeUndefined();
+    expect(hooks.completeRestEffects).toBeUndefined();
     expect(hooks.monsterBecameVisible).toBeUndefined();
     expect(hooks.artifactIdentified).toBeUndefined();
     expect(hooks.screenText).toBeUndefined();

@@ -190,6 +190,11 @@ export interface Api2Policies {
   readonly saveNoiseScent?: boolean;
   /** True lets a shapechange teach its obvious flags directly. */
   readonly shapeLearnObviousFlagsDirectly?: boolean;
+  /**
+   * Timed-effect names a complete rest waits out, in place of the ten the
+   * game waits for when this table is absent. An empty list waits on none.
+   */
+  readonly completeRestEffects?: readonly string[];
   /** True holds a blast's radius at the game's maximum projection range. */
   readonly projectionRadiusClamp?: boolean;
   /** True clears the noise and ages the scent of a level that comes back after being put aside. */
@@ -705,6 +710,30 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   },
   switchKind("saveNoiseScent", "saveNoiseScent", "Keeps monster noise and scent in the save.", "registry:monster"),
   switchKind("shapeLearnObviousFlagsDirectly", "shapeLearnObviousFlagsDirectly", "Lets a shapechange teach its obvious flags directly.", "registry:rune"),
+  {
+    name: "completeRestEffects",
+    capability: "registry:command",
+    summary: "Names the timed effects a complete rest waits out.",
+    target: { hook: "completeRestEffects" },
+    check(value) {
+      if (!Array.isArray(value)) return "completeRestEffects is a list";
+      if (value.length > 64) return "completeRestEffects lists at most 64 names";
+      const seen = new Set<string>();
+      for (const name of value) {
+        if (typeof name !== "string" || name.length > 64 || !/^[A-Za-z][A-Za-z0-9_]*$/u.test(name)) {
+          return "completeRestEffects names are timed-effect ids";
+        }
+        const key = name.toLowerCase();
+        if (seen.has(key)) return `completeRestEffects names ${name} twice`;
+        seen.add(key);
+      }
+      return null;
+    },
+    apply(value, out) {
+      const names = (value as readonly string[]).slice();
+      out.hooks.completeRestEffects = () => names.slice();
+    },
+  },
   registrationSwitch("projectionRadiusClamp", "Holds a blast's radius at the game's maximum projection range.", "registry:projection"),
   registrationSwitch("levelRevisitTracking", "Clears the noise and ages the scent of a level that comes back after being put aside.", "registry:monster"),
   {

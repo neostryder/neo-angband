@@ -85,6 +85,7 @@ function pendingHooks(id: string): ModHooks {
     objectListTiebreak: (a, b) => hooks()?.objectListTiebreak?.(a, b) ?? 0,
     saveNoiseScent: () => hooks()?.saveNoiseScent?.() ?? false,
     shapeLearnObviousFlagsDirectly: () => hooks()?.shapeLearnObviousFlagsDirectly?.() ?? false,
+    completeRestEffects: () => hooks()?.completeRestEffects?.() ?? null,
     walkBlockedByDiggable: (state, grid, deps) => hooks()?.walkBlockedByDiggable?.(state, grid, deps) ?? null,
     optionsChanged: forward(entry, "optionsChanged"),
     abilityGained: forward(entry, "abilityGained"),

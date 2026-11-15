@@ -161,6 +161,10 @@ export function api2ToModHooks(hooks: Api2Hooks): ModHooks {
     const f = hooks.shapeLearnObviousFlagsDirectly.bind(hooks);
     out.shapeLearnObviousFlagsDirectly = () => f();
   }
+  if (hooks.completeRestEffects) {
+    const f = hooks.completeRestEffects.bind(hooks);
+    out.completeRestEffects = () => f();
+  }
   if (hooks.optionsChanged) {
     const f = hooks.optionsChanged.bind(hooks);
     out.optionsChanged = (options) => f(plain(options));

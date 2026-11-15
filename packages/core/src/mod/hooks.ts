@@ -535,6 +535,24 @@ export interface ModHooks {
   shapeLearnObviousFlagsDirectly?: () => boolean;
 
   /**
+   * The timed effects a complete rest waits out
+   * (player_resting_complete_special, player-util.c:1495, the check
+   * player_timed_continues_rest performs after 41319eef9).
+   *
+   * Return the effect names that still block REST_COMPLETE, or null to leave
+   * the choice alone. An empty list is an opinion: no timed effect blocks.
+   * Faithful core waits out the ten effects 4.2.6 hard-codes, because the
+   * shipped timed-effect data has no COMPLETE_REST flag to read. A name this
+   * build does not know is not active. Hit points, mana, word of recall and
+   * deep descent stay core's, and the other rest modes do not ask.
+   *
+   * Serves: a mod that names those effects the way upstream 41319eef9 (Eric
+   * Branlund, 2026-11-02) does, without teaching the player_timed parser a
+   * flag the shipped data does not use.
+   */
+  completeRestEffects?: () => readonly string[] | null;
+
+  /**
    * Player-visible message text, on its way to the message line (the host's
    * message sink).
    *
@@ -726,7 +744,8 @@ export interface ModHooks {
  * one obeys it too - see the note below for the two folds that look like
  * exceptions and are not.
  *
- *  - LAST-HANDLER hooks (walkBlockedByDiggable, packOverflowVictim) are asked
+ *  - LAST-HANDLER hooks (walkBlockedByDiggable, packOverflowVictim,
+ *    completeRestEffects) are asked
  *    in REVERSE load order and stop at the first non-null, so the last mod to
  *    have an opinion is the one whose handling takes effect and no earlier mod
  *    can double-spend the energy it already paid out (or, for
@@ -806,6 +825,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   historyDisplay: "chained",
   saveNoiseScent: "any-yes",
   shapeLearnObviousFlagsDirectly: "any-yes",
+  completeRestEffects: "last-answer",
   levelRevisited: "all-observe",
   messageText: "chained",
   screenText: "chained",
@@ -997,6 +1017,13 @@ export function guardModHooks(
     /* DECLINE, the upstream 4.2.6-era gap this seam exists to let a mod close. */
     out.shapeLearnObviousFlagsDirectly = (): boolean =>
       guard("shapeLearnObviousFlagsDirectly", () => shapeFlags(), false);
+  }
+
+  const restEffects = hooks.completeRestEffects;
+  if (restEffects) {
+    /* null is DECLINE, so REST_COMPLETE keeps the ten 4.2.6 effects. */
+    out.completeRestEffects = (): readonly string[] | null =>
+      guard("completeRestEffects", () => restEffects(), null);
   }
 
   const revisited = hooks.levelRevisited;
@@ -1209,6 +1236,22 @@ export function composeModHooks(
     /* One mod asking for direct learning is enough - two mods both wanting the
      * 4.2.6-era gap closed are not in conflict, they are two mods agreeing. */
     out.shapeLearnObviousFlagsDirectly = (): boolean => shapeFlags.some((fn) => fn());
+  }
+
+  /* REVERSE load order: the later mod's list replaces the earlier one, and a
+   * null declines so an empty list can still mean "none of them block". */
+  const restEffects = list
+    .map((c) => c.completeRestEffects)
+    .filter(isFn)
+    .reverse();
+  if (restEffects.length > 0) {
+    out.completeRestEffects = (): readonly string[] | null => {
+      for (const fn of restEffects) {
+        const names = fn();
+        if (names !== null) return names;
+      }
+      return null;
+    };
   }
 
   const revisited = list.map((c) => c.levelRevisited).filter(isFn);

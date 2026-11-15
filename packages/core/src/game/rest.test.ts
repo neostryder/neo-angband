@@ -160,6 +160,71 @@ describe("restAction: the REST_ conditional modes", () => {
     playerRestingCompleteSpecial(state);
     expect(playerIsResting(state), "clearing the cut should let REST_COMPLETE end").toBe(false);
   });
+
+  it("REST_COMPLETE ignores amnesia and scramble, which 4.2.6 does not wait out", () => {
+    const state = makeState();
+    state.actor.player.chp = state.actor.player.mhp;
+    state.actor.player.csp = state.actor.player.msp;
+    state.actor.player.timed[TMD.AMNESIA] = 5;
+    state.actor.player.timed[TMD.SCRAMBLE] = 5;
+    state.resting = { count: REST_COMPLETE, turnsRested: 0 };
+
+    playerRestingCompleteSpecial(state);
+    expect(playerIsResting(state)).toBe(false);
+  });
+
+  it("REST_COMPLETE uses the named effects instead of the ten, and an empty list waits on none", () => {
+    const state = makeState();
+    state.actor.player.chp = state.actor.player.mhp;
+    state.actor.player.csp = state.actor.player.msp;
+    state.actor.player.timed[TMD.CUT] = 5;
+    state.actor.player.timed[TMD.AMNESIA] = 5;
+    state.modHooks = { completeRestEffects: () => ["amnesia", "NOT_A_TIMED"] };
+    state.resting = { count: REST_COMPLETE, turnsRested: 0 };
+
+    playerRestingCompleteSpecial(state);
+    expect(playerIsResting(state), "amnesia is named, so the cut no longer blocks").toBe(true);
+
+    state.actor.player.timed[TMD.AMNESIA] = 0;
+    playerRestingCompleteSpecial(state);
+    expect(playerIsResting(state)).toBe(false);
+
+    state.actor.player.timed[TMD.CUT] = 5;
+    state.modHooks = { completeRestEffects: () => [] };
+    state.resting = { count: REST_COMPLETE, turnsRested: 0 };
+    playerRestingCompleteSpecial(state);
+    expect(playerIsResting(state), "an empty list waits on no timed effect").toBe(false);
+  });
+
+  it("a declining list leaves the ten, and recall still blocks an empty list", () => {
+    const state = makeState();
+    state.actor.player.chp = state.actor.player.mhp;
+    state.actor.player.csp = state.actor.player.msp;
+    state.actor.player.timed[TMD.CUT] = 5;
+    state.modHooks = { completeRestEffects: () => null };
+    state.resting = { count: REST_COMPLETE, turnsRested: 0 };
+
+    playerRestingCompleteSpecial(state);
+    expect(playerIsResting(state)).toBe(true);
+
+    state.actor.player.timed[TMD.CUT] = 0;
+    state.actor.player.wordRecall = 3;
+    state.modHooks = { completeRestEffects: () => [] };
+    playerRestingCompleteSpecial(state);
+    expect(playerIsResting(state)).toBe(true);
+  });
+
+  it("REST_ALL_POINTS still ignores the named effects", () => {
+    const state = makeState();
+    state.actor.player.chp = state.actor.player.mhp;
+    state.actor.player.csp = state.actor.player.msp;
+    state.actor.player.timed[TMD.AMNESIA] = 5;
+    state.modHooks = { completeRestEffects: () => ["AMNESIA"] };
+
+    const turns = driveRest(state, REST_ALL_POINTS);
+    expect(turns).toBe(1);
+    expect(state.resting).toBeUndefined();
+  });
 });
 
 describe("playerRestingCanRegenerate's effect (player-util.c:1461)", () => {

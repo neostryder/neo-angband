@@ -166,6 +166,12 @@ export interface Api2Hooks {
   saveNoiseScent?(): boolean;
   /** True to let a shapechange teach its obvious flags directly. Any mod saying yes is enough. */
   shapeLearnObviousFlagsDirectly?(): boolean;
+  /**
+   * Timed-effect names a complete rest waits out, or null to leave the ten
+   * 4.2.6 effects in place. An empty list waits on none of them. The later
+   * mod's list is the one used.
+   */
+  completeRestEffects?(): readonly string[] | null;
   /** Told after the player changes an option. */
   optionsChanged?(options: Api2Options): void;
   /** Told when a spell or activation becomes available. */
@@ -191,6 +197,7 @@ export const API2_HOOK_NAMES: readonly Api2HookName[] = Object.freeze([
   "objectListTiebreak",
   "saveNoiseScent",
   "shapeLearnObviousFlagsDirectly",
+  "completeRestEffects",
   "optionsChanged",
   "abilityGained",
   "monsterBecameVisible",

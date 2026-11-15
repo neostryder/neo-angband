@@ -211,7 +211,8 @@ describe("API2_POLICY_KINDS", () => {
       messageText: "registry:message", screenText: "registry:ui-entry", characterBackground: "registry:message",
       objectInfoText: "registry:effect-info", effectIntro: "registry:effect-info", historyAdd: "registry:message",
       historyDisplay: "registry:message", objectListOrder: "registry:tval", saveNoiseScent: "registry:monster",
-      shapeLearnObviousFlagsDirectly: "registry:rune", storeDiscountRoll: "registry:store", valueFloor: "registry:tval", tileMap: "registry:tiles",
+      shapeLearnObviousFlagsDirectly: "registry:rune", completeRestEffects: "registry:command",
+      storeDiscountRoll: "registry:store", valueFloor: "registry:tval", tileMap: "registry:tiles",
       projectionRadiusClamp: "registry:projection", levelRevisitTracking: "registry:monster",
     });
   });
@@ -228,6 +229,26 @@ describe("API2_POLICY_KINDS", () => {
 
   it("names the kinds the first requests asked for: a message rewrite, a store discount roll and a tile mapping", () => {
     expect(API2_POLICY_NAMES).toEqual(expect.arrayContaining(["messageText", "storeDiscountRoll", "tileMap"]));
+  });
+});
+
+describe("completeRestEffects", () => {
+  it("accepts effect names, including none, and installs that list", () => {
+    expect(checkApi2Policies({ completeRestEffects: ["SLOW", "blind", "OPP_FIRE"] })).toBeNull();
+    expect(checkApi2Policies({ completeRestEffects: [] })).toBeNull();
+    const hooks = api2PoliciesToHooks({ completeRestEffects: ["AMNESIA", "SCRAMBLE"] });
+    expect(hooks.completeRestEffects?.()).toEqual(["AMNESIA", "SCRAMBLE"]);
+    expect(api2PoliciesToHooks({ completeRestEffects: [] }).completeRestEffects?.()).toEqual([]);
+  });
+
+  it("rejects a table that is not a list of timed-effect ids", () => {
+    expect(checkApi2Policies({ completeRestEffects: "SLOW" })).toMatch(/is a list/u);
+    expect(checkApi2Policies({ completeRestEffects: [1] })).toMatch(/timed-effect ids/u);
+    expect(checkApi2Policies({ completeRestEffects: [""] })).toMatch(/timed-effect ids/u);
+    expect(checkApi2Policies({ completeRestEffects: ["1SLOW"] })).toMatch(/timed-effect ids/u);
+    expect(checkApi2Policies({ completeRestEffects: ["SLOW-CUT"] })).toMatch(/timed-effect ids/u);
+    expect(checkApi2Policies({ completeRestEffects: ["SLOW", "slow"] })).toMatch(/twice/u);
+    expect(checkApi2Policies({ completeRestEffects: Array.from({ length: 65 }, (_, i) => `E${String(i)}`) })).toMatch(/at most 64/u);
   });
 });
 
