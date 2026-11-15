@@ -160,6 +160,8 @@ export function loadoutChangeRefs(change: LoadoutChange): LoadoutItemRef[] {
 
 /** What simulateLoadout may be told rather than reading off the state. */
 export interface LoadoutSimOptions {
+  /** A known-world caller supplies observed stock instead of the live shelf. */
+  storeItem?: (store: number, index: number) => GameObject | null;
   /** A capability-gated view omits spell reads without their grant. */
   includeSpells?: boolean;
   /**
@@ -220,6 +222,7 @@ interface Carried {
 
 /** The working loadout the change is applied to. */
 interface Working {
+  readonly storeItem?: LoadoutSimOptions["storeItem"];
   /** By body slot; null for an empty slot. */
   readonly equip: (Carried | null)[];
   /** The pack, in pack order. */
@@ -233,7 +236,7 @@ interface Working {
 }
 
 /** The live loadout as a Working, before any change is applied. */
-function liveLoadout(state: GameState, deps: AgentViewDeps): Working {
+function liveLoadout(state: GameState, deps: AgentViewDeps, storeItem?: LoadoutSimOptions["storeItem"]): Working {
   const p = state.actor.player;
   const equip = p.equipment.map((handle): Carried | null => {
     if (!handle) return null;
@@ -251,15 +254,17 @@ function liveLoadout(state: GameState, deps: AgentViewDeps): Working {
     weight: p.upkeep.totalWeight,
     unresolved: [],
     deps,
+    storeItem,
   };
 }
 
 /** The object a reference names, or null (recorded as unresolved by the caller). */
-function resolveRef(state: GameState, ref: LoadoutItemRef): GameObject | null {
+function resolveRef(state: GameState, ref: LoadoutItemRef, w: Working): GameObject | null {
   switch (ref.from) {
     case "gear":
       return gearGet(state.gear, ref.handle);
     case "store": {
+      if (w.storeItem) return w.storeItem(ref.store, ref.index);
       const store = (state.stores ?? [])[ref.store];
       return store?.stock[ref.index] ?? null;
     }
@@ -340,7 +345,7 @@ function wield(
   ref: LoadoutItemRef,
   requestedSlot?: number,
 ): { slot: number; worn: Carried; displaced: Carried | null } | null {
-  const obj = resolveRef(state, ref);
+  const obj = resolveRef(state, ref, w);
   if (!obj) {
     w.unresolved.push(ref);
     return null;
@@ -410,7 +415,7 @@ function carry(
   ref: LoadoutItemRef,
   n: number | undefined,
 ): void {
-  const obj = resolveRef(state, ref);
+  const obj = resolveRef(state, ref, w);
   if (!obj) {
     w.unresolved.push(ref);
     return;
@@ -568,10 +573,10 @@ export function simulateLoadout(
   if (!derive) return null;
   const deps = opts.viewDeps ?? {};
 
-  const beforeWork = liveLoadout(state, deps);
+  const beforeWork = liveLoadout(state, deps, opts.storeItem);
   const before = describe(state, beforeWork, derive, opts.includeSpells !== false);
 
-  const afterWork = liveLoadout(state, deps);
+  const afterWork = liveLoadout(state, deps, opts.storeItem);
   const placements = applyChange(state, afterWork, change);
   const after = describe(state, afterWork, derive, opts.includeSpells !== false);
 

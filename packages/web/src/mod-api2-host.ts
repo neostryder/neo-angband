@@ -36,6 +36,9 @@ import {
   RSF,
   storeKnowledge,
   knownLoadoutSimulation,
+  rememberedStoreItem,
+  requireLoadoutReads,
+  simulateLoadout,
   squareIsSeen,
   trueMonsterViews,
   tokenIsCurrent,
@@ -827,6 +830,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
         }
         const refs = [...(change.wield ?? []), ...(change.wieldAt ?? []).map((entry) => entry.item),
           ...(change.carry ?? []).map((entry) => entry.item)];
+        const fromMemory: typeof refs = [];
         for (const ref of refs) {
           const domain = ref.from === "store" ? "stores" : ref.from === "floor" ? "floor" : "inventory";
           if (!readable(domain)) return api2NotGranted(`state:${domain}.read`);
@@ -834,10 +838,17 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
             return api2Refused("unobserved-item", "the floor item is not currently seen");
           }
           if (ref.from === "store" && state.chunk.feat(state.actor.grid) !== state.stores?.[ref.store]?.feat) {
-            return api2Refused("unobserved-item", "the store item is not currently seen");
+            if (!rememberedStoreItem(state, ref.store, ref.index)) return api2Refused("unobserved-item", "the store item has no observed stock snapshot");
+            fromMemory.push(ref);
           }
         }
-        const simulation = createAgentView(state, undefined, viewDeps(state), { has: granted }).simulateLoadout?.(structuredClone(change));
+        requireLoadoutReads({ has: granted }, refs, "simulateLoadout");
+        const simulation = simulateLoadout(state, structuredClone(change), {
+          viewDeps: viewDeps(state), includeSpells: readable("spells"),
+          storeItem: (store, index) => state.chunk.feat(state.actor.grid) === state.stores?.[store]?.feat
+            ? state.stores?.[store]?.stock[index] ?? null : rememberedStoreItem(state, store, index),
+        });
+        if (simulation && fromMemory.length) Object.assign(simulation, { fromMemory });
         return simulation ? api2Ok(data(knownLoadoutSimulation(state, simulation, ctx.character?.key() ?? null)) as import("@rpgm-tools/neo-angband-mod-sdk").LoadoutSimulation) : api2Unavailable("the game has no loadout calculation");
       }),
       isCurrent: (token) => withState((state) => api2Ok(tokenIsCurrent(state, token))),

@@ -742,6 +742,25 @@ describe("the first-party seams", () => {
     expect(Object.isFrozen(result.value[0])).toBe(true);
   });
 
+  it("simulates remembered shop stock without reading changes made out of sight", async () => {
+    const game = startGame({ ...pack, store: records("store") }, { seed: SEED, depth: 0 });
+    const api = host(game, READS);
+    const store = game.state.stores![0]!;
+    expect(store.stock.length).toBeGreaterThan(0);
+    const ref = { from: "store", store: 0, index: 0 } as const;
+    const change = { carry: [{ item: ref }] };
+    expect(await api.view.simulateLoadout(change)).toMatchObject({ code: "unobserved-item" });
+    observeKnownStore(game.state, store);
+    game.changeLevel(1);
+    const observed = await api.view.simulateLoadout(change);
+    expect(observed).toMatchObject({ ok: true, value: { fromMemory: [ref], unresolved: [] } });
+    store.stock[0]!.weight += 1000;
+    store.stock = [];
+    expect(await api.view.simulateLoadout(change)).toEqual(observed);
+    expect(await api.view.simulateLoadout({ carry: [{ item: { ...ref, index: 999 } }] })).toMatchObject({ code: "unobserved-item" });
+    expect(await host(game, ["state:player.read", "state:inventory.read"]).view.simulateLoadout(change)).toMatchObject({ reason: "not-granted", capability: "state:stores.read" });
+  });
+
   it("purges queued input and sends ordinary cancellations through the shared input door", async () => {
     vi.useFakeTimers();
     clearInputDoor();

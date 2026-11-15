@@ -63,7 +63,7 @@ import { distance } from "../loc.js";
 import { OBJ_NOTICE } from "../obj/knowledge.js";
 import { objectKnownShadow, objectRunesKnownUpstream } from "../obj/known-object.js";
 import type { GameObject } from "../obj/object.js";
-import { tvalCanHaveCharges, tvalCanHaveFlavor, tvalIsChest, tvalIsLight, tvalIsRod } from "../obj/object.js";
+import { objectCopy, tvalCanHaveCharges, tvalCanHaveFlavor, tvalIsChest, tvalIsLight, tvalIsRod } from "../obj/object.js";
 import { playerTimedGrade } from "../player/timed.js";
 import { captureCoreSnapshot } from "./boundary.js";
 import type { InputToken } from "./boundary.js";
@@ -757,6 +757,15 @@ export function frozenKnownMonster(state: GameState, mon: Monster, deps: AgentVi
 
 const storeObservations = new WeakMap<GameState, Map<Store, KnownStore>>();
 const storeObservationTurns = new WeakMap<GameState, Map<Store, number>>();
+const storeObjectObservations = new WeakMap<GameState, Map<Store, readonly GameObject[]>>();
+
+/** Loadout calculations must use the stock that produced the player's observation. */
+export function rememberedStoreItem(state: GameState, storeIndex: number, index: number): GameObject | null {
+  if (!Number.isInteger(storeIndex) || storeIndex < 0 || !Number.isInteger(index) || index < 0) return null;
+  const store = state.stores?.[storeIndex];
+  const obj = store && storeObjectObservations.get(state)?.get(store)?.[index];
+  return obj ? objectCopy(obj) : null;
+}
 
 export interface StoreKnowledge {
   readonly storeIndex: number;
@@ -790,6 +799,12 @@ function storeBook(state: GameState): Map<Store, KnownStore> {
 }
 
 function rememberStore(state: GameState, deps: AgentViewDeps, live: Store, store: StoreView): void {
+  let objects = storeObjectObservations.get(state);
+  if (!objects) {
+    objects = new Map();
+    storeObjectObservations.set(state, objects);
+  }
+  objects.set(live, live.stock.map(objectCopy));
   let turns = storeObservationTurns.get(state);
   if (!turns) {
     turns = new Map();

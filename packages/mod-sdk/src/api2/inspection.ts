@@ -91,6 +91,8 @@ export interface LoadoutView {
 }
 
 export interface LoadoutSimulation {
+  /** Store references resolved from last observed stock rather than a current visit. */
+  readonly fromMemory?: readonly Extract<LoadoutItemRef, { readonly from: "store" }>[];
   readonly before: LoadoutView;
   readonly after: LoadoutView;
   readonly delta: LoadoutDelta;
