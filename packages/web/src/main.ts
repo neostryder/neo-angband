@@ -436,7 +436,7 @@ import {
 import type { PrefsUiCtx } from "./prefs-ui";
 import { applyPrefText } from "./prefs-ui";
 import { CapabilitySet, unifiedCapabilities, type Api2PolicyRegistrations, birthChoiceFormat, parseDocument, serializeDocument, reloadStateFormat } from "@rpgm-tools/neo-angband-mod-sdk";
-import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, loadEnabledModSettings, discoverContentModManifests, presentNamespaces, presentPackDigests, prefetchInstalledPackDigests, diskPackStatus, enabledModIds, composedRecords, sectionBirthChoices, missingLockedBirthSections } from "./pack";
+import { loadGamePack, loadVisualsRecord, loadMonsterColorCycles, loadUiEntryPacks, loadEnabledModRuleDecls, loadEnabledModSettings, discoverContentModManifests, presentNamespaces, presentPackDigests, prefetchInstalledPackDigests, diskPackStatus, enabledModIds, modManifestFor, composedRecords, sectionBirthChoices, missingLockedBirthSections } from "./pack";
 import { liveConflictLines } from "./mod-conflicts";
 import { composedObjects, hasFacet, resolveSectionState, sortModOrder } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
@@ -469,7 +469,7 @@ import { C_FG, C_WARN } from "./mod-manager/classic-colors";
 import { recordTruthUse, requestTruthConsent, setTruthSaveWriter, type TruthCapability } from "./mod-truth-consent";
 import { drawPendingManagementConfirmation } from "./mod-manager/classic-confirmation";
 import { activeModHooks, resolveModRuleFlagsByMod } from "./mod-hooks";
-import { faultMessage, modDisplayName, reportModFault, setModNameLookup } from "./mod-problems";
+import { autoplayerTrouble, faultMessage, modDisplayName, reportModFault, setModNameLookup } from "./mod-problems";
 import {
   configureModHealth,
   FAULT_LIMIT,
@@ -13929,7 +13929,21 @@ function tryBorgCommand(): void {
     (loaded) => typeof loaded.plugin.controller === "function",
   );
   if (!candidate) {
-    say(t("main.borg.no-autoplayer", "You do not have an autoplayer mod installed."));
+    /* #482: an enabled autoplayer that did not start is named, with the place
+     * that says why, instead of being reported as never installed. */
+    const status = diskPackStatus();
+    const trouble = autoplayerTrouble(
+      enabledModIds().flatMap((id) => modManifestFor(id) ?? []),
+      status.problems,
+      status.skipped,
+    );
+    say(
+      trouble === null
+        ? t("main.borg.no-autoplayer", "You do not have an autoplayer mod installed.")
+        : trouble.kind === "failed"
+          ? t("main.borg.autoplayer-failed", "The autoplayer mod {name} failed to load. Open Mods from the Escape menu to see why.", { name: trouble.name })
+          : t("main.borg.autoplayer-not-running", "The autoplayer mod {name} is not running. Open Mods from the Escape menu to see why.", { name: trouble.name }),
+    );
     render();
     return;
   }

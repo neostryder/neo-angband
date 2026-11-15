@@ -170,6 +170,36 @@ export function resetModFaults(): void {
   faults.length = 0;
 }
 
+/** An enabled mod that can play the game for the player but is not running. */
+export interface AutoplayerTrouble {
+  /** The mod's proper name, or its id when the manifest gives none. */
+  readonly name: string;
+  /** "failed" when something broke; "not-running" when it is held back on purpose, such as waiting for consent. */
+  readonly kind: "failed" | "not-running";
+}
+
+/**
+ * Why Ctrl-Z found no autoplayer, when an enabled mod that declares
+ * `input:controller` is present but did not start (neostryder/neo-angband#482).
+ *
+ * Without this the key said no autoplayer was installed, which sent a mod
+ * author whose Worker failed to load looking everywhere except the Mods
+ * screen, the one place that says why. A fault outranks a held-back mod,
+ * because a fault is the thing the player cannot see from the row alone.
+ */
+export function autoplayerTrouble(
+  mods: readonly { readonly id: string; readonly name?: string; readonly capabilities?: readonly string[] }[],
+  problems: readonly ModProblem[],
+  skipped: readonly ModProblem[],
+): AutoplayerTrouble | null {
+  const autoplayers = mods.filter((m) => m.capabilities?.includes("input:controller") === true);
+  const nameOf = (m: (typeof autoplayers)[number]): string => m.name?.trim() || m.id;
+  const failed = autoplayers.find((m) => problems.some((p) => p.id === m.id));
+  if (failed) return { name: nameOf(failed), kind: "failed" };
+  const held = autoplayers.find((m) => skipped.some((p) => p.id === m.id));
+  return held ? { name: nameOf(held), kind: "not-running" } : null;
+}
+
 /** An error's message, however it was thrown. */
 export function faultMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
