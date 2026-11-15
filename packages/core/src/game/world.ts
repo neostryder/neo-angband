@@ -178,26 +178,26 @@ export function playerHasWorld(state: GameState, flag: number): boolean {
  * (game-world.c:936, immediately before EVENT_CHECK_INTERRUPT), which is
  * upstream's own call site.
  */
-export function playerRestingCompleteSpecial(state: GameState): void {
-  const r = state.resting;
-  if (!r || !playerRestingIsSpecial(r.count)) return;
+export function playerRestingCompleteMet(state: GameState, count: number): boolean {
   const p = state.actor.player;
-
-  if (r.count === REST_ALL_POINTS) {
-    if (p.chp === p.mhp && p.csp === p.msp) disturb(state);
-  } else if (r.count === REST_COMPLETE) {
-    if (
+  if (count === REST_ALL_POINTS) return p.chp === p.mhp && p.csp === p.msp;
+  if (count === REST_COMPLETE) {
+    return (
       p.chp === p.mhp &&
       (p.csp === p.msp || playerHasWorld(state, PF.COMBAT_REGEN)) &&
       !completeRestBlocked(state) &&
       !p.wordRecall &&
       !p.deepDescent
-    ) {
-      disturb(state);
-    }
-  } else if (r.count === REST_SOME_POINTS) {
-    if (p.chp === p.mhp || p.csp === p.msp) disturb(state);
+    );
   }
+  if (count === REST_SOME_POINTS) return p.chp === p.mhp || p.csp === p.msp;
+  return false;
+}
+
+export function playerRestingCompleteSpecial(state: GameState): void {
+  const r = state.resting;
+  if (!r || !playerRestingIsSpecial(r.count)) return;
+  if (playerRestingCompleteMet(state, r.count)) disturb(state);
 }
 
 /** state.dam_red / state.perc_dam_red from the last calc_bonuses (else zero). */

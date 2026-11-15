@@ -152,6 +152,7 @@ export * from "./agent/index.js";
 export * from "./game/energy.js";
 export * from "./game/context.js";
 export { disturb } from "./game/player-path.js";
+export { playerRestingCompleteMet } from "./game/world.js";
 export * from "./game/monster-turn.js";
 export * from "./game/scheduler.js";
 export * from "./game/player-turn.js";

@@ -123,6 +123,7 @@ import {
   sidebarLayout,
   statusLineModel,
   playerRestingIsSpecial,
+  playerRestingCompleteMet,
   PARITY_BASELINE,
   ENGINE_VERSION,
   createVisualsAnimator,
@@ -7074,39 +7075,7 @@ type StateWithRest = typeof state & { resting?: RestingState };
  * conditional rest is finished. Returns true when resting should stop.
  */
 function restingCompleteSpecial(count: number): boolean {
-  const p = state.actor.player;
-  const t = p.timed;
-  if (count === REST_ALL_POINTS) {
-    return p.chp === p.mhp && p.csp === p.msp;
-  }
-  if (count === REST_COMPLETE) {
-    return (
-      p.chp === p.mhp &&
-      (p.csp === p.msp || playerHasCombatRegen()) &&
-      !(t[TMD.BLIND] ?? 0) &&
-      !(t[TMD.CONFUSED] ?? 0) &&
-      !(t[TMD.POISONED] ?? 0) &&
-      !(t[TMD.AFRAID] ?? 0) &&
-      !(t[TMD.TERROR] ?? 0) &&
-      !(t[TMD.STUN] ?? 0) &&
-      !(t[TMD.CUT] ?? 0) &&
-      !(t[TMD.SLOW] ?? 0) &&
-      !(t[TMD.PARALYZED] ?? 0) &&
-      !(t[TMD.IMAGE] ?? 0) &&
-      !p.wordRecall &&
-      !p.deepDescent
-    );
-  }
-  if (count === REST_SOME_POINTS) {
-    return p.chp === p.mhp || p.csp === p.msp;
-  }
-  return false;
-}
-
-/** player_has(p, PF_COMBAT_REGEN): the Blackguard mana-degen class flag, read
- * off the live derived player state (calc_bonuses' pflags union). */
-function playerHasCombatRegen(): boolean {
-  return state.playerState?.pflags.has(PF.COMBAT_REGEN) ?? false;
+  return playerRestingCompleteMet(state, count);
 }
 
 /**

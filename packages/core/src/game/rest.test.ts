@@ -30,7 +30,7 @@ import {
 import { disturb } from "./player-path.js";
 import { restAction } from "./player-turn.js";
 import { playerRegenHp } from "./loop.js";
-import { playerRestingCompleteSpecial } from "./world.js";
+import { playerRestingCompleteMet, playerRestingCompleteSpecial } from "./world.js";
 
 /**
  * Drive a rest to completion the way processPlayerChecked/runGameLoop would:
@@ -212,6 +212,20 @@ describe("restAction: the REST_ conditional modes", () => {
     state.modHooks = { completeRestEffects: () => [] };
     playerRestingCompleteSpecial(state);
     expect(playerIsResting(state)).toBe(true);
+  });
+
+  it("the predicate the web rest command reads follows the named effects", () => {
+    const state = makeState();
+    state.actor.player.chp = state.actor.player.mhp;
+    state.actor.player.csp = state.actor.player.msp;
+    state.actor.player.timed[TMD.CUT] = 5;
+    expect(playerRestingCompleteMet(state, REST_COMPLETE)).toBe(false);
+
+    state.modHooks = { completeRestEffects: () => [] };
+    expect(playerRestingCompleteMet(state, REST_COMPLETE)).toBe(true);
+
+    state.modHooks = { completeRestEffects: () => ["cut"] };
+    expect(playerRestingCompleteMet(state, REST_COMPLETE)).toBe(false);
   });
 
   it("REST_ALL_POINTS still ignores the named effects", () => {

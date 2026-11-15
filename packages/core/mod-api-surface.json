@@ -1533,6 +1533,7 @@
     "playerRandomName",
     "playerRegenHp",
     "playerRegenMana",
+    "playerRestingCompleteMet",
     "playerRestingCount",
     "playerRestingIsSpecial",
     "playerRestoreMana",
