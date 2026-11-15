@@ -2263,9 +2263,11 @@ export interface TerminalGround {
 export type PayloadEntry = {
   readonly kind: "file";
   readonly path: string;
+  readonly blobSha?: string;
 } | {
   readonly kind: "archive";
   readonly path: string;
+  readonly blobSha?: string;
 };
 
 /**
@@ -2405,8 +2407,8 @@ export interface DiscoveredMod {
   readonly guessedPayload: boolean;
   /**
    * The commit `tag` resolves to right now, or null when it could not be
-   * learned - the tags call failed (a pinned tag still installs on that
-   * failure; see the try/catch below) or the API's own entry had no SHA.
+   * learned because the tags call failed or the API entry had no SHA.
+   * Discovery can show the row, but installation requires this commit.
    *
    * THIS IS THE VALUE AN INSTALL PINS. `installModFromRepo` (mod-install.ts)
    * carries it straight into `InstalledModMeta.sha`, so an install records not

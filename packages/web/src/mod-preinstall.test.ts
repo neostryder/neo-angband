@@ -51,6 +51,16 @@ function fakeReader(files: Record<string, string>): (repo: string, tag: string, 
 }
 
 describe("candidateContentTouches", () => {
+  it("reads the discovery commit when a tag can move before consent", async () => {
+    const sha = "a".repeat(40);
+    const seen: string[] = [];
+    await candidateContentTouches(mod({ sha, payload: [{ kind: "file", path: "monster.json" }] }), new Set(), async (_repo, ref) => {
+      seen.push(ref);
+      return "{}";
+    });
+    expect(seen).toEqual([sha]);
+  });
+
   it("counts new records, per content file", async () => {
     const read = fakeReader({
       "manifest.json": "{}",

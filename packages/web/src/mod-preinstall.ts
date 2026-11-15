@@ -160,12 +160,12 @@ function collectTouches(
 }
 
 /**
- * Read one candidate mod's own declared content, at its pinned tag, and tally
+ * Read one candidate mod's own declared content, at its discovered commit, and tally
  * what it adds, patches, replaces and removes.
  *
  * `readRepoFile` is injected so this needs no real network: it is handed the
  * repo, tag and path exactly as mod-install.ts's own fetch loop uses them
- * (`rawUrl(mod.repo, mod.tag, entry.path)`), and is expected to throw or
+ * (`rawUrl(mod.repo, mod.sha ?? mod.tag, entry.path)`), and is expected to throw or
  * reject on anything that is not a 2xx body.
  */
 export async function candidateContentTouches(
@@ -183,7 +183,7 @@ export async function candidateContentTouches(
     if (entry.kind !== "file" || !isContentPayloadPath(entry.path)) continue;
     let text: string;
     try {
-      text = await readRepoFile(mod.repo, mod.tag, entry.path);
+      text = await readRepoFile(mod.repo, mod.sha ?? mod.tag, entry.path);
     } catch (e) {
       unreadable.push({ file: entry.path, problem: e instanceof Error ? e.message : String(e) });
       continue;

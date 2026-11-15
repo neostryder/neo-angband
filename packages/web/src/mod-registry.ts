@@ -78,7 +78,7 @@ export function badPath(path: string): string | null {
 }
 
 /**
- * The URL for one file of a mod, at a tag.
+ * The URL for one file of a mod, at a commit SHA or an explicit tag.
  *
  * `refs/tags/` is spelled out rather than left to raw.githubusercontent's shorthand,
  * because the short form resolves a BRANCH of the same name first - so a repository
@@ -89,7 +89,8 @@ export function badPath(path: string): string | null {
  */
 export function rawUrl(repo: string, tag: string, path: string): string {
   const encoded = path.split("/").map(encodeURIComponent).join("/");
-  return `https://raw.githubusercontent.com/${repo}/refs/tags/${encodeURIComponent(tag)}/${encoded}`;
+  const ref = /^[a-f0-9]{40}$/iu.test(tag) ? tag : `refs/tags/${encodeURIComponent(tag)}`;
+  return `https://raw.githubusercontent.com/${repo}/${ref}/${encoded}`;
 }
 
 /**

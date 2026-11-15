@@ -228,6 +228,7 @@ export function isPayloadPath(path: string): boolean {
 
 /** One entry of the tree API's response that this module cares about. */
 export interface TreeEntry {
+  readonly sha?: string;
   readonly path: string;
   readonly type: string;
   readonly size?: number;

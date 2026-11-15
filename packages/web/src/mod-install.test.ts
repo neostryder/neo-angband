@@ -316,7 +316,7 @@ async function envFor(
       now: () => "2026-07-30T00:00:00.000Z",
       scope: { indexedDB: factory },
       fetch: (url: string) => {
-        const path = decodeURIComponent(url.split("/refs/tags/")[1]?.split("/").slice(1).join("/") ?? "");
+        const path = decodeURIComponent(new URL(url).pathname.split("/").slice(url.includes("/refs/tags/") ? 6 : 4).join("/"));
         if (opts.missing?.includes(path)) return Promise.resolve(res(enc("404: Not Found"), 404));
         const bytes = files[path];
         if (!bytes) return Promise.resolve(res(enc("404: Not Found"), 404));
@@ -418,10 +418,11 @@ function transactionFixture(failPut?: (store: string, key: string, value: unknow
     id: 1, operation: "update", newGrants: [], conflicts: [],
     downloads: ids.map((id) => {
       const text = JSON.stringify({ ...JSON.parse(MANIFEST) as Record<string, unknown>, ...overrides[id], id, name: id === "demo" ? "Demo" : "Other Mod", version });
-      contents.set(rawUrl(MOD_REPO, `v${version}`, `${id}.json`), enc(text));
-      contents.set(rawUrl(MOD_REPO, `v${version}`, "manifest.json"), enc(text));
+      const sha = version.replace(/\D/gu, "").padEnd(40, "0");
+      contents.set(rawUrl(MOD_REPO, sha, `${id}.json`), enc(text));
+      contents.set(rawUrl(MOD_REPO, sha, "manifest.json"), enc(text));
       const manifest = validateManifest(JSON.parse(text));
-      const mod = { ...discovered([{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }]), id, name: manifest.name, version, tag: `v${version}` };
+      const mod = { ...discovered([{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }]), id, name: manifest.name, version, sha, tag: `v${version}` };
       return { mod, manifest, origin: "curated" as const, bytes: null, files: ["manifest.json", "plugin.js"] };
     }),
   });
@@ -432,7 +433,7 @@ function transactionFixture(failPut?: (store: string, key: string, value: unknow
       scope, subtle, now: () => "2026-10-13T00:00:00Z",
       fetch: async (url) => {
         if (url.endsWith("manifest.json")) {
-          const tag = url.split("/refs/tags/")[1]!.split("/")[0]!;
+          const tag = new URL(url).pathname.split("/")[3]!;
           return res(contents.get(rawUrl(MOD_REPO, tag, `${fetching}.json`))!);
         }
         return res(enc(PLUGIN));
@@ -810,8 +811,7 @@ describe("staged mod transactions", () => {
 
   it("stages a retained commit without an archive token or network", async () => {
     const f = transactionFixture();
-    const original = f.makePlan("1.0.0", ["demo"]);
-    const plan = { ...original, downloads: original.downloads.map((entry) => ({ ...entry, mod: { ...entry.mod, sha: "original-commit" } })) };
+    const plan = f.makePlan("1.0.0", ["demo"]);
     expect((await f.stage(plan)).ok).toBe(true);
     await activateModTransaction(f.env);
     await f.stage(f.makePlan("2.0.0", ["demo"]));
@@ -820,7 +820,7 @@ describe("staged mod transactions", () => {
     expect((await stageModPlan(plan, {}, { ...f.env, install: { ...f.env.install, fetch } })).ok).toBe(true);
     expect(fetch).not.toHaveBeenCalled();
     await activateModTransaction(f.env);
-    expect((await installedMeta("demo", f.scope))?.sha).toBe("original-commit");
+    expect((await installedMeta("demo", f.scope))?.sha).toBe(plan.downloads[0]!.mod.sha);
   });
 
   it("moves the former transaction history into the shared archive before rollback", async () => {
@@ -1122,12 +1122,12 @@ describe("retained save versions", () => {
   it.each(["mod removed", "repository deleted", "version delisted", "version unavailable"])("restores local bytes after %s without a network request", async () => {
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const { env, stores } = await envFor(files);
-    const first = await installModFromRepo(discovered([{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }], { sha: "first-commit" }), null, env, CURATED);
+    const first = await installModFromRepo(discovered([{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }], { sha: "1".repeat(40) }), null, env, CURATED);
     if (!first.ok) throw new Error(first.problem);
     expect(await uninstallMod("demo", env.scope)).toBe(true);
     expect(await installedMods(env.scope)).toEqual([]);
-    expect((await archivedVersions(env.scope)).map((m) => m.sha)).toContain("first-commit");
-    const retained = await archivedMod({ repo: first.meta.repo, tag: "first-commit" }, env.scope);
+    expect((await archivedVersions(env.scope)).map((m) => m.sha)).toContain("1".repeat(40));
+    const retained = await archivedMod({ repo: first.meta.repo, tag: "1".repeat(40) }, env.scope);
     expect(retained?.mod.version).toBe("1.0.0");
     expect(await restoreArchivedVersion(first.meta, env.scope)).toMatchObject({ ok: true });
     expect(stores.get(STORE_MODS)?.get("demo/plugin.js")).toEqual(enc(PLUGIN));
@@ -1138,15 +1138,15 @@ describe("retained save versions", () => {
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const { env } = await envFor(files);
     const payload: PayloadEntry[] = [{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }];
-    const first = await installModFromRepo(discovered(payload, { sha: "first" }), null, env, CURATED);
+    const first = await installModFromRepo(discovered(payload, { sha: "1".repeat(40) }), null, env, CURATED);
     if (!first.ok) throw new Error(first.problem);
     files["manifest.json"] = enc(MANIFEST.replace("1.0.0", "2.0.0"));
-    const second = await installModFromRepo(discovered(payload, { sha: "second", tag: "v2.0.0", version: "2.0.0" }), first.meta, env, CURATED);
+    const second = await installModFromRepo(discovered(payload, { sha: "2".repeat(40), tag: "v2.0.0", version: "2.0.0" }), first.meta, env, CURATED);
     expect(second.ok).toBe(true);
-    expect((await archivedVersions(env.scope)).map((m) => m.sha).sort()).toEqual(["first", "second"]);
+    expect((await archivedVersions(env.scope)).map((m) => m.sha).sort()).toEqual(["1".repeat(40), "2".repeat(40)]);
     expect(await restoreArchivedVersion(first.meta, env.scope)).toMatchObject({ ok: true });
-    expect((await installedMods(env.scope))[0]?.sha).toBe("first");
-    expect((await archivedVersions(env.scope)).map((m) => m.sha).sort()).toEqual(["first", "second"]);
+    expect((await installedMods(env.scope))[0]?.sha).toBe("1".repeat(40));
+    expect((await archivedVersions(env.scope)).map((m) => m.sha).sort()).toEqual(["1".repeat(40), "2".repeat(40)]);
   });
 
   it("refuses corrupt retained bytes", async () => {
@@ -1178,12 +1178,12 @@ describe("retained save versions", () => {
     const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
     const { env, stores } = await envFor(files);
     const payload: PayloadEntry[] = [{ kind: "file", path: "manifest.json" }, { kind: "file", path: "plugin.js" }];
-    const first = await installModFromRepo(discovered(payload, { sha: "first" }), null, env, CURATED);
+    const first = await installModFromRepo(discovered(payload, { sha: "1".repeat(40) }), null, env, CURATED);
     if (!first.ok) throw new Error(first.problem);
     files["plugin.js"] = enc(`${PLUGIN}\n`);
-    expect((await installModFromRepo(discovered(payload, { sha: "second" }), first.meta, env, CURATED)).ok).toBe(true);
+    expect((await installModFromRepo(discovered(payload, { sha: "2".repeat(40) }), first.meta, env, CURATED)).ok).toBe(true);
     expect(await restoreInstallations([{ id: "demo", meta: first.meta }, { id: "new-mod", meta: null }], env.scope)).toBe(true);
-    expect((await installedMods(env.scope))[0]?.sha).toBe("first");
+    expect((await installedMods(env.scope))[0]?.sha).toBe("1".repeat(40));
     expect(stores.get(STORE_MODS)?.get("demo/plugin.js")).toEqual(enc(PLUGIN));
     expect(stores.get(STORE_MOD_META)?.has("new-mod")).toBe(false);
   });
@@ -1263,19 +1263,55 @@ describe("installing from a repository: what lands", () => {
     expect(storedMeta(stores, "demo")).toEqual(bare);
   });
 
-  it("does not write a sha key when discovery could not learn one", async () => {
-    /* discovered()'s default is sha: null - the tags call failed, or the API's own
-     * entry had none. That must land as ABSENT in the record, not as a stored null,
-     * because absent is what asMeta and classifyModPin both read as "unknown" - a
-     * literal null would be a second spelling of the same fact and a way for one of
-     * them to miss it. */
-    const files = { "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) };
-    const { env, stores } = await envFor(files);
-    const r = await installModFromRepo(discovered(FILES), null, env, CURATED);
+  it.each([null, "", "refs/tags/v1.0.0"])("refuses an install without a commit SHA (%s) before fetching", async (sha) => {
+    const { env, stores } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const fetch = vi.fn(env.fetch);
+    const result = await installModFromRepo(discovered(FILES, { sha }), null, { ...env, fetch }, CURATED);
+    expect(result).toMatchObject({ ok: false, problem: expect.stringMatching(/commit SHA/) });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
+  });
 
-    expect(r.ok).toBe(true);
-    const meta = storedMeta(stores, "demo");
-    expect(meta && typeof meta === "object" && "sha" in meta).toBe(false);
+  it("keeps discovery bytes when a tag moves before installation", async () => {
+    const sha = "a".repeat(40);
+    const { env, stores } = await envFor({ "manifest.json": enc(MANIFEST), "plugin.js": enc(PLUGIN) });
+    const fetch = vi.fn((url: string) => url.includes("/refs/tags/") ? Promise.resolve(res(enc("hostile replacement"))) : env.fetch(url));
+    const result = await installModFromRepo(discovered(FILES, { sha }), null, { ...env, fetch }, CURATED);
+    expect(result.ok).toBe(true);
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(FILES.map(({ path }) => `https://raw.githubusercontent.com/${discovered(FILES).repo}/${sha}/${path}`));
+    expect(stores.get(STORE_MODS)?.get("demo/plugin.js")).toEqual(enc(PLUGIN));
+    expect(storedMeta(stores, "demo")?.["sha"]).toBe(sha);
+  });
+
+  it("accepts bytes matching the discovery Git blob hash", async () => {
+    const bytes = enc(MANIFEST);
+    const prefix = enc(`blob ${bytes.length}\0`);
+    const blob = new Uint8Array(prefix.length + bytes.length);
+    blob.set(prefix); blob.set(bytes, prefix.length);
+    const digest = await subtle.digest("SHA-1", blob);
+    const blobSha = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const { env } = await envFor({ "manifest.json": bytes });
+    expect((await installModFromRepo(discovered([{ kind: "file", path: "manifest.json", blobSha }]), null, env, CURATED)).ok).toBe(true);
+  });
+
+  it("refuses a malformed discovery file hash without staging bytes", async () => {
+    const { env, stores } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const downloaded = vi.fn();
+    const payload: PayloadEntry[] = [{ kind: "file", path: "manifest.json", blobSha: "not-a-hash" }];
+    const result = await installModFromRepo(discovered(payload), null, { ...env, downloaded }, CURATED);
+    expect(result).toMatchObject({ ok: false, problem: expect.stringMatching(/invalid discovery file hash/) });
+    expect(downloaded).not.toHaveBeenCalled();
+    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
+  });
+
+  it.each(["file", "archive"] as const)("refuses a mismatched discovery hash for a %s before storage", async (kind) => {
+    const { env, stores } = await envFor({ "manifest.json": enc(MANIFEST) });
+    const downloaded = vi.fn();
+    const payload = [{ kind, path: "manifest.json", blobSha: "0".repeat(40) }];
+    const result = await installModFromRepo(discovered(payload), null, { ...env, downloaded }, CURATED);
+    expect(result).toMatchObject({ ok: false, problem: expect.stringMatching(/hash does not match/) });
+    expect(downloaded).not.toHaveBeenCalled();
+    expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
   });
 
   it("pins the SHA the tag resolved to, when discovery found one", async () => {
@@ -2293,7 +2329,7 @@ function discovered(
     payload,
     bytes: 0,
     guessedPayload: false,
-    sha: null,
+    sha: "a".repeat(40),
     ...over,
   };
 }
@@ -2483,7 +2519,7 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
     if (!r.ok) expect(r.problem).toMatch(/gone\.js: not found at this tag/u);
   });
 
-  it("fetches refs/tags/<tag>, so a same-named BRANCH cannot be served instead", async () => {
+  it("fetches the recorded commit, so a moved tag cannot be served instead", async () => {
     const asked: string[] = [];
     const { env } = await envFor({ "manifest.json": enc(MANIFEST) });
     await installModFromRepo(
@@ -2493,7 +2529,7 @@ describe("installModFromRepo: what lands, with no digest to check it against", (
       CURATED,
     );
     expect(asked[0]).toBe(
-      "https://raw.githubusercontent.com/neostryder/neo-angband-mod-demo/refs/tags/v1.0.0/manifest.json",
+      `https://raw.githubusercontent.com/neostryder/neo-angband-mod-demo/${"a".repeat(40)}/manifest.json`,
     );
   });
 

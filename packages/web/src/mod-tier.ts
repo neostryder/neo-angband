@@ -134,7 +134,7 @@ export interface ModTier {
  * ever writes.
  */
 function fetchedFromRepo(facts: ModTierFacts): boolean {
-  if (facts.installedByModId !== undefined) return false;
+  if (facts.installedByModId !== undefined || !facts.sha) return false;
   if (facts.listing !== undefined) return facts.listing !== "file";
   return facts.sha !== undefined;
 }

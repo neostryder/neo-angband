@@ -15,6 +15,7 @@
  * tests need no IndexedDB, only a fake fetch.
  */
 
+import { rawUrl } from "./mod-registry";
 import { engineAllows, engineProblem, type GateableManifest } from "./mod-engine";
 import {
   COMPAT_CLAIMS,
@@ -75,8 +76,7 @@ export type DiscoverResult =
 
 /** raw.githubusercontent at a TAG - `refs/tags/` spelled out; see rawUrl's note. */
 function rawAt(repo: string, tag: string, path: string): string {
-  const encoded = path.split("/").map(encodeURIComponent).join("/");
-  return `https://raw.githubusercontent.com/${repo}/refs/tags/${encodeURIComponent(tag)}/${encoded}`;
+  return rawUrl(repo, tag, path);
 }
 
 function why(e: unknown): string {
@@ -135,9 +135,8 @@ export interface TagRef {
   readonly name: string;
   /**
    * The commit this tag resolves to, or null when the API's own entry did not
-   * carry one. Accepted rather than refused - `classifyModPin` already has an
-   * "unknown" answer for exactly this, and a caller pinning to a mod does not
-   * get to fail an install over a field it only ever uses defensively.
+   * carry one. Discovery can still show the row, but installation requires a
+   * recorded commit so a mutable tag cannot change the downloaded bytes.
    */
   readonly sha: string | null;
 }
@@ -255,10 +254,11 @@ async function readManifestFacts(
   repo: string,
   tag: string,
   env: DiscoverEnv,
+  commit: string = tag,
 ): Promise<ManifestRead> {
   let text: string;
   try {
-    text = await getText(rawAt(repo, tag, "manifest.json"), `${repo}'s manifest.json at ${tag}`, env);
+    text = await getText(rawAt(repo, commit, "manifest.json"), `${repo}'s manifest.json at ${tag}`, env);
   } catch (e) {
     return { ok: false, problem: why(e) };
   }
@@ -397,13 +397,14 @@ export async function pickRunnableVersion(
   repo: string,
   candidates: readonly string[],
   env: DiscoverEnv,
+  commits: ReadonlyMap<string, string> = new Map(),
 ): Promise<VersionPick> {
   let chosen: ManifestFacts | null = null;
   let newest: ManifestFacts | null = null;
   let engineHeld: EngineHeld | null = null;
   let versionsChecked = 0;
   for (const candidate of candidates) {
-    const read = await readManifestFacts(repo, candidate, env);
+    const read = await readManifestFacts(repo, candidate, env, commits.get(candidate) ?? candidate);
     if (!read.ok) {
       /* The NEWEST version failing to be read is the mod's problem and is reported.
        * An older one failing is expected - a tag from before the repository was a
@@ -502,7 +503,8 @@ export async function discoverMod(
       };
     }
 
-    const pick = await pickRunnableVersion(ref.repo, candidates, env);
+    const commits = new Map(allRefs.filter((r) => r.sha !== null && /^[a-f0-9]{40}$/iu.test(r.sha)).map((r) => [r.name, r.sha!]));
+    const pick = await pickRunnableVersion(ref.repo, candidates, env, commits);
     if (pick.problem !== null) return { ok: false, problem: pick.problem };
     const { chosen, newest, versionsChecked } = pick;
     let engineHeld = pick.engineHeld;
@@ -549,7 +551,7 @@ export async function discoverMod(
     const sha = allRefs.find((r) => r.name === tag)?.sha ?? null;
 
     const declared = readDeclaredPayload(manifest["payload"]);
-    const tree = await tryTree(ref.repo, tag, env);
+    const tree = await tryTree(ref.repo, commits.get(tag) ?? tag, env);
 
     let payload: readonly PayloadEntry[];
     let bytes: number | null = null;
@@ -577,6 +579,11 @@ export async function discoverMod(
       bytes = derived.bytes;
       guessedPayload = true;
     }
+
+    payload = payload.map((entry) => {
+      const blobSha = tree?.find((file) => file.type === "blob" && file.path === entry.path)?.sha;
+      return blobSha === undefined ? entry : { ...entry, blobSha };
+    });
 
     /* readModDir refuses a folder with no manifest, so a payload that omits one
      * describes an install that cannot become a mod - worth catching here, where

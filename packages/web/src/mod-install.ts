@@ -24,9 +24,9 @@
  * on 2026-08-21.
  *
  * What the order actually buys: the ORIGIN is checked before anything is fetched, so a
- * copy from somewhere else never gets as far as the network; every file is fetched and
- * hashed, and those hashes are RECORDED rather than compared against anything, because
- * there is nothing here to compare a first download against; and the store is written in
+ * copy from somewhere else never gets as far as the network; every file is fetched by
+ * the discovery commit and checked against its Git blob hash when the tree supplies
+ * one; SHA-256 hashes are also recorded for later integrity checks; the store is written in
  * one transaction with the meta record LAST, so the presence of the meta record is proof
  * the install completed rather than a hint that it started. A partial download therefore
  * cannot become an installed mod that runs once and fails later. A TAMPERED one can, and
@@ -113,9 +113,8 @@ export interface InstalledModMeta {
    * compares it against the SHA the tag resolves to NOW to notice a tag that has
    * since been retargeted, even though its name never changed.
    *
-   * Absent on a record written before this field existed, and on a mod installed
-   * from a repository whose tags call could not be read at the time (a pinned
-   * tag still installs on that failure - see discoverMod). Both cases mean "no
+   * Absent on imported mods and legacy records. Repository installs now require
+   * a discovery commit SHA. A legacy record without it means "no
    * SHA was ever recorded to compare against", which is UNKNOWN - the honest
    * answer is "cannot tell if this has moved", never "confirmed unchanged" and
    * never "flagged as moved". Treating an absent SHA as either would be a false
@@ -553,6 +552,9 @@ export async function installModFromRepo(
   if (blocked !== null) return { ok: false, problem: blocked };
   const conflict = originConflict(installed, mod.repo);
   if (conflict !== null) return { ok: false, problem: conflict };
+  if (typeof mod.sha !== "string" || !/^[a-f0-9]{40}$/iu.test(mod.sha)) {
+    return { ok: false, problem: "The mod has no valid discovery commit SHA. Refresh its repository before installing." };
+  }
   try {
     const files: Array<readonly [string, Uint8Array]> = [];
     /* Which archive contributed each path, so a collision can name both - two
@@ -572,11 +574,21 @@ export async function installModFromRepo(
         };
       }
       const bytes = await fetchBytes(
-        rawUrl(mod.repo, mod.tag, entry.path),
+        rawUrl(mod.repo, mod.sha, entry.path),
         entry.path,
         env,
         entry.kind === "archive" ? ZIP_LIMITS.maxArchiveBytes - archives.archiveBytes : ZIP_LIMITS.maxFileBytes,
       );
+      if (entry.blobSha !== undefined) {
+        if (!/^[a-f0-9]{40}$/iu.test(entry.blobSha)) return { ok: false, problem: `${entry.path}: invalid discovery file hash` };
+        const header = new TextEncoder().encode(`blob ${bytes.byteLength}\0`);
+        const blob = new Uint8Array(header.length + bytes.byteLength);
+        blob.set(header);
+        blob.set(bytes, header.length);
+        const digest = await env.subtle.digest("SHA-1", blob);
+        const actual = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+        if (actual !== entry.blobSha.toLowerCase()) return { ok: false, problem: `${entry.path}: discovery file hash does not match the downloaded bytes` };
+      }
       await env.downloaded?.(entry.path, bytes);
       if (entry.kind === "file") {
         const owner = from.get(entry.path);

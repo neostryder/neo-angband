@@ -28,7 +28,7 @@ function browsingEnvironment(deps: ModBrowseDeps): Pick<ModManagerEnvironment, "
       return cached ? { ok: true, ref, mod: cached.mod } : deps.discover(ref);
     },
     curated: deps.curated,
-    readManifest: async (mod) => (await archivedMod({ repo: mod.repo, tag: mod.tag.startsWith("archive:") ? mod.tag : mod.sha ?? mod.tag }))?.manifest ?? validateManifest(JSON.parse(await deps.readRepoFile(mod.repo, mod.tag, "manifest.json"))),
+    readManifest: async (mod) => (await archivedMod({ repo: mod.repo, tag: mod.tag.startsWith("archive:") ? mod.tag : mod.sha ?? mod.tag }))?.manifest ?? validateManifest(JSON.parse(await deps.readRepoFile(mod.repo, mod.sha ?? mod.tag, "manifest.json"))),
     install: async (mod, origin, progress) => {
       const cached = await archivedMod({ repo: mod.repo, tag: mod.tag.startsWith("archive:") ? mod.tag : mod.sha ?? mod.tag });
       if (!cached) return deps.install(mod, origin, progress);

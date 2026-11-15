@@ -220,6 +220,11 @@ describe("a tier comes from where the bytes came from", () => {
     expect(assignTier(installed({ listing: "file" })).trust).toBe("sideloaded");
   });
 
+  it("refuses first-party trust for repository metadata without a discovery commit", () => {
+    expect(assignTier(installed({}, ["sha"])).trust).toBe("sideloaded");
+    expect(assignTier(installed({ sha: "" })).trust).toBe("sideloaded");
+  });
+
   it("counts an old record as fetched only when it holds a commit", () => {
     expect(assignTier(installed({}, ["listing"])).trust).toBe("first-party");
     expect(assignTier(installed({}, ["listing", "sha"])).trust).toBe("sideloaded");

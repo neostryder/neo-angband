@@ -182,9 +182,24 @@ describe("discoverMod: everything the row says comes from the MOD", () => {
     if (r.ok) {
       expect(r.mod.tags).toEqual([]);
       /* Nothing to learn a SHA from when the tags call itself could not be read -
-       * unknown, not a guess and not a refusal to install. */
+       * unknown, so the installer must refuse until discovery records a commit. */
       expect(r.mod.sha).toBeNull();
     }
+  });
+
+  it("reads the discovered commit after the tag moves, including its file hashes", async () => {
+    const sha = "a".repeat(40);
+    const blobSha = "b".repeat(40);
+    const { env, asked } = fakeNet({
+      [TAGS]: tagListSha(["v1.2.0", sha]),
+      [RAW("v1.2.0", "manifest.json")]: JSON.stringify({ ...MANIFEST, id: "hostile" }),
+      [`https://raw.githubusercontent.com/a/b/${sha}/manifest.json`]: JSON.stringify(MANIFEST),
+      [TREE(sha)]: JSON.stringify({ tree: [{ path: "manifest.json", type: "blob", sha: blobSha, size: 400 }] }),
+    });
+    const result = await discoverMod({ repo: "a/b" }, env);
+    expect(result).toMatchObject({ ok: true, mod: { id: MANIFEST.id, tag: "v1.2.0", sha, payload: [{ path: "manifest.json", blobSha }] } });
+    expect(asked).not.toContain(RAW("v1.2.0", "manifest.json"));
+    expect(asked).not.toContain(TREE("v1.2.0"));
   });
 
   it("carries the SHA the resolved tag currently points to", async () => {
