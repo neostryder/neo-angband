@@ -52,15 +52,15 @@ export async function prepareModTransactionPermissions(payloads: readonly Versio
   const files = new Map<string, Uint8Array>(payloads.flatMap((payload) => payload.files.map(([file, bytes]) => [`${payload.meta.id}/${file}`, bytes] as const)));
   const source = installedModSource(payloads.map((payload) => payload.meta), async (id, file) => files.get(`${id}/${file}`) ?? null);
   const report = await readModDir(source);
-  if (report.packs.length !== payloads.length) throw new Error("The updated mod's permissions could not be verified.");
+  if (report.packs.length !== payloads.length) throw new Error("Update not applied: the mod's new files do not match the permissions you granted.");
   const { measureModTiers } = await import("./mod-code");
   const tiers = await measureModTiers(report.packs, { session: new Set(), folder: new Set() }, source.records, (id) => source.verifyDigests(id, subtle));
   await prepareModPayloads({ ...report, assetUrl: async (id, file) => `${id}/${file}` }, (id) => tiers.get(id)!, async (file) => {
     const bytes = files.get(file);
-    if (!bytes) throw new Error("The updated mod's permissions could not be verified.");
+    if (!bytes) throw new Error("Update not applied: the mod's new files do not match the permissions you granted.");
     return bytes;
   }, subtle);
-  if (payloads.some((payload) => typeof consentBinding(payload.meta.id) !== "string")) throw new Error("The updated mod's permissions could not be verified.");
+  if (payloads.some((payload) => typeof consentBinding(payload.meta.id) !== "string")) throw new Error("Update not applied: the mod's new files do not match the permissions you granted.");
 }
 
 export type StageResult = { readonly ok: true; readonly results: readonly InstallResult[] } | { readonly ok: false; readonly problem: string };
@@ -304,7 +304,7 @@ export async function activateModTransaction(env: ModTransactionEnvironment): Pr
             const updated = pending.payloads.find((payload) => payload.meta.id === id);
             if (updated) return updated;
             const installed = current.find((meta) => meta.id === id);
-            if (!installed) throw new Error("The updated mod's permissions could not be verified.");
+            if (!installed) throw new Error("Update not applied: the mod's new files do not match the permissions you granted.");
             return version(db, installed);
           }));
           await env.preparePermissions(payloads);
@@ -313,7 +313,7 @@ export async function activateModTransaction(env: ModTransactionEnvironment): Pr
           const manifest = pending.plan.downloads.find((download) => download.mod.id === id)?.manifest ?? pending.plan.keptManifests?.find((entry) => entry.id === id) ?? manifestOf(await version(db, current.find((meta) => meta.id === id)!));
           if (!choices) continue;
           const binding = consentBinding(id);
-          if (env.preparePermissions && typeof binding !== "string") throw new Error("The updated mod's permissions could not be verified.");
+          if (env.preparePermissions && typeof binding !== "string") throw new Error("Update not applied: the mod's new files do not match the permissions you granted.");
           store.setDecisions(id, env.preparePermissions ? { ...choices, binding: binding as string } : choices, manifest.version);
           const written = store.getDecisions(id);
           if (choices.granted.some((cap) => !written.granted.includes(cap)) || choices.refused.some((cap) => !written.refused.includes(cap)) || store.getConsentVersion(id) !== manifest.version) {
