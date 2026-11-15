@@ -10,7 +10,6 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { FileMode, HostDir, RawFsHost, rawFsOverTransport, serveRawFs } from "@rpgm-tools/neo-angband-core";
 import { NodeHost, NodeRawFs } from "./host-node.js";
@@ -18,10 +17,11 @@ import { NodeHost, NodeRawFs } from "./host-node.js";
 let base: string;
 
 beforeEach(() => {
-  base = fs.mkdtempSync(path.join(os.tmpdir(), "neo-host-"));
+  base = fs.mkdtempSync(path.join(process.cwd(), "neo-host-"));
 });
 
 afterEach(() => {
+  if (path.dirname(path.resolve(base)) !== process.cwd()) throw new Error("The fixture left the workspace.");
   fs.rmSync(base, { recursive: true, force: true });
 });
 
@@ -247,4 +247,71 @@ describe("the desktop stack against a real filesystem", () => {
     expect(h.displayPath(HostDir.USER, "a.prf")).toBe(path.join(base, "user", "a.prf"));
     expect(h.argv()).toEqual(["-f", "Bilbo"]);
   });
+});
+
+
+describe("physical host containment", () => {
+  it("refuses a junction at the directory root for reads, writes, lists, and moves", () => {
+    const outside = path.join(base, "outside");
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, "held"), "original");
+    fs.symlinkSync(outside, path.join(base, "user"), "junction");
+    const h = new NodeHost({ base });
+    expect(h.read(HostDir.USER, "held")).toBeNull();
+    expect(h.list(HostDir.USER)).toEqual([]);
+    expect(h.write(HostDir.USER, "new", "bad")).toBe("create-failed");
+    expect(h.write(HostDir.USER, "held", "bad", FileMode.APPEND)).toBe("create-failed");
+    expect(h.remove(HostDir.USER, "held")).toBe(false);
+    expect(h.move(HostDir.USER, "held", "moved")).toBe(false);
+    expect(fs.readdirSync(outside)).toEqual(["held"]);
+    expect(fs.readFileSync(path.join(outside, "held"), "utf8")).toBe("original");
+  });
+
+  it("refuses nested junctions, linked ancestors, and hard-linked write targets", () => {
+    const h = new NodeHost({ base });
+    h.write(HostDir.USER, "normal", "original");
+    const outside = path.join(base, "outside");
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, "held"), "original");
+    fs.symlinkSync(outside, path.join(base, "user", "nested"), "junction");
+    expect(h.read(HostDir.USER, "nested/held")).toBeNull();
+    expect(h.write(HostDir.USER, "nested/new", "bad")).toBe("create-failed");
+    fs.linkSync(path.join(outside, "held"), path.join(base, "user", "linked"));
+    expect(h.write(HostDir.USER, "linked", "bad")).toBe("create-failed");
+    expect(h.move(HostDir.USER, "normal", "linked")).toBe(false);
+    expect(h.move(HostDir.USER, "linked", "other")).toBe(false);
+    expect(h.remove(HostDir.USER, "linked")).toBe(false);
+    expect(fs.readFileSync(path.join(outside, "held"), "utf8")).toBe("original");
+    fs.symlinkSync(outside, path.join(base, "parent"), "junction");
+    const over = new NodeHost({ base, dirs: { user: path.join(base, "parent", "missing") } });
+    expect(over.write(HostDir.USER, "new", "bad")).toBe("create-failed");
+    expect(fs.existsSync(path.join(outside, "missing"))).toBe(false);
+  });
+});
+
+
+it("refuses a file symlink and leaves its target unchanged", () => {
+  const h = new NodeHost({ base });
+  h.write(HostDir.USER, "normal", "normal");
+  const target = path.join(base, "outside-file");
+  fs.writeFileSync(target, "original");
+  fs.symlinkSync(target, path.join(base, "user", "linked-file"), "file");
+  expect(h.read(HostDir.USER, "linked-file")).toBeNull();
+  expect(h.write(HostDir.USER, "linked-file", "bad")).toBe("create-failed");
+  expect(h.remove(HostDir.USER, "linked-file")).toBe(false);
+  expect(h.move(HostDir.USER, "linked-file", "moved")).toBe(false);
+  expect(fs.readFileSync(target, "utf8")).toBe("original");
+});
+
+
+it("reads a hard-linked file but refuses changes through either name", () => {
+  const h = new NodeHost({ base });
+  h.write(HostDir.USER, "normal", "original");
+  fs.linkSync(path.join(base, "user", "normal"), path.join(base, "user", "linked"));
+  expect(h.read(HostDir.USER, "linked")).toBe("original");
+  expect(h.write(HostDir.USER, "linked", "bad")).toBe("create-failed");
+  expect(h.write(HostDir.USER, "normal", "bad", FileMode.APPEND)).toBe("create-failed");
+  expect(h.move(HostDir.USER, "normal", "moved")).toBe(false);
+  expect(h.remove(HostDir.USER, "linked")).toBe(false);
+  expect(fs.readFileSync(path.join(base, "user", "normal"), "utf8")).toBe("original");
 });

@@ -106,7 +106,7 @@ import {
   planModMerge,
 } from "./mod-origin-merge.js";
 import type { ModRecord, ModSnapshot } from "./mod-origin-merge.js";
-import { ORIGIN_PROBE_ROUTE, planRequest } from "./routes.js";
+import { ORIGIN_PROBE_ROUTE, planRequest, readStaticFile } from "./routes.js";
 import { createDesktopAuthority, createNetRelay, desktopAuthorityKey } from "./net-relay.js";
 import type { OriginSnapshot } from "./origin-merge.js";
 import { readWindowState, startPlacement, writeWindowState } from "./window-state.js";
@@ -301,7 +301,8 @@ function respond(status: number, body: string | Buffer, type?: string): Response
 async function serveFirst(candidates: readonly string[], fallbackIndex: boolean): Promise<Response> {
   for (const file of candidates) {
     try {
-      const data = await fs.promises.readFile(file);
+      const root = file.startsWith(MODS_DIR + path.sep) ? MODS_DIR : WEB_ROOT;
+      const data = await readStaticFile(root, file);
       /* The MIME type comes from the file actually opened, not the first
        * candidate: reading the type off the wrong name is the kind of thing that
        * silently serves a PNG as text/plain. */

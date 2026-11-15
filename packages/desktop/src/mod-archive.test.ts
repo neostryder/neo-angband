@@ -9,7 +9,6 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { IMPORTED_DIRNAME, archiveModZip, freeArchiveName, isModZipName } from "./mod-archive.js";
 
@@ -17,10 +16,11 @@ let mods: string;
 const imported = (): string => path.join(mods, IMPORTED_DIRNAME);
 
 beforeEach(() => {
-  mods = fs.mkdtempSync(path.join(os.tmpdir(), "neo-mods-"));
+  mods = fs.mkdtempSync(path.join(process.cwd(), "neo-mods-"));
 });
 
 afterEach(() => {
+  if (path.dirname(path.resolve(mods)) !== process.cwd()) throw new Error("The fixture left the workspace.");
   fs.rmSync(mods, { recursive: true, force: true });
 });
 
@@ -127,5 +127,31 @@ describe("a name this process does not own is refused, not repaired", () => {
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.error).not.toBe("");
+  });
+});
+
+
+describe("physical archive containment", () => {
+  it("refuses an imported junction and leaves the source and outside files alone", () => {
+    const outside = path.join(mods, "outside");
+    fs.mkdirSync(outside);
+    fs.symlinkSync(outside, imported(), "junction");
+    drop("held.zip");
+    expect(archiveModZip(mods, "held.zip").ok).toBe(false);
+    expect(fs.readFileSync(path.join(mods, "held.zip"), "utf8")).toBe("zip bytes");
+    expect(fs.readdirSync(outside)).toEqual([]);
+  });
+
+  it("refuses a linked mods root and a hard-linked archive", () => {
+    const root = path.join(mods, "root");
+    const linked = path.join(mods, "linked-root");
+    fs.mkdirSync(root);
+    fs.writeFileSync(path.join(root, "held.zip"), "original");
+    fs.symlinkSync(root, linked, "junction");
+    expect(archiveModZip(linked, "held.zip").ok).toBe(false);
+    fs.linkSync(path.join(root, "held.zip"), path.join(mods, "hard.zip"));
+    expect(archiveModZip(mods, "hard.zip").ok).toBe(false);
+    expect(fs.existsSync(path.join(mods, "hard.zip"))).toBe(true);
+    expect(fs.readFileSync(path.join(root, "held.zip"), "utf8")).toBe("original");
   });
 });

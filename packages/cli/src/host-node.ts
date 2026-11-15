@@ -23,6 +23,50 @@ import * as path from "node:path";
 import type { FileType, HostDir, RawFs, WriteOutcome } from "@rpgm-tools/neo-angband-core/host";
 import { RawFsHost } from "@rpgm-tools/neo-angband-core/host";
 
+/** Physical paths cannot grant access through a linked root or component. */
+export function plainPath(root: string, target: string, allowMissing = false, writing = false): fs.Stats | null {
+  const base = path.resolve(root);
+  const full = path.resolve(target);
+  const relative = path.relative(base, full);
+  if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) throw new Error("refused");
+  const volume = path.parse(full).root;
+  let current = volume;
+  let stat: fs.Stats | null = null;
+  for (const part of full.slice(volume.length).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    try {
+      stat = fs.lstatSync(current);
+    } catch (error) {
+      if (allowMissing && (error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+    if (stat.isSymbolicLink() || (!stat.isDirectory() && (!stat.isFile() || writing && stat.nlink > 1))) throw new Error("refused");
+    if (path.relative(current, fs.realpathSync(current)) !== "") throw new Error("refused");
+  }
+  return stat;
+}
+
+/** Nontruncating opens let identity checks precede every byte change. */
+export function openPlainFile(root: string, target: string, flags: number): number {
+  const directory = plainPath(root, root);
+  const writing = (flags & (fs.constants.O_WRONLY | fs.constants.O_RDWR)) !== 0;
+  const initial = plainPath(root, target, (flags & fs.constants.O_CREAT) !== 0, writing);
+  if (!directory?.isDirectory() || initial && !initial.isFile()) throw new Error("refused");
+  const fd = fs.openSync(target, flags | (fs.constants.O_NOFOLLOW ?? 0), 0o600);
+  try {
+    const after = plainPath(root, root);
+    const named = plainPath(root, target, false, writing);
+    const opened = fs.fstatSync(fd);
+    if (!after || directory.dev !== after.dev || directory.ino !== after.ino || !named ||
+        !opened.isFile() || writing && opened.nlink !== 1 || named.dev !== opened.dev || named.ino !== opened.ino ||
+        initial && (initial.dev !== opened.dev || initial.ino !== opened.ino)) throw new Error("refused");
+    return fd;
+  } catch (error) {
+    fs.closeSync(fd);
+    throw error;
+  }
+}
+
 /**
  * node:fs as a RawFs. Every method reports failure by return value, the way
  * z-file.c does - file_open returns NULL rather than dying - so a read-only
@@ -68,7 +112,9 @@ export class NodeRawFs implements RawFs {
    */
   private ensureRoot(dir: HostDir): void {
     try {
+      plainPath(this.root(dir), this.root(dir), true);
       fs.mkdirSync(this.root(dir), { recursive: true });
+      plainPath(this.root(dir), this.root(dir));
     } catch {
       /* reported by the write that needed it */
     }
@@ -85,11 +131,16 @@ export class NodeRawFs implements RawFs {
    * contract implies: a name that escapes its directory resolves to null and
    * every caller then reports failure.
    */
-  private full(dir: HostDir, name: string): string | null {
+  private full(dir: HostDir, name: string, writing = false): string | null {
     const root = this.root(dir);
     const full = path.resolve(root, name);
     if (full !== root && !full.startsWith(root + path.sep)) return null;
-    return full;
+    try {
+      plainPath(root, full, true, writing);
+      return full;
+    } catch {
+      return null;
+    }
   }
 
   displayPath(dir: HostDir, name: string): string {
@@ -110,7 +161,12 @@ export class NodeRawFs implements RawFs {
     const p = this.full(dir, name);
     if (p === null) return null;
     try {
-      return fs.readFileSync(p, "utf8");
+      const fd = openPlainFile(this.root(dir), p, fs.constants.O_RDONLY);
+      try {
+        return fs.readFileSync(fd, "utf8");
+      } finally {
+        fs.closeSync(fd);
+      }
     } catch {
       return null;
     }
@@ -127,7 +183,7 @@ export class NodeRawFs implements RawFs {
      * the Mac front end ever set (it stamped a type/creator code). Accepted and
      * unused rather than dropped from the signature, so the seam stays visible. */
     void _ftype;
-    const p = this.full(dir, name);
+    const p = this.full(dir, name, true);
     if (p === null) return "create-failed";
     /* file_open's directory, made now rather than at startup - see the
      * constructor. `rename` needs no such thing: it moves a file that is already
@@ -136,11 +192,14 @@ export class NodeRawFs implements RawFs {
     this.ensureRoot(dir);
     let fd: number | undefined;
     try {
-      fd = fs.openSync(p, append ? "a" : "w");
+      const existing = plainPath(this.root(dir), p, true, true);
+      const flags = fs.constants.O_WRONLY | (existing ? 0 : fs.constants.O_CREAT | fs.constants.O_EXCL) | (append ? fs.constants.O_APPEND : 0);
+      fd = openPlainFile(this.root(dir), p, flags);
     } catch {
       return "create-failed";
     }
     try {
+      if (!append) fs.ftruncateSync(fd, 0);
       fs.writeFileSync(fd, text, "utf8");
     } catch {
       /* The bytes did not all land - upstream's file_close failure. */
@@ -162,7 +221,7 @@ export class NodeRawFs implements RawFs {
   }
 
   unlink(dir: HostDir, name: string): boolean {
-    const p = this.full(dir, name);
+    const p = this.full(dir, name, true);
     if (p === null) return false;
     try {
       fs.unlinkSync(p);
@@ -173,8 +232,8 @@ export class NodeRawFs implements RawFs {
   }
 
   rename(dir: HostDir, from: string, to: string): boolean {
-    const a = this.full(dir, from);
-    const b = this.full(dir, to);
+    const a = this.full(dir, from, true);
+    const b = this.full(dir, to, true);
     if (a === null || b === null) return false;
     try {
       fs.renameSync(a, b);
@@ -196,9 +255,10 @@ export class NodeRawFs implements RawFs {
 
   listFiles(dir: HostDir): string[] {
     try {
+      plainPath(this.root(dir), this.root(dir));
       return fs
         .readdirSync(this.root(dir), { withFileTypes: true })
-        .filter((e) => e.isFile())
+        .filter((e) => e.isFile() && this.full(dir, e.name) !== null)
         .map((e) => e.name)
         .sort((a, b) => a.localeCompare(b));
     } catch {

@@ -4,9 +4,8 @@
  * SEPARATE FROM main.ts BECAUSE IT IS THE PART THAT CAN BE WRONG. The ipcMain
  * handler around this is Electron and cannot be unit-tested; the file operation is
  * plain `node:fs` and has three behaviours worth pinning: it refuses a name it does
- * not own, it never overwrites an archive already put aside, and it survives a
- * `mods/` folder that is a mount point or a junction - which is exactly what an
- * external mod manager's deploy target often is.
+ * not own, it never overwrites an archive already put aside, and it refuses
+ * linked roots and archive destinations that redirect writes elsewhere.
  *
  * IT MOVES, IT DOES NOT DELETE. The zip is the player's copy of somebody else's
  * work; the game took what it needed from it and has no business being the only
@@ -16,6 +15,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { plainPath } from "@rpgm-tools/neo-angband-cli/host-node";
 
 /** The subfolder of `mods/` that imported archives are moved into. */
 export const IMPORTED_DIRNAME = "imported";
@@ -57,7 +57,12 @@ export function freeArchiveName(dir: string, leaf: string): string | null {
   const ext = dot > 0 ? leaf.slice(dot) : "";
   for (let n = 0; n < 100; n++) {
     const name = n === 0 ? leaf : `${stem}-${String(n)}${ext}`;
-    if (!fs.existsSync(path.join(dir, name))) return name;
+    try {
+      fs.lstatSync(path.join(dir, name));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return name;
+      throw error;
+    }
   }
   return null;
 }
@@ -84,22 +89,28 @@ export function archiveModZip(modsDir: string, leaf: unknown): ArchiveResult {
   const file = path.join(modsDir, leaf);
   const into = path.join(modsDir, IMPORTED_DIRNAME);
   try {
-    if (!fs.lstatSync(file).isFile()) {
+    if (!plainPath(modsDir, file, false, true)?.isFile()) {
       return { ok: false, error: "that is not a file in the mods folder" };
     }
+    plainPath(modsDir, into, true);
     fs.mkdirSync(into, { recursive: true });
+    plainPath(modsDir, into);
     const name = freeArchiveName(into, leaf);
     if (name === null) {
       return { ok: false, error: `${IMPORTED_DIRNAME} already holds 100 copies of that name` };
     }
     const dest = path.join(into, name);
+    plainPath(modsDir, file, false, true);
+    plainPath(modsDir, dest, true, true);
     try {
-      fs.renameSync(file, dest);
-    } catch {
+      fs.linkSync(file, dest);
+      fs.unlinkSync(file);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
       /* EXDEV: across a device boundary a rename cannot work at all. Copy first,
        * then remove the original - in that order, so a failure leaves the archive
        * where it was rather than nowhere. */
-      fs.copyFileSync(file, dest);
+      fs.copyFileSync(file, dest, fs.constants.COPYFILE_EXCL);
       fs.unlinkSync(file);
     }
     return { ok: true, to: `${IMPORTED_DIRNAME}/${name}` };

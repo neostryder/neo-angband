@@ -32,6 +32,8 @@
  * HTTP server, or a mods directory on disk. See routes.test.ts.
  */
 import * as path from "node:path";
+import * as fs from "node:fs";
+import { openPlainFile, plainPath } from "@rpgm-tools/neo-angband-cli/host-node";
 
 /** A blank same-origin page; see ORIGIN_PROBE_ROUTE in main.ts. */
 export const ORIGIN_PROBE_ROUTE = "/__origin-storage";
@@ -92,7 +94,12 @@ export function safeJoin(root: string, urlPath: string): string | null {
   const rel = decoded.replace(/^\/+/, "");
   const full = path.normalize(path.join(root, rel));
   if (full !== root && !full.startsWith(root + path.sep)) return null;
-  return full;
+  try {
+    plainPath(root, full, true);
+    return full;
+  } catch {
+    return null;
+  }
 }
 
 /** Decide where one request is answered from. */
@@ -124,4 +131,53 @@ export function planRequest(url: string, roots: RouteRoots): RoutePlan {
   const full = safeJoin(roots.webRoot, target);
   if (!full) return { kind: "forbidden" };
   return { kind: "file", candidates: [full], fallbackIndex: true };
+}
+
+
+/** The open file must still belong to the root the route authorized. */
+export async function readStaticFile(root: string, file: string): Promise<Buffer> {
+  const archive = process.versions.electron ? /^(.*?\.asar)[/\\]/u.exec(path.resolve(root))?.[1] : undefined;
+  if (archive) return readArchiveFile(root, file, archive);
+  const fd = openPlainFile(root, file, fs.constants.O_RDONLY);
+  try {
+    return await new Promise<Buffer>((resolve, reject) => {
+      fs.readFile(fd, (error, data) => error ? reject(error) : resolve(data));
+    });
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+
+/** ASAR entries have synthetic inode numbers, so their physical archive is the identity boundary. */
+async function readArchiveFile(root: string, file: string, archive: string): Promise<Buffer> {
+  const physical = (): fs.Stats => {
+    const proc = process as { noAsar?: boolean | undefined };
+    const before = proc.noAsar;
+    proc.noAsar = true;
+    try {
+      const stat = plainPath(path.dirname(archive), archive);
+      if (!stat?.isFile()) throw new Error("refused");
+      plainPath(path.dirname(archive), path.join(archive + ".unpacked", path.relative(archive, file)), true);
+      return stat;
+    } finally {
+      proc.noAsar = before;
+    }
+  };
+  const before = physical();
+  const initial = plainPath(root, file);
+  if (!initial?.isFile()) throw new Error("refused");
+  const fd = fs.openSync(file, fs.constants.O_RDONLY);
+  try {
+    const after = physical();
+    const named = plainPath(root, file);
+    const opened = fs.fstatSync(fd);
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs ||
+        !named?.isFile() || !opened.isFile() || initial.size !== named.size || initial.size !== opened.size) throw new Error("refused");
+    return await new Promise<Buffer>((resolve, reject) => {
+      fs.readFile(fd, (error, data) => error ? reject(error) : resolve(data));
+    });
+  } finally {
+    fs.closeSync(fd);
+  }
 }
