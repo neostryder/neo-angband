@@ -1787,22 +1787,27 @@ export function installObjCommands(
     let targetSlot = wieldSlot(player.body, found.obj.tval, player.equipment);
     if (targetSlot < 0 || targetSlot >= player.body.count) return 0;
 
-    /* Step 4: the ring question. The core command path cannot block on UI, so
-     * the shell resolves wieldRingChoice() and passes the chosen slot back as
-     * the "slot" argument, which is precisely what upstream's cmd_get_item does
-     * when the command already carries the answer (cmd-obj.c:298). With no
-     * answer supplied (a headless driver, the borg) the pre-prompt wield_slot
-     * stands, the same "unprompted terminal takes the default" rule the confirm
-     * seam uses. */
-    if ((player.equipment[targetSlot] ?? 0) !== 0 && tvalIsRing(found.obj.tval)) {
+    /* Step 4. The shell asks "Replace which ring?" only when wield_slot's hand
+     * is already full, and passes that answer as "slot". A caller that already
+     * names a ring slot, including an empty second hand, is obeyed the same
+     * way: the argument is the hand, not the prompt. A slot this body cannot
+     * wear a ring in, or one holding something else, is not an answer that
+     * question could return, so wield_slot stands. No argument leaves the
+     * pre-prompt slot alone. */
+    if (tvalIsRing(found.obj.tval)) {
       const chosen = cmd.args?.["slot"];
-      if (typeof chosen === "number") {
+      if (
+        typeof chosen === "number" &&
+        Number.isInteger(chosen) &&
+        chosen >= 0 &&
+        chosen < player.body.count &&
+        player.body.slots[chosen]?.type === "RING"
+      ) {
         const chosenHandle = player.equipment[chosen] ?? 0;
         const chosenObj = chosenHandle ? gearGet(state.gear, chosenHandle) : null;
-        /* Only a worn RING is a legal answer (the tval_is_ring filter on
-         * USE_EQUIP); anything else is not something cmd_get_item could have
-         * returned, so it is ignored rather than obeyed. */
-        if (chosenObj && tvalIsRing(chosenObj.tval)) targetSlot = chosen;
+        if (chosenHandle === 0 || (chosenObj !== null && tvalIsRing(chosenObj.tval))) {
+          targetSlot = chosen;
+        }
       }
     }
 

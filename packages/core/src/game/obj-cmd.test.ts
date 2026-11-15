@@ -2235,6 +2235,61 @@ describe("registered command: wield (cmd-obj.c do_cmd_wield)", () => {
     expect(state.actor.player.equipment[left]).toBe(h);
   });
 
+  it("wears a ring in an explicit empty second slot while the first stays empty", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const slots = ringSlots(state);
+    expect(slots.length).toBeGreaterThanOrEqual(2);
+    expect(state.actor.player.equipment[slots[0]!] ?? 0).toBe(0);
+    expect(state.actor.player.equipment[slots[1]!] ?? 0).toBe(0);
+    const ring = makeNamed("Strength", TV.RING);
+    expect(wieldRingChoice(state, ring)).toBeNull();
+    const h = carry(state, ring);
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state));
+    registry.get("wield")!(state, { code: "wield", args: { handle: h, slot: slots[1] } });
+    expect(state.actor.player.equipment[slots[1]!]).toBe(h);
+    expect(state.actor.player.equipment[slots[0]!] ?? 0).toBe(0);
+  });
+
+  it("frees the named hand when the other ring slot is empty", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const slots = ringSlots(state);
+    const worn = carry(state, makeNamed("Protection", TV.RING));
+    invenWield(state, worn, constants, {}, slots[1]!);
+    expect(state.actor.player.equipment[slots[0]!] ?? 0).toBe(0);
+    const h = carry(state, makeNamed("Strength", TV.RING));
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state));
+    registry.get("wield")!(state, { code: "wield", args: { handle: h, slot: slots[1] } });
+    expect(state.actor.player.equipment[slots[1]!]).toBe(h);
+    expect(state.actor.player.equipment[slots[0]!] ?? 0).toBe(0);
+    expect(state.gear.pack).toContain(worn);
+  });
+
+  it("with no named slot, an empty first hand still takes the ring and asks nothing", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const slots = ringSlots(state);
+    const ring = makeNamed("Strength", TV.RING);
+    expect(wieldRingChoice(state, ring)).toBeNull();
+    const h = carry(state, ring);
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state));
+    registry.get("wield")!(state, { code: "wield", args: { handle: h } });
+    expect(state.actor.player.equipment[slots[0]!]).toBe(h);
+    expect(state.actor.player.equipment[slots[1]!] ?? 0).toBe(0);
+  });
+
+  it("ignores a named slot that is not a ring slot on this body", () => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    const slots = ringSlots(state);
+    const h = carry(state, makeNamed("Strength", TV.RING));
+    const registry = createDefaultRegistry();
+    installObjCommands(registry, makeDeps(state));
+    registry.get("wield")!(state, { code: "wield", args: { handle: h, slot: -1 } });
+    expect(state.actor.player.equipment[slots[0]!]).toBe(h);
+    expect(state.actor.player.equipment[slots[1]!] ?? 0).toBe(0);
+  });
+
   it("'!t' on the displaced item asks 'Really take off %s? ' and a refusal aborts", () => {
     /* cmd-obj.c:321-330: check_for_inscrip(equip_obj, "!t"), then get_check with
      * ODESC_PREFIX | ODESC_FULL. */
