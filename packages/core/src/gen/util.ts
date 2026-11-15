@@ -149,6 +149,7 @@ export class Dun {
 
   pitNum = 0;
   quest = false;
+  forcedDescent = false;
   persist = false;
 
   /** Persistent-level connection info (empty for non-persistent levels). */
@@ -1261,7 +1262,9 @@ export function placeTrap(g: Gen, grid: Loc): void {
 
 /** place_stairs: choose the stair terrain honoring town / max-depth rules. */
 export function placeStairs(g: Gen, grid: Loc, quest: boolean, feat: number): void {
-  if (!g.c.depth) {
+  if (g.dun.forcedDescent) {
+    if (!quest && g.c.depth < g.constants.maxDepth - 1) g.c.setFeat(grid, FEAT.MORE);
+  } else if (!g.c.depth) {
     g.c.setFeat(grid, FEAT.MORE);
   } else if (quest || g.c.depth >= g.constants.maxDepth - 1) {
     g.c.setFeat(grid, FEAT.LESS);
@@ -1271,6 +1274,10 @@ export function placeStairs(g: Gen, grid: Loc, quest: boolean, feat: number): vo
 }
 
 export function placeRandomStairs(g: Gen, grid: Loc, quest: boolean): void {
+  if (g.dun.forcedDescent) {
+    if (squareCanPutItem(g, grid)) placeStairs(g, grid, quest, FEAT.MORE);
+    return;
+  }
   const feat = g.rng.randint0(100) < 50 ? FEAT.LESS : FEAT.MORE;
   if (squareCanPutItem(g, grid)) placeStairs(g, grid, quest, feat);
 }
@@ -1426,6 +1433,7 @@ export function allocStairs(
   quest: boolean,
 ): void {
   const c = g.c;
+  if (g.dun.forcedDescent && (feat === FEAT.LESS || quest || c.depth >= g.constants.maxDepth - 1)) return;
   const av: Loc[] = [];
 
   if (minsep > 0) {

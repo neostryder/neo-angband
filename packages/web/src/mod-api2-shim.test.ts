@@ -245,6 +245,15 @@ describe("engine tiles", () => {
 });
 
 describe("trap allocation policy", () => {
+  it("installs forced descent stairs only while the declaration is active", () => {
+    let active = true;
+    const hooks = api2PolicyModHooks({ forcedDescentStairs: true }, () => active);
+    expect(hooks.forcedDescentStairs?.()).toBe(true);
+    active = false;
+    expect(hooks.forcedDescentStairs?.()).toBe(false);
+    expect(api2PolicyModHooks({}, () => true).forcedDescentStairs).toBeUndefined();
+  });
+
   it("installs the declared table and restores the default after the mod stops", () => {
     const faithful = { kind: "trap-allocation" as const, count: { depthDivisor: 3, min: 2, max: 10, divisor: 5 }, placement: "corridors" as const };
     const classic = { ...faithful, count: { ...faithful.count, divisor: 1 }, placement: "both" as const };
@@ -602,6 +611,7 @@ describe("policy tables that install registrations", () => {
   });
 
   const tables: Api2Policies = {
+    forcedDescentStairs: true,
     trapAllocation: { kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" },
     randartSetSize: { multiplier: 2 },
     prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
@@ -633,7 +643,7 @@ describe("policy tables that install registrations", () => {
       () => ({ grants: capabilities("tables", [capability]) }));
     const hooks = load("tables", plugin).hooks;
     const registrations = api2PluginRegistrations(plugin, "tables", { loud: true });
-    const policyHook: Partial<Record<string, string>> = { trapAllocation: "trapAllocation", monsterOwnDropThefts: "monsterOwnDropThefts", monsterLoreCompleteness: "monsterLoreCompleteness", forgetUnlitImpassableTerrain: "forgetUnlitImpassableTerrain", forceFromBlastCenter: "forceFromBlastCenter", monsterArcheryFrequency: "monsterArcheryFrequency", walkBlockedByDiggable: "walkBlockedByDiggable", startingOptions: "newCharacter", projectionRadiusClamp: "projectionRadius", levelRevisitTracking: "levelRevisited" };
+    const policyHook: Partial<Record<string, string>> = { forcedDescentStairs: "forcedDescentStairs", trapAllocation: "trapAllocation", monsterOwnDropThefts: "monsterOwnDropThefts", monsterLoreCompleteness: "monsterLoreCompleteness", forgetUnlitImpassableTerrain: "forgetUnlitImpassableTerrain", forceFromBlastCenter: "forceFromBlastCenter", monsterArcheryFrequency: "monsterArcheryFrequency", walkBlockedByDiggable: "walkBlockedByDiggable", startingOptions: "newCharacter", projectionRadiusClamp: "projectionRadius", levelRevisitTracking: "levelRevisited" };
     expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : policyHook[name] ? [policyHook[name]] : []);
     expect(Object.keys(registrations ?? {})).toEqual("registration" in target ? [target.registration] : []);
     plugin.uninstall?.();

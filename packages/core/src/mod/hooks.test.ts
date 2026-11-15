@@ -661,6 +661,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       no: (log, tag) => ({ forgetUnlitImpassableTerrain: () => { log.push(tag); return false; } }),
       run: (h) => h.forgetUnlitImpassableTerrain?.(),
     },
+    forcedDescentStairs: {
+      yes: (log, tag) => ({ forcedDescentStairs: () => { log.push(tag); return true; } }),
+      no: (log, tag) => ({ forcedDescentStairs: () => { log.push(tag); return false; } }),
+      run: (h) => h.forcedDescentStairs?.(),
+    },
     forceFromBlastCenter: {
       yes: (log, tag) => ({ forceFromBlastCenter: () => { log.push(tag); return true; } }),
       no: (log, tag) => ({ forceFromBlastCenter: () => { log.push(tag); return false; } }),

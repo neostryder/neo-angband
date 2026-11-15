@@ -805,14 +805,15 @@ export function createGlyphRegistry(): GlyphRegistry {
   });
   r.set("vault", "<", {
     terrain({ g, grid }) {
-      if (!g.dun.persist) g.c.setFeat(grid, FEAT.LESS);
+      if (!g.dun.persist && !g.dun.forcedDescent) g.c.setFeat(grid, FEAT.LESS);
     },
   });
   r.set("vault", ">", {
     terrain({ g, grid }) {
       if (g.dun.persist) return;
-      if (g.dun.quest || g.c.depth >= g.constants.maxDepth - 1) g.c.setFeat(grid, FEAT.LESS);
-      else g.c.setFeat(grid, FEAT.MORE);
+      if (g.dun.quest || g.c.depth >= g.constants.maxDepth - 1) {
+        if (!g.dun.forcedDescent) g.c.setFeat(grid, FEAT.LESS);
+      } else g.c.setFeat(grid, FEAT.MORE);
     },
   });
   r.set("vault", "`", {

@@ -1276,6 +1276,7 @@ describe("asking a Worker mod", () => {
 describe("a Worker mod's hooks", () => {
   const tables: Api2Policies = {
     trapAllocation: { kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" },
+    forcedDescentStairs: true,
     randartSetSize: { multiplier: 2 },
     prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
     startingOptions: { kind: "starting-options", values: { auto_more: true } },

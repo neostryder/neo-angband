@@ -111,6 +111,8 @@ export interface GenDeps {
 }
 
 export interface GenerateOptions {
+  /** The birth option; only the forcedDescentStairs policy enables its placement rule. */
+  forceDescend?: boolean;
   /** Whether this is a quest level (forces the classic profile). */
   quest?: boolean;
   /**
@@ -450,6 +452,7 @@ export function generateLevel(
     error = null;
     const dun = new Dun(deps.constants);
     dun.quest = quest;
+    dun.forcedDescent = (options.forceDescend ?? false) && (deps.hooks?.forcedDescentStairs?.() ?? false);
     /* Persistent levels (generate.c L1148-1153): seed the stair connectors from
      * adjacent levels before building so the dun.persist branches line stairs
      * up. Off by default, leaving dun.join empty and every builder unchanged. */

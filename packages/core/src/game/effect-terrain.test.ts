@@ -163,6 +163,45 @@ describe("EF_GRANITE (effect-handler-general.c L2991)", () => {
 });
 
 describe("EF_CREATE_STAIRS (effect-handler-general.c L1975)", () => {
+  it("creates only down stairs under the forced descent policy", () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const state = makeState({ playerGrid: loc(10, 10), seed });
+      state.chunk.depth = 5;
+      state.options = new OptionState({ overrides: { birth_force_descend: true } });
+      state.modHooks = { forcedDescentStairs: () => true };
+      registry().effectSimple(EF.CREATE_STAIRS, env(state), { origin: sourcePlayer() });
+      expect(state.chunk.feat(state.actor.grid)).toBe(FEAT.MORE);
+    }
+  });
+
+  it("refuses impossible forced descent stairs before moving objects or drawing RNG", () => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.chunk.depth = state.z.maxDepth - 1;
+    state.options = new OptionState({ overrides: { birth_force_descend: true } });
+    state.modHooks = { forcedDescentStairs: () => true };
+    const obj = makeObj();
+    floorCarry(state, state.actor.grid, obj);
+    const before = state.rng.getState();
+    const msgs: string[] = [];
+    expect(registry().effectSimple(EF.CREATE_STAIRS, env(state, {}, msgs), { origin: sourcePlayer() })).toBe(false);
+    expect(msgs).toEqual(["Nothing happens!"]);
+    expect(floorPile(state, state.actor.grid)).toContain(obj);
+    expect(state.rng.getState()).toEqual(before);
+  });
+
+  it("preserves CREATE_STAIRS terrain and RNG without the declaration", () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const states = [makeState({ seed }), makeState({ seed })];
+      for (const [index, state] of states.entries()) {
+        state.chunk.depth = 5;
+        state.options = new OptionState({ overrides: { birth_force_descend: index === 1 } });
+        registry().effectSimple(EF.CREATE_STAIRS, env(state), { origin: sourcePlayer() });
+      }
+      expect(states[0]!.chunk.snapshotSquares().feats).toEqual(states[1]!.chunk.snapshotSquares().feats);
+      expect(states[0]!.rng.getState()).toEqual(states[1]!.rng.getState());
+    }
+  });
+
   it("creates down stairs in town (depth 0 forces down)", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     state.chunk.depth = 0;

@@ -353,6 +353,17 @@ const handleCREATE_STAIRS: EffectHandler = (ctx) => {
     return false;
   }
 
+  if ((state.modHooks?.forcedDescentStairs?.() ?? false) && (state.options?.get("birth_force_descend") ?? false)) {
+    const depth = state.chunk.depth;
+    if (env.teleport?.isQuest?.(depth) || depth >= state.z.maxDepth - 1) {
+      say(ctx, "Nothing happens!");
+      return false;
+    }
+    if (floorPile(state, grid).length > 0) pushObject(state, grid);
+    state.chunk.setFeat(grid, FEAT.MORE);
+    return true;
+  }
+
   /* Push objects off the grid. */
   if (floorPile(state, grid).length > 0) pushObject(state, grid);
 

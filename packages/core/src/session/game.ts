@@ -3085,6 +3085,7 @@ function makeChangeLevel(
       {
         daytime: isDaytime(state.turn, state.z.dayLength),
         birthLoseArts: state.options?.get("birth_lose_arts") ?? false,
+        forceDescend: state.options?.get("birth_force_descend") ?? false,
         questSpawns: questSpawnsForDepth(state, reg, depth),
         persist,
         ...(joinInfo ? { joinInfo } : {}),
@@ -3795,6 +3796,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     registries: reg,
     artifacts,
     noArtifacts,
+    generate: { ...opts.generate, forceDescend: options.get("birth_force_descend") },
   });
 
   // Resolve the worn objects by body slot; calc_bonuses reads them for the

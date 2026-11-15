@@ -171,6 +171,7 @@ Each table needs its matching registry permission from the list below, in both r
 | `monsterOwnDropThefts` | host-owned theft accounting | boolean | `registry:monster` |
 | `monsterLoreCompleteness` | host-owned lore rules | boolean | `registry:monster` |
 | `forgetUnlitImpassableTerrain` | host-owned terrain memory | boolean | `registry:projection` |
+| `forcedDescentStairs` | host-owned generation and CREATE_STAIRS handlers | boolean | `registry:room` |
 | `forceFromBlastCenter` | host-owned FORCE and thrust handlers | boolean | `registry:projection` |
 | `monsterArcheryFrequency` | host-owned archery predicate | `{ greaterThan: 0..100 }` | `registry:monster` |
 | `levelRevisitTracking` | `levelRevisited` | not a rule table | `registry:monster` |
@@ -194,6 +195,8 @@ A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whol
 `monsterLoreCompleteness: true` selects upstream 29985cd05 in `lore_update()`, `lore_is_fully_known()`, and the first sighting in `update_mon()`. Display flags join obvious flags, generation flags are learned at death, learned flags must contain the race flags, and spell sets must match. The session binds the live policy to its lore store, including loaded records; Core keeps race truth inside the host. An absent policy keeps the older masks, byte check, and sighting behavior.
 
 `forgetUnlitImpassableTerrain: true` applies upstream `update_view()` (1d2ad35a2, fc29847fd) before seen grids are noted: Core forgets the player's remembered impassable terrain when light is zero or negative and UNLIGHT is absent. Blindness still forgets it with any light or UNLIGHT state. A false or absent policy keeps the blind-only rule.
+
+`forcedDescentStairs: true` prevents new up stairs when `birth_force_descend` is on. Random allocation skips up stairs, random stair placement selects down stairs, and CREATE_STAIRS refuses quest and bottom levels with "Nothing happens!" before moving objects. The host keeps reciprocal stair connectors already seeded from the previous level, including the arrival stair; it does not suppress and rebuild them, so a seed reproduces its level. An absent or false policy preserves terrain and RNG. Both runtimes install the same host rule, folded `any-yes`.
 
 `forceFromBlastCenter: true` selects upstream b4fb34b36 in `project()`, both FORCE handlers, and `thrust_away()`: balls push from their blast centre, bolts and beams keep their source centre, and coincident targets draw a random angle. Projection contexts carry `centre` separately from the source. Core keeps those coordinates inside the host; an absent or false policy preserves the old source-based thrust and RNG.
 

@@ -190,6 +190,8 @@ export interface Api2Policies {
   readonly forgetUnlitImpassableTerrain?: boolean;
   /** True applies FORCE thrust from the blast centre, including coincident targets. */
   readonly forceFromBlastCenter?: boolean;
+  /** True suppresses new up stairs under forced descent, preserving seeded connectors. */
+  readonly forcedDescentStairs?: boolean;
   readonly monsterArcheryFrequency?: Api2MonsterArcheryFrequencyPolicy;
   readonly trapAllocation?: Api2TrapAllocationPolicy;
   readonly randartSetSize?: Api2RandartSetSizePolicy;
@@ -287,6 +289,7 @@ export interface Api2PolicyRegistrations {
   monsterLoreCompleteness?: true;
   forgetUnlitImpassableTerrain?: true;
   forceFromBlastCenter?: true;
+  forcedDescentStairs?: true;
   monsterArcheryFrequency?: Api2MonsterArcheryFrequencyPolicy;
   trapAllocation?: Api2TrapAllocationPolicy;
   randartSetSize?: Api2RandartSetSizePolicy;
@@ -504,7 +507,7 @@ function switchKind(name: Api2PolicyName, hook: "saveNoiseScent" | "shapeLearnOb
 }
 
 /** A registration switch: true asks the host to install the game's own rule for it. */
-function registrationSwitch(name: "projectionRadiusClamp" | "levelRevisitTracking" | "forceFromBlastCenter" | "forgetUnlitImpassableTerrain" | "monsterLoreCompleteness" | "monsterOwnDropThefts", summary: string, capability: string): Api2PolicyKind {
+function registrationSwitch(name: "projectionRadiusClamp" | "levelRevisitTracking" | "forcedDescentStairs" | "forceFromBlastCenter" | "forgetUnlitImpassableTerrain" | "monsterLoreCompleteness" | "monsterOwnDropThefts", summary: string, capability: string): Api2PolicyKind {
   return {
     name,
     summary,
@@ -832,6 +835,7 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   registrationSwitch("monsterOwnDropThefts", "Counts only a monster's own stolen drops and saturates thefts at 65535.", "registry:monster"),
   registrationSwitch("monsterLoreCompleteness", "Uses upstream lore masks, completeness checks, and first-sight learning.", "registry:monster"),
   registrationSwitch("forgetUnlitImpassableTerrain", "Forgets remembered impassable terrain without light, except with UNLIGHT.", "registry:projection"),
+  registrationSwitch("forcedDescentStairs", "Prevents new up stairs under forced descent while keeping seeded connectors.", "registry:room"),
   registrationSwitch("forceFromBlastCenter", "Applies FORCE thrust from the blast centre, including coincident targets.", "registry:projection"),
   registrationSwitch("projectionRadiusClamp", "Holds a blast's radius at the game's maximum projection range.", "registry:projection"),
   registrationSwitch("levelRevisitTracking", "Clears the noise and ages the scent of a level that comes back after being put aside.", "registry:monster"),

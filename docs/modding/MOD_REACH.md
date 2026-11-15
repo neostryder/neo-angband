@@ -12,7 +12,7 @@ The target is a game built for modding throughout: a mod can override code, reso
 
 | | measured |
 | --- | --- |
-| `ModHooks` behaviour hooks | **30** (`MOD_HOOK_FOLDS` in `packages/core/src/mod/hooks.ts`) |
+| `ModHooks` behaviour hooks | **31** (`MOD_HOOK_FOLDS` in `packages/core/src/mod/hooks.ts`) |
 | Switches of >= 8 cases in the tree, counted by a script | **34** (`tools/switch-census.json`, re-derived 2026-08-09 after gap 16; was 47 that morning and 50 before the three glyph decoders became one registry) |
 | ...still `CANDIDATE`, a dispatch point a mod cannot reach | **0** (was 18 on the morning of 2026-08-09). See the caution below: zero candidates is the end of what this TOOL can see, not the end of closed dispatch |
 | ...of those, a mod's CODE can add to or override | **all of them** (`profile`, `blow`, `store` 2026-08-08; `projection`, `glyph`, `effect-info`, `randart`, `tval`, `rune` 2026-08-09) |
@@ -46,7 +46,7 @@ Game behaviour living in `switch` statements with nothing to register into is no
 
 ## (a) Code
 
-### The 30 behaviour hooks, and what each can change
+### The 31 behaviour hooks, and what each can change
 
 `ModHooks` (`packages/core/src/mod/hooks.ts`, the `ModHooks` interface) is a typed interface of optional functions on `GameState.modHooks` (`packages/core/src/game/context.ts`). See `MOD_SEAMS.md` for the fold rules. Call sites below are named by file and by the symbol that reads the hook rather than by line number, since a line number in a document has no test behind it and goes stale with the next commit.
 
@@ -54,6 +54,7 @@ Game behaviour living in `switch` statements with nothing to register into is no
 | --- | --- | --- | --- |
 | `walkBlockedByDiggable` | `game/cave-cmd.ts`, `movementAutoDig`, installed as `state.autoDigStep` and read in `game/player-turn.ts` | Take over a walk into an impassable grid and set its energy cost, INCLUDING a cost of zero: the call site tests `dug !== null`, so a handled-for-free walk is honoured | Anything about a walk that is not blocked |
 | `objectListTiebreak` | `game/obj-list.ts` | The order of two floor-list entries that compared equal on every upstream key | Any earlier comparator key; monster list ordering |
+| `forcedDescentStairs` | `gen/generate.ts`, `gen/util.ts`, `gen/room.ts`, `game/effect-terrain.ts` | Prevent new up stairs under forced descent | Seeded reciprocal connectors, which stay in place |
 | `monsterOwnDropThefts` | `mon/steal.ts`, reached from `game/steal.ts` | Count stolen own drops with 16-bit saturation | Item provenance or lore writes in a Worker |
 | `monsterLoreCompleteness` | `mon/lore.ts` and `game/known.ts` | Select lore masks, flag-set completeness, and first-sight learning | Race truth in a Worker |
 | `forgetUnlitImpassableTerrain` | `game/known.ts`, `noteSpots` | Forget impassable terrain underfoot without light | Passable terrain or terrain elsewhere |

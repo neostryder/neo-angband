@@ -170,7 +170,7 @@ function fixed(
  */
 const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
   ["effect", "Override effect, combat, and magic logic", true],
-  ["room", "Override dungeon / level generation", true],
+  ["room", "Override dungeon / level generation and prevent new up stairs under forced descent", true],
   ["profile", "Add new kinds of dungeon level, and change which kind you get at a depth", true],
   ["blow", "Change what monster attacks do to you, and add new kinds of attack", true],
   ["store", "Change what shops buy from you and what they keep in stock", true],
@@ -192,7 +192,7 @@ const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
 
 const WORKER_REGISTRY_CONSENT: Readonly<Record<string, string>> = {
   effect: "Install bounded heal, damage, and message effect programs. Any character they touch becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
-  room: "Select host room builders for named room types and set general trap counts and placement on classic levels. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
+  room: "Select host room builders for named room types and set general trap counts and placement on classic levels, and prevent new up stairs under forced descent. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
   profile: "Add weighted dungeon profiles copied from existing profiles. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
   blow: "Set fixed damage and visibility for monster blow effects. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
   glyph: "Map room or vault symbols to existing symbol behavior. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",

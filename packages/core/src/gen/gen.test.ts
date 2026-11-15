@@ -67,6 +67,8 @@ import {
   pickAndPlaceDistantMonster,
   placeNewMonster,
   placeObject,
+  allocStairs,
+  placeRandomStairs,
   type MonPlaceDeps,
 } from "./util.js";
 
@@ -149,6 +151,43 @@ function bareGen(width: number, height: number, depth: number): Gen {
   const dun = new Dun(constants);
   return new Gen(c, new Rng(1), reg, constants, dun, null, null);
 }
+
+describe("forced descent stair policy", () => {
+  it("places no random up stairs and keeps seeded connectors", () => {
+    const g = bareGen(20, 20, 10);
+    fillRectangle(g.c, 1, 1, 18, 18, FEAT.FLOOR, 0);
+    g.dun.forcedDescent = true;
+    g.c.setFeat(loc(2, 2), FEAT.LESS);
+    allocStairs(g, FEAT.LESS, 3, 0, false, [], false);
+    placeRandomStairs(g, loc(5, 5), false);
+    expect(g.c.feat(loc(5, 5))).toBe(FEAT.MORE);
+    const up = Array.from(g.c.snapshotSquares().feats).filter((feat) => feat === FEAT.LESS);
+    expect(up).toHaveLength(1);
+    expect(g.c.feat(loc(2, 2))).toBe(FEAT.LESS);
+  });
+
+  it("leaves no stair on forced descent quest and bottom levels", () => {
+    for (const depth of [10, constants.maxDepth - 1]) {
+      const g = bareGen(20, 20, depth);
+      fillRectangle(g.c, 1, 1, 18, 18, FEAT.FLOOR, 0);
+      g.dun.forcedDescent = true;
+      allocStairs(g, FEAT.MORE, 3, 0, false, [], true);
+      placeRandomStairs(g, loc(5, 5), true);
+      expect(g.c.feat(loc(5, 5))).toBe(FEAT.FLOOR);
+      expect(Array.from(g.c.snapshotSquares().feats).some((feat) => feat === FEAT.LESS || feat === FEAT.MORE)).toBe(false);
+    }
+  });
+
+  it("preserves terrain and RNG when undeclared or the birth option is off", () => {
+    const deps = makeDeps();
+    const baseline = generateLevel(new Rng(987), 10, deps);
+    for (const [hooks, forceDescend] of [[undefined, true], [{ forcedDescentStairs: () => false }, true], [{ forcedDescentStairs: () => true }, false]] as const) {
+      const g = generateLevel(new Rng(987), 10, { ...makeDeps(), ...(hooks ? { hooks } : {}) }, { forceDescend });
+      expect(g.c.snapshotSquares().feats).toEqual(baseline.c.snapshotSquares().feats);
+      expect(g.rng.getState()).toEqual(baseline.rng.getState());
+    }
+  });
+});
 
 /* ------------------------------------------------------------------ *
  * Room template instantiation.

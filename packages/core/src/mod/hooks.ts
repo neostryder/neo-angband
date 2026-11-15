@@ -307,6 +307,8 @@ export interface ModHooks {
   forgetUnlitImpassableTerrain?: () => boolean;
   /** project/project_m/project_p and thrust_away: use the blast centre and randomize a coincident angle. */
   forceFromBlastCenter?: () => boolean;
+  /** generateLevel and CREATE_STAIRS: suppress new up stairs under forced descent. */
+  forcedDescentStairs?: () => boolean;
   /** monster_loves_archery (mon/predicate.ts, reached from getMoveFindRange).
    * Null keeps the faithful freqInnate < 4 test. No random draws. */
   monsterArcheryFrequency?: (frequency: number) => boolean | null;
@@ -847,6 +849,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   monsterLoreCompleteness: "any-yes",
   forgetUnlitImpassableTerrain: "any-yes",
   forceFromBlastCenter: "any-yes",
+  forcedDescentStairs: "any-yes",
   monsterArcheryFrequency: "last-answer",
   newCharacter: "all-observe",
   walkBlockedByDiggable: "last-answer",
@@ -970,6 +973,8 @@ export function guardModHooks(
   const unlitTerrain = hooks.forgetUnlitImpassableTerrain;
   if (unlitTerrain) out.forgetUnlitImpassableTerrain = () => guard("forgetUnlitImpassableTerrain", () => unlitTerrain(), false);
 
+  const forcedStairs = hooks.forcedDescentStairs;
+  if (forcedStairs) out.forcedDescentStairs = () => guard("forcedDescentStairs", () => forcedStairs(), false);
   const forceCentre = hooks.forceFromBlastCenter;
   if (forceCentre) out.forceFromBlastCenter = () => guard("forceFromBlastCenter", () => forceCentre(), false);
 
@@ -1215,6 +1220,8 @@ export function composeModHooks(
   const unlitTerrain = list.map((c) => c.forgetUnlitImpassableTerrain).filter(isFn);
   if (unlitTerrain.length > 0) out.forgetUnlitImpassableTerrain = () => unlitTerrain.some((fn) => fn());
 
+  const forcedStairs = list.map((c) => c.forcedDescentStairs).filter(isFn);
+  if (forcedStairs.length > 0) out.forcedDescentStairs = () => forcedStairs.some((fn) => fn());
   const forceCentre = list.map((c) => c.forceFromBlastCenter).filter(isFn);
   if (forceCentre.length > 0) out.forceFromBlastCenter = () => forceCentre.some((fn) => fn());
 
