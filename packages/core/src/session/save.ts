@@ -117,6 +117,7 @@ import {
 import type { MonsterRegistry } from "../mon/bind.js";
 import { blankPlayer } from "../player/player.js";
 import type { Player, PlayerQuest } from "../player/player.js";
+import { PY_MAX_EXP } from "../player/exp.js";
 import { playerQuestsReset } from "../game/quest.js";
 import type { Quest } from "../game/quest.js";
 import type { PlayerRegistry } from "../player/bind.js";
@@ -1523,6 +1524,21 @@ export function deserializePlayer(
     throw new Error(`save: unknown race/class ${data.raceName}/${data.clsName}`);
   }
   const body = players.bodies[race.body] ?? players.bodies[0]!;
+  /* rd_player (e44ac90f1) rejects max_exp outside 0..PY_MAX_EXP and exp
+   * outside 0..max_exp before the player record is used. A non-integer is
+   * the same rejection: those C fields are s32. */
+  if (
+    !Number.isInteger(data.maxExp) ||
+    !Number.isInteger(data.exp) ||
+    data.maxExp < 0 ||
+    data.maxExp > PY_MAX_EXP ||
+    data.exp < 0 ||
+    data.exp > data.maxExp
+  ) {
+    throw new Error(
+      `save: invalid player experience ${data.exp}/${data.maxExp}`,
+    );
+  }
   const p = blankPlayer(race, cls, body);
   p.hitdie = data.hitdie;
   p.expFactor = data.expFactor;
