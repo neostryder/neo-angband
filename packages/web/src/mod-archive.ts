@@ -57,7 +57,8 @@ export interface BoundedZipOptions {
 }
 
 /**
- * Unpack a ZIP only after bounding every header fflate exposes, then verify the
+ * A filter-only pass reserves every declared byte before decompression allocates
+ * output for any entry. The second pass verifies the
  * measured output as well. `budget` makes the aggregate limits apply when one
  * install declares more than one archive.
  */
@@ -79,6 +80,9 @@ export function readBoundedZip(bytes: Uint8Array, options: BoundedZipOptions = {
   if (budget) budget.archiveBytes += bytes.length;
 
   const names = new Set<string>();
+  const selected = new Set<string>();
+  const previousTotal = budget?.totalBytes ?? 0;
+  let declaredTotal = previousTotal;
   let refusal: string | null = null;
   let count = budget?.entries ?? 0;
   const refuse = (why: string): boolean => {
@@ -88,7 +92,7 @@ export function readBoundedZip(bytes: Uint8Array, options: BoundedZipOptions = {
 
   let unpacked: Record<string, Uint8Array>;
   try {
-    unpacked = unzipSync(bytes, {
+    unzipSync(bytes, {
       filter: (file) => {
         if (refusal !== null) return false;
         if (++count > limits.maxEntries) {
@@ -111,15 +115,21 @@ export function readBoundedZip(bytes: Uint8Array, options: BoundedZipOptions = {
               `over the ${mb(limits.maxFileBytes)} limit for one file`,
           );
         }
-        return true;
+        declaredTotal += file.originalSize;
+        if (declaredTotal > limits.maxTotalBytes) return refuse(`the archive unpacks to more than ${mb(limits.maxTotalBytes)}`);
+        selected.add(file.name);
+        return false;
       },
     });
+    if (refusal !== null) return { ok: false, problem: refusal };
+    if (budget) budget.totalBytes = declaredTotal;
+    unpacked = unzipSync(bytes, { filter: (file) => selected.has(file.name) });
   } catch (e) {
     return { ok: false, problem: `this is not a readable zip (${message(e)})` };
   }
   if (refusal !== null) return { ok: false, problem: refusal };
 
-  let total = budget?.totalBytes ?? 0;
+  let total = previousTotal;
   for (const [name, body] of Object.entries(unpacked)) {
     if (body.length > limits.maxFileBytes) {
       return { ok: false, problem: `"${name}" unpacked to ${mb(body.length)}, over the limit` };

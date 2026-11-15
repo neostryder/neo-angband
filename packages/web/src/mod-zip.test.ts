@@ -7,10 +7,25 @@
  * that trips it.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { zipSync } from "fflate";
+import { readBoundedZip, zipBudget } from "./mod-archive";
+import { createWorkerContentBroker, type WorkerContentDeps } from "./install-runtime";
 
 import { ZIP_LIMITS, readModZip } from "./mod-zip";
+
+const allocationWatch = vi.hoisted(() => ({ accepted: undefined as string[] | undefined }));
+vi.mock("fflate", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("fflate")>();
+  return { ...actual, unzipSync: (bytes: Uint8Array, options?: import("fflate").UnzipOptions) => actual.unzipSync(bytes, {
+    ...options,
+    filter: (file) => {
+      const allow = options?.filter?.(file) ?? true;
+      if (allow) allocationWatch.accepted?.push(file.name);
+      return allow;
+    },
+  }) };
+});
 
 const enc = new TextEncoder();
 
@@ -300,5 +315,53 @@ describe("the manifest has to name the mod", () => {
      * that changes with the version. */
     const read = ok(readModZip(zip({ "some-repo-v1.2.3/manifest.json": manifest("bug-fixes") })));
     expect(read.id).toBe("bug-fixes");
+  });
+});
+
+
+describe("aggregate ZIP reservation before allocation", () => {
+  function watchAllocation(): { accepted: string[]; restore(): void } {
+    const accepted: string[] = [];
+    allocationWatch.accepted = accepted;
+    return { accepted, restore: () => { allocationWatch.accepted = undefined; } };
+  }
+
+  it("refuses an excessive declared sum without allowing any output allocation", () => {
+    const watch = watchAllocation();
+    try {
+      const bytes = zip({ a: new Uint8Array(60), b: new Uint8Array(60) });
+      expect(readBoundedZip(bytes, { limits: { ...ZIP_LIMITS, maxFileBytes: 64, maxTotalBytes: 100 } })).toMatchObject({ ok: false, problem: expect.stringContaining("unpacks to more than") });
+      expect(watch.accepted).toEqual([]);
+    } finally { watch.restore(); }
+  });
+
+  it("reserves against earlier payloads and allows an exact aggregate fit", () => {
+    const budget = zipBudget();
+    const limits = { ...ZIP_LIMITS, maxFileBytes: 64, maxTotalBytes: 100 };
+    expect(readBoundedZip(zip({ a: new Uint8Array(60) }), { budget, limits }).ok).toBe(true);
+    const watch = watchAllocation();
+    try {
+      expect(readBoundedZip(zip({ b: new Uint8Array(41) }), { budget, limits }).ok).toBe(false);
+      expect(watch.accepted).toEqual([]);
+      expect(readBoundedZip(zip({ c: new Uint8Array(40) }), { budget, limits }).ok).toBe(true);
+      expect(budget.totalBytes).toBe(100);
+    } finally { watch.restore(); }
+  });
+
+  it("applies the same preflight to the Worker content archive ceiling", async () => {
+    const body = new Uint8Array(3 * 1024 * 1024);
+    let seed = 1;
+    for (let i = 0; i < body.length; i += 2) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      body[i] = seed >>> 24;
+    }
+    const bytes = zipSync({ a: body, b: body }, { level: 1 });
+    expect(bytes.length).toBeLessThan(4 * 1024 * 1024);
+    const broker = createWorkerContentBroker({ door: { allowed: () => true, env: {} }, discovery: vi.fn(), fetch: vi.fn() } as unknown as WorkerContentDeps, "caller");
+    const watch = watchAllocation();
+    try {
+      await expect(broker.plan({ archive: Array.from(bytes) }, false, async () => true, () => true)).rejects.toThrow(/unpacks to more than/u);
+      expect(watch.accepted).toEqual([]);
+    } finally { watch.restore(); }
   });
 });
