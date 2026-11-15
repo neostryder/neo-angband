@@ -135,6 +135,7 @@ import {
   loreLearnFlagIfVisible,
   loreLearnSpellIfVisible,
   loreUpdate,
+  bindMonsterLoreCompleteness,
 } from "../mon/lore.js";
 import { monsterIsVisible } from "../mon/predicate.js";
 import {
@@ -724,6 +725,7 @@ function wireGame(
   pstate: PlayerState,
   seedFlavor: number,
 ): WiredGame {
+  bindMonsterLoreCompleteness(state.lore, () => state.modHooks?.monsterLoreCompleteness?.() ?? false);
   // Rolling message log (message.c file-statics; gap 12.8). Shared producer for
   // both new-game and load paths: startGame arrives with no log so this creates
   // it; loadGame already restored one via deserializeMessages, so preserve it

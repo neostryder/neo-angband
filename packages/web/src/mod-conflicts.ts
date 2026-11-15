@@ -271,6 +271,7 @@ function hudRegionDescription(region: string): string {
 /** What a player would call one ModHooks member. */
 function hookDescription(hook: keyof ModHooks): string {
   const words: Record<keyof ModHooks, string> = {
+    monsterLoreCompleteness: "when monster lore counts as complete",
     forgetUnlitImpassableTerrain: "when you forget impassable terrain underfoot without light",
     forceFromBlastCenter: "where a blast pushes its targets from",
     monsterArcheryFrequency: "how often an archer shoots before it prefers range",

@@ -86,6 +86,15 @@ export interface MonsterLore {
 /** The per-game lore store (upstream l_list), keyed by race.ridx. */
 export type LoreStore = Map<number, MonsterLore>;
 
+const completenessByStore = new WeakMap<LoreStore, () => boolean>();
+const completenessByLore = new WeakMap<MonsterLore, () => boolean>();
+
+/** Bind a game's live policy without putting a function in persisted lore. */
+export function bindMonsterLoreCompleteness(store: LoreStore, enabled: () => boolean): void {
+  completenessByStore.set(store, enabled);
+  for (const lore of store.values()) completenessByLore.set(lore, enabled);
+}
+
 /** A blank lore record for a race. */
 export function newMonsterLore(race: MonsterRace): MonsterLore {
   const lore: MonsterLore = {
@@ -127,6 +136,8 @@ export function getLore(store: LoreStore, race: MonsterRace): MonsterLore {
     lore = newMonsterLore(race);
     store.set(race.ridx, lore);
   }
+  const completeness = completenessByStore.get(store);
+  if (completeness) completenessByLore.set(lore, completeness);
   return lore;
 }
 
@@ -246,7 +257,8 @@ function knowBaseFlags(race: MonsterRace, lore: MonsterLore): void {
  */
 export function loreUpdate(race: MonsterRace, lore: MonsterLore): void {
   /* Assume some "obvious" flags. */
-  lore.flags.union(createMonFlagMask("RFT_OBV"));
+  const completeness = completenessByLore.get(lore)?.() ?? false;
+  lore.flags.union(completeness ? createMonFlagMask("RFT_OBV", "RFT_DISP") : createMonFlagMask("RFT_OBV"));
 
   /* Blows. */
   for (let i = 0; i < race.blows.length; i++) {
@@ -260,7 +272,9 @@ export function loreUpdate(race: MonsterRace, lore: MonsterLore): void {
     lore.armourKnown = true;
     lore.dropKnown = true;
     lore.flags.union(
-      createMonFlagMask("RFT_RACE_A", "RFT_RACE_N", "RFT_DROP"),
+      completeness
+        ? createMonFlagMask("RFT_RACE_A", "RFT_RACE_N", "RFT_DROP", "RFT_GEN")
+        : createMonFlagMask("RFT_RACE_A", "RFT_RACE_N", "RFT_DROP"),
     );
     lore.flags.on(RF.FORCE_DEPTH);
   }
@@ -317,7 +331,9 @@ export function loreDoProbe(store: LoreStore, mon: Monster): void {
 /**
  * lore_is_fully_known (L441): everything there is to know is known. The
  * flag check is upstream's byte-level test (every byte of the observed
- * set nonzero), kept verbatim. Marks the lore all_known when it passes.
+ * set nonzero), kept by default. The bound completeness policy uses set
+ * containment for race flags and equality for spells (29985cd05). Marks the
+ * lore all_known when it passes.
  */
 export function loreIsFullyKnown(store: LoreStore, race: MonsterRace): boolean {
   const lore = getLore(store, race);
@@ -332,11 +348,15 @@ export function loreIsFullyKnown(store: LoreStore, race: MonsterRace): boolean {
     if (!lore.blowKnown[i]) return false;
   }
 
-  for (let i = 0; i < RF_SIZE; i++) {
-    if (!lore.flags.bits[i]) return false;
-  }
-  for (let i = 0; i < rsfSize(); i++) {
-    if (lore.spellFlags.bits[i] !== race.spellFlags.bits[i]) return false;
+  if (completenessByLore.get(lore)?.()) {
+    if (!lore.flags.isSubset(race.flags) || !lore.spellFlags.isEqual(race.spellFlags)) return false;
+  } else {
+    for (let i = 0; i < RF_SIZE; i++) {
+      if (!lore.flags.bits[i]) return false;
+    }
+    for (let i = 0; i < rsfSize(); i++) {
+      if (lore.spellFlags.bits[i] !== race.spellFlags.bits[i]) return false;
+    }
   }
 
   /* The player knows everything. */

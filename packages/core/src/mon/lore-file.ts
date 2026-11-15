@@ -53,8 +53,8 @@ import { RF, RSF } from "../generated/index.js";
 import { RF_SIZE } from "./types.js";
 import { rsfSize } from "./spell-registry.js";
 import type { MonsterRace } from "./types.js";
-import { loreUpdate, newMonsterLore } from "./lore.js";
-import type { LoreStore, MonsterLore } from "./lore.js";
+import { getLore, loreUpdate } from "./lore.js";
+import type { LoreStore } from "./lore.js";
 
 /**
  * A flag-number -> name table, INVERTED FROM THE ENUM rather than read off the
@@ -438,11 +438,7 @@ export function applyLoreFile(
       unknownRaces.push(name);
       continue;
     }
-    let lore: MonsterLore | undefined = store.get(race.ridx);
-    if (!lore) {
-      lore = newMonsterLore(race);
-      store.set(race.ridx, lore);
-    }
+    const lore = getLore(store, race);
 
     lore.sights = entry.sights;
     lore.deaths = entry.deaths;

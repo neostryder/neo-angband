@@ -27,7 +27,7 @@ import { FlagSet } from "../bitflag.js";
 import { RF, RSF } from "../generated/index.js";
 import { RF_SIZE, RSF_SIZE } from "./types.js";
 import type { MonsterRace } from "./types.js";
-import { newMonsterLore } from "./lore.js";
+import { bindMonsterLoreCompleteness, newMonsterLore } from "./lore.js";
 import type { LoreStore } from "./lore.js";
 import {
   RF_FLAG_NAMES,
@@ -305,6 +305,15 @@ describe("applyLoreFile: the file over the save, upstream's order", () => {
     expect(lore?.tkills).toBe(40); /* the shared, cross-life count */
     expect(lore?.pkills).toBe(12); /* this life's, untouched */
     expect(lore?.thefts).toBe(4);
+  });
+
+  it("applies the bound masks to a record created by a lore overlay", () => {
+    const race = fakeRace(3, "kobold");
+    const store: LoreStore = new Map();
+    bindMonsterLoreCompleteness(store, () => true);
+    applyLoreFile([race], store, parseLoreFile("name:kobold\ncounts:2:0:30:0:0:0:0\n"));
+    expect(store.get(3)?.flags.has(RF.ATTR_MULTI)).toBe(true);
+    expect(store.get(3)?.flags.has(RF.FORCE_SLEEP)).toBe(true);
   });
 
   it("creates a record for a race the save never met", () => {

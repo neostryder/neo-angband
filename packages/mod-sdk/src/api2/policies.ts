@@ -172,6 +172,8 @@ export interface Api2MonsterArcheryFrequencyPolicy {
 
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
+  /** True uses upstream lore masks, completeness checks, and first-sight learning. */
+  readonly monsterLoreCompleteness?: boolean;
   /** True forgets remembered impassable player terrain without light, except with UNLIGHT. */
   readonly forgetUnlitImpassableTerrain?: boolean;
   /** True applies FORCE thrust from the blast centre, including coincident targets. */
@@ -267,6 +269,7 @@ export type Api2PlayerTileProvider<T = unknown> = (view: Api2PlayerTileView) => 
 
 /** The game registrations a table can install, beside the hooks. */
 export interface Api2PolicyRegistrations {
+  monsterLoreCompleteness?: true;
   forgetUnlitImpassableTerrain?: true;
   forceFromBlastCenter?: true;
   monsterArcheryFrequency?: Api2MonsterArcheryFrequencyPolicy;
@@ -484,7 +487,7 @@ function switchKind(name: Api2PolicyName, hook: "saveNoiseScent" | "shapeLearnOb
 }
 
 /** A registration switch: true asks the host to install the game's own rule for it. */
-function registrationSwitch(name: "projectionRadiusClamp" | "levelRevisitTracking" | "forceFromBlastCenter" | "forgetUnlitImpassableTerrain", summary: string, capability: string): Api2PolicyKind {
+function registrationSwitch(name: "projectionRadiusClamp" | "levelRevisitTracking" | "forceFromBlastCenter" | "forgetUnlitImpassableTerrain" | "monsterLoreCompleteness", summary: string, capability: string): Api2PolicyKind {
   return {
     name,
     summary,
@@ -767,6 +770,7 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
       out.hooks.completeRestEffects = () => names.slice();
     },
   },
+  registrationSwitch("monsterLoreCompleteness", "Uses upstream lore masks, completeness checks, and first-sight learning.", "registry:monster"),
   registrationSwitch("forgetUnlitImpassableTerrain", "Forgets remembered impassable terrain without light, except with UNLIGHT.", "registry:projection"),
   registrationSwitch("forceFromBlastCenter", "Applies FORCE thrust from the blast centre, including coincident targets.", "registry:projection"),
   registrationSwitch("projectionRadiusClamp", "Holds a blast's radius at the game's maximum projection range.", "registry:projection"),

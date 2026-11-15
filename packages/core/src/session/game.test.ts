@@ -24,6 +24,7 @@ import { floorCarry } from "../game/floor.js";
 import { objectPrep } from "../obj/make.js";
 import { squareIsKnown } from "../game/known.js";
 import { squareIsView } from "../world/view.js";
+import { getLore, loreUpdate } from "../mon/lore.js";
 import { loc } from "../loc.js";
 import { bindTraps, lookupTrap } from "../world/trap.js";
 import { placeTrap, squareIsPlayerTrap } from "../game/trap.js";
@@ -92,6 +93,30 @@ const pack: GamePack = {
  * startGame/effect-stack check: state.runeEnv has the bound object-property
  * table and the effect sees the game's real shape registry.
  */
+describe("monster lore completeness wiring", () => {
+  it("binds new and loaded lore to live hooks without persisting a function", () => {
+    const game = startGame(pack, { seed: 299, depth: 1 });
+    const race = game.booted.registries.monsters.races.find((candidate) => candidate.rarity > 0)!;
+    const lore = getLore(game.state.lore, race);
+    lore.flags.wipe();
+    loreUpdate(race, lore);
+    expect(lore.flags.has(RF.ATTR_MULTI)).toBe(false);
+    game.state.modHooks = { monsterLoreCompleteness: () => true };
+    loreUpdate(race, lore);
+    expect(lore.flags.has(RF.ATTR_MULTI)).toBe(true);
+    const loaded = loadGame(pack, saveGame(game), new Set(["core"]), { modHooks: { monsterLoreCompleteness: () => true } });
+    const loadedRace = loaded.booted.registries.monsters.races[race.ridx]!;
+    const loadedLore = getLore(loaded.state.lore, loadedRace);
+    loadedLore.flags.wipe();
+    loreUpdate(loadedRace, loadedLore);
+    expect(loadedLore.flags.has(RF.ATTR_MULTI)).toBe(true);
+    delete loaded.state.modHooks;
+    loadedLore.flags.wipe();
+    loreUpdate(loadedRace, loadedLore);
+    expect(loadedLore.flags.has(RF.ATTR_MULTI)).toBe(false);
+  });
+});
+
 describe("issue #118: shape-granted flag learning", () => {
   it("reproduces the missing rune after a real fox shapechange", () => {
     const game = startGame(pack, { seed: 118, depth: 1, className: "Warrior" });

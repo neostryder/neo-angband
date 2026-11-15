@@ -43,7 +43,7 @@ import {
   type LightSource,
   type ViewerState,
 } from "../world/view.js";
-import { getLore, loreCountU16 } from "../mon/lore.js";
+import { getLore, loreCountU16, loreUpdate } from "../mon/lore.js";
 import {
   monsterIsCamouflaged,
   monsterIsEspDetectable,
@@ -1088,6 +1088,7 @@ function updateMonFlags(
       /* square_light_spot / PR_HEALTH / PR_MONLIST are presentation (#25). */
       /* Count "fresh" sightings (capped at SHRT_MAX). */
       loreCountU16(lore, "sights");
+      if (lore.sights === 1 && state.modHooks?.monsterLoreCompleteness?.()) loreUpdate(mon.race, lore);
     }
   } else if (monsterIsVisible(mon)) {
     /* Not visible but was previously seen - treat mimics differently

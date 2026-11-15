@@ -5,7 +5,7 @@ import { FlagSet } from "../bitflag.js";
 import { MFLAG, OF, RF, SQUARE, TMD, TV } from "../generated/index.js";
 import { OF_SIZE } from "../player/types.js";
 import type { PlayerState } from "../player/calcs.js";
-import { getLore } from "../mon/lore.js";
+import { bindMonsterLoreCompleteness, getLore } from "../mon/lore.js";
 import type { Monster } from "../mon/monster.js";
 import type { KnownMonster } from "../agent/known-world.js";
 import type { GameState } from "./context.js";
@@ -340,6 +340,16 @@ function getLoreSights(state: GameState, mon: Monster): number {
 }
 
 describe("noteSpots (note_spot + update_mon)", () => {
+  it.each([false, true])("learns first-sight lore only under policy: %s (update_mon, 29985cd05)", (enabled) => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.modHooks = enabled ? { monsterLoreCompleteness: () => true } : {};
+    bindMonsterLoreCompleteness(state.lore, () => state.modHooks?.monsterLoreCompleteness?.() ?? false);
+    const mon = addMon(state, makeRace({ flags: [RF.ATTR_MULTI] }), loc(12, 10));
+    lightAndView(state, mon.grid);
+    noteSpots(state);
+    expect(getLore(state.lore, mon.race).flags.has(RF.ATTR_MULTI)).toBe(enabled);
+  });
+
   it.each([
     [false, 0, false, false, false, true],
     [false, -1, false, false, false, true],

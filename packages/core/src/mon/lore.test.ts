@@ -5,6 +5,7 @@ import { Rng } from "../rng.js";
 import { blankMonster } from "./monster.js";
 import { makeRace } from "../game/harness.js";
 import {
+  bindMonsterLoreCompleteness,
   cheatMonsterLore,
   createMonFlagMask,
   getLore,
@@ -40,6 +41,49 @@ describe("get_lore (mon-lore.c L1735) and the flag mask", () => {
 });
 
 describe("lore_update (L303)", () => {
+  it.each([false, true])("selects display and death masks only under policy: %s (29985cd05)", (enabled) => {
+    const store: LoreStore = new Map();
+    const race = makeRace();
+    const lore = getLore(store, race);
+    bindMonsterLoreCompleteness(store, () => enabled);
+    loreUpdate(race, lore);
+    expect(lore.flags.has(RF.ATTR_MULTI)).toBe(enabled);
+    expect(lore.flags.has(RF.FORCE_SLEEP)).toBe(false);
+    lore.tkills = 1;
+    loreUpdate(race, lore);
+    expect(lore.flags.has(RF.FORCE_DEPTH)).toBe(true);
+    expect(lore.flags.has(RF.FORCE_SLEEP)).toBe(enabled);
+  });
+
+  it.each([false, true])("requires race-flag containment under policy: %s (lore_is_fully_known, 29985cd05)", (enabled) => {
+    const store: LoreStore = new Map();
+    const race = makeRace({ flags: [RF.ATTR_MULTI], blows: [] });
+    bindMonsterLoreCompleteness(store, () => enabled);
+    const lore = getLore(store, race);
+    Object.assign(lore, { armourKnown: true, spellFreqKnown: true, dropKnown: true, sleepKnown: true });
+    lore.spellFlags.copy(race.spellFlags);
+    lore.flags.bits.fill(1);
+    expect(lore.flags.has(RF.ATTR_MULTI)).toBe(false);
+    expect(loreIsFullyKnown(store, race)).toBe(!enabled);
+  });
+
+  it("accepts all race flags plus extra learned absences, but requires identical spells", () => {
+    const store: LoreStore = new Map();
+    const race = makeRace({ flags: [RF.ATTR_MULTI], blows: [] });
+    const lore = getLore(store, race);
+    Object.assign(lore, { armourKnown: true, spellFreqKnown: true, dropKnown: true, sleepKnown: true });
+    lore.flags.copy(race.flags);
+    lore.flags.on(RF.EVIL);
+    lore.spellFlags.copy(race.spellFlags);
+    expect(loreIsFullyKnown(store, race)).toBe(false);
+    bindMonsterLoreCompleteness(store, () => true);
+    lore.spellFlags.setall();
+    expect(loreIsFullyKnown(store, race)).toBe(false);
+    lore.spellFlags.copy(race.spellFlags);
+    expect(loreIsFullyKnown(store, race)).toBe(true);
+    expect(lore.allKnown).toBe(true);
+  });
+
   it("assumes the obvious flags and knows seen blows", () => {
     const race = makeRace();
     const lore = newMonsterLore(race);

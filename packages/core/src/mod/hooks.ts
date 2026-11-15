@@ -299,6 +299,8 @@ export interface KnownArtifactFind {
 }
 
 export interface ModHooks {
+  /** lore_update/lore_is_fully_known and update_mon: select the 29985cd05 lore rules. */
+  monsterLoreCompleteness?: () => boolean;
   /** noteSpots (update_view): light <= 0 without UNLIGHT also forgets impassable player terrain. */
   forgetUnlitImpassableTerrain?: () => boolean;
   /** project/project_m/project_p and thrust_away: use the blast centre and randomize a coincident angle. */
@@ -837,6 +839,7 @@ export type ModHookFold =
  * interface without adding it here does not compile.
  */
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
+  monsterLoreCompleteness: "any-yes",
   forgetUnlitImpassableTerrain: "any-yes",
   forceFromBlastCenter: "any-yes",
   monsterArcheryFrequency: "last-answer",
@@ -951,6 +954,9 @@ export function guardModHooks(
       return neutral;
     }
   }
+
+  const loreCompleteness = hooks.monsterLoreCompleteness;
+  if (loreCompleteness) out.monsterLoreCompleteness = () => guard("monsterLoreCompleteness", () => loreCompleteness(), false);
 
   const unlitTerrain = hooks.forgetUnlitImpassableTerrain;
   if (unlitTerrain) out.forgetUnlitImpassableTerrain = () => guard("forgetUnlitImpassableTerrain", () => unlitTerrain(), false);
@@ -1187,6 +1193,9 @@ export function composeModHooks(
       return null;
     };
   }
+
+  const loreCompleteness = list.map((c) => c.monsterLoreCompleteness).filter(isFn);
+  if (loreCompleteness.length > 0) out.monsterLoreCompleteness = () => loreCompleteness.some((fn) => fn());
 
   const unlitTerrain = list.map((c) => c.forgetUnlitImpassableTerrain).filter(isFn);
   if (unlitTerrain.length > 0) out.forgetUnlitImpassableTerrain = () => unlitTerrain.some((fn) => fn());
