@@ -130,3 +130,44 @@ describe("main window child policy", () => {
     }
   });
 });
+
+
+describe("report and archive IPC senders", () => {
+  it("refuses subframes and foreign main frames before filesystem effects", async () => {
+    const { runInNewContext } = await import("node:vm");
+    const { stripTypeScriptTypes } = await import("node:module");
+    const source = fs.readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+    const handlers = new Map<string, (...args: unknown[]) => { ok: boolean }>();
+    const archive = vi.fn(() => ({ ok: true, to: "imported/good.zip" }));
+    const report = vi.fn(() => "report.txt");
+    const context = {
+      ipcMain: { on: vi.fn(), handle: (channel: string, fn: (...args: unknown[]) => { ok: boolean }) => handlers.set(channel, fn) },
+      MOD_ZIP_CHANNEL: "zip", REPORT_CHANNEL: "report", LOG_CHANNEL: "log", MODS_DIR: "mods", LOGS_DIR: "logs",
+      isGameBridgeFrame, archiveModZip: archive, writeReportFile: report, capLogBatch: vi.fn(), LOG_FILE: { append: vi.fn() },
+    };
+    for (const name of ["installModZipChannel", "installLogging"]) {
+      const start = source.indexOf("function " + name + "(");
+      const end = source.indexOf("\n}", start) + 2;
+      const snippet = source.slice(start, end) + "\n" + name + "();";
+      runInNewContext(stripTypeScriptTypes(snippet), context);
+    }
+    const main = { url: "neo-angband://game/" };
+    const foreign = { url: "https://example.com/" };
+    const denied = [
+      { senderFrame: null, sender: { mainFrame: main } },
+      { senderFrame: { url: main.url }, sender: { mainFrame: main } },
+      { senderFrame: foreign, sender: { mainFrame: foreign } },
+    ];
+    for (const event of denied) {
+      expect(handlers.get("zip")!(event, "archive", "good.zip").ok).toBe(false);
+      expect(handlers.get("report")!(event, "report text").ok).toBe(false);
+    }
+    expect(archive).not.toHaveBeenCalled();
+    expect(report).not.toHaveBeenCalled();
+    const event = { senderFrame: main, sender: { mainFrame: main } };
+    expect(handlers.get("zip")!(event, "archive", "good.zip").ok).toBe(true);
+    expect(handlers.get("report")!(event, "report text").ok).toBe(true);
+    expect(archive).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledTimes(1);
+  });
+});

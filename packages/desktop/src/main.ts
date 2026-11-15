@@ -482,7 +482,8 @@ function modsIndex(): ModsIndex {
  * the channel: one operation, one leaf name, and a log line.
  */
 function installModZipChannel(): void {
-  ipcMain.handle(MOD_ZIP_CHANNEL, (_event, op: unknown, arg: unknown) => {
+  ipcMain.handle(MOD_ZIP_CHANNEL, (event, op: unknown, arg: unknown) => {
+    if (!isGameBridgeFrame(event.senderFrame, event.sender.mainFrame)) return { ok: false, error: "refused" };
     if (op !== "archive") return { ok: false, error: `unknown operation ${String(op)}` };
     const result = archiveModZip(MODS_DIR, arg);
     LOG_FILE.append([
@@ -755,7 +756,8 @@ function installLogging(): void {
     if (batch !== null) LOG_FILE.append(batch);
   });
 
-  ipcMain.handle(REPORT_CHANNEL, (_event, text: unknown) => {
+  ipcMain.handle(REPORT_CHANNEL, (event, text: unknown) => {
+    if (!isGameBridgeFrame(event.senderFrame, event.sender.mainFrame)) return { ok: false, error: "refused" };
     if (typeof text !== "string" || text === "") {
       return { ok: false, error: "there was nothing in the report to write" };
     }
