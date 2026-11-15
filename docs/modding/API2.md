@@ -175,6 +175,7 @@ Each table needs its matching registry permission from the list below, in both r
 | `trapAllocation` | `trapAllocation` | not a rule table | `registry:room` |
 | `storeDiscountRoll` | the stores' discount roll | not a rule table | `registry:store` |
 | `tileMap` | the mod's tile filler | not a rule table | `registry:tiles` |
+| `randartSetSize` | new-character random artifact generation | not a rule table | `registry:randart-size` |
 
 A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whole text, and the default), `"substring"` (every occurrence) or `"prefix"`. Matching is literal text with no regular expressions, so a rule cannot stall a turn. Rules run in order, each on the text the one before it produced, and `where` limits a rule to call sites whose named fields equal the values given. A `historyAdd` rule may be `{ find, drop: true }` instead, which keeps a matching entry out of the history. `objectListOrder` lists the keys `dy`, `dx`, `-dy` and `-dx`: the first key that differs between two entries orders them, and a minus sign sorts that key high to low. A switch takes `true` or `false`.
 
@@ -220,6 +221,12 @@ export default defineApi2Mod({
 Each kind of table is one entry in `API2_POLICY_KINDS` (`packages/mod-sdk/src/api2/policies.ts`). The entry gives the table's name, its registry permission, the hook or registration it feeds, the check for its value, and what it installs; `checkApi2Policies` and `api2PolicyEffects` only walk that list. To add a kind, add its member to `Api2Policies` and its entry to the list, test it in `policies.test.ts`, and give it a row in the table above. A kind that feeds a registration the game has not installed from a table before also needs a target in `installApi2PolicyRegistrations` (`packages/web/src/mod-api2-shim.ts`).
 
 `inspect.simulateLoadout(change)` adds known combat and spell summaries to both `before` and `after`. `combat.blows` is blows per round to one decimal place, and `combat.damage` is the equipped weapon's average damage per round with known brand and slay lines, or null when unarmed. Core runs `obj_known_damage` on that loadout with its known-only derive. `spells` lists learned, unforgotten spells as `{ index, mana, failChance }`, using `spell_chance` with the hypothetical casting stats, known fear and player flags, and current mana capped at that loadout's maximum. The spell list is absent without `state:spells.read`. The calculation spends no energy or random numbers and changes no player knowledge.
+
+### Random artifact set size
+
+A mod returns `randartSetSize: { multiplier: 2 }` from `policies(context)` and requests `registry:randart-size` in its schema 2 manifest. The multiplier must be a finite number greater than zero. The host clamps it to 0.25 through 4, rounds the number of randomizable artifacts, and caps that count at 4096. Fixed artifacts keep their indices and properties. Each random artifact's allocation chance scales by the original count divided by the new count; per-artifact power still comes from the standard set.
+
+The last active declaration in the selected load order wins. The character sheet and its dump name that mod and its multiplier. The setting applies at the next new random-artifact character and is saved with the seed, so changing or removing the mod does not change a saved set. With no declaration, generation and allocation keep their standard behavior.
 
 ## Storage
 

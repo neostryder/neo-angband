@@ -95,6 +95,7 @@ export type {
   Api2Policies,
   Api2PrefErrorsPolicy,
   Api2StartingOptionsPolicy,
+  Api2RandartSetSizePolicy,
   Api2PolicyEffects,
   Api2PolicyKind,
   Api2PolicyName,

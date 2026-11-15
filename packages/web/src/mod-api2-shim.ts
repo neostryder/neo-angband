@@ -277,6 +277,37 @@ function applyStartingOptions(options: NonNullable<NonNullable<ModPluginContext[
   if (policy.lazymoveDelay !== undefined) options.lazymoveDelay = policy.lazymoveDelay;
 }
 
+const randartSizeContributions = new Map<string, { readonly multiplier: number; readonly active: () => boolean }>();
+
+export function removeApi2RandartSetSize(id: string): void {
+  randartSizeContributions.delete(id);
+}
+
+export function contributeApi2RandartSetSize(id: string, registrations: Api2PolicyRegistrations, active: () => boolean = () => true): () => void {
+  const policy = registrations.randartSetSize;
+  if (!policy) return () => undefined;
+  const contribution = { multiplier: policy.multiplier, active };
+  randartSizeContributions.set(id, contribution);
+  return () => {
+    if (randartSizeContributions.get(id) === contribution) randartSizeContributions.delete(id);
+  };
+}
+
+export function api2RandartSetSize(): { readonly multiplier: number; readonly modId: string } | undefined {
+  let result: { readonly multiplier: number; readonly modId: string } | undefined;
+  const ids = [...randartSizeContributions.keys()];
+  ids.sort((a, b) => {
+    const left = policyLoadOrder.indexOf(a);
+    const right = policyLoadOrder.indexOf(b);
+    return (left < 0 ? policyLoadOrder.length : left) - (right < 0 ? policyLoadOrder.length : right);
+  });
+  for (const id of ids) {
+    const contribution = randartSizeContributions.get(id)!;
+    if (contribution.active()) result = { multiplier: contribution.multiplier, modId: id };
+  }
+  return result;
+}
+
 const prefContributions = new Map<string, PrefErrorPolicy>();
 let policyLoadOrder: readonly string[] = [];
 let priorPrefPolicy: PrefErrorPolicy | null = null;
@@ -512,6 +543,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
   const hosts = new Set<ReturnType<typeof createApi2Host>>();
   let stopped = false;
   let releasePrefErrors: () => void = () => undefined;
+  let releaseRandartSize: () => void = () => undefined;
   let generation = 0;
   const build = (ctx: ModPluginContext, extra: Partial<Api2HostOptions> = {}) => {
     const mod = createApi2Host(ctx, { ...options(), activeHooks: active,
@@ -552,6 +584,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
       stopped = false;
       const installedGeneration = generation;
       releasePrefErrors();
+      releaseRandartSize();
       pluginPolicies.delete(plugin as ModPlugin);
       const engine = api2Engine(ctx, options());
       const context = { id: ctx.id, flags: plain({ ...ctx.flags }), ...(engine ? { engine } : {}) };
@@ -584,6 +617,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
         ...api2PolicyModHooks(pluginPolicies.get(plugin)?.registrations ?? {}, () => !stopped && generation === installedGeneration),
       } : {};
       const native = engine && engineHooksOf ? nativeHooks(engineHooksOf({ ...context, engine }), fromApi2) : {};
+      releaseRandartSize = contributeApi2RandartSetSize(ctx.id, pluginPolicies.get(plugin)?.registrations ?? {}, () => !stopped && generation === installedGeneration && options().grants.has("registry:randart-size"));
       const all = { ...native, ...fromApi2 };
       return Object.keys(all).length > 0 || merged ? all : undefined;
     };
@@ -710,6 +744,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
     generation += 1;
     pluginPolicies.delete(plugin as ModPlugin);
     releasePrefErrors();
+    releaseRandartSize();
     const cached = pluginPolicies.get(plugin as ModPlugin);
     if (cached) removeApi2PolicyRegistrations(cached.id);
     try { definition.stop?.(); } finally {

@@ -914,7 +914,9 @@ export function makeArtifactSpecial(
     if (art.allocMax < depth) continue;
 
     /* Artifact "rarity roll" */
-    if (rng.randint1(100) > art.allocProb) continue;
+    if (art.allocationScale === undefined
+      ? rng.randint1(100) > art.allocProb
+      : rng.randint0(1000000) >= Math.min(100, art.allocProb * art.allocationScale) * 10000) continue;
 
     /* Assign the template */
     const obj = objectPrep(rng, reg, constants, kind, art.allocMin, "randomise");
@@ -994,7 +996,9 @@ export function makeArtifact(
     if (art.allocMax < depth) continue;
 
     /* We must make the "rarity roll" */
-    if (rng.randint1(100) > art.allocProb) continue;
+    if (art.allocationScale === undefined
+      ? rng.randint1(100) > art.allocProb
+      : rng.randint0(1000000) >= Math.min(100, art.allocProb * art.allocationScale) * 10000) continue;
 
     /* Mark the item as an artifact */
     obj.artifact = art;

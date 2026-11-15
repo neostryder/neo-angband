@@ -123,6 +123,7 @@ function randartRecord(reg: ObjRegistry, art: Artifact): RandartRecord | null {
     weight: art.weight,
     cost: art.cost,
     allocProb: art.allocProb,
+    ...(art.allocationScale === undefined ? {} : { allocationScale: art.allocationScale }),
     allocMin: art.allocMin,
     allocMax: art.allocMax,
     attackDice: art.dd,

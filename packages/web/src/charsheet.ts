@@ -150,6 +150,7 @@ export interface CharSheetOpts {
   inspectExtras?: ObjectInfoExtras;
   /** seed_randart (write_character_dump L1185), for the [Randart seed] line. */
   seedRandart?: number;
+  randartSetSize?: { readonly multiplier: number; readonly modId: string };
   /**
    * The enabled mods, for the dump's [Mods enabled] block. Supplied by the
    * shell, which is the only thing that knows what is loaded; absent or empty
@@ -491,6 +492,7 @@ export interface CharDumpExtras {
   diedFrom?: string;
   /** seed_randart (L1187), for the [Randart seed] block under birth_randarts. */
   seedRandart?: number;
+  randartSetSize?: { readonly multiplier: number; readonly modId: string };
   /**
    * The mods enabled in this game, id and version, for the [Mods enabled] block.
    *
@@ -612,6 +614,10 @@ function flagGridSection(state: GameState, packs?: UiEntryPackRecords): string[]
   out.push(""); // L1022 blank between the two grids
   out.push(...pair(hindrances, modifiers, panelTitle("hindrances"), panelTitle("modifiers")));
   return out;
+}
+
+function randartSetSizeText(value: { readonly multiplier: number; readonly modId: string }): string {
+  return t("charsheet.dump.randartSetSize", "Random artifact set: {multiplier}x (mod: {modId})", value);
 }
 
 /**
@@ -739,6 +745,7 @@ export function buildCharacterDump(
   if (state.options?.get("birth_randarts") && extras.seedRandart !== undefined) {
     out.push(t("charsheet.dump.randartSeed", "  [Randart seed]"), "");
     out.push((extras.seedRandart >>> 0).toString(16).padStart(8, "0"), "");
+    if (extras.randartSetSize) out.push(randartSetSizeText(extras.randartSetSize), "");
   }
 
   /*
@@ -888,6 +895,7 @@ export function showCharacterSheet(
         ...(opts.uiEntryPacks !== undefined ? { uiEntryPacks: opts.uiEntryPacks } : {}),
         ...(opts.inspectExtras !== undefined ? { inspectExtras: opts.inspectExtras } : {}),
         ...(opts.seedRandart !== undefined ? { seedRandart: opts.seedRandart } : {}),
+        ...(opts.randartSetSize ? { randartSetSize: opts.randartSetSize } : {}),
         ...(opts.mods !== undefined ? { mods: opts.mods } : {}),
       },
       opts.msg,
@@ -905,12 +913,16 @@ export function showCharacterSheet(
    * saying the data is missing, and publishing one under `core:character-flags`
    * would be a lie about what a presenter is holding.
    */
-  const viewFor = (): ScreenView | null =>
-    mode === 0
+  const randartSizeText = opts.randartSetSize ? randartSetSizeText(opts.randartSetSize) : null;
+  const viewFor = (): ScreenView | null => {
+    const view = mode === 0
       ? characterScreen(state, curName, extraDeps())
       : gridConfig === null
         ? null
         : characterFlagsScreen(state, curName, gridConfig);
+    return view && randartSizeText
+      ? freezeView({ ...view, blocks: [...view.blocks, { kind: "text", paragraphs: [[{ text: randartSizeText }]] }] }) : view;
+  };
 
   /**
    * THE SEAM. A presenter is offered the sheet before the terminal draws it, and
@@ -1098,13 +1110,14 @@ export function showCharacterSheet(
           });
         }
 
+        if (randartSizeText && mode === 0) term.print(0, ANCHOR.midleft.y - 1, randartSizeText.slice(0, cols - 1), FG);
         term.print(2, rows - 1, wideFooter().slice(0, cols - 3), DIM);
       };
 
       const narrowLines = (): ScreenLine[] => {
         const { cols } = term.size();
         if (mode === 1) return modeOneLines();
-        return characterSheetLines(state, curName, cols);
+        return randartSizeText ? screenBodyLines(viewFor()!, cols) : characterSheetLines(state, curName, cols);
       };
 
       const paintNarrow = (): void => {

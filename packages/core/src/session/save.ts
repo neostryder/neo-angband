@@ -1866,6 +1866,7 @@ export interface SavedGame {
    * a reload rebuilds the identical random artifact set.
    */
   randartSeed?: number;
+  randartSetSize?: { readonly multiplier: number; readonly modId: string };
   /**
    * aup_info[] (obj-make.c): the ids of the artifacts already created. Stored
    * as an id list (not a by-aidx boolean array) so the created set survives

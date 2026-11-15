@@ -460,6 +460,8 @@ export interface EgoItem extends ModExtensible {
 
 /** struct artifact. */
 export interface Artifact extends ModExtensible {
+  /** A resized set keeps fractional rarity without changing the standard roll. */
+  allocationScale?: number;
   name: string;
   text: string;
   aidx: number;

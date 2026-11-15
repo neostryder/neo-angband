@@ -26,6 +26,7 @@ import type { ObjectKind } from "../obj/types.js";
 import { describeObject } from "../game/describe.js";
 import { NOSCORE } from "../game/wizard.js";
 import { loadGame, saveGame, startGame } from "./game.js";
+import { bootLevel } from "./boot.js";
 import type { GamePack, StartedGame } from "./game.js";
 import {
   decodeSavedGame,
@@ -946,6 +947,47 @@ describe("autoinscription registry persistence (obj-ignore.c note_aware/note_una
 });
 
 describe("birth_randarts (obj-randart.c do_randart)", () => {
+  it.each([0.5, 2])("saves a %sx set and reloads its artifacts and created flags without a mod", (multiplier) => {
+    const game = startGame(pack, { seed: 378, depth: 2, optionOverrides: { birth_randarts: true }, randartSetSize: { multiplier, modId: "qol" } });
+    const arts = game.booted.registries.objects.artifacts;
+    const art = arts.findLast((a) => a?.allocationScale !== undefined)!;
+    game.state.artifacts!.markCreated(art.aidx, true);
+    game.state.artifacts!.markSeen(art.aidx, true);
+    const saved = JSON.parse(JSON.stringify(saveGame(game))) as SavedGame;
+    expect(saved.randartSetSize).toEqual({ multiplier, modId: "qol" });
+    const restored = loadGame(pack, saved);
+    expect(restored.randartSetSize).toEqual(saved.randartSetSize);
+    expect(JSON.stringify(restored.booted.registries.objects.artifacts)).toBe(JSON.stringify(arts));
+    expect(restored.state.artifacts!.isCreated(art.aidx)).toBe(true);
+    expect(restored.state.artifacts!.isSeen(art.aidx)).toBe(true);
+  });
+
+  it("clamps a requested multiplier and omits the setting when randarts are off", () => {
+    const fixed = startGame(pack, { seed: 378, depth: 2, randartSetSize: { multiplier: 100, modId: "qol" } });
+    expect(saveGame(fixed).randartSetSize).toBeUndefined();
+    const game = startGame(pack, { seed: 378, depth: 2, optionOverrides: { birth_randarts: true }, randartSetSize: { multiplier: 100, modId: "qol" } });
+    expect(saveGame(game).randartSetSize).toEqual({ multiplier: 4, modId: "qol" });
+  });
+
+  it("keeps artifact rates close across 1500 generated levels with different set sizes", () => {
+    const rates: number[] = [];
+    for (const multiplier of [1, 0.5, 2]) {
+      const game = startGame(pack, { seed: 378, depth: 2, optionOverrides: { birth_randarts: true }, randartSetSize: { multiplier, modId: "qol" } });
+      let artifacts = 0;
+      let objects = 0;
+      for (let i = 0; i < 500; i++) {
+        const level = bootLevel(pack, { seed: 37800 + i, depth: 30 + i % 61, registries: game.booted.registries });
+        objects += level.objects.length;
+        artifacts += level.objects.filter(({ obj }) => obj.artifact !== null).length;
+      }
+      expect(objects).toBeGreaterThan(10000);
+      expect(artifacts).toBeGreaterThan(50);
+      rates.push(artifacts / objects);
+    }
+    for (const rate of rates.slice(1)) expect(rate / rates[0]!, JSON.stringify(rates)).toBeGreaterThan(0.65);
+    for (const rate of rates.slice(1)) expect(rate / rates[0]!, JSON.stringify(rates)).toBeLessThan(1.35);
+  }, 120000);
+
   it("swaps the artifact set and persists the seed reproducibly", () => {
     const standard = startGame(pack, { seed: 88, depth: 2 });
     const randart = startGame(pack, {

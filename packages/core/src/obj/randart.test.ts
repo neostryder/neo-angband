@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { ELEM, KF, OF } from "../generated/index.js";
 import { ObjRegistry } from "./bind.js";
@@ -101,6 +102,26 @@ function fingerprint(arts: (Artifact | null)[]): string {
  * subset of the other. Either way an implementation reading a mirror produces
  * the identical set both times and fails here.
  */
+describe("randart set size", () => {
+  it("keeps the seeded default set byte-identical", () => {
+    const arts = doRandart(makeReg(), constants, 378, false);
+    expect(createHash("sha256").update(JSON.stringify(arts)).digest("hex")).toBe("b154f0fbcb656d6c374a3935bcbe6574817518fc678954a962c176530b7963d7");
+    expect(JSON.stringify(doRandart(makeReg(), constants, 378, false, undefined, { sizeMultiplier: 1 }))).toBe(JSON.stringify(arts));
+  });
+
+  it.each([0.5, 2, 3])("resizes randomizable slots by %s and preserves fixed artifacts", (sizeMultiplier) => {
+    const reg = makeReg();
+    const fixed = reg.artifacts.filter((a, i) => a && (i === reg.artifacts.length - 1 || a.name.includes("The One Ring") || reg.lookupKind(a.tval, a.sval)?.kindFlags.has(KF.QUEST_ART)));
+    const count = reg.artifacts.filter(Boolean).length - fixed.length;
+    const arts = doRandart(reg, constants, 378, false, undefined, { sizeMultiplier });
+    expect(arts.filter(Boolean)).toHaveLength(Math.round(count * sizeMultiplier) + fixed.length);
+    for (const art of fixed) expect(arts[art!.aidx]).toEqual(art);
+    for (const art of arts) if (art && !fixed.some((f) => f!.aidx === art.aidx)) {
+      expect(art.allocationScale).toBe(count / Math.round(count * sizeMultiplier));
+    }
+  });
+});
+
 describe("add_brand reads projections[i].name (obj-randart.c L1951)", () => {
   /** Base-element (ACID..COLD) resists across a whole generated set. */
   function baseResists(reg: ObjRegistry): number {

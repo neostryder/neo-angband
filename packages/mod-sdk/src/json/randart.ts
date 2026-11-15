@@ -47,6 +47,7 @@ const artifact = json.object({
   weight: json.integer,
   cost: json.integer,
   allocProb: json.integer,
+  allocationScale: json.optional(json.finiteNumber),
   allocMin: json.integer,
   allocMax: json.integer,
   attackDice: json.integer,

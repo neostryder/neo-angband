@@ -220,10 +220,24 @@ describe("api2PoliciesToHooks", () => {
   });
 });
 
+describe("randart set size declarations", () => {
+  it.each([null, [], {}, { multiplier: 0 }, { multiplier: -1 }, { multiplier: NaN }, { multiplier: Infinity }, { multiplier: "2" }, { multiplier: 2, extra: true }])("rejects an invalid declaration: %j", (randartSetSize) => {
+    expect(checkApi2Policies({ randartSetSize })).not.toBeNull();
+  });
+
+  it.each([[0.1, 0.25], [1, 1], [2, 2], [100, 4]])("clamps %s to %s after consent", (multiplier, expected) => {
+    const policy = { randartSetSize: { multiplier } };
+    expect(checkApi2Policies(policy)).toBeNull();
+    expect(api2PolicyEffects(policy, () => false).registrations).toEqual({});
+    expect(api2PolicyEffects(policy, (capability) => capability === "registry:randart-size").registrations.randartSetSize).toEqual({ multiplier: expected });
+  });
+});
+
 describe("API2_POLICY_KINDS", () => {
   it("maps every table to its matching registry permission", () => {
     expect(Object.fromEntries(API2_POLICY_KINDS.map((kind) => [kind.name, kind.capability]))).toEqual({
       trapAllocation: "registry:room",
+      randartSetSize: "registry:randart-size",
       prefErrors: "registry:ui-entry",
       startingOptions: "registry:ui-entry",
       ignore: "registry:ui-entry",
@@ -245,7 +259,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
+      else expect(["randartSetSize", "trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
     }
   });
 

@@ -703,6 +703,23 @@ describe("checker regressions", () => {
     expect(r.findings.find((f) => f.rule === "checks/api-mismatch")?.severity).toBe("block");
   });
 
+  it("checks randart size declarations and their narrow permission", async () => {
+    const code = 'export default { api: "^2.0.0", policies() { return { randartSetSize: { multiplier: 2 } }; } };';
+    for (const granted of [false, true]) {
+      const r = await report({ files: {
+        "manifest.json": v2({ api: "^2.0.0", runtime: "worker", entry: "plugin.js", capabilities: granted ? ["registry:randart-size"] : [] }),
+        "plugin.js": code,
+      } });
+      expect(r.findings.some((f) => f.rule === "checks/undeclared-capability")).toBe(!granted);
+      expect(r.findings.some((f) => f.rule === "checks/plugin-shape")).toBe(false);
+    }
+    const r = await report({ files: {
+      "manifest.json": v2({ api: "^2.0.0", runtime: "worker", entry: "plugin.js", capabilities: ["registry:randart-size"] }),
+      "plugin.js": code.replace("multiplier: 2", "multiplier: 0"),
+    } });
+    expect(r.findings.find((f) => f.rule === "checks/plugin-shape")?.message).toContain("randartSetSize.multiplier");
+  });
+
   it("matches a walk declaration to its registry permission", async () => {
     const code = "export default { api: \"^2.0.0\", policies() { return { walkBlockedByDiggable: { kind: \"walk-blocked-by-diggable\", attempt: \"tunnel\", energy: \"move\", step: false } }; } };";
     for (const granted of [false, true]) {

@@ -32,6 +32,7 @@ import {
   COLOUR_L_BLUE,
   COLOUR_YELLOW,
   NOSCORE,
+  OptionState,
 } from "@rpgm-tools/neo-angband-core";
 import type {
   GameState,
@@ -444,6 +445,15 @@ describe("showCharacterSheet offers the sheet to a presenter", () => {
     return { seen, host: () => held, dismiss: () => done() };
   }
 
+  it("shows the saved randart size and its mod on the character sheet", async () => {
+    const { state, term } = setup();
+    const rec = record(true);
+    const open = showCharacterSheet(term, state, "Fred", { randartSetSize: { multiplier: 2, modId: "qol" } });
+    expect(JSON.stringify(rec.seen[0]!.blocks)).toContain("Random artifact set: 2x (mod: qol)");
+    rec.dismiss();
+    await open;
+  });
+
   it("hands over the view and its actions, and never paints the terminal", async () => {
     const { state, term } = setup();
     const rec = record(true);
@@ -492,6 +502,14 @@ describe("showCharacterSheet offers the sheet to a presenter", () => {
     expect(await rec.host()!.invoke("page-next")).toBeUndefined();
     rec.dismiss();
     await open;
+  });
+
+  it("keeps the randart size label clear of the wide sheet panels", () => {
+    const { state, term } = setup();
+    record(false);
+    void showCharacterSheet(term, state, "Fred", { randartSetSize: { multiplier: 2, modId: "qol" } });
+    expect(term.snapshot()[8]).toContain("Random artifact set: 2x (mod: qol)");
+    expect(term.snapshot()[1]).toContain("Name");
   });
 
   it("paints its own sheet when the presenter declines", () => {
@@ -1336,6 +1354,12 @@ describe("showCharacterSheet: RNG invariance (pure display)", () => {
  * a vanilla dump is byte-for-byte what it was before this existed.
  * ------------------------------------------------------------------ */
 describe("character dump - enabled mods", () => {
+  it("names the mod that selected the saved random artifact set size", () => {
+    const state = makeTestState(loc(2, 2));
+    state.options = new OptionState({ overrides: { birth_randarts: true } });
+    const text = buildCharacterDump(state, "Fred", { seedRandart: 378, randartSetSize: { multiplier: 2, modId: "qol" } });
+    expect(text).toContain("Random artifact set: 2x (mod: qol)");
+  });
   const dumpOf = (mods?: readonly { id: string; version: string }[]): string =>
     buildCharacterDump(makeTestState(loc(2, 2)), "Fred", mods ? { mods } : {});
 

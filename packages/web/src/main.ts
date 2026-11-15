@@ -456,7 +456,7 @@ import { runProfileScreen } from "./profile-ui";
 import { setPrefsStorage } from "./mod-prefs";
 import { startModWorker, type ModWorkerLike, type StartedModWorker } from "./mod-worker/host";
 import { settleWorkerHooks } from "./mod-worker/hooks";
-import { api2Plugin, api2DisplayOption, api2PluginRegistrations, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "./mod-api2-shim";
+import { api2Plugin, api2DisplayOption, api2RandartSetSize, removeApi2RandartSetSize, api2PluginRegistrations, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "./mod-api2-shim";
 import { createIsolatedModWorker } from "./mod-worker/isolation";
 import { stageModuleGraph } from "./mod-worker/staging";
 import { createModWorkerPanelRenderer } from "./mod-worker/panels";
@@ -2050,8 +2050,12 @@ function bootGame(): ReturnType<typeof startGame> {
     /* storage disabled or corrupt: fall through to seed */
   }
   const startHooks = activeModHooks();
+  const birthOptions = birthStartOptions(seed, birthContinuation, (id, binding) =>
+    consentBinding(id) === binding && enabledModIds().includes(id) && (modHolds(id, "registry:randart-size") || modHolds(id, "registry:*")));
+  const randartSetSize = birthOptions.randartSetSize ?? api2RandartSetSize();
   const game = startGame(pack, {
-    ...birthStartOptions(seed, birthContinuation),
+    ...birthOptions,
+    ...(randartSetSize ? { randartSetSize } : {}),
     depth,
     // The effective mod-rule flags (qol / bug-fixes tweaks) for this session:
     // enabled mods' declared rules resolved against the player's saved choices.
@@ -2468,6 +2472,7 @@ function charSheetOpts(): {
   uiEntryPacks: typeof uiEntryPacks;
   inspectExtras: ObjectInfoExtras;
   seedRandart: number;
+  randartSetSize?: { readonly multiplier: number; readonly modId: string };
   mods: { id: string; version: string }[];
   msg: (text: string) => void;
 } {
@@ -2482,6 +2487,7 @@ function charSheetOpts(): {
     // The char-dump extras ('f'): object_info_chardump blocks + [Randart seed].
     inspectExtras,
     seedRandart: game.randartSeed,
+    ...(game.randartSetSize ? { randartSetSize: game.randartSetSize } : {}),
     /* The dump's [Mods enabled] block - the same list the diagnostics report
      * carries, from the same source, so the two can never disagree. Empty with
      * no mods on, which writes no block at all and leaves a vanilla dump
@@ -8545,6 +8551,7 @@ async function runDeathMenu(): Promise<void> {
             messages: msglog.all().map((m) => m.text),
             diedFrom: state.actor.player.diedFrom || "the dungeon",
             seedRandart: game.randartSeed,
+            ...(game.randartSetSize ? { randartSetSize: game.randartSetSize } : {}),
             /* The death dump is the one people actually post, so it is the one
              * that most needs to say what was running. */
             mods: enabledModSummary(),
@@ -13457,7 +13464,10 @@ async function maybeBirth(): Promise<BootStep> {
       reloadStorage.setItem(FORCE_NEW_KEY, "1");
       // Persist the advanced stream so the post-birth reload's startGame
       // continues from this position (store_reset / seeds / level gen).
-      reloadStorage.setItem(BIRTH_RNG_KEY, encodeBirthContinuation(seed, state.rng.getState()));
+      const randartSetSize = api2RandartSetSize();
+      const binding = randartSetSize ? consentBinding(randartSetSize.modId) : null;
+      reloadStorage.setItem(BIRTH_RNG_KEY, encodeBirthContinuation(seed, state.rng.getState(),
+        randartSetSize && binding ? { ...randartSetSize, binding } : undefined));
     } catch {
       /* storage disabled: the reload still starts a fresh game via ?new */
     }
@@ -16353,6 +16363,7 @@ const workerPanelRenderer = createModWorkerPanelRenderer();
  * page next loads. The mod list on disk is left as it is. */
 function modSwitchedOff(off: ModSwitchOff): void {
   removeApi2PrefErrors(off.id);
+  removeApi2RandartSetSize(off.id);
   reportModFault(
     off.id,
     off.reason === "stall"

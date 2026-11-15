@@ -17,7 +17,7 @@
 
 import type { ModHooks } from "@rpgm-tools/neo-angband-core";
 import type { Api2Hooks, Api2PolicyRegistrations } from "@rpgm-tools/neo-angband-mod-sdk";
-import { api2PolicyModHooks, api2ToModHooks, contributeApi2PrefErrors, removeApi2PolicyRegistrations } from "../mod-api2-shim";
+import { api2PolicyModHooks, api2ToModHooks, contributeApi2PrefErrors, contributeApi2RandartSetSize, removeApi2PolicyRegistrations } from "../mod-api2-shim";
 
 /** What a settled Worker mod contributes. */
 export interface SettledWorkerHooks {
@@ -46,7 +46,8 @@ export function settleWorkerHooks(id: string, value: SettledWorkerHooks | null):
   settled.set(id, value === null ? null : {
     dispose: (() => {
       const release = contributeApi2PrefErrors(id, value.registrations ?? {});
-      return () => { release(); removeApi2PolicyRegistrations(id); };
+      const releaseSize = contributeApi2RandartSetSize(id, value.registrations ?? {});
+      return () => { release(); releaseSize(); removeApi2PolicyRegistrations(id); };
     })(),
     hooks: { ...api2ToModHooks(value.policies), ...api2PolicyModHooks(value.registrations ?? {}, () => settled.get(id)?.send === value.send) },
     notify: new Set(value.notify),

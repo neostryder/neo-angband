@@ -306,7 +306,7 @@ import { OptionState } from "../player/options.js";
 import type { OptionName } from "../player/options.js";
 import { optionsInitDefaults } from "../player/options-file.js";
 import { host } from "../host/io.js";
-import { doRandart, RANDNAME_TOLKIEN } from "../obj/randart.js";
+import { clampRandartSizeMultiplier, doRandart, RANDNAME_TOLKIEN, type RandartSetSize } from "../obj/randart.js";
 import { makeActivationSummarizer } from "../obj/effects-info.js";
 import type { RawTimedRecord } from "../obj/effects-info.js";
 import type { ActivationSummarizer } from "../obj/randart-build.js";
@@ -431,6 +431,7 @@ export interface GamePack extends CorePack {
 
 /** Options for starting a new game. */
 export interface StartGameOptions extends BootLevelOptions {
+  randartSetSize?: RandartSetSize;
   /** Race name (case-insensitive). Default "Human". */
   raceName?: string;
   /** Class name (case-insensitive). Default "Warrior". */
@@ -575,6 +576,7 @@ export interface StartedGame {
    * when birth_randarts is off (no randart set was generated).
    */
   randartSeed: number;
+  randartSetSize?: RandartSetSize;
   /**
    * dungeon_change_level + prepare_next_level: generate a fresh level at
    * `depth` from the game's own RNG stream and repopulate the state in
@@ -3753,6 +3755,8 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
   // randint0(0x10000000) on the main stream (player-birth.c:1285), then
   // seed_flavor immediately after (player-birth.c:1291).
   let randartSeed = 0;
+  const randartSetSize = options.get("birth_randarts") && opts.randartSetSize
+    ? { multiplier: clampRandartSizeMultiplier(opts.randartSetSize.multiplier), modId: opts.randartSetSize.modId } : undefined;
   if (options.get("birth_randarts")) {
     randartSeed = mainRng.randint0(0x10000000);
     swapRandartSet(
@@ -3760,6 +3764,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
       randartSeed,
       buildCurseTimedFoil(players.timed),
       buildActivationSummarizer(pack, reg),
+      randartSetSize?.multiplier,
     );
   }
   const seedFlavor = mainRng.randint0(0x10000000);
@@ -4062,6 +4067,7 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     mismatchedPacks: [],
     options,
     randartSeed,
+    ...(randartSetSize ? { randartSetSize } : {}),
     changeLevel,
     resolveInitialStoreDiscounts,
     announceArrival: arrivalAnnouncer(state, "new-game"),
@@ -4408,6 +4414,7 @@ function swapRandartSet(
   seed: number,
   timedFoil?: CurseTimedFoil,
   activationSummarize?: ActivationSummarizer,
+  sizeMultiplier?: number,
 ): void {
   /* Thread the RANDNAME_TOLKIEN corpus (names.json section 1, loaded into
    * CoreRegistries.nameSections at boot) so artifact_gen_name draws faithful
@@ -4425,9 +4432,7 @@ function swapRandartSet(
     reg.constants,
     seed, true,
     reg.nameSections.get(RANDNAME_TOLKIEN),
-    timedFoil || activationSummarize
-      ? { timedFoil, activationSummarize }
-      : undefined,
+    { timedFoil, activationSummarize, sizeMultiplier },
   );
   reg.objects.artifacts.length = 0;
   reg.objects.artifacts.push(...randarts);
@@ -4447,6 +4452,7 @@ export function saveGame(game: StartedGame): SavedGame {
   /* The mod-lifecycle blocks (P7.2): the manifest fingerprint always travels
    * with the save; the per-mod bags and any quarantined orphans ride along only
    * when non-empty, so a core-only save stays clean. */
+  if (game.randartSetSize) save.randartSetSize = { ...game.randartSetSize };
   save.manifest = game.manifest;
   save.modList = structuredClone(game.modList ?? { name: "", mods: [], resolvedOrder: [], orderPins: [], conflictOverrides: {}, ruleChoices: {} });
   if (Object.keys(game.mods).length > 0) save.mods = game.mods;
@@ -4536,6 +4542,9 @@ export function loadGame(
   // existed since save version 1 and no migration rewrites either; the check
   // further down fails loudly if that ever stops being true.
   const randartSeed = savedRandartSeed(saveDocument);
+  const savedSize = saveDocument.randartSetSize;
+  const randartSetSize = savedSize && typeof savedSize.modId === "string"
+    ? { multiplier: clampRandartSizeMultiplier(savedSize.multiplier), modId: savedSize.modId } : undefined;
   const wantRandarts = savedBirthRandarts(saveDocument) && randartSeed !== 0;
   if (wantRandarts) {
     swapRandartSet(
@@ -4543,6 +4552,7 @@ export function loadGame(
       randartSeed,
       buildCurseTimedFoil(players.timed),
       buildActivationSummarizer(pack, reg),
+      randartSetSize?.multiplier,
     );
   }
 
@@ -5014,6 +5024,7 @@ export function loadGame(
       : {}),
     options,
     randartSeed,
+    ...(randartSetSize ? { randartSetSize } : {}),
     changeLevel,
     resolveInitialStoreDiscounts: (): void => {},
     announceArrival: arrivalAnnouncer(state, "load"),

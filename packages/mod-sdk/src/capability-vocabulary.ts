@@ -180,6 +180,7 @@ const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
   ["ui-entry", "Change how your resistances, abilities and stat modifiers are worked out and drawn on the character sheet and the equipment comparison, rewrite screen text, choose how preference errors are handled, set new-character options, ignore matching items, choose store and monster-list displays, and give a cursed or sticky light source no radius", true],
   ["glyph", "Change what the symbols in a room or vault layout mean when a level is drawn", true],
   ["effect-info", "Change what the game tells you about objects and effects", true],
+  ["randart-size", "Change how many random artifacts a new character can find.", true],
   ["randart", "Change how random artifacts are built - what powers they can get, and what each kind of item starts with", true],
   ["rune", "Teach the game about a new kind of RUNE - what it is called, what an item carries, and how the player learns it, including during a shapechange", true],
   ["tval", "Change how items are priced and how floor items are ordered, and teach the game about a new kind of item - whether it can be worn or wielded and whether it has an unidentified flavour", true],

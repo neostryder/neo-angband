@@ -680,6 +680,7 @@
     "chooseTeleportDestination",
     "chunkValidateObjects",
     "chunkWriteTerrain",
+    "clampRandartSizeMultiplier",
     "classMagicRealms",
     "classicGen",
     "clearMonsterShow",

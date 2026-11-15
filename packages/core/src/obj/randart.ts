@@ -558,6 +558,7 @@ export function createArtifactSet(
   data: ArtifactSetData,
   rng: Rng,
   nameProbs: NameProbs | null,
+  sizeScale = 1,
 ): void {
   let aidx = 1;
   const tvalTotal = new Array<number>(TV_MAX).fill(0);
@@ -565,7 +566,7 @@ export function createArtifactSet(
 
   /* Get min tval frequencies for the new artifacts (at least 80% each). */
   for (let i = 0; i < TV_MAX; i++) {
-    tvalTotal[i] = Math.trunc((4 * (data.tvNum[i]! + 1)) / 5);
+    tvalTotal[i] = Math.trunc(Math.trunc((4 * (data.tvNum[i]! + 1)) / 5) * sizeScale);
   }
 
   /* Allocate a minimal set of artifacts to the tvals. */
@@ -575,6 +576,7 @@ export function createArtifactSet(
     /* Multiple passes through tvals until all have enough artifacts. */
     for (let i = 0; i < TV_MAX; i++) {
       if (tvalTotal[i]! > 0) {
+        if (sizeScale !== 1 && aidx >= arts.length - 1) return;
         aidx = designArtifact(reg, constants, arts, data, i, aidx, rng, nameProbs);
         tvalTotal[i]!--;
         aidx++;
@@ -620,6 +622,16 @@ export function createArtifactSet(
 /** path_build(ANGBAND_DIR_USER, "randart.log") (obj-randart.c L3165). */
 export const RANDART_LOG = "randart.log";
 
+export interface RandartSetSize {
+  readonly multiplier: number;
+  readonly modId: string;
+}
+
+export function clampRandartSizeMultiplier(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.max(0.25, Math.min(4, value)) : 1;
+}
+
 export function doRandart(
   reg: ObjRegistry,
   /**
@@ -639,7 +651,7 @@ export function doRandart(
    */
   createFile: boolean,
   tolkienWords?: readonly string[],
-  extras?: Pick<ArtifactSetData, "timedFoil" | "activationSummarize">,
+  extras?: Pick<ArtifactSetData, "timedFoil" | "activationSummarize"> & { sizeMultiplier?: number | undefined },
   io: HostIo = host(),
   onLogError?: (message: string) => void,
 ): (Artifact | null)[] {
@@ -701,7 +713,39 @@ export function doRandart(
     );
 
     /* Generate the random artifacts. */
-    createArtifactSet(reg, constants, arts, data, rng, nameProbs);
+    const multiplier = clampRandartSizeMultiplier(extras?.sizeMultiplier);
+    if (multiplier === 1) {
+      createArtifactSet(reg, constants, arts, data, rng, nameProbs);
+    } else {
+      const slots = arts.flatMap((art, i) =>
+        art && i < arts.length - 1 && !art.name.includes("The One Ring") &&
+        !reg.lookupKind(art.tval, art.sval)?.kindFlags.has(KF.QUEST_ART) ? [i] : [],
+      );
+      if (slots.length > 0) {
+        const count = Math.max(1, Math.min(4096, Math.round(slots.length * multiplier)));
+        const work: (Artifact | null)[] = [null];
+        for (let i = 0; i < count; i++) {
+          const art = cloneArtifact(arts[slots[i % slots.length]!]!);
+          art.aidx = i + 1;
+          work.push(art);
+        }
+        work.push(null);
+        /* Fixed slots stay at their original indices, outside the C skip loop. */
+        createArtifactSet(reg, constants, work, data, rng, nameProbs, count / slots.length);
+        for (const slot of slots) arts[slot] = null;
+        for (let i = 0; i < count; i++) {
+          const art = work[i + 1]!;
+          const slot = slots[i] ?? arts.length;
+          art.aidx = slot;
+          art.allocationScale = slots.length / count;
+          if (i >= slots.length) {
+            delete art.from;
+            delete art.ext;
+          }
+          arts[slot] = art;
+        }
+      }
+    }
 
     generated = arts;
 

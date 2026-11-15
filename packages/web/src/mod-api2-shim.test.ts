@@ -37,6 +37,10 @@ import {
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import {
   API1_CONTEXT_MAP,
+  api2RandartSetSize,
+  removeApi2RandartSetSize,
+  contributeApi2RandartSetSize,
+  setApi2PolicyLoadOrder,
   api2Plugin,
   api2PluginRegistrations,
   api2PolicyModHooks,
@@ -51,6 +55,28 @@ import { modPluginContext } from "./mod-context";
 import { defineModPlugin, validateModPlugin, type ModPlugin } from "./mod-plugin";
 
 afterEach(() => resetTvalRegistry());
+
+describe("randart size contributions", () => {
+  it("selects the last active declaration in configured order and restores the prior one", () => {
+    setApi2PolicyLoadOrder(["size-a", "size-b"]);
+    let active = true;
+    const releaseB = contributeApi2RandartSetSize("size-b", { randartSetSize: { multiplier: 3 } }, () => active);
+    const releaseA = contributeApi2RandartSetSize("size-a", { randartSetSize: { multiplier: 0.5 } });
+    try {
+      expect(api2RandartSetSize()).toEqual({ multiplier: 3, modId: "size-b" });
+      setApi2PolicyLoadOrder(["size-b", "size-a"]);
+      expect(api2RandartSetSize()).toEqual({ multiplier: 0.5, modId: "size-a" });
+      setApi2PolicyLoadOrder(["size-a", "size-b"]);
+      active = false;
+      expect(api2RandartSetSize()).toEqual({ multiplier: 0.5, modId: "size-a" });
+      active = true;
+      removeApi2RandartSetSize("size-b");
+      expect(api2RandartSetSize()).toEqual({ multiplier: 0.5, modId: "size-a" });
+      releaseA();
+      expect(api2RandartSetSize()).toBeUndefined();
+    } finally { releaseA(); releaseB(); setApi2PolicyLoadOrder([]); }
+  });
+});
 
 function loadJson<T>(name: string): T {
   return JSON.parse(readFileSync(new URL(`../../content/pack/${name}.json`, import.meta.url), "utf8")) as T;
@@ -577,6 +603,7 @@ describe("policy tables that install registrations", () => {
 
   const tables: Api2Policies = {
     trapAllocation: { kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" },
+    randartSetSize: { multiplier: 2 },
     prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
     startingOptions: { kind: "starting-options", values: { auto_more: true } },
     ignore: [{ tval: "light", kindNameContains: "Torch", ignore: true }],

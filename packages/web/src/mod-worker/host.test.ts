@@ -45,7 +45,7 @@ import {
   type StartedGame,
 } from "@rpgm-tools/neo-angband-core";
 import { API2_POLICY_KINDS, CapabilitySet, MOD_PERMISSION_TEXT, type Api2ModDefinition, type Api2Policies, type Api2PolicyRegistrations, type ModApi2 } from "@rpgm-tools/neo-angband-mod-sdk";
-import { api2Plugin, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "../mod-api2-shim";
+import { api2Plugin, api2RandartSetSize, installApi2PolicyRegistrations, removeApi2PrefErrors, setApi2PolicyLoadOrder } from "../mod-api2-shim";
 import { createApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
 import { TRUTH_MAP, TRUTH_MONSTERS, resetModTiers, setModGrants } from "../mod-tier";
@@ -1276,6 +1276,7 @@ describe("asking a Worker mod", () => {
 describe("a Worker mod's hooks", () => {
   const tables: Api2Policies = {
     trapAllocation: { kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" },
+    randartSetSize: { multiplier: 2 },
     prefErrors: { kind: "pref-errors", continueAfterError: true, reportLimit: 20 },
     startingOptions: { kind: "starting-options", values: { auto_more: true } },
     ignore: [{ tval: "light", kindNameContains: "Torch", ignore: true }],
@@ -1508,6 +1509,28 @@ describe("a host-owned walk declaration", () => {
     const after = state.rng.getState();
     expect(walkAction(state, { code: "walk", dir: 6 })).toBe(37);
     expect(state.rng.getState()).toEqual(after);
+  });
+});
+
+describe("randart size during composition", () => {
+  it.each([["process", "probe"], ["probe", "process"]])("uses %s then %s order across runtimes and releases the stopped winner", async (first, second) => {
+    setApi2PolicyLoadOrder([first!, second!]);
+    const grants = CapabilitySet.fromManifest({ id: "process", name: "Process", version: "1.0.0", shape: "plugin", capabilities: ["registry:randart-size"] });
+    const plugin = api2Plugin({ api: API, policies: () => ({ randartSetSize: { multiplier: 0.5 } }) }, () => ({ grants }));
+    plugin.hooks!(modPluginContext("process", {}, undefined, {}, { capabilities: grants }));
+    const wired = wire({ api: API, policies: () => ({ randartSetSize: { multiplier: 2 } }) }, { grants: ["registry:randart-size"] });
+    try {
+      await wired.session.ready;
+      expect(api2RandartSetSize()).toEqual({ multiplier: second === "probe" ? 2 : 0.5, modId: second });
+      if (second === "probe") wired.session.teardown();
+      else plugin.uninstall!();
+      expect(api2RandartSetSize()).toEqual({ multiplier: first === "probe" ? 2 : 0.5, modId: first });
+    } finally {
+      plugin.uninstall!();
+      wired.session.teardown();
+      setApi2PolicyLoadOrder([]);
+    }
+    expect(api2RandartSetSize()).toBeUndefined();
   });
 });
 

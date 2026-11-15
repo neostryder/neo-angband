@@ -176,6 +176,10 @@ export interface Api2TrapAllocationPolicy {
   readonly placement: "rooms" | "corridors" | "both";
 }
 
+export interface Api2RandartSetSizePolicy {
+  readonly multiplier: number;
+}
+
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
   /** True counts only a monster's own stolen drops and saturates thefts at 65535. */
@@ -188,6 +192,7 @@ export interface Api2Policies {
   readonly forceFromBlastCenter?: boolean;
   readonly monsterArcheryFrequency?: Api2MonsterArcheryFrequencyPolicy;
   readonly trapAllocation?: Api2TrapAllocationPolicy;
+  readonly randartSetSize?: Api2RandartSetSizePolicy;
   readonly prefErrors?: Api2PrefErrorsPolicy;
   readonly startingOptions?: Api2StartingOptionsPolicy;
   readonly ignore?: readonly Api2IgnorePolicyEntry[];
@@ -284,6 +289,7 @@ export interface Api2PolicyRegistrations {
   forceFromBlastCenter?: true;
   monsterArcheryFrequency?: Api2MonsterArcheryFrequencyPolicy;
   trapAllocation?: Api2TrapAllocationPolicy;
+  randartSetSize?: Api2RandartSetSizePolicy;
   prefErrors?: Api2PrefErrorsPolicy;
   startingOptions?: Api2StartingOptionsPolicy;
   ignore?: readonly Api2IgnorePolicyEntry[];
@@ -559,6 +565,22 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
     apply(value, out) {
       const policy = value as Api2TrapAllocationPolicy;
       out.registrations.trapAllocation = { ...policy, count: { ...policy.count } };
+    },
+  },
+  {
+    name: "randartSetSize",
+    capability: "registry:randart-size",
+    summary: "Sets the size of the random artifact set for new characters.",
+    target: { registration: "randartSetSize" },
+    check(value) {
+      if (!isRecord(value)) return "randartSetSize is an object";
+      const extra = unknownField("randartSetSize", value, ["multiplier"]);
+      if (extra) return extra;
+      if (typeof value["multiplier"] !== "number" || !Number.isFinite(value["multiplier"]) || value["multiplier"] <= 0) return "randartSetSize.multiplier is a finite number greater than 0";
+      return null;
+    },
+    apply(value, out) {
+      out.registrations.randartSetSize = { multiplier: Math.max(0.25, Math.min(4, (value as Api2RandartSetSizePolicy).multiplier)) };
     },
   },
   {

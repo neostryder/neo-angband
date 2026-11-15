@@ -13,6 +13,33 @@ function advanced(seed: number) {
 }
 
 describe("birth reload seed provenance", () => {
+  it("carries the settled Worker size across birth reload before generating artifacts", () => {
+    const state = advanced(378);
+    const stored = encodeBirthContinuation(378, state, { multiplier: 2, modId: "qol", binding: "payload-378" });
+    const continuation = decodeBirthContinuation(stored);
+    const options = birthStartOptions(9001, continuation, (id, binding) => id === "qol" && binding === "payload-378");
+    const reloaded = startGame(pack, { ...options, ...birth, optionOverrides: { birth_randarts: true } });
+    expect(reloaded.randartSetSize).toEqual({ multiplier: 2, modId: "qol" });
+    expect(reloaded.booted.registries.objects.artifacts.some((a) => a?.allocationScale === 0.5)).toBe(true);
+    const saved = saveGame(reloaded);
+    expect(saved.randartSetSize).toEqual(reloaded.randartSetSize);
+    expect(birthStartOptions(9001, continuation).randartSetSize).toBeUndefined();
+    expect(birthStartOptions(9001, continuation, () => false).randartSetSize).toBeUndefined();
+  });
+
+  it("clamps birth sizes and ignores damaged declarations without losing the seed", () => {
+    const state = advanced(378);
+    const stored = JSON.parse(encodeBirthContinuation(378, state));
+    stored.randartSetSize = { multiplier: 100, modId: "qol", binding: "payload-378" };
+    expect(decodeBirthContinuation(JSON.stringify(stored))?.randartSetSize?.multiplier).toBe(4);
+    for (const size of [null, {}, { multiplier: 0, modId: "qol", binding: "payload-378" }, { multiplier: "2", modId: "qol", binding: "payload-378" }]) {
+      stored.randartSetSize = size;
+      const decoded = decodeBirthContinuation(JSON.stringify(stored));
+      expect(decoded?.randartSetSize).toBeUndefined();
+      expect(decoded?.seed).toBe(378);
+    }
+  });
+
   it.each([0, 4242, 0xffffffff])("keeps original seed %s and the advanced stream when the next page draws another seed", (seed) => {
     const state = advanced(seed);
     const stored = encodeBirthContinuation(seed, state);

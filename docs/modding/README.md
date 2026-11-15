@@ -183,6 +183,10 @@ my-frost-pack/
 
 Every other field, such as `rules`, `settings`, `sections`, `compat`, `fields`, `resources`, `tilePacks` and `payload`, keeps the name and meaning it had before schema 2. A field the schema does not know is refused, so the schema 1 names `modApi`, `workerEntry` and `optionalDependencies` cannot appear in a schema 2 manifest. A `schemaVersion` above 2 is refused too.
 
+#### Random artifact set size
+
+A schema 2 code mod that sets random artifact count lists `"registry:randart-size"` in `data.capabilities`. Its API 2 definition returns `randartSetSize: { multiplier: 2 }` from `policies(context)`; the table belongs in the definition, not the manifest. The host checks the table and asks for consent. The last declaration in load order wins, and the save keeps the chosen size. See [Random artifact set size](API2.md#random-artifact-set-size) for limits.
+
 #### Manifests written before schema 2
 
 A `manifest.json` with no `format`, or with `"schemaVersion": 1`, still loads, and the game reads it the way it always has. `modApi: 1` counts as `"runtime": "in-process"` with `"api": ">=1.0.0 <2.0.0"`. `modApi: 2` with `"runtime": "worker"` counts as `"runtime": "worker"` with the Worker preview API, `"api": "2.0.0-worker"`, and its `workerEntry` as `entry`. The preview API is retired, so the manifest of such a mod still reads but its code does not run; rebuild it as an API 2 Worker mod ([API2.md](API2.md)). A mod with no code counts as `"runtime": "data"` with `"api": "*"`. No other `modApi` value has a schema 2 meaning, and the integer is never read as a range.
