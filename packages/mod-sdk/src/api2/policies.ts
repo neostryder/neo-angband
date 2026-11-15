@@ -210,6 +210,8 @@ export interface Api2Policies {
   readonly messagePauseAfter?: readonly string[];
   /** Deterministic end-of-run alternatives: 1 to 256 plain lines of 1 to 72 characters. */
   readonly runEndLine?: readonly string[];
+  /** A plain confirmation note of 1 to 160 characters. */
+  readonly birthConfirmNote?: string;
   /** `where` may name `screen`, `part` and `column`. */
   readonly screenText?: readonly Api2TextRule[];
   readonly characterBackground?: readonly Api2TextRule[];
@@ -538,6 +540,17 @@ const LIST_KEYS: readonly string[] = ["dy", "-dy", "dx", "-dx"];
  * policies.test.ts, and list it under Policy tables in docs/modding/API2.md.
  */
 export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
+  {
+    name: "birthConfirmNote",
+    capability: "registry:ui-entry",
+    summary: "Adds a plain note acknowledged before a character starts.",
+    target: { hook: "birthConfirmNote" },
+    check(value) {
+      return typeof value === "string" && value.length >= 1 && value.length <= 160 && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value)
+        ? null : "birthConfirmNote is plain text of 1 to 160 characters without control characters";
+    },
+    apply(value, out) { out.hooks.birthConfirmNote = () => value as string; },
+  },
   {
     name: "runEndLine",
     capability: "registry:ui-entry",

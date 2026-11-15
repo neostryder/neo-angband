@@ -23,6 +23,14 @@ describe("checkApi2Policies", () => {
     expect(api2PolicyEffects({ [name]: true }, () => false).registrations).toEqual({});
   });
 
+  it("bounds the birth confirmation note and leaves it absent without consent", () => {
+    const p = { birthConfirmNote: "Review your birth choices." };
+    expect(checkApi2Policies(p)).toBeNull();
+    expect(api2PoliciesToHooks(p).birthConfirmNote?.({ name: "Fred", raceName: "Human", className: "Warrior", birthOptions: {} })).toBe(p.birthConfirmNote);
+    expect(api2PolicyEffects(p, () => false).hooks).toEqual({});
+    expect(api2PoliciesToHooks({}).birthConfirmNote).toBeUndefined();
+    for (const value of ["", "x".repeat(161), "two\nlines", true]) expect(checkApi2Policies({ birthConfirmNote: value })).toContain("birthConfirmNote is plain text of 1 to 160");
+  });
   it("selects a bounded end line deterministically from report facts", () => {
     const p = { runEndLine: ["A quiet end.", "A long road."] };
     expect(checkApi2Policies(p)).toBeNull();
@@ -58,6 +66,7 @@ describe("checkApi2Policies", () => {
       messageText: [{ find: "You feel", replace: "You sense", match: "prefix" }],
       messagePauseAfter: ["You feel that"],
       runEndLine: ["A quiet end."],
+      birthConfirmNote: "Review your birth choices.",
       screenText: [{ find: "a", replace: "b", where: { screen: "char", column: 2 } }],
       historyAdd: [{ find: "Found", drop: true, match: "prefix", where: { duplicate: true } }],
       objectListOrder: ["-dy", "dx"],
@@ -281,6 +290,7 @@ describe("API2_POLICY_KINDS", () => {
       walkBlockedByDiggable: "registry:command",
       messagePauseAfter: "registry:message",
       runEndLine: "registry:ui-entry",
+      birthConfirmNote: "registry:ui-entry",
       messageText: "registry:message", screenText: "registry:ui-entry", characterBackground: "registry:message",
       objectInfoText: "registry:effect-info", effectIntro: "registry:effect-info", historyAdd: "registry:message",
       historyDisplay: "registry:message", objectListOrder: "registry:tval", saveNoiseScent: "registry:monster",

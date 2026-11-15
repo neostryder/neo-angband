@@ -646,6 +646,16 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
   }
 
   const PROBES: Record<keyof ModHooks, Probe> = {
+    birthOptionHighlight: {
+      yes: (log, tag) => ({ birthOptionHighlight: () => { log.push(tag); } }),
+      no: (log, tag) => ({ birthOptionHighlight: () => { log.push(tag); } }),
+      run: (h) => h.birthOptionHighlight?.({ name: "birth_randarts", description: "Random artifacts", value: false, defaultValue: false }),
+    },
+    birthConfirmNote: {
+      yes: (log, tag) => ({ birthConfirmNote: () => { log.push(tag); return tag; } }),
+      no: (log, tag) => ({ birthConfirmNote: () => { log.push(tag); return null; } }),
+      run: (h) => h.birthConfirmNote?.({ name: "Fred", raceName: "Human", className: "Warrior", birthOptions: {} }),
+    },
     monsterOwnDropThefts: {
       yes: (log, tag) => ({ monsterOwnDropThefts: () => { log.push(tag); return true; } }),
       no: (log, tag) => ({ monsterOwnDropThefts: () => { log.push(tag); return false; } }),

@@ -36,7 +36,7 @@ export function installModWorkerBootstrap(
   type Pending = { readonly epoch: number; resolve(value: unknown): void; reject(reason: Error): void };
   type Listener = (payload: unknown) => void;
   type BackupFile = { readonly id: string; readonly name: string; readonly size: number };
-  const NOTIFY = ["optionsChanged", "abilityGained", "monsterBecameVisible", "artifactIdentified"];
+  const NOTIFY = ["birthOptionHighlight", "optionsChanged", "abilityGained", "monsterBecameVisible", "artifactIdentified"];
   let id: string | null = null;
   let epoch = 0;
   let meta: WorkerMeta | null = null;

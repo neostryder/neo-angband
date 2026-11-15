@@ -18,6 +18,20 @@ import type { RunReport } from "./character.js";
 
 export type Api2RunEndFacts = Pick<RunReport, "outcome" | "name" | "turn" | "seed">;
 
+export interface Api2BirthOptionHighlight {
+  readonly name: string;
+  readonly description: string;
+  readonly value: boolean;
+  readonly defaultValue: boolean;
+}
+
+export interface Api2BirthConfirmFacts {
+  readonly name: string;
+  readonly raceName: string;
+  readonly className: string;
+  readonly birthOptions: Readonly<Record<string, boolean>>;
+}
+
 /** Where a piece of screen text sits (ModHooks.screenText). */
 export interface Api2ScreenTextSite {
   /** The screen's stable id, such as `core:help-symbols`, or `core:prompt`. */
@@ -149,6 +163,8 @@ export interface Api2ListOffset {
  * leaves out costs nothing and the game takes its own path.
  */
 export interface Api2Hooks {
+  birthOptionHighlight?(option: Api2BirthOptionHighlight): void;
+  birthConfirmNote?(choice: Api2BirthConfirmFacts): string | null;
   /** Restate a message before it is shown. Chained in load order. */
   messageText?(raw: string): string;
   /** True requests a pause after this message, including the final page. Any yes wins. */
@@ -196,6 +212,8 @@ export type Api2HookName = keyof Api2Hooks;
 
 /** Every API 2 hook name, in the order ModHooks declares them. */
 export const API2_HOOK_NAMES: readonly Api2HookName[] = Object.freeze([
+  "birthOptionHighlight",
+  "birthConfirmNote",
   "messageText",
   "messagePauseAfter",
   "runEndLine",

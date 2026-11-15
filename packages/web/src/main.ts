@@ -13380,6 +13380,8 @@ async function maybeBirth(): Promise<BootStep> {
     const choice = offeredChoice !== undefined
       ? offeredChoice
       : await runBirth(term, players.races, players.classes, {
+        birthOptionHighlight: (option) => state.modHooks?.birthOptionHighlight?.(option),
+        birthConfirmNote: (choice) => state.modHooks?.birthConfirmNote?.(choice) ?? null,
         // ui-birth.c draws random race/class/*/@/roller from the main game RNG.
         rng: state.rng,
         quickstart: birthChoice

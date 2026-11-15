@@ -298,6 +298,8 @@ function hookDescription(hook: keyof ModHooks): string {
     messageText: "the wording of game messages",
     messagePauseAfter: "which messages pause for a key",
     runEndLine: "the extra line on end screens and character dumps",
+    birthOptionHighlight: "being told which birth option is highlighted",
+    birthConfirmNote: "the note acknowledged before starting a character",
     screenText: "the wording of help pages, screens and prompts",
     characterBackground: "the wording of your character's background",
     objectInfoText: "the wording of item descriptions",

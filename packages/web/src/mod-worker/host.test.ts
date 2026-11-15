@@ -1323,6 +1323,7 @@ describe("a Worker mod's hooks", () => {
     messageText: [{ find: "a", replace: "b" }], screenText: [{ find: "a", replace: "b" }],
     messagePauseAfter: ["You feel that"],
     runEndLine: ["A quiet end."],
+    birthConfirmNote: "Review your birth choices.",
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],
     effectIntro: [{ find: "a", replace: "b" }], historyAdd: [{ find: "a", replace: "b" }],
     historyDisplay: [{ find: "a", replace: "b" }], objectListOrder: ["dy"], saveNoiseScent: true,
@@ -1459,6 +1460,18 @@ describe("a Worker mod's hooks", () => {
     await wired.session.ready;
     workerModHooks("probe")?.optionsChanged?.({ changed: ["a"] } as never);
     await vi.waitFor(() => expect(seen).toEqual([{ changed: ["a"] }]));
+  });
+  it("forwards the complete birth-option highlight and answers the declared note", async () => {
+    const seen: unknown[] = [];
+    const wired = wire({ api: API,
+      hooks: () => ({ birthOptionHighlight: (option) => { expect(Object.isFrozen(option)).toBe(true); seen.push(option); } }),
+      policies: () => ({ birthConfirmNote: "Review your birth choices." }),
+    }, { grants: ["registry:ui-entry"] });
+    await wired.session.ready;
+    const option = { name: "birth_test", description: "A description longer than the editor's forty-five columns.", value: true, defaultValue: false };
+    workerModHooks("probe")?.birthOptionHighlight?.(option);
+    await vi.waitFor(() => expect(seen).toEqual([option]));
+    expect(workerModHooks("probe")?.birthConfirmNote?.({ name: "Fred", raceName: "Human", className: "Warrior", birthOptions: {} })).toBe("Review your birth choices.");
   });
 });
 

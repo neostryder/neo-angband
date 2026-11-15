@@ -62,7 +62,7 @@ export function resetWorkerHooks(): void {
 }
 
 /** The notification hooks core calls. */
-const NOTIFY = ["optionsChanged", "abilityGained", "monsterBecameVisible", "artifactIdentified"] as const;
+const NOTIFY = ["birthOptionHighlight", "optionsChanged", "abilityGained", "monsterBecameVisible", "artifactIdentified"] as const;
 
 function forward(entry: () => Entry | null | undefined, hook: (typeof NOTIFY)[number]) {
   return (arg: unknown): void => {
@@ -79,6 +79,8 @@ function pendingHooks(id: string): ModHooks {
     messageText: (raw) => hooks()?.messageText?.(raw) ?? raw,
     messagePauseAfter: (raw) => hooks()?.messagePauseAfter?.(raw) ?? false,
     runEndLine: (report) => hooks()?.runEndLine?.(report) ?? null,
+    birthOptionHighlight: forward(entry, "birthOptionHighlight"),
+    birthConfirmNote: (choice) => hooks()?.birthConfirmNote?.(choice) ?? null,
     screenText: (raw, site) => hooks()?.screenText?.(raw, site) ?? raw,
     characterBackground: (text) => hooks()?.characterBackground?.(text) ?? text,
     objectInfoText: (text, site) => hooks()?.objectInfoText?.(text, site) ?? text,

@@ -174,6 +174,8 @@ export interface BirthDeps {
 }
 
 export interface BirthOpts {
+  birthOptionHighlight?: import("@rpgm-tools/neo-angband-core").ModHooks["birthOptionHighlight"];
+  birthConfirmNote?: import("@rpgm-tools/neo-angband-core").ModHooks["birthConfirmNote"];
   /**
    * Shared game RNG for random birth choices (ui-birth.c randint0 at L465/678/
    * 696/842) and the standard roller. Required: omitting it throws so a missing
@@ -1604,7 +1606,20 @@ function confirmCharacter(
   host: GridSurface & GridPointerInput,
   sheet: PreviewSheet | null,
   fallbackTitle: string,
+  note?: () => string | null,
 ): Promise<ConfirmResult> {
+  const addNote = async (result: ConfirmResult): Promise<ConfirmResult> => {
+    if (result !== "begin") return result;
+    const answer = note?.();
+    const text = typeof answer === "string" ? answer.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").slice(0, 160).trim() : "";
+    if (!text) return result;
+    const handle = pushRegion(screenRegionSpec(), host.size());
+    try {
+      return await paintConfirmOnTerminal(regionSurface(host, handle.cells), sheet, text);
+    } finally {
+      popRegion(handle);
+    }
+  };
   if (!sheet) {
     // No registry deps (tests / a stub pack): there is no sheet to confirm, so
     // fall back to a plain choice rather than an empty screen.
@@ -1635,22 +1650,28 @@ function confirmCharacter(
       ],
       "[ a-z to choose, tap a row, ESC to go back ]",
       { subtitle: t("birth.confirm.subtitle", "Please confirm your character.") },
-    ).then((pick) => (pick === 0 ? "begin" : pick === 2 ? "restart" : "back"));
+    ).then((pick) => addNote(pick === 0 ? "begin" : pick === 2 ? "restart" : "back"));
   }
   /* A REGION for as long as it is up (#253); see `runQuickstart` for the split. */
   const handle = pushRegion(screenRegionSpec(), host.size());
   return paintConfirmOnTerminal(regionSurface(host, handle.cells), sheet).finally(() => {
     popRegion(handle);
-  });
+  }).then(addNote);
 }
 
 function paintConfirmOnTerminal(
   term: GridSurface & GridPointerInput,
-  sheet: PreviewSheet,
+  sheet: PreviewSheet | null,
+  note?: string,
 ): Promise<ConfirmResult> {
   return new Promise<ConfirmResult>((resolve) => {
     const { cols, rows } = term.size();
-    drawBirthSheet(term, sheet);
+    if (sheet) drawBirthSheet(term, sheet);
+    else term.clear();
+    if (note) {
+      const width = Math.max(1, cols - 1);
+      for (let i = 0; i < Math.ceil(note.length / width) && i < rows - 1; i++) term.print(0, i, note.slice(i * width, (i + 1) * width), PB_FG);
+    }
     // get_confirm_command (ui-birth.c:1548-1555): this exact prompt, centred on
     // the last row. No scrolling and no menu - the whole sheet is already on
     // screen, and any key that is not ESC or 'S' begins the game.
@@ -1759,7 +1780,7 @@ export async function runBirth(
     for (;;) {
       const res = await birthMenu(term, hint, frozen, active, roguelikeAtBirth);
       if (res.kind === "options") {
-        await runBirthOptionsEditor(term, birthOptions);
+        await runBirthOptionsEditor(term, birthOptions, opts.birthOptionHighlight);
         continue;
       }
       return res;
@@ -2055,7 +2076,7 @@ export async function runBirth(
           case "options":
             // textui_birth_quickstart (ui-birth.c:127-128): '=' opens
             // do_cmd_options_birth and the loop re-shows this same screen.
-            await runBirthOptionsEditor(term, birthOptions);
+            await runBirthOptionsEditor(term, birthOptions, opts.birthOptionHighlight);
             break;
           case "accept":
             // 'Y': cmdq_push(CMD_ACCEPT_CHARACTER); BIRTH_COMPLETE
@@ -2390,6 +2411,7 @@ export async function runBirth(
             race: raceName,
             cls: className,
           }),
+          () => opts.birthConfirmNote?.(Object.freeze({ name: finalName, raceName, className, birthOptions: Object.freeze({ ...birthOptions }) })) ?? null,
         );
         if (result === "restart") {
           /* BIRTH_RESET (ui-birth.c L1560-1561): discard every choice and start

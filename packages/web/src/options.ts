@@ -333,6 +333,7 @@ export function optionToggleScreen(
   custom?: OptionCustomDefaults,
   /** The live rogue_like_commands option; see menuNav. Defaults false. */
   roguelike = false,
+  onHighlight?: import("@rpgm-tools/neo-angband-core").ModHooks["birthOptionHighlight"],
 ): Promise<void> {
   const handle = pushRegion(screenRegionSpec(), host.size());
   const term = regionSurface(host, handle.cells);
@@ -361,6 +362,11 @@ export function optionToggleScreen(
 
     const paint = (): void => {
       const { cols, rows: termRows } = term.size();
+      const highlighted = rows[cursor];
+      if (highlighted && onHighlight) onHighlight(Object.freeze({
+        name: highlighted.name, description: highlighted.description, value: highlighted.value,
+        defaultValue: OPTION_ENTRIES.find((entry) => entry.name === highlighted.name)?.normal ?? highlighted.value,
+      }));
       term.clear();
       term.print(0, 0, title.slice(0, cols - 1), TITLE);
       term.print(0, 1, prompt.slice(0, cols - 1), DIM);
@@ -616,6 +622,7 @@ async function runBirthPage(term: GridSurface & GridPointerInput, state: GameSta
 export async function runBirthOptionsEditor(
   term: GridSurface & GridPointerInput,
   store: Record<string, boolean>,
+  onHighlight?: import("@rpgm-tools/neo-angband-core").ModHooks["birthOptionHighlight"],
 ): Promise<void> {
   const rows: OptionRow[] = OPTION_ENTRIES.filter((e) => e.type === "BIRTH").map(
     (e) => ({
@@ -648,6 +655,7 @@ export async function runBirthOptionsEditor(
     /* No live GameState this early - store IS the player's in-progress birth
      * choices, so the option they just set (if any) is the live value. */
     store["rogue_like_commands"] ?? false,
+    onHighlight,
   );
 }
 

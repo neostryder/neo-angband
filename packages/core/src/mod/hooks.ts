@@ -299,6 +299,10 @@ export interface KnownArtifactFind {
 }
 
 export interface ModHooks {
+  /** The birth editor reports full option prose before clipping it for the terminal. */
+  birthOptionHighlight?: (option: { readonly name: string; readonly description: string; readonly value: boolean; readonly defaultValue: boolean }) => void;
+  /** A plain note the host asks the player to dismiss before starting; null declines. */
+  birthConfirmNote?: (choice: { readonly name: string; readonly raceName: string; readonly className: string; readonly birthOptions: Readonly<Record<string, boolean>> }) => string | null;
   /** steal_monster_item, through game/steal.ts: own-drop provenance and 16-bit saturation. */
   monsterOwnDropThefts?: () => boolean;
   /** lore_update/lore_is_fully_known and update_mon: select the 29985cd05 lore rules. */
@@ -853,6 +857,8 @@ export type ModHookFold =
  * interface without adding it here does not compile.
  */
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
+  birthOptionHighlight: "all-observe",
+  birthConfirmNote: "last-answer",
   monsterOwnDropThefts: "any-yes",
   monsterLoreCompleteness: "any-yes",
   forgetUnlitImpassableTerrain: "any-yes",
@@ -1120,6 +1126,8 @@ export function guardModHooks(
   }
 
   const text = hooks.messageText;
+  if (hooks.birthOptionHighlight) out.birthOptionHighlight = (option) => guard("birthOptionHighlight", () => hooks.birthOptionHighlight!({ ...option }), undefined);
+  if (hooks.birthConfirmNote) out.birthConfirmNote = (choice) => guard("birthConfirmNote", () => hooks.birthConfirmNote!(choice), null);
   if (hooks.runEndLine) out.runEndLine = (report) => guard("runEndLine", () => hooks.runEndLine!({ ...report }), null);
   if (hooks.messagePauseAfter) {
     out.messagePauseAfter = (raw) => guard("messagePauseAfter", () => hooks.messagePauseAfter!(raw), false);
@@ -1389,6 +1397,16 @@ export function composeModHooks(
   }
 
   const text = list.map((c) => c.messageText).filter(isFn);
+  const highlighted = list.map((c) => c.birthOptionHighlight).filter(isFn);
+  if (highlighted.length) out.birthOptionHighlight = (option) => { for (const fn of highlighted) fn(option); };
+  const confirmNotes = list.map((c) => c.birthConfirmNote).filter(isFn).reverse();
+  if (confirmNotes.length) out.birthConfirmNote = (choice) => {
+    for (const fn of confirmNotes) {
+      const note = fn(choice);
+      if (note !== null) return note;
+    }
+    return null;
+  };
   const endLines = list.map((c) => c.runEndLine).filter(isFn).reverse();
   if (endLines.length) out.runEndLine = (report) => {
     for (const fn of endLines) {

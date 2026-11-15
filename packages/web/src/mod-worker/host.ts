@@ -94,7 +94,7 @@ export const HEARTBEAT_MS = 1000;
 /** How long a ping may go unanswered before the Worker is terminated. */
 export const STALL_MS = 5000;
 
-const NOTIFY_HOOKS: readonly string[] = ["optionsChanged", "abilityGained", "monsterBecameVisible", "artifactIdentified"];
+const NOTIFY_HOOKS: readonly string[] = ["birthOptionHighlight", "optionsChanged", "abilityGained", "monsterBecameVisible", "artifactIdentified"];
 
 export interface ModWorkerLike {
   postMessage(message: HostToModWorker): void;

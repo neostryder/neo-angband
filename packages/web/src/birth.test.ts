@@ -220,6 +220,50 @@ function memHost(files: Map<string, string>): HostIo {
 }
 
 describe("runBirth: faithful stage order (no sex stage)", () => {
+  it.each(["Escape", "S"])("keeps %s active at the added note step", async (key) => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1), birthConfirmNote: () => "Review your birth choices." });
+    for (const pressKey of ["a", "a", "a", "Enter", "Enter", "a"]) { press(win, pressKey); await tick(); }
+    expect(term.snapshot().join("\n")).toContain("Review your birth choices.");
+    press(win, key); await tick();
+    if (key === "S") {
+      expect(term.snapshot().join("\n")).toContain("Race affects stats");
+      press(win, "Escape");
+      expect(await done).toBeNull();
+    } else {
+      expect(term.snapshot()[0]).toContain("name");
+      for (const pressKey of ["Enter", "a", " "]) { press(win, pressKey); await tick(); }
+      expect((await done)?.raceName).toBe("Human");
+    }
+  });
+  it("reports full birth-option focus and waits for the supplied confirm note", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm();
+    const highlights: unknown[] = [];
+    let finished = false;
+    const done = runBirth(term, RACES, CLASSES, {
+      rng: new Rng(1),
+      birthOptionHighlight: (option) => highlights.push(option),
+      birthConfirmNote: (choice) => { expect(choice.raceName).toBe("Human"); return "Review your birth choices."; },
+    }).then((choice) => { finished = true; return choice; });
+    press(win, "="); await tick();
+    const option = OPTION_ENTRIES.find((entry) => entry.type === "BIRTH")!;
+    expect(highlights[0]).toEqual({ name: option.name, description: option.description, value: option.normal, defaultValue: option.normal });
+    press(win, "Escape"); await tick();
+    press(win, "a"); await tick();
+    press(win, "a"); await tick();
+    press(win, "a"); await tick();
+    press(win, "Enter"); await tick();
+    press(win, "Enter"); await tick();
+    press(win, "a"); await tick();
+    expect(term.snapshot().join("\n")).toContain("Review your birth choices.");
+    expect(finished).toBe(false);
+    press(win, " ");
+    expect((await done)?.raceName).toBe("Human");
+  });
   it("race -> class -> roller -> name -> confirm yields the full choice", async () => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;

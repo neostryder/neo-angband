@@ -240,6 +240,7 @@ const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
    * why `historyStage`'s callback now takes the surface instead of closing over
    * the terminal. */
   "birth.ts": [
+    "paintConfirmOnTerminal",
     "drawBirthSheet",
     "paintBirthMenuOnTerminal > paint",
     "paintPointBuyOnTerminal > paint",
@@ -467,9 +468,9 @@ describe("term.clear() is a ratchet: the list of full-screen erases may only shr
      * catches, and it is the accident a table of claims invites. */
     expect(siteCount(TERM_CLEAR_COMPOSITOR)).toBe(1);
     expect(siteCount(TERM_CLEAR_INDEPENDENT)).toBe(2);
-    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(31);
+    expect(siteCount(TERM_CLEAR_REGIONS)).toBe(32);
     expect(siteCount(TERM_CLEAR_PENDING), "MOD_REACH.md's gap-21 row quotes this").toBe(3);
-    expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(37);
+    expect(siteCount(TERM_CLEAR_ALLOWED)).toBe(38);
 
     for (const file of Object.keys(TERM_CLEAR_REGIONS)) {
       const text = readFileSync(new URL(`./${file}`, import.meta.url), "utf8");
