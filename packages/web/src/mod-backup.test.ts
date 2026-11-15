@@ -402,7 +402,7 @@ describe("browser backup facade limits", () => {
     const f = fixture({ "Bilbo.neochar": { text: "original", size: 8 } });
     f.scope.confirm.mockReturnValue(false);
     expect(await f.backup.write("Bilbo.neochar", "changed")).toBe(false);
-    expect(f.scope.confirm).toHaveBeenCalledWith("Do you want to replace backup Bilbo.neochar in Backups?");
+    expect(f.scope.confirm).toHaveBeenCalledWith("Replace the backup Bilbo.neochar in Backups? The older backup in that file is overwritten.");
     expect(f.writes).not.toHaveBeenCalled();
     expect(f.files.get("Bilbo.neochar")!.text).toBe("original");
     f.scope.confirm.mockReturnValue(true);

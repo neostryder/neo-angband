@@ -87,7 +87,7 @@ describe("external browser decisions", () => {
     for (const url of ["https://www.angband.live/", "https://github.com/neostryder/neo-angband/releases?x=1#latest"]) {
       const confirm = vi.fn(async () => false);
       await confirmExternalOpen(url, confirm, open, resolve);
-      expect(confirm).toHaveBeenCalledWith("Open this URL in your browser?\n" + url, "Open");
+      expect(confirm).toHaveBeenCalledWith("Let the game or a mod open this address in your browser?\n" + url, "Open in browser");
       expect(open).not.toHaveBeenCalled();
       await confirmExternalOpen(url, async () => true, open, resolve);
       expect(open).toHaveBeenLastCalledWith(url);

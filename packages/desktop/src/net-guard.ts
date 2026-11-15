@@ -250,7 +250,7 @@ export async function confirmExternalOpen(
       return answers.length > 0 && answers.every(({ address, family }) => net.isIP(address) === family && !isBlockedIp(address));
     };
     if (!(await publicDestination())) return;
-    if (!(await confirm("Open this URL in your browser?\n" + url.href, "Open"))) return;
+    if (!(await confirm("Let the game or a mod open this address in your browser?\n" + url.href, "Open in browser"))) return;
     if (await publicDestination()) await open(url.href);
   } catch {
     /* A failed lookup or decision cannot authorize a browser launch. */

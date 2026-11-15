@@ -20,9 +20,7 @@ for what was built: `BackupFolder.list()`, a cheap header-only peek at a
 `.neochar` file, and a host checkpoint that offers what it finds through the
 exact same import path Shift-M already uses.
 
-In the browser, reading a backup folder checks each character file's size against the 5 MiB character import limit before reading the file's text. The scan at boot skips an oversized file. A caller that asked for every file to be readable gets an error instead.
-
-The browser and desktop backup facades accept safe leaf names with the purpose's extension. They limit a folder to 200 matching files, 8 MiB per file, and 256 MiB in total. The player confirms each replacement. Browser facade writes share a queue and use an origin-wide Web Lock when the browser provides it. Directory handles remain in the existing shared browser store; this change does not isolate them.
+In the browser and on the desktop, the backup folder facades accept only safe file names that end in the purpose's extension, with no path separators and no reserved Windows names. A folder holds at most 200 matching files, 8 MiB per file, and 256 MiB in total, and the player confirms each replacement. In the browser, the boot scan for character files holds each .neochar file to the 5 MiB character import limit and checks the size before reading the file's text. The scan skips an oversized file, but a caller that asked for every file to be readable gets an error instead. Browser facade writes go through one queue and take a Web Lock across the site when the browser supports it. The saved folder permissions (directory handles) stay in the browser's shared store and are not separated per mod.
 
 ---
 

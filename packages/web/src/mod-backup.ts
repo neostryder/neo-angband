@@ -270,7 +270,7 @@ export function writeBrowserBackupFile(handle: BackupDirHandle, name: string, te
       const initial = await find();
       if (initial) {
         const host = pickerScope(scope);
-        if (typeof host.confirm !== "function" || host.confirm("Do you want to replace backup " + name + " in " + handle.name + "?") !== true) return false;
+        if (typeof host.confirm !== "function" || host.confirm("Replace the backup " + name + " in " + handle.name + "? The older backup in that file is overwritten.") !== true) return false;
       }
       if (await permission(handle) !== "granted") return false;
       const existing = await find();
