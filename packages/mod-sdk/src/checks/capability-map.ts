@@ -170,6 +170,7 @@ export const SECRET_BIND: ReadonlyMap<string, { readonly index: number; readonly
  * creation or regions otherwise.
  */
 export const FACET_METHODS: ReadonlyMap<string, CapabilityNeed> = new Map([
+  ["controller", anyOf("input:controller")],
   ["frontend", anyOf("display:replace")],
   ["hud", HUD],
   ["menu", anyOf("ui:menu.replace", "ui:*.replace")],
@@ -180,11 +181,12 @@ export const FACET_METHODS: ReadonlyMap<string, CapabilityNeed> = new Map([
 
 /**
  * What an API 2 `controller` member needs before it can drive anything: the
- * game's state to decide from, the right to submit intents, and the right to
- * answer prompts. Without any one of the three the host skips the controller
+ * right to hold the keyboard, state to decide from, and input grants. Without
+ * the required grants the host skips the controller
  * and says nothing, so the mod holds the keyboard and never moves.
  */
 export const CONTROLLER_NEEDS: readonly CapabilityNeed[] = [
+  anyOf("input:controller"),
   anyOf("state:interaction.read", "state:*.read"),
   anyOf("input:intent"),
   anyOf("input:prompt.reply"),

@@ -33,6 +33,19 @@ import { modPrefs, modPrefsKey } from "./mod-prefs";
 const MAIN_TS_SOURCE = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 
 describe("modPluginContext session facts", () => {
+  it("arms only the confirmed controller or the existing birth and load handoffs", () => {
+    const predicate = MAIN_TS_SOURCE.match(/setModControllerArmedControl\(([\s\S]*?)\);/u)![1]!;
+    const armed = (confirmed: string | null, requested: string | null = null, birthPending = false, load: string | null = null) =>
+      new Function("justConfirmedAutoplayerId", "autoplayerConfirmationKey", "requestedControllerId", "birthPending", "sessionFacts", "loadRolledOnId", `return (${predicate});`)(
+        confirmed, (id: string) => `${id}:binding`, requested, birthPending, { newCharacter: false }, load,
+      ) as (id: string) => boolean;
+    expect(armed("squire:binding")("squire")).toBe(true);
+    expect(armed("squire:old-binding")("squire")).toBe(false);
+    expect(armed(null)("squire")).toBe(false);
+    expect(armed(null, "squire", true)("squire")).toBe(true);
+    expect(armed(null, null, false, "squire")("squire")).toBe(true);
+    expect(armed("other:binding")("squire")).toBe(false);
+  });
   it("reports the active driver, publishes status, and refuses another owner's input", () => {
     const bus = new GameEvents();
     let driver = { kind: "player" } as import("./input-snapshot").InputDriver;

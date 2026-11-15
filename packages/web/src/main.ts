@@ -16311,6 +16311,7 @@ const folderRuleFlags = resolveModRuleFlagsByMod();
  * ask it again anyway. */
 const sessionFacts: ModSessionFacts = { newCharacter: bootedNew && !birthPending };
 setModControllerArmedControl((id) =>
+  justConfirmedAutoplayerId === autoplayerConfirmationKey(id) ||
   (requestedControllerId === id && (birthPending || sessionFacts.newCharacter === true)) ||
   /* #430: the boot of the character a load asked its autoplayer to carry on with. */
   (loadRolledOnId === id && !birthPending));

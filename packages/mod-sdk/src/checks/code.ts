@@ -1779,10 +1779,12 @@ export function checkCode(subject: CheckSubject, options: CodeCheckOptions): Mod
     }
     for (const [label, list] of byNeed) {
       const uses = [...new Set(list.map((r) => r.what))];
-      out.push(finding("undeclared-capability", `The code uses ${uses.slice(0, 3).join(", ")}${uses.length > 3 ? ` and ${uses.length - 3} more` : ""}, which needs ${label}, and the manifest does not request it.`, {
+      const declaration = finding("undeclared-capability", `The code uses ${uses.slice(0, 3).join(", ")}${uses.length > 3 ? ` and ${uses.length - 3} more` : ""}, which needs ${label}, and the manifest does not request it.`, {
         evidence: limitEvidence(dedupeEvidence(list.map((r) => r.evidence))),
         suggestedFix: `Add ${label} to the manifest's capabilities, or remove the code that needs it.`,
-      }));
+      });
+      out.push(label === '"input:controller"' && list.every((reach) => reach.key === "facet:controller")
+        ? { ...declaration, severity: "warning" } : declaration);
     }
     for (const sub of analysis.eventSubs) {
       const names = [...sub.names].filter((v) => v.k === "str").map((v) => (v as { value: string }).value);

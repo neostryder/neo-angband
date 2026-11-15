@@ -478,7 +478,7 @@ describe("the named cases", () => {
     }
   });
   it("requires the state, intent and prompt grants in an API 2 mod that declares a controller", async () => {
-    const grants = ["state:interaction.read", "input:intent", "input:prompt.reply"] as const;
+    const grants = ["input:controller", "state:interaction.read", "input:intent", "input:prompt.reply"] as const;
     const files = (capabilities: readonly string[]) => ({
       "manifest.json": v2({ api: ">=2.0.0 <3.0.0", runtime: "in-process", capabilities }),
       "plugin.js": `export default { api: ">=2.0.0 <3.0.0", controller(mod, input) {} };`,
@@ -492,6 +492,14 @@ describe("the named cases", () => {
     expect(rest).toContain("input:prompt.reply");
     const granted = await report({ files: files(grants), firstParty: true });
     expect(granted.findings.some((finding) => finding.rule === "checks/undeclared-capability")).toBe(false);
+  });
+  it("names input:controller when a legacy controller omits it", async () => {
+    const code = "export default { api: 1, controller() {} };";
+    const refused = await report({ files: plugin([], code), firstParty: true });
+    expect(refused.findings.find((f) => f.rule === "checks/undeclared-capability")?.message).toContain("input:controller");
+    expect(refused.findings.find((f) => f.rule === "checks/undeclared-capability")?.severity).toBe("warning");
+    const granted = await report({ files: plugin(["input:controller"], code), firstParty: true });
+    expect(granted.findings.some((f) => f.rule === "checks/undeclared-capability")).toBe(false);
   });
   it("blocks an undeclared capability call and names the capability", async () => {
     const r = await report({ files: plugin([], "export default { api: 1, register(host, ctx) { const { net } = ctx; net.request({ url: 'https://x.example' }); } };") });

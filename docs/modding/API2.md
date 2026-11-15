@@ -83,6 +83,8 @@ Four additions to `view` arrive in mod API 2.1.0, and the game already reports t
 Mod API 2.2.0 adds the policies `completeRestEffects`, `cursedLightRadius`, `monsterArcheryFrequency`, `forceFromBlastCenter`, `forgetUnlitImpassableTerrain`, `monsterLoreCompleteness`, `monsterOwnDropThefts`, `trapAllocation`, and `randartSetSize`, the `vault` map field, and the combat and spell summaries from `inspect.simulateLoadout`. A mod that relies on any of them declares ">=2.2.0 <3.0.0".
 ### The controller
 
+The manifest checker names `input:controller` when an API 2 or legacy controller declaration omits it, using the existing undeclared-capability diagnostic. A Ctrl-Z confirmation arms the matching in-process controller on the immediate reload, with the same consent binding as Worker controllers.
+
 `act.controller` has `owns()`, `setStatus(status)`, `markNondeterministic()`, and `release(reason)`. Every call except `owns()` returns `refused` with the code `not-owner` unless the mod holds the keyboard. An API 2 definition takes the keyboard with its `controller` member, which needs `input:controller` and `state:interaction.read` in the manifest along with `input:intent`. One controller holds the keyboard at a time. `onKey` receives each key the player presses while the mod holds the keyboard and returns `{ kind: "keep" }` or `{ kind: "release" }`, and it needs `input:observe`. Answering prompts needs `input:prompt.reply`. `onDeath: "end"` lets an ordinary death end the run instead of starting the next character.
 
 A controller can act in an open store. The host asks it for a decision at phase `store` and passes the `shop-buy`, `shop-sell` or `shop-exit` intent it returns to the shop screen.
