@@ -214,7 +214,7 @@ Zero energy is honoured end to end. `movementAutoDig` returns the hook's answer 
 
 `objectListTiebreak` uses `0` as its "no opinion" answer instead of `null`, because `0` is also the faithful answer there ("these two entries are equal"), so the two readings agree and no third value is needed.
 
-`completeRestEffects` declines with `null` for the same reason an energy cost of zero cannot mean "I have no opinion". An empty list is a real answer: no timed effect blocks a complete rest. `null` leaves the ten effects 4.2.6 waits out.
+`completeRestEffects` is folded last-answer. Return `null` to leave the decision to core, which waits out its ten standard timed effects. An empty list is a valid answer and means no timed effect blocks a complete rest. Declining uses `null` instead of an empty list for the same reason energy costs do, since zero is a valid cost and so cannot also mean no opinion.
 
 ## 2. How a patch is turned on - and where the patch's code lives
 
@@ -462,7 +462,7 @@ if (level) {
 }
 ```
 
-Each cell has a `visible` flag and a `remembered` value. Terrain comes from `knownFeat`; the object list comes from `knownPile`. A sensed object tells the mod whether it is money, without identifying its kind. A seen object of a flavoured kind the player has not identified carries its item class and flavour (`aware: false`, `tval`, `flavorIndex`, `flavorText`) and no kind, the same way the map draws it with the flavour glyph; once the player is aware of the kind, it carries `aware: true` and `kindIndex`. The kind of a seen object stays in memory when the real floor changes. Trap knowledge in this port is the visible flag on a live trap record; removing that record also removes the trap from this read. `vault` is whether the player last saw the square as part of a vault. It is not the live cave flag, and it stays after the square leaves view until the square is seen again.
+Each cell has a `visible` flag and a `remembered` value. Terrain comes from `knownFeat`; the object list comes from `knownPile`. A sensed object tells the mod whether it is money, without identifying its kind. A seen object of a flavoured kind the player has not identified carries its item class and flavour (`aware: false`, `tval`, `flavorIndex`, `flavorText`) and no kind, the same way the map draws it with the flavour glyph; once the player is aware of the kind, it carries `aware: true` and `kindIndex`. The kind of a seen object stays in memory when the real floor changes. Trap knowledge in this port is the visible flag on a live trap record; removing that record also removes the trap from this read. `vault` records whether the player last saw the square as part of a vault. The value is remembered knowledge, separate from the live cave flag, and it stays after the square leaves view until the player sees the square again.
 
 `state:map.read` grants this read. Without it, the core accessor throws `AgentCapabilityError` and the context call returns null. A mod that also declares `state:map-actual.read` gets `actual` on each cell: real terrain, traps, floor objects as `ItemView` values, and the monster index. It needs `state:map.read` as well, since `state:map-actual.read` alone does not open the map. Other mods receive no `actual` field. The `state:*.read` wildcard grants `state:map.read` but not `actual`: the real map is granted only to a mod that names `state:map-actual.read`, and the consent screen says what that shows. Trusted core code can call `captureKnownLevel` directly.
 

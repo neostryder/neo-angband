@@ -271,12 +271,12 @@ function hudRegionDescription(region: string): string {
 /** What a player would call one ModHooks member. */
 function hookDescription(hook: keyof ModHooks): string {
   const words: Record<keyof ModHooks, string> = {
-    monsterOwnDropThefts: "which stolen drops count against a monster's future treasure",
-    monsterLoreCompleteness: "when monster lore counts as complete",
-    forgetUnlitImpassableTerrain: "when you forget impassable terrain underfoot without light",
-    forceFromBlastCenter: "where a blast pushes its targets from",
-    monsterArcheryFrequency: "how often an archer shoots before it prefers range",
-    trapAllocation: "how many general traps classic levels contain and where they appear",
+    monsterOwnDropThefts: "how stolen items reduce a monster's later treasure",
+    monsterLoreCompleteness: "the point at which monster lore counts as complete",
+    forgetUnlitImpassableTerrain: "forgetting impassable terrain you stand on without light",
+    forceFromBlastCenter: "the spot a blast pushes its targets away from",
+    monsterArcheryFrequency: "how often an archer shoots before it keeps its distance",
+    trapAllocation: "the number and placement of general traps on classic levels",
     newCharacter: "the state of a newly created character",
     walkBlockedByDiggable: "what happens when you walk into diggable rock",
     objectListTiebreak: "the order of items on the floor list",
@@ -289,7 +289,7 @@ function hookDescription(hook: keyof ModHooks): string {
     historyDisplay: "how entries in your character history are shown",
     saveNoiseScent: "whether noise and scent maps go into the save",
     shapeLearnObviousFlagsDirectly: "whether a shapechange's obvious flags are learned right away",
-    cursedLightRadius: "whether a cursed or sticky light source gives no light",
+    cursedLightRadius: "cursed or sticky light sources giving no light",
     completeRestEffects: "which timed effects a complete rest waits out",
     levelRevisited: "what happens to transient tracking when a frozen level returns",
     messageText: "the wording of game messages",
