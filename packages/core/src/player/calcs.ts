@@ -53,7 +53,7 @@ import type {
 import type { Player } from "./player.js";
 import type { GameObject } from "../obj/object.js";
 import type { KnownBonusView } from "../obj/known-object.js";
-import type { Curse, ElementInfo } from "../obj/types.js";
+import type { Curse, CurseObject, ElementInfo } from "../obj/types.js";
 import {
   tvalCanHaveFlavor,
   tvalIsAmmo,
@@ -635,6 +635,7 @@ export interface CalcBonusesOptions {
    * flavour knowledge; the session does this in refreshDerived.
    */
   knownOnly?: (obj: GameObject) => KnownBonusView;
+  knownCurse?: (obj: CurseObject) => KnownBonusView;
   /**
    * The hypothetical-blows stat-index shift (player-calcs.c:2077-2088), the
    * "Hack for hypothetical blows - NRM" upstream runs when update is false and
@@ -675,22 +676,7 @@ export interface CalcBonusesOptions {
   cursedLightRadius?: boolean | { readonly marker: "LIGHT_CURSE" };
 }
 
-/**
- * What a curse template's known twin contributes to the known_only pass:
- * nothing at all.
- *
- * This is measured from upstream rather than assumed. write_curse_kinds
- * (obj-init.c:174-195) gives every `curses[i].obj` a `known` twin from
- * object_new() and then writes only its kind, sval and the ASSESSED notice
- * bit - so its flags, el_info and to_a/to_h/to_d stay zero forever, and the
- * known_only gates at 1985/1997/2001/2004 all close on a curse. The
- * object_flags_known aware-kind union adds nothing either: the `<curse object>`
- * kind carries no object flags.
- *
- * So the curse's resists and combat bonuses are in p->state and absent from
- * p->known_state, which is exactly the point of the split - a curse you have
- * not identified is not a curse you can see the effects of.
- */
+/** The default keeps the 4.2.6 curse twin unknown until a caller opts in. */
 function curseUnknown(elemCount: number): KnownBonusView {
   return {
     flags: new FlagSet(OF_SIZE),
@@ -1034,7 +1020,7 @@ export function calcBonuses(
     const curse = worn.curses;
     let obj: BonusSource | null = worn;
     /* The worn item's known twin on the first pass; from then on the curse
-       templates', which is CURSE_UNKNOWN - see the constant. */
+       templates', which stay unknown unless the caller supplies learned runes. */
     let known: KnownBonusView | null = options.knownOnly?.(worn) ?? null;
     let index = 0;
     while (obj) {
@@ -1050,7 +1036,9 @@ export function calcBonuses(
         while (index < curseTable.length) {
           if (curse[index]?.power) {
             const template = curseTable[index]?.obj;
-            known = options.knownOnly ? curseUnknown(elemCount) : null;
+            known = options.knownOnly
+              ? (template && options.knownCurse ? options.knownCurse(template) : curseUnknown(elemCount))
+              : null;
             obj = template
               ? {
                   flags: template.flags,

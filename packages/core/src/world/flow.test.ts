@@ -115,3 +115,19 @@ describe("updateScent", () => {
     expect(scentAt(c, 9, 10)).toBe(0);
   });
 });
+
+
+it("records a detached source and increment without changing default square saves", () => {
+  const c = openField(12, 12);
+  const grid = { x: 4, y: 4 };
+  makeNoise(c, { grid, covertTracks: true });
+  grid.x = 8;
+  expect(c.noiseSource).toEqual({ x: 4, y: 4, increment: 4 });
+  expect(c.snapshotSquares().noiseSource).toBeUndefined();
+  const saved = c.snapshotSquares(false, true);
+  expect(saved.noiseSource).toEqual({ x: 4, y: 4, increment: 4 });
+  expect(saved.noise).toBeUndefined();
+  const restored = openField(12, 12);
+  restored.restoreSquares(saved);
+  expect(restored.noiseSource).toEqual(saved.noiseSource);
+});

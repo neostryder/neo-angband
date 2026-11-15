@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { describeObject } from "../game/describe.js";
 import { ODESC } from "../obj/desc.js";
-import { tvalCanHaveFlavor } from "../obj/object.js";
+import { tvalCanHaveFlavor, tvalIsJewelry } from "../obj/object.js";
 import { ObjRegistry } from "../obj/bind.js";
-import { EF, HIST, MFLAG, OF, RF, TMD } from "../generated/index.js";
+import { EF, ELEM, FEAT, HIST, MFLAG, OF, RF, TMD } from "../generated/index.js";
 import { FlagSet } from "../bitflag.js";
 import { MFLAG_SIZE, RF_SIZE } from "../mon/types.js";
 import type { MonsterRace } from "../mon/types.js";
@@ -22,8 +22,10 @@ import { gearGet } from "../game/gear.js";
 import { histHas, historyIsArtifactKnown } from "../player/history.js";
 import { floorCarry } from "../game/floor.js";
 import { objectPrep } from "../obj/make.js";
-import { squareIsKnown } from "../game/known.js";
+import { squareIsKnown, updatePlayerObjectKnowledge } from "../game/known.js";
 import { playerExpGain } from "../player/exp.js";
+import { makeNoise } from "../world/flow.js";
+import { OBJ_NOTICE, buildRuneList, playerLearnRune, runeKey } from "../obj/knowledge.js";
 import { squareIsView } from "../world/view.js";
 import { getLore, loreUpdate } from "../mon/lore.js";
 import { loc } from "../loc.js";
@@ -882,5 +884,132 @@ describe("experience update session policy", () => {
     expect(loaded.state.actor.player.exp).toBe(2);
     expect(loaded.state.actor.player.lev).toBe(1);
     expect(loaded.state.modHooks?.experienceUpdates).toBeUndefined();
+  });
+});
+
+
+describe("load rehydration", () => {
+  const modHooks = { loadRehydration: () => true };
+
+  it("extends learned-rune awareness to store stock only under the policy", () => {
+    const game = startGame({ ...pack, store: loadRecords("store") }, { seed: 9715, depth: 0 });
+    const { state } = game;
+    const reg = game.booted.registries;
+    const kind = reg.objects.kinds.find((k) => k && tvalIsJewelry(k.tval))!;
+    const obj = objectPrep(state.rng, reg.objects, reg.constants, kind, 0, "average");
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    state.stores![0]!.stock = [obj];
+    for (const rune of buildRuneList(state.runeEnv)) {
+      playerLearnRune(state.actor.player, state.runeEnv, rune, false);
+    }
+    game.flavor.restore({ aware: [], tried: [] });
+    updatePlayerObjectKnowledge(state);
+    expect(game.flavor.isAware(kind)).toBe(false);
+    state.modHooks = modHooks;
+    updatePlayerObjectKnowledge(state);
+    expect(game.flavor.isAware(kind)).toBe(true);
+  });
+
+  it.each([false, true])("reconstructs the last noise source and covered-tracks state (%s)", (covered) => {
+    const game = startGame(pack, { seed: 9709, depth: 1, modHooks });
+    const { state } = game;
+    const source = { x: 5, y: 5 };
+    for (let y = 3; y <= 8; y++) for (let x = 3; x <= 8; x++) state.chunk.setFeat(loc(x, y), FEAT.FLOOR);
+    makeNoise(state.chunk, { grid: source, covertTracks: covered });
+    const expected = [...state.chunk.noise];
+    source.x = 7;
+    state.actor.grid = loc(8, 8);
+    state.actor.player.timed[TMD.COVERTRACKS] = covered ? 0 : 10;
+    const save = saveGame(game);
+    const loaded = loadGame(pack, save, new Set(["core"]), { modHooks });
+    expect([...loaded.state.chunk.noise]).toEqual(expected);
+    expect(loaded.state.rng.getState()).toEqual(save.rng);
+    const off = loadGame(pack, save, new Set(["core"]));
+    expect(off.state.chunk.noise.every((n) => n === 0)).toBe(true);
+    expect(off.state.actor.player.exp).toBe(state.actor.player.exp);
+  });
+
+
+  it.each([[0, 0], [-1, 4], [99999, 4], [1.5, 4]])("ignores an unusable noise origin at %s,%s", (x, y) => {
+    const game = startGame(pack, { seed: 9714, depth: 1, modHooks });
+    const save = saveGame(game);
+    save.chunk!.noiseSource = { x, y, increment: 1 };
+    const loaded = loadGame(pack, save, new Set(["core"]), { modHooks });
+    expect(loaded.state.chunk.noise.every((n) => n === 0)).toBe(true);
+  });
+
+  it("retains a mod-preserved heatmap, including an all-zero map", () => {
+    const game = startGame(pack, { seed: 9710, depth: 1, modHooks: { ...modHooks, saveNoiseScent: () => true } });
+    makeNoise(game.state.chunk, { grid: game.state.actor.grid, covertTracks: false });
+    game.state.chunk.noise.fill(0);
+    game.state.chunk.noise[10] = 37;
+    game.state.chunk.scent[10] = 19;
+    let loaded = loadGame(pack, saveGame(game), new Set(["core"]), { modHooks });
+    expect(loaded.state.chunk.noise[10]).toBe(37);
+    expect(loaded.state.chunk.scent[10]).toBe(19);
+    game.state.chunk.noise.fill(0);
+    loaded = loadGame(pack, saveGame(game), new Set(["core"]), { modHooks });
+    expect(loaded.state.chunk.noise.every((n) => n === 0)).toBe(true);
+  });
+
+  it("leaves noise silent without source history or a loaded dungeon, and for dead characters", () => {
+    const game = startGame(pack, { seed: 9711, depth: 1, modHooks });
+    const noHistory = saveGame(game);
+    expect(loadGame(pack, noHistory, new Set(["core"]), { modHooks }).state.chunk.noise.every((n) => n === 0)).toBe(true);
+    makeNoise(game.state.chunk, { grid: game.state.actor.grid, covertTracks: false });
+    const save = saveGame(game);
+    expect(loadGame(pack, { ...save, isDead: true }, new Set(["core"]), { modHooks }).state.chunk.noise.every((n) => n === 0)).toBe(true);
+    delete save.chunk;
+    expect(loadGame(pack, save, new Set(["core"]), { modHooks }).state.chunk.noise.every((n) => n === 0)).toBe(true);
+  });
+
+  it("rehydrates carried rune inscriptions after restoring rune notes, only for living characters", () => {
+    const game = startGame(pack, { seed: 9712, depth: 1 });
+    const obj = [...game.state.gear.store.values()][0]!;
+    obj.flags.on(OF.FREE_ACT);
+    obj.notice |= OBJ_NOTICE.ASSESSED;
+    game.state.actor.player.objKnown.flags.on(OF.FREE_ACT);
+    const runes = buildRuneList(game.state.runeEnv);
+    const index = runes.findIndex((r) => r.variety === "flag" && r.index === OF.FREE_ACT);
+    expect(index).toBeGreaterThanOrEqual(0);
+    const save = saveGame(game);
+    save.runeNotes = [[runeKey(runes[index]!), "@rehydrated"]];
+    const off = loadGame(pack, save, new Set(["core"]));
+    expect([...off.state.gear.store.values()].find((o) => o.flags.has(OF.FREE_ACT))?.note ?? "").not.toContain("@rehydrated");
+    const loaded = loadGame(pack, save, new Set(["core"]), { modHooks });
+    expect([...loaded.state.gear.store.values()].find((o) => o.flags.has(OF.FREE_ACT))?.note ?? "").toContain("@rehydrated");
+    const dead = loadGame(pack, { ...save, isDead: true }, new Set(["core"]), { modHooks });
+    expect([...dead.state.gear.store.values()].find((o) => o.flags.has(OF.FREE_ACT))?.note ?? "").not.toContain("@rehydrated");
+  });
+
+  it("derives curse bonuses from learned runes without revealing unknown flags or elements", () => {
+    const game = startGame(pack, { seed: 9713, depth: 1 });
+    const p = game.state.actor.player;
+    const item = game.state.gear.store.get(p.equipment.find((h, i) => h > 0 && p.body.slots[i]?.type !== "WEAPON" && p.body.slots[i]?.type !== "BOW")!)!;
+    expect(item).toBeDefined();
+    const curse = game.booted.registries.objects.curses.find((c) => c?.name === "vulnerability")!;
+    item.curses = Array.from({ length: game.booted.registries.objects.curses.length }, () => ({ power: 0, timeout: 0 }));
+    item.curses[curse.index] = { power: 50, timeout: 0 };
+    p.objKnown.toA = 1;
+    p.objKnown.flags.off(OF.AGGRAVATE);
+    const save = saveGame(game);
+    const off = loadGame(pack, save, new Set(["core"]));
+    const loaded = loadGame(pack, save, new Set(["core"]), { modHooks });
+    expect(loaded.state.knownPlayerState!.toA).toBe(off.state.knownPlayerState!.toA - 50);
+    expect(loaded.state.knownPlayerState!.flags.has(OF.AGGRAVATE)).toBe(false);
+    loaded.state.actor.player.objKnown.flags.on(OF.AGGRAVATE);
+    loaded.state.updateBonuses?.();
+    expect(loaded.state.knownPlayerState!.flags.has(OF.AGGRAVATE)).toBe(true);
+    const liveCurse = loaded.booted.registries.objects.curses[curse.index]!;
+    liveCurse.obj.elInfo[ELEM.FIRE]!.resLevel = -1;
+    loaded.state.actor.player.objKnown.elInfo[ELEM.FIRE]!.resLevel = 0;
+    loaded.state.updateBonuses?.();
+    const unknown = loaded.state.knownPlayerState!.elInfo[ELEM.FIRE]!.resLevel;
+    loaded.state.actor.player.objKnown.elInfo[ELEM.FIRE]!.resLevel = 1;
+    loaded.state.updateBonuses?.();
+    expect(loaded.state.knownPlayerState!.elInfo[ELEM.FIRE]!.resLevel).toBe(unknown - 1);
+    delete loaded.state.modHooks;
+    loaded.state.updateBonuses?.();
+    expect(loaded.state.knownPlayerState!.toA).toBe(off.state.knownPlayerState!.toA);
   });
 });

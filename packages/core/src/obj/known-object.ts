@@ -88,7 +88,7 @@ import {
   playerKnowsCurse,
   playerKnowsSlay,
 } from "./knowledge.js";
-import type { ElementInfo, ObjectKind, EgoItem } from "./types.js";
+import type { CurseObject, ElementInfo, ObjectKind, EgoItem } from "./types.js";
 import { ELEM_MAX, OBJ_MOD_MAX } from "./types.js";
 
 /**
@@ -847,5 +847,20 @@ export function knownBonusView(
     toA: shadow.toA,
     toH: shadow.toH,
     toD: shadow.toD,
+  };
+}
+
+
+/** Curse templates have no kind or base properties, so learned runes are their only knowledge. */
+export function knownCurseBonusView(obj: CurseObject, p: Player): KnownBonusView {
+  const flags = obj.flags.clone();
+  flags.inter(p.objKnown.flags);
+  return {
+    flags,
+    elInfo: obj.elInfo.map((element, i) => (p.objKnown.elInfo[i]?.resLevel ?? 0) === 1
+      ? { ...element } : { resLevel: 0, flags: 0 }),
+    toA: p.objKnown.toA ? obj.toA : 0,
+    toH: p.objKnown.toH ? obj.toH : 0,
+    toD: p.objKnown.toD ? obj.toD : 0,
   };
 }

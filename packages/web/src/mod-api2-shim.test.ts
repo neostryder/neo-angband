@@ -657,6 +657,7 @@ describe("policy tables that install registrations", () => {
   });
 
   const tables: Api2Policies = {
+    loadRehydration: { objectKnowledge: true, noise: "restoreOrRebuild" },
     experienceUpdates: "levelChangeOnly",
     flagIntersectionResult: "removedBits",
     classicSearch: true,
@@ -697,7 +698,7 @@ describe("policy tables that install registrations", () => {
       () => ({ grants: capabilities("tables", [capability]) }));
     const hooks = load("tables", plugin).hooks;
     const registrations = api2PluginRegistrations(plugin, "tables", { loud: true });
-    const policyHook: Partial<Record<string, string>> = { experienceUpdates: "experienceUpdates", flagIntersectionResult: "flagIntersectionResult", classicSearch: "classicSearch", missileCritFromState: "missileCritFromState", forcedDescentStairs: "forcedDescentStairs", trapAllocation: "trapAllocation", monsterOwnDropThefts: "monsterOwnDropThefts", monsterLoreCompleteness: "monsterLoreCompleteness", forgetUnlitImpassableTerrain: "forgetUnlitImpassableTerrain", forceFromBlastCenter: "forceFromBlastCenter", monsterArcheryFrequency: "monsterArcheryFrequency", walkBlockedByDiggable: "walkBlockedByDiggable", startingOptions: "newCharacter", projectionRadiusClamp: "projectionRadius", levelRevisitTracking: "levelRevisited" };
+    const policyHook: Partial<Record<string, string>> = { loadRehydration: "loadRehydration", experienceUpdates: "experienceUpdates", flagIntersectionResult: "flagIntersectionResult", classicSearch: "classicSearch", missileCritFromState: "missileCritFromState", forcedDescentStairs: "forcedDescentStairs", trapAllocation: "trapAllocation", monsterOwnDropThefts: "monsterOwnDropThefts", monsterLoreCompleteness: "monsterLoreCompleteness", forgetUnlitImpassableTerrain: "forgetUnlitImpassableTerrain", forceFromBlastCenter: "forceFromBlastCenter", monsterArcheryFrequency: "monsterArcheryFrequency", walkBlockedByDiggable: "walkBlockedByDiggable", startingOptions: "newCharacter", projectionRadiusClamp: "projectionRadius", levelRevisitTracking: "levelRevisited" };
     expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : policyHook[name] ? [policyHook[name]] : []);
     expect(Object.keys(registrations ?? {})).toEqual("registration" in target ? [target.registration] : []);
     plugin.uninstall?.();

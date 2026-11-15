@@ -1091,6 +1091,7 @@
     "kindIsGood",
     "kindLocalId",
     "knownBonusView",
+    "knownCurseBonusView",
     "knownDescOf",
     "knownFeat",
     "knownFloorObject",

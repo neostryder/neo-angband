@@ -282,6 +282,7 @@ describe("API2_POLICY_KINDS", () => {
     expect(Object.fromEntries(API2_POLICY_KINDS.map((kind) => [kind.name, kind.capability]))).toEqual({
       flagIntersectionResult: "registry:rune",
       experienceUpdates: "registry:command",
+      loadRehydration: "registry:rune",
       classicSearch: "registry:command",
       missileCritFromState: "registry:effect-info",
       forcedDescentStairs: "registry:room",
@@ -312,7 +313,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["experienceUpdates", "flagIntersectionResult", "classicSearch", "missileCritFromState", "forcedDescentStairs", "randartSetSize", "trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
+      else expect(["loadRehydration", "experienceUpdates", "flagIntersectionResult", "classicSearch", "missileCritFromState", "forcedDescentStairs", "randartSetSize", "trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
     }
   });
 
@@ -605,5 +606,19 @@ describe("experienceUpdates", () => {
     }
     expect(api2PolicyEffects({ experienceUpdates: "levelChangeOnly" }).registrations).toEqual({ experienceUpdates: "levelChangeOnly" });
     expect(api2PolicyEffects({ experienceUpdates: "levelChangeOnly" }, () => false).registrations).toEqual({});
+  });
+});
+
+
+describe("loadRehydration", () => {
+  const policy = { objectKnowledge: true, noise: "restoreOrRebuild" } as const;
+
+  it("validates the fixed host rule and requires the rune registry grant", () => {
+    expect(checkApi2Policies({ loadRehydration: policy })).toBeNull();
+    for (const value of [true, false, {}, { ...policy, extra: true }, { ...policy, objectKnowledge: false }, { ...policy, noise: "currentGrid" }]) {
+      expect(checkApi2Policies({ loadRehydration: value })).not.toBeNull();
+    }
+    expect(api2PolicyEffects({ loadRehydration: policy }).registrations).toEqual({ loadRehydration: policy });
+    expect(api2PolicyEffects({ loadRehydration: policy }, () => false).registrations).toEqual({});
   });
 });

@@ -801,13 +801,10 @@ function gearPackLabel(state: GameState, handle: number): string {
  * (L1168-1175), and a first reveal of a name/ego prints "You have %s (%c)." /
  * "On the ground: %s." (L1184-1198, KN-04).
  *
- * Scope vs upstream: flavour awareness is per-KIND and global to the game (the
- * shared FlavorKnowledge), so making a kind aware from a carried jewel already
- * covers every store / curse-template instance of that kind - the port need only
- * sweep the player's gear and the floor, not the store/curse lists C also walks
- * purely to rewrite their per-object display twins. Called at the live rune-learn
- * sites (wield, being hit, identify), exactly where C's player_learn_rune
- * tail-calls it (L1373).
+ * Display twins are synthesised from learned runes on demand. Under load
+ * rehydration, stock also needs its flavour-awareness side effects; curse
+ * templates use the learned-rune view supplied to the bonus calculation.
+ * The default sweep retains its floor and carried-object scope.
  */
 export function updatePlayerObjectKnowledge(state: GameState): void {
   const flavor = state.flavorKnown;
@@ -888,6 +885,12 @@ export function updatePlayerObjectKnowledge(state: GameState): void {
     if (!obj) continue;
     const label = gearPackLabel(state, handle);
     know(obj, (name) => state.msg?.(`You have ${name} (${label}).`));
+  }
+
+  if (!state.isDead && state.modHooks?.loadRehydration?.()) {
+    for (const store of state.stores ?? []) {
+      for (const obj of store.stock) know(obj, () => {});
+    }
   }
 
   /* autoinscribe_ground + autoinscribe_pack (obj-knowledge.c:1245-1247): the

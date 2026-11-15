@@ -656,6 +656,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
   }
 
   const PROBES: Record<keyof ModHooks, Probe> = {
+    loadRehydration: {
+      yes: (log, tag) => ({ loadRehydration: () => { log.push(tag); return true; } }),
+      no: (log, tag) => ({ loadRehydration: () => { log.push(tag); return false; } }),
+      run: (h) => h.loadRehydration?.(),
+    },
     experienceUpdates: {
       yes: (log, tag) => ({ experienceUpdates: () => { log.push(tag); return true; } }),
       no: (log, tag) => ({ experienceUpdates: () => { log.push(tag); return false; } }),
@@ -1573,4 +1578,10 @@ it("flagIntersectionResult declines when its provider throws", () => {
 it("experienceUpdates declines when its provider throws", () => {
   const { hooks } = guarded({ experienceUpdates: THROWS });
   expect(hooks.experienceUpdates?.()).toBe(false);
+});
+
+
+it("loadRehydration declines when its provider throws", () => {
+  const { hooks } = guarded({ loadRehydration: THROWS });
+  expect(hooks.loadRehydration?.()).toBe(false);
 });

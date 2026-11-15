@@ -144,6 +144,7 @@ export class Chunk {
   /** Noise and scent heatmaps. */
   readonly noise: Uint16Array;
   readonly scent: Uint16Array;
+  noiseSource?: { readonly x: number; readonly y: number; readonly increment: 1 | 4 };
 
   constructor(
     readonly features: FeatureRegistry,
@@ -455,7 +456,7 @@ export class Chunk {
    * changes monster tracking versus uninterrupted play. Absent in the payload
    * (the faithful default) => restoreSquares leaves them zeroed, as before.
    */
-  snapshotSquares(includeFlow = false): ChunkSquaresData {
+  snapshotSquares(includeFlow = false, includeNoiseSource = false): ChunkSquaresData {
     return {
       name: this.name,
       turn: this.turn,
@@ -471,6 +472,7 @@ export class Chunk {
       infos: this.infos.map((f) => Array.from(f.bits)),
       lights: Array.from(this.lights),
       mons: Array.from(this.mons),
+      ...(includeNoiseSource && this.noiseSource ? { noiseSource: { ...this.noiseSource } } : {}),
       ...(includeFlow
         ? { noise: Array.from(this.noise), scent: Array.from(this.scent) }
         : {}),
@@ -505,6 +507,7 @@ export class Chunk {
      * rebuild on the first turn, exactly as before. */
     if (data.noise) this.noise.set(data.noise);
     if (data.scent) this.scent.set(data.scent);
+    if (data.noiseSource) this.noiseSource = { ...data.noiseSource };
   }
 }
 
@@ -526,6 +529,7 @@ export interface ChunkSquaresData {
   mons: number[];
   /** bug-fixes #4605: the noise heatmap, present only when bugfix.noiseScentSave is on. */
   noise?: number[];
+  noiseSource?: { readonly x: number; readonly y: number; readonly increment: 1 | 4 };
   /** bug-fixes #4605: the scent heatmap, present only when bugfix.noiseScentSave is on. */
   scent?: number[];
 }

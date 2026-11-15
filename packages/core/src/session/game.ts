@@ -114,6 +114,7 @@ import {
   becomeAware,
   caveIlluminateKnown,
   caveKnown,
+  updatePlayerObjectKnowledge,
   newKnownMap,
   noteSpots,
   monsterLightSources,
@@ -269,6 +270,7 @@ import { objectValue as computeObjectValue } from "../obj/value.js";
 import type { GameObject, CurseTimedFoil } from "../obj/object.js";
 import { buildCurseTimedFoil } from "../obj/object.js";
 import { createDefaultRegistry, installMeleeSideEffects, search } from "../game/player-turn.js";
+import { makeNoise } from "../world/flow.js";
 import { noticeNewLevel } from "../game/notice.js";
 import { cmdDisableRepeatFloorItem } from "../game/repeat.js";
 import type { ActionRegistry } from "../game/player-turn.js";
@@ -276,6 +278,7 @@ import { buildTempBrandSlay, playerIncCheck } from "../player/timed.js";
 import { describeObject, knownDescOf, objectKnownView } from "../game/describe.js";
 import {
   knownBonusView,
+  knownCurseBonusView,
   objectFlagIsKnown,
   objectKnownShadow,
 } from "../obj/known-object.js";
@@ -901,6 +904,9 @@ function wireGame(
   const liveBonusOptions = (update: boolean): CalcBonusesOptions => ({
     timedEffects: players.timed,
     curses: reg.objects.curses,
+    ...(!state.isDead && state.modHooks?.loadRehydration?.()
+      ? { knownCurse: (obj: Parameters<typeof knownCurseBonusView>[0]) => knownCurseBonusView(obj, state.actor.player) }
+      : {}),
     update,
     depth: state.chunk.depth,
     isDaytime: isDaytime(state.turn, state.z.dayLength),
@@ -5000,6 +5006,19 @@ export function loadGame(
 
   /* Resuming in town: re-stock the shops (store stock is not persisted). */
   refreshTownStores(state, reg);
+
+  if (!state.isDead && state.modHooks?.loadRehydration?.()) {
+    updatePlayerObjectKnowledge(state);
+    if (save.chunk) state.updateBonuses?.();
+    const source = chunk.noiseSource;
+    if (save.chunk && save.chunk.noise === undefined && source
+      && (source.x !== 0 || source.y !== 0)
+      && Number.isInteger(source.x) && Number.isInteger(source.y)
+      && (source.increment === 1 || source.increment === 4)
+      && chunk.inBounds(source)) {
+      makeNoise(chunk, { grid: loc(source.x, source.y), covertTracks: source.increment === 4 });
+    }
+  }
 
   /* One level changer, shared with reincarnate - see the note at startGame's. */
   const changeLevel = makeChangeLevel(state, reg, wired.trapDeps, {

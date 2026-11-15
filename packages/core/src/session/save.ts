@@ -2312,6 +2312,7 @@ export function serializeGame(
    * with no hook installed the `?? false` below IS the faithful answer. */
   const chunk = state.chunk.snapshotSquares(
     state.modHooks?.saveNoiseScent?.() ?? false,
+    state.modHooks?.loadRehydration?.() ?? false,
   );
   const knownFeat = Array.from(state.known.feat);
   const savedLevelCache = serializeLevelCache(state.levelCache, ids);

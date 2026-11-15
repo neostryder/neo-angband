@@ -185,6 +185,7 @@ export type Api2CursedLightRadiusPolicy = boolean | { readonly marker: "LIGHT_CU
 
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
+  readonly loadRehydration?: { readonly objectKnowledge: true; readonly noise: "restoreOrRebuild" };
   readonly experienceUpdates?: "levelChangeOnly";
   readonly flagIntersectionResult?: "removedBits";
   /** True counts only a monster's own stolen drops and saturates thefts at 65535. */
@@ -302,6 +303,7 @@ export type Api2PlayerTileProvider<T = unknown> = (view: Api2PlayerTileView) => 
 
 /** The game registrations a table can install, beside the hooks. */
 export interface Api2PolicyRegistrations {
+  loadRehydration?: { readonly objectKnowledge: true; readonly noise: "restoreOrRebuild" };
   experienceUpdates?: "levelChangeOnly";
   flagIntersectionResult?: "removedBits";
   monsterOwnDropThefts?: true;
@@ -549,6 +551,20 @@ const LIST_KEYS: readonly string[] = ["dy", "-dy", "dx", "-dx"];
  * policies.test.ts, and list it under Policy tables in docs/modding/API2.md.
  */
 export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
+  {
+    name: "loadRehydration",
+    capability: "registry:rune",
+    summary: "Restores learned object knowledge and rebuilds missing noise from saved history on load.",
+    target: { registration: "loadRehydration" },
+    check(value) {
+      if (!isRecord(value)) return "loadRehydration is an object";
+      const extra = unknownField("loadRehydration", value, ["objectKnowledge", "noise"]);
+      if (extra) return extra;
+      return value["objectKnowledge"] === true && value["noise"] === "restoreOrRebuild"
+        ? null : "loadRehydration requires objectKnowledge true and noise restoreOrRebuild";
+    },
+    apply(_value, out) { out.registrations.loadRehydration = { objectKnowledge: true, noise: "restoreOrRebuild" }; },
+  },
   {
     name: "experienceUpdates",
     capability: "registry:command",

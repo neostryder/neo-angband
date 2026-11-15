@@ -238,6 +238,7 @@ export interface Api2PolicyTargets {
 
 export function api2PolicyModHooks(registrations: Api2PolicyRegistrations, active: () => boolean): ModHooks {
   const hooks: ModHooks = {};
+  if (registrations.loadRehydration) hooks.loadRehydration = active;
   if (registrations.experienceUpdates) hooks.experienceUpdates = active;
   if (registrations.flagIntersectionResult) hooks.flagIntersectionResult = active;
   if (registrations.monsterOwnDropThefts) hooks.monsterOwnDropThefts = active;

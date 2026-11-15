@@ -30,6 +30,7 @@ export interface FlowSource {
  */
 export function makeNoise(c: Chunk, p: FlowSource): void {
   const noiseIncrement = p.covertTracks ? 4 : 1;
+  c.noiseSource = { x: p.grid.x, y: p.grid.y, increment: noiseIncrement };
   const queue: number[] = [];
   let head = 0;
 
