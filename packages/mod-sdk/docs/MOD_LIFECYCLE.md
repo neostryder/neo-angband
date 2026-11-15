@@ -275,7 +275,7 @@ conflict. Only same-field patches conflict, and then load order decides
 and the app says so. This removes the biggest source of false conflicts
 in coarse whole-record systems.
 
-An array index in a field path must be at most 65535 and no greater than the array's current length. An index equal to the length appends one entry; larger gaps are refused as load-time findings, and the rejected patch leaves the record unchanged.
+An array index in a patch's field path must be at most 65535 and no more than the array's current length. An index equal to the length appends one entry. A larger index is refused and reported as a finding when the mod loads, and the record is left unchanged.
 
 ### The conflict report, over every layer
 

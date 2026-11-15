@@ -553,7 +553,7 @@ export async function installModFromRepo(
   const conflict = originConflict(installed, mod.repo);
   if (conflict !== null) return { ok: false, problem: conflict };
   if (typeof mod.sha !== "string" || !/^[a-f0-9]{40}$/iu.test(mod.sha)) {
-    return { ok: false, problem: "The mod has no valid discovery commit SHA. Refresh its repository before installing." };
+    return { ok: false, problem: "The Mods screen has no exact version on record for this mod. Refresh its repository and try again." };
   }
   try {
     const files: Array<readonly [string, Uint8Array]> = [];
@@ -580,14 +580,14 @@ export async function installModFromRepo(
         entry.kind === "archive" ? ZIP_LIMITS.maxArchiveBytes - archives.archiveBytes : ZIP_LIMITS.maxFileBytes,
       );
       if (entry.blobSha !== undefined) {
-        if (!/^[a-f0-9]{40}$/iu.test(entry.blobSha)) return { ok: false, problem: `${entry.path}: invalid discovery file hash` };
+        if (!/^[a-f0-9]{40}$/iu.test(entry.blobSha)) return { ok: false, problem: `The file list GitHub gave has a damaged entry for ${entry.path}. Refresh the mod's repository and try again.` };
         const header = new TextEncoder().encode(`blob ${bytes.byteLength}\0`);
         const blob = new Uint8Array(header.length + bytes.byteLength);
         blob.set(header);
         blob.set(bytes, header.length);
         const digest = await env.subtle.digest("SHA-1", blob);
         const actual = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-        if (actual !== entry.blobSha.toLowerCase()) return { ok: false, problem: `${entry.path}: discovery file hash does not match the downloaded bytes` };
+        if (actual !== entry.blobSha.toLowerCase()) return { ok: false, problem: `${entry.path} does not match the file list GitHub gave. Refresh the mod's repository and try again.` };
       }
       await env.downloaded?.(entry.path, bytes);
       if (entry.kind === "file") {

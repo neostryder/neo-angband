@@ -49,7 +49,7 @@ These were measured in an opaque-origin frame with Playwright:
 
 The frame uses the last row because it is the only combination the existing harness supports in all three engines. Removing data: from script-src would block the staged-module imports. The current loader has no measured blob/module URL alternative for that matrix, and dynamic imports are not yet restricted to measured sources. As a result, text the broker provides can become runtime code inside the sandbox. A classic Worker still has `import()`, and that is how it loads the mod's modules. In all three engines the `data:` Worker inherits the frame's policy.
 
-The broker counts serialized UTF-8 bytes before copying a Worker message. It stops at 64 KiB, bounds traversal by that budget, and rejects oversized arrays from their length before reading their elements.
+The host sizes every message from a Worker mod while it walks it, before copying anything, by counting the bytes the message would take as JSON text in UTF-8. Once the count passes 64 KiB, the host refuses the message on the spot. If an array's length alone means it could not fit, the host refuses it without reading any of its elements.
 
 ## Browser and desktop
 

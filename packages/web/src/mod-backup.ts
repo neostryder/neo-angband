@@ -225,7 +225,7 @@ async function browserBackupFiles(id: string, scope: unknown, requireReadable = 
       try {
         const file = await entry.getFile();
         if (file.size > MAX_TRANSFER_TEXT_BYTES) {
-          if (requireReadable) throw new Error("The backup file exceeds the import size limit.");
+          if (requireReadable) throw new Error("The file is larger than the 5 MiB limit.");
           continue;
         }
         files.push({ name: entry.name, text: await file.text() });

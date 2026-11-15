@@ -1267,7 +1267,7 @@ describe("installing from a repository: what lands", () => {
     const { env, stores } = await envFor({ "manifest.json": enc(MANIFEST) });
     const fetch = vi.fn(env.fetch);
     const result = await installModFromRepo(discovered(FILES, { sha }), null, { ...env, fetch }, CURATED);
-    expect(result).toMatchObject({ ok: false, problem: expect.stringMatching(/commit SHA/) });
+    expect(result).toMatchObject({ ok: false, problem: expect.stringMatching(/no exact version on record/) });
     expect(fetch).not.toHaveBeenCalled();
     expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
   });
@@ -1299,7 +1299,7 @@ describe("installing from a repository: what lands", () => {
     const downloaded = vi.fn();
     const payload: PayloadEntry[] = [{ kind: "file", path: "manifest.json", blobSha: "not-a-hash" }];
     const result = await installModFromRepo(discovered(payload), null, { ...env, downloaded }, CURATED);
-    expect(result).toMatchObject({ ok: false, problem: expect.stringMatching(/invalid discovery file hash/) });
+    expect(result).toMatchObject({ ok: false, problem: expect.stringMatching(/damaged entry for/) });
     expect(downloaded).not.toHaveBeenCalled();
     expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
   });
@@ -1309,7 +1309,7 @@ describe("installing from a repository: what lands", () => {
     const downloaded = vi.fn();
     const payload = [{ kind, path: "manifest.json", blobSha: "0".repeat(40) }];
     const result = await installModFromRepo(discovered(payload), null, { ...env, downloaded }, CURATED);
-    expect(result).toMatchObject({ ok: false, problem: expect.stringMatching(/hash does not match/) });
+    expect(result).toMatchObject({ ok: false, problem: expect.stringMatching(/does not match the file list GitHub gave/) });
     expect(downloaded).not.toHaveBeenCalled();
     expect(stores.get(STORE_MODS)?.size ?? 0).toBe(0);
   });

@@ -287,7 +287,7 @@ describe("list()/readBackupFiles: ticket #24's read side", () => {
       },
     };
     if (requireReadable) {
-      await expect(readBackupFiles("qol", scope, true)).rejects.toThrow(/size limit/);
+      await expect(readBackupFiles("qol", scope, true)).rejects.toThrow(/larger than the 5 MiB limit/);
     } else {
       const files = await readBackupFiles("qol", scope);
       expect(files).toHaveLength(1);

@@ -20,7 +20,7 @@ for what was built: `BackupFolder.list()`, a cheap header-only peek at a
 `.neochar` file, and a host checkpoint that offers what it finds through the
 exact same import path Shift-M already uses.
 
-The browser read side checks each File.size against the 5 MiB character import limit before reading text. An oversized arrival is skipped during the boot scan; a caller that requires readable backups receives an error.
+In the browser, reading a backup folder checks each character file's size against the 5 MiB character import limit before reading the file's text. The scan at boot skips an oversized file. A caller that asked for every file to be readable gets an error instead.
 
 ---
 
