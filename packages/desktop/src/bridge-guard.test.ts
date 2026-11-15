@@ -20,6 +20,22 @@ describe("host feature consent reports", () => {
   });
 });
 
+describe("quiet host feature consent", () => {
+  it("refuses a quiet request without a remembered folder, so no dialog opens", () => {
+    const digest = () => "a".repeat(64);
+    const none = vi.fn(() => false);
+    expect(desktopConsentReport({ hostPurpose: "mod-profile-sync", quiet: true }, digest, none)).toBeNull();
+    expect(none).toHaveBeenCalledWith("@host/mod-profile-sync", "a".repeat(64));
+    expect(desktopConsentReport({ hostPurpose: "mod-profile-sync", quiet: true }, digest, () => true)).toMatchObject({
+      modId: "@host/mod-profile-sync", grants: ["backup:folder"],
+    });
+    /* A loud request from choose() is unaffected, and quiet takes only true. */
+    expect(desktopConsentReport({ hostPurpose: "mod-profile-sync" }, digest, none)).toMatchObject({ modId: "@host/mod-profile-sync" });
+    expect(desktopConsentReport({ hostPurpose: "mod-profile-sync", quiet: false }, digest, () => true)).toBeNull();
+    expect(desktopConsentReport({ hostPurpose: "mod-profile-sync", quiet: "yes" }, digest, () => true)).toBeNull();
+  });
+});
+
 describe("host filesystem arguments", () => {
   it("accepts a leaf in one of the five directories and rejects a path or a command", () => {
     expect(hostFsCallIsSafe("readText", ["save", "Adventurer"])).toBe(true);

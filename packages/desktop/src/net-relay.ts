@@ -46,6 +46,11 @@ export interface DesktopAuthorityEntry {
   readonly signal: AbortSignal;
 }
 
+/** The stable key for one installation: its mod id and payload digest. Backup folder records use it too. */
+export function desktopAuthorityKey(modId: string, digest: string): string {
+  return createHash("sha256").update(JSON.stringify([modId, digest])).digest("hex");
+}
+
 export function createDesktopAuthority() {
   const entries = new Map<string, { owner: number; token: string; entry: DesktopAuthorityEntry; controller: AbortController }>();
   const pending = new Map<number, { key: string; controller: AbortController }>();
@@ -62,7 +67,7 @@ export function createDesktopAuthority() {
     const { modId, digest } = a;
     if (typeof modId !== "string" || !/^[a-zA-Z0-9@][a-zA-Z0-9@/._:-]{0,127}$/u.test(modId) ||
       typeof digest !== "string" || !/^[a-f0-9]{64}$/u.test(digest)) return null;
-    return { modId, digest, key: createHash("sha256").update(JSON.stringify([modId, digest])).digest("hex") };
+    return { modId, digest, key: desktopAuthorityKey(modId, digest) };
   };
   return {
     lookup(arg: unknown, owner: number): DesktopAuthorityEntry | null {

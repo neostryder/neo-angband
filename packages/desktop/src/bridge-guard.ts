@@ -10,13 +10,29 @@
 const UPDATE_TAG = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,254}$/u;
 export const MOD_AUTHORITY_CHANNEL = "neo-mod-authority";
 
-export function desktopConsentReport(arg: unknown, hostDigest: () => string): unknown {
+/**
+ * Turn a page's consent request into an authority report, or null to refuse it.
+ * A host purpose request marked `quiet` comes from a query that must never open a
+ * dialog (the boot-time sync check, the Mods screen's folder name). It is refused
+ * outright unless the player has already chosen a folder for this installation,
+ * so a player who never set up profile sync, and an unattended lab run, never
+ * see the native prompt.
+ */
+export function desktopConsentReport(
+  arg: unknown,
+  hostDigest: () => string,
+  remembered: (modId: string, digest: string) => boolean = () => true,
+): unknown {
   if (!arg || typeof arg !== "object" || Array.isArray(arg)) return null;
   const a = arg as Record<string, unknown>;
   if (a["hostPurpose"] !== undefined) {
-    if (a["hostPurpose"] !== "mod-profile-sync" || Object.keys(a).some((key) => !["hostPurpose", "installation"].includes(key))) return null;
+    if (a["hostPurpose"] !== "mod-profile-sync" || Object.keys(a).some((key) => !["hostPurpose", "installation", "quiet"].includes(key))) return null;
+    if (a["quiet"] !== undefined && a["quiet"] !== true) return null;
     try {
-      return { modId: "@host/mod-profile-sync", digest: hostDigest(), grants: ["backup:folder"], destinations: [], installation: a["installation"] };
+      const modId = "@host/mod-profile-sync";
+      const digest = hostDigest();
+      if (a["quiet"] === true && !remembered(modId, digest)) return null;
+      return { modId, digest, grants: ["backup:folder"], destinations: [], installation: a["installation"] };
     } catch { return null; }
   }
   return typeof a["modId"] === "string" && a["modId"].startsWith("@host/") ? null : arg;

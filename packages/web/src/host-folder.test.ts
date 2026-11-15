@@ -130,6 +130,42 @@ describe("desktop platform: the host issues the installation identity", () => {
   });
 });
 
+describe("desktop platform: only choose() may open the native prompt", () => {
+  it("asks quietly for queries, so nothing prompts until the player chooses a folder", async () => {
+    const scope = desktopScope();
+    /* The main process refuses a quiet request when no folder is remembered. */
+    scope.neoDesktop.consent.mockImplementation(async (decision: unknown) =>
+      (decision as { quiet?: boolean }).quiet === true
+        ? { ok: false }
+        : { ok: true, installation: "a".repeat(64), modId: "@host/mod-profile-sync", digest: "b".repeat(64) });
+    const b = createHostFolder("mod-profile-sync", ".ndelve", scope);
+    expect(await b?.name()).toBeNull();
+    expect(await b?.list()).toEqual([]);
+    expect(await b?.write("ruleset.ndelve", "{}")).toBe(false);
+    await b?.forget();
+    expect(scope.neoDesktop.backup).not.toHaveBeenCalled();
+    for (const [decision] of scope.neoDesktop.consent.mock.calls) {
+      expect(decision).toEqual({ hostPurpose: "mod-profile-sync", quiet: true });
+    }
+    /* A refused quiet request is not remembered: choosing still asks, loudly. */
+    expect(await b?.choose()).toBe("Folder-mod-profile-sync");
+    expect(scope.neoDesktop.consent.mock.calls.at(-1)?.[0]).toEqual({ hostPurpose: "mod-profile-sync" });
+    const asked = scope.neoDesktop.consent.mock.calls.length;
+    expect(await b?.name()).toBe("Folder-mod-profile-sync");
+    expect(scope.neoDesktop.consent).toHaveBeenCalledTimes(asked);
+  });
+
+  it("keeps a granted quiet answer for the session", async () => {
+    const scope = desktopScope();
+    const b = createHostFolder("mod-profile-sync", ".ndelve", scope);
+    await b?.name();
+    await b?.list();
+    await b?.choose();
+    expect(scope.neoDesktop.consent).toHaveBeenCalledOnce();
+    expect(scope.neoDesktop.consent.mock.calls[0]?.[0]).toEqual({ hostPurpose: "mod-profile-sync", quiet: true });
+  });
+});
+
 /* ------------------------------------------------------------------ *
  * Browser platform: a fake IndexedDB, the same minimal shape
  * mod-backup.test.ts already proves out, extended to hold more than one

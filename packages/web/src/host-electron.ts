@@ -97,12 +97,24 @@ export async function desktopInstallation(id: string, bridge: DesktopConsentBrid
   return state.result;
 }
 
-export function desktopHostInstallation(purpose: string, bridge: DesktopConsentBridge): () => Promise<DesktopInstallation | null> {
+/**
+ * The host's own installation handle for one purpose. A `quiet` request comes from
+ * a query that must never open a dialog: the main process refuses it unless the
+ * player already chose a folder, and a refused quiet request is not remembered, so
+ * a later `choose()` can still ask. A granted answer is kept for the session.
+ */
+export function desktopHostInstallation(purpose: string, bridge: DesktopConsentBridge): (quiet?: boolean) => Promise<DesktopInstallation | null> {
   let result: Promise<DesktopInstallation | null> | undefined;
-  return () => result ??= (async () => {
-    try { return installationAnswer(await bridge.consent?.({ hostPurpose: purpose })); }
-    catch { return null; }
-  })();
+  return (quiet = false) => {
+    if (result) return result;
+    const attempt = (async () => {
+      try { return installationAnswer(await bridge.consent?.(quiet ? { hostPurpose: purpose, quiet: true } : { hostPurpose: purpose })); }
+      catch { return null; }
+    })();
+    if (!quiet) result = attempt;
+    else void attempt.then((answer) => { if (answer && !result) result = attempt; });
+    return attempt;
+  };
 }
 
 /**

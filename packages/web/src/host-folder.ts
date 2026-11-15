@@ -13,6 +13,8 @@
  * Browser handles remain purpose-keyed. Desktop profile sync obtains an
  * installation handle from the main process, which measures the host payload
  * and confirms backup authority natively. Other desktop purposes fail closed.
+ * Only `choose` may open that native prompt; every other call asks quietly and
+ * gets nothing when the player has not chosen a folder.
  */
 
 import { STORE_HANDLES, idbDelete, idbGet, idbPut, openDb } from "./idb";
@@ -70,7 +72,7 @@ function desktopHostFolder(purpose: string, ext: string, scope: unknown): HostFo
   const bridge = desktopBridge(scope)!;
   const installation = desktopHostInstallation(purpose, bridge);
   const call = async (op: string, arg: Record<string, unknown> = {}): Promise<unknown> => {
-    const authority = await installation();
+    const authority = await installation(op !== "choose");
     return authority ? bridge.backup(op, { ...authority, ext, ...arg }) : null;
   };
   return {
