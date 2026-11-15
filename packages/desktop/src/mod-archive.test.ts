@@ -142,13 +142,15 @@ describe("physical archive containment", () => {
     expect(fs.readdirSync(outside)).toEqual([]);
   });
 
-  it("refuses a linked mods root and a hard-linked archive", () => {
+  it("archives in a mods root deployed as a junction, and refuses a hard-linked archive", () => {
     const root = path.join(mods, "root");
     const linked = path.join(mods, "linked-root");
     fs.mkdirSync(root);
     fs.writeFileSync(path.join(root, "held.zip"), "original");
     fs.symlinkSync(root, linked, "junction");
-    expect(archiveModZip(linked, "held.zip").ok).toBe(false);
+    expect(archiveModZip(linked, "held.zip").ok).toBe(true);
+    expect(fs.readFileSync(path.join(root, "imported", "held.zip"), "utf8")).toBe("original");
+    fs.writeFileSync(path.join(root, "held.zip"), "original");
     fs.linkSync(path.join(root, "held.zip"), path.join(mods, "hard.zip"));
     expect(archiveModZip(mods, "hard.zip").ok).toBe(false);
     expect(fs.existsSync(path.join(mods, "hard.zip"))).toBe(true);

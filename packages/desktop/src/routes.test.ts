@@ -149,7 +149,7 @@ describe("safeJoin", () => {
 
 
 describe("physical static routes", () => {
-  it("refuses linked roots and nested junctions while retaining regular assets", () => {
+  it("refuses nested junctions but serves a mods root deployed as a junction", () => {
     const base = fs.mkdtempSync(path.join(process.cwd(), "neo-static-"));
     if (path.dirname(path.resolve(base)) !== process.cwd()) throw new Error("The fixture left the workspace.");
     try {
@@ -160,10 +160,11 @@ describe("physical static routes", () => {
       fs.writeFileSync(path.join(outside, "held.txt"), "private");
       fs.writeFileSync(path.join(root, "asset.txt"), "normal");
       fs.symlinkSync(outside, path.join(root, "linked"), "junction");
+      /* An external mod manager often deploys mods/ itself as a junction. */
       fs.symlinkSync(outside, path.join(base, "mods"), "junction");
       expect(safeJoin(root, "/asset.txt")).toBe(path.join(root, "asset.txt"));
       expect(safeJoin(root, "/linked/held.txt")).toBeNull();
-      expect(safeJoin(path.join(base, "mods"), "/held.txt")).toBeNull();
+      expect(safeJoin(path.join(base, "mods"), "/held.txt")).toBe(path.join(base, "mods", "held.txt"));
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }

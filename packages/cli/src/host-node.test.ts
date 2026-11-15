@@ -267,7 +267,7 @@ describe("physical host containment", () => {
     expect(fs.readFileSync(path.join(outside, "held"), "utf8")).toBe("original");
   });
 
-  it("refuses nested junctions, linked ancestors, and hard-linked write targets", () => {
+  it("refuses nested junctions and hard-linked write targets", () => {
     const h = new NodeHost({ base });
     h.write(HostDir.USER, "normal", "original");
     const outside = path.join(base, "outside");
@@ -282,10 +282,24 @@ describe("physical host containment", () => {
     expect(h.move(HostDir.USER, "linked", "other")).toBe(false);
     expect(h.remove(HostDir.USER, "linked")).toBe(false);
     expect(fs.readFileSync(path.join(outside, "held"), "utf8")).toBe("original");
-    fs.symlinkSync(outside, path.join(base, "parent"), "junction");
-    const over = new NodeHost({ base, dirs: { user: path.join(base, "parent", "missing") } });
-    expect(over.write(HostDir.USER, "new", "bad")).toBe("create-failed");
-    expect(fs.existsSync(path.join(outside, "missing"))).toBe(false);
+  });
+
+  it("works through a linked base or override, which the player or the system chose", () => {
+    /* /home -> /var/home on Fedora Atomic, a profile moved with a junction, or a
+     * folder the player pointed an override at: links above the anchor are fine. */
+    const real = path.join(base, "real");
+    fs.mkdirSync(real);
+    fs.symlinkSync(real, path.join(base, "alias"), "junction");
+    const h = new NodeHost({ base: path.join(base, "alias") });
+    expect(h.write(HostDir.USER, "kept", "saved")).toBe("ok");
+    expect(h.read(HostDir.USER, "kept")).toBe("saved");
+    expect(fs.readFileSync(path.join(real, "user", "kept"), "utf8")).toBe("saved");
+    const over = new NodeHost({ base, dirs: { user: path.join(base, "alias", "chosen") } });
+    expect(over.write(HostDir.USER, "new", "fine")).toBe("ok");
+    expect(fs.readFileSync(path.join(real, "chosen", "new"), "utf8")).toBe("fine");
+    /* A link below the anchor is still refused. */
+    fs.symlinkSync(path.join(base, "outside"), path.join(real, "user", "planted"), "junction");
+    expect(h.write(HostDir.USER, "planted/x", "bad")).toBe("create-failed");
   });
 });
 

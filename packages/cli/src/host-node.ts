@@ -23,16 +23,33 @@ import * as path from "node:path";
 import type { FileType, HostDir, RawFs, WriteOutcome } from "@rpgm-tools/neo-angband-core/host";
 import { RawFsHost } from "@rpgm-tools/neo-angband-core/host";
 
-/** Physical paths cannot grant access through a linked root or component. */
+/**
+ * Physical containment under a trusted anchor: no component below `root` may be a
+ * link, and a written file may not be hard-linked.
+ *
+ * `root` itself and everything above it are chosen by the player or the operating
+ * system, not by a mod, so they may be links: a profile moved with a junction,
+ * `/home` linked to `/var/home` on Fedora Atomic, `/var` on macOS, or a `mods/`
+ * folder an external mod manager deployed as a junction. Refusing those would
+ * stop the game reading its own files without stopping any attack, since a link
+ * planted below the anchor is still refused.
+ */
 export function plainPath(root: string, target: string, allowMissing = false, writing = false): fs.Stats | null {
   const base = path.resolve(root);
   const full = path.resolve(target);
   const relative = path.relative(base, full);
   if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) throw new Error("refused");
-  const volume = path.parse(full).root;
-  let current = volume;
-  let stat: fs.Stats | null = null;
-  for (const part of full.slice(volume.length).split(path.sep).filter(Boolean)) {
+  let current: string;
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(base);
+    current = fs.realpathSync(base);
+  } catch (error) {
+    if (allowMissing && (error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+  if (!stat.isDirectory()) throw new Error("refused");
+  for (const part of relative.split(path.sep).filter(Boolean)) {
     current = path.join(current, part);
     try {
       stat = fs.lstatSync(current);
@@ -112,12 +129,22 @@ export class NodeRawFs implements RawFs {
    */
   private ensureRoot(dir: HostDir): void {
     try {
-      plainPath(this.root(dir), this.root(dir), true);
+      plainPath(this.anchor(dir), this.root(dir), true);
       fs.mkdirSync(this.root(dir), { recursive: true });
-      plainPath(this.root(dir), this.root(dir));
+      plainPath(this.anchor(dir), this.root(dir));
     } catch {
       /* reported by the write that needed it */
     }
+  }
+
+  /**
+   * Where physical containment starts for a directory (see plainPath): the
+   * override the player set, else the base, so base/<dir> itself must be a plain
+   * folder while the base and its ancestors may be links.
+   */
+  private anchor(dir: HostDir): string {
+    const over = this.overrides[dir];
+    return over !== undefined && over !== "" ? path.resolve(over) : path.resolve(this.base);
   }
 
   /** ANGBAND_DIR_x itself: the override if there is one, else base/<dir>. */
@@ -136,7 +163,7 @@ export class NodeRawFs implements RawFs {
     const full = path.resolve(root, name);
     if (full !== root && !full.startsWith(root + path.sep)) return null;
     try {
-      plainPath(root, full, true, writing);
+      plainPath(this.anchor(dir), full, true, writing);
       return full;
     } catch {
       return null;
@@ -161,7 +188,7 @@ export class NodeRawFs implements RawFs {
     const p = this.full(dir, name);
     if (p === null) return null;
     try {
-      const fd = openPlainFile(this.root(dir), p, fs.constants.O_RDONLY);
+      const fd = openPlainFile(this.anchor(dir), p, fs.constants.O_RDONLY);
       try {
         return fs.readFileSync(fd, "utf8");
       } finally {
@@ -192,9 +219,9 @@ export class NodeRawFs implements RawFs {
     this.ensureRoot(dir);
     let fd: number | undefined;
     try {
-      const existing = plainPath(this.root(dir), p, true, true);
+      const existing = plainPath(this.anchor(dir), p, true, true);
       const flags = fs.constants.O_WRONLY | (existing ? 0 : fs.constants.O_CREAT | fs.constants.O_EXCL) | (append ? fs.constants.O_APPEND : 0);
-      fd = openPlainFile(this.root(dir), p, flags);
+      fd = openPlainFile(this.anchor(dir), p, flags);
     } catch {
       return "create-failed";
     }
@@ -255,7 +282,7 @@ export class NodeRawFs implements RawFs {
 
   listFiles(dir: HostDir): string[] {
     try {
-      plainPath(this.root(dir), this.root(dir));
+      plainPath(this.anchor(dir), this.root(dir));
       return fs
         .readdirSync(this.root(dir), { withFileTypes: true })
         .filter((e) => e.isFile() && this.full(dir, e.name) !== null)
