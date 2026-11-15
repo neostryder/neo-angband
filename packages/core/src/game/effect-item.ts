@@ -40,17 +40,20 @@ import {
   objectWeightOne,
   removeObjectCurse,
   tvalCanHaveCharges,
+  tvalCanHaveFlavor,
   tvalIsAmmo,
   tvalIsArmor,
   tvalIsBolt,
   tvalIsStaff,
   tvalIsWand,
   tvalIsWeapon,
+  tvalIsWearable,
 } from "../obj/object.js";
 import {
   buildRuneList,
   objectLearnUnknownRune,
   objectRunesKnown,
+  NOOP_FLAVOR_AWARE_DEPS,
   playerLearnFlagRune,
 } from "../obj/knowledge.js";
 import { PN } from "../player/types.js";
@@ -204,6 +207,21 @@ seedEffectInfo((reg) => {
       tester: (o) => !objectRunesKnown(player, state.runeEnv, o, runes),
       mode: { equip: true, inven: true, quiver: true, floor: true },
     };
+  });
+  r.set("ATTUNE", (_subtype, state) => {
+    const runes = buildRuneList(state.runeEnv);
+    return {
+      prompt: "Attune which item? ",
+      reject: "You have nothing to attune.",
+      tester: (o) => tvalIsWearable(o.tval)
+        ? !objectRunesKnown(state.actor.player, state.runeEnv, o, runes)
+        : tvalCanHaveFlavor(o.tval) && !(state.isAware?.(o.kind) ?? false),
+      mode: { equip: true, inven: true, quiver: true, floor: true },
+    };
+  });
+  reg.text.set("ATTUNE", {
+    menuName: () => "attune an item",
+    describe: () => "teaches one unknown rune on a wearable item or identifies an unknown flavor",
   });
 });
 
@@ -1035,6 +1053,25 @@ const handleIDENTIFY: EffectHandler = (ctx) => {
   return true;
 };
 
+const handleATTUNE: EffectHandler = (ctx) => {
+  const env = gameEnv(ctx);
+  if (!env) return true;
+  const { state } = env;
+  ctx.ident = true;
+  const request = requestForEffect("ATTUNE", 0, state)!;
+  const obj = env.item?.getItem?.(request) ?? null;
+  if (!obj || !request.tester(obj)) return false;
+  if (tvalIsWearable(obj.tval)) {
+    objectLearnUnknownRune(state.rng, state.actor.player, state.runeEnv, obj,
+      buildRuneList(state.runeEnv), env.flavor, env.flavorDeps);
+  } else {
+    if (!env.flavor) return false;
+    env.flavor.objectFlavorAware(obj.kind, env.flavorDeps ?? NOOP_FLAVOR_AWARE_DEPS);
+  }
+  updatePlayerObjectKnowledge(state);
+  return true;
+};
+
 /** The item-targeting handlers, keyed by upstream EF code. */
 const ITEM_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
   number,
@@ -1071,6 +1108,7 @@ const ITEM_HANDLERS: ReadonlyMap<number, EffectHandler> = new Map<
  * attachGameEnv) and no-ops when it is absent.
  */
 export function registerItemHandlers(registry: EffectRegistry): void {
+  registry.register("ATTUNE", { handler: handleATTUNE, status: "implemented" });
   for (const [code, handler] of ITEM_HANDLERS) {
     registry.register(code, { handler, status: "implemented" });
   }

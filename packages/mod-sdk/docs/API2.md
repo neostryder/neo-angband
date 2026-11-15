@@ -117,6 +117,8 @@ A first-party mod with `ui:title` adds a row to the title screen with `ui.title.
 
 Command browser rows display `MenuTransformRow.hint` for the selected row on the penultimate terminal line, as other menus do. An absent hint leaves the picker unchanged. Both runtimes use the existing menu transform and `registry:menu` consent; this adds no hook.
 
+Content records can select `ATTUNE` as an effect name. It offers wearables with an unknown rune and non-wearables with an unknown flavor. A wearable learns one rune through the IDENTIFY knowledge path; another eligible item becomes flavor-aware. Cancellation uses no item. No core object selects ATTUNE, so undeclared content keeps its original effect. It uses the existing string effect type, item chooser and effect registry in both runtimes, with no new hook or capability.
+
 ## Events
 
 An event arrives only when the player could know about it. `combat-outcome` reports outcomes against the player or a perceived monster in view; attacking an unseen monster does not reveal its position or outcome. A monster appears as `{ monster: id }` when the player perceived it as the event happened and as `"unseen"` otherwise, even when the event removed it (a kill). Movement or healing by a monster the player cannot perceive in view does not arrive. A movement omits `from` when the player did not perceive the monster at its origin before it moved. Damage and healing amounts are given only for the player, as `playerDamage` and `playerAmount`. Suppressed events assign no monster handles, and healing while the player was away from a persistent level emits no event.

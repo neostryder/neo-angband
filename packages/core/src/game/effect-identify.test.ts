@@ -21,6 +21,9 @@ import { basicPlayerActor } from "./project-cast.js";
 import type { CastContext } from "./project-cast.js";
 import { attachGameEnv } from "./effect-game-env.js";
 import { registerItemHandlers } from "./effect-item.js";
+import { EffectBuilder } from "../effects/effect.js";
+import { FlavorKnowledge, NOOP_FLAVOR_AWARE_DEPS } from "../obj/knowledge.js";
+import { buildObjectEffectChain } from "./obj-cmd.js";
 import type { ItemEffectEnv } from "./effect-item.js";
 import { makeState } from "./harness.js";
 
@@ -75,6 +78,35 @@ function env(state: GameState, item: ItemEffectEnv): EffectContext {
 }
 
 describe("EF_IDENTIFY (effect-handler-general.c L1945)", () => {
+  it("resolves ATTUNE from record text and learns a wearable rune", () => {
+    const state = makeState({ playerGrid: loc(10, 10), seed: 31 });
+    state.actor.player.objKnown.toD = 0;
+    const sword = makeObj(TV.SWORD);
+    sword.toD = 5;
+    const r = registry();
+    expect(new EffectBuilder({ lookupEffect: (name) => r.isRegistered(name) ? name : null }).effect("ATTUNE").build()?.index).toBe("ATTUNE");
+    state.effectInject = { lookupEffect: (name) => r.isRegistered(name) ? name : null };
+    for (const tval of [TV.STAFF, TV.ROD]) {
+      const device = makeObj(tval);
+      device.effect = [{ eff: "ATTUNE" }];
+      expect(buildObjectEffectChain(device.effect, state)?.index).toBe("ATTUNE");
+    }
+    expect(r.effectSimple("ATTUNE", env(state, { getItem: (req) => req.tester(sword) ? sword : null }), { origin: sourcePlayer() })).toBe(true);
+    expect(state.actor.player.objKnown.toD).toBe(1);
+  });
+
+  it.each([TV.POTION, TV.SCROLL, TV.ROD, TV.STAFF, TV.WAND])("attunes flavor %s and declines an already aware item or cancelled pick", (tval) => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    const flavor = new FlavorKnowledge(objReg.ordinaryKindCount);
+    state.isAware = (kind) => flavor.isAware(kind);
+    const potion = makeObj(tval);
+    const e = env(state, { getItem: (req) => req.tester(potion) ? potion : null });
+    Object.assign(e.game as object, { flavor, flavorDeps: NOOP_FLAVOR_AWARE_DEPS });
+    expect(registry().effectSimple("ATTUNE", e, { origin: sourcePlayer() })).toBe(true);
+    expect(flavor.isAware(potion.kind)).toBe(true);
+    expect(registry().effectSimple("ATTUNE", e, { origin: sourcePlayer() })).toBe(false);
+    expect(registry().effectSimple("ATTUNE", env(state, {}), { origin: sourcePlayer() })).toBe(false);
+  });
   it("learns one unknown rune of the chosen item", () => {
     const state = makeState({ playerGrid: loc(10, 10), seed: 31 });
     const p = state.actor.player;

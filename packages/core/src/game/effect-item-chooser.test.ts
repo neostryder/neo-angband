@@ -170,7 +170,8 @@ describe("requestForEffect / itemTargetRequest (the probe)", () => {
      * and the key set itself is pinned, so an arm cannot be dropped or added
      * without this test saying so. */
     const keys = effectInfoRegistry().request.keys();
-    expect([...keys].sort((a, b) => Number(a) - Number(b))).toEqual(
+    expect(keys).toContain("ATTUNE");
+    expect([...keys].filter((key) => typeof key === "number").sort((a, b) => Number(a) - Number(b))).toEqual(
       [
         EF.ENCHANT,
         EF.RECHARGE,

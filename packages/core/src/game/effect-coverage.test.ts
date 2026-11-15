@@ -105,9 +105,8 @@ describe("effect handler coverage vs reference/src/list-effects.h", () => {
     const baseRegistry = new EffectRegistry();
     registerCoreHandlers(baseRegistry);
     const registry = runtimeRegistry();
-    const registered = registry.codes().map((code) =>
-      typeof code === "number" ? nameOf(code) : code,
-    );
+    const registered = registry.codes().filter((code): code is number => typeof code === "number").map(nameOf);
+    expect(registry.codes().filter((code) => typeof code === "string")).toEqual(["ATTUNE"]);
     const unresolved = registry
       .codes()
       .filter(

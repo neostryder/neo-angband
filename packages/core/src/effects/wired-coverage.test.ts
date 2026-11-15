@@ -71,14 +71,15 @@ describe("the effect registry the game runs", () => {
 
   it("registers every upstream code exactly once, and none beyond EF_MAX", () => {
     const r = wiredRegistry();
-    expect(r.codes()).toHaveLength(EFFECT_ENTRIES.length);
+    expect(r.codes().filter((code) => typeof code === "number")).toHaveLength(EFFECT_ENTRIES.length);
+    expect(r.codes().filter((code) => typeof code === "string")).toEqual(["ATTUNE"]);
     for (let code = 1; code < EFFECT_ENTRIES.length + 1; code++) {
       expect(r.isRegistered(code), nameOf(code)).toBe(true);
     }
     expect(EFFECT_ENTRIES.length).toBe(EF_MAX - 1);
   });
 
-  it("accounts for all 112 effects as implemented or partial", () => {
+  it("accounts for all 112 upstream effects and the opt-in ATTUNE effect", () => {
     /* Pinned as a total rather than as two separate numbers, because the split between
      * implemented and partial is not currently a per-handler judgment (see
      * effect-attack.ts, which stamps "partial" on everything it registers) and a test
@@ -86,6 +87,7 @@ describe("the effect registry the game runs", () => {
      * total is the honest invariant: nothing is missing. */
     const cov = wiredRegistry().coverage();
     expect(cov.stub).toBe(0);
-    expect(cov.implemented + cov.partial).toBe(EFFECT_ENTRIES.length);
+    expect(cov.implemented + cov.partial).toBe(EFFECT_ENTRIES.length + 1);
+    expect(wiredRegistry().statusOf("ATTUNE")).toBe("implemented");
   });
 });
