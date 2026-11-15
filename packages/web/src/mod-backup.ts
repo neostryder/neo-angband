@@ -48,7 +48,7 @@ function desktopBackupFolder(id: string, scope: unknown): BackupFolder {
   const call = async (op: string, arg: Record<string, unknown> = {}): Promise<unknown> => {
     const bridge = backupBridge(scope);
     if (!bridge) return null;
-    const installation = await desktopInstallation(id, bridge);
+    const installation = await desktopInstallation(id, bridge, [], op === "name");
     return installation ? bridge.backup(op, { ...installation, ...arg }) : null;
   };
   return {
@@ -383,10 +383,10 @@ export interface BackupFileRead {
  * Listing exposes names and sizes. Legacy metadata and import callers need a
  * separate native confirmation before the main process releases each file.
  */
-async function desktopBackupFiles(id: string, scope: unknown, requireReadable = false): Promise<RawBackupFile[]> {
+async function desktopBackupFiles(id: string, scope: unknown, requireReadable = false, quiet = false): Promise<RawBackupFile[]> {
   const bridge = backupBridge(scope);
   if (!bridge) return [];
-  const installation = await desktopInstallation(id, bridge);
+  const installation = await desktopInstallation(id, bridge, [], quiet);
   if (!installation) {
     if (requireReadable) throw new Error("The backup folder is not authorized.");
     return [];
@@ -401,6 +401,8 @@ async function desktopBackupFiles(id: string, scope: unknown, requireReadable = 
     if (item !== null && typeof item === "object") {
       const { name, size } = item as { name?: unknown; size?: unknown };
       if (typeof name !== "string" || typeof size !== "number" || !Number.isSafeInteger(size) || size < 0) continue;
+      // File reads need their own native consent, so boot only queries authorization.
+      if (quiet) continue;
       const read = await bridge.backup("read", { ...installation, name }) as { name?: unknown; text?: unknown } | null;
       if (read?.name === name && typeof read.text === "string") out.push({ name, text: read.text });
       else if (requireReadable) throw new Error("The backup file could not be read.");
@@ -431,9 +433,10 @@ export async function readBackupFiles(
   id: string,
   scope: unknown = globalThis,
   requireReadable = false,
+  quiet = false,
 ): Promise<readonly BackupFileRead[]> {
   const raw = backupBridge(scope)
-    ? await desktopBackupFiles(id, scope, requireReadable)
+    ? await desktopBackupFiles(id, scope, requireReadable, quiet)
     : await browserBackupFiles(id, scope, requireReadable);
   return raw.map(({ name, text }) => ({ name, text, peek: peekTransferMeta(text) }));
 }

@@ -120,6 +120,52 @@ describe("desktop installation authority", () => {
   const decision = () => ({ modId: "squire", digest: "a".repeat(64), grants: [`network:${here()}`], destinations: [here()] });
   const allow = async () => true;
 
+  it("remembers approval across launches and payload updates, but asks for wider access", async () => {
+    let approved: { grants: readonly string[]; destinations: readonly string[] } | undefined;
+    const consent = {
+      approved: (_id: string, grants: readonly string[], destinations: readonly string[]) =>
+        approved !== undefined && grants.every((cap) => approved!.grants.includes(cap)) && destinations.every((host) => approved!.destinations.includes(host)),
+      remember: (_id: string, grants: readonly string[], destinations: readonly string[]) => { approved = { grants, destinations }; },
+      forget: () => { approved = undefined; },
+    };
+    const confirm = vi.fn(allow);
+    const first = createDesktopAuthority(consent);
+    const original = await first.report(decision(), 1, confirm);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    const next = createDesktopAuthority(consent);
+    const changed = { ...decision(), digest: "b".repeat(64) };
+    const updated = await next.report(changed, 2, confirm);
+    expect(next.lookup(updated, 2)).not.toBeNull();
+    expect(next.lookup(original, 2)).toBeNull();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    await next.report({ ...changed, grants: [...changed.grants, "backup:folder"] }, 2, confirm);
+    expect(confirm).toHaveBeenCalledTimes(2);
+    await next.report({ ...changed, revoke: true }, 2, confirm);
+    await createDesktopAuthority(consent).report(changed, 3, confirm);
+    expect(confirm).toHaveBeenCalledTimes(3);
+  });
+
+  it("refuses quiet queries without a dialog and remembers cancellation across reloads only", async () => {
+    const authority = createDesktopAuthority();
+    const confirm = vi.fn(async () => false);
+    expect(await authority.report({ ...decision(), quiet: true }, 1, confirm)).toMatchObject({ ok: false });
+    expect(confirm).not.toHaveBeenCalled();
+    await authority.report(decision(), 1, confirm);
+    authority.revokeWindow(1);
+    await authority.report({ ...decision(), digest: "b".repeat(64) }, 1, confirm);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    await createDesktopAuthority().report(decision(), 1, confirm);
+    expect(confirm).toHaveBeenCalledTimes(2);
+  });
+
+  it("auto-approves lab access without a dialog, including quiet requests", async () => {
+    const authority = createDesktopAuthority({ autoApprove: true });
+    const confirm = vi.fn(async () => false);
+    const answer = await authority.report({ ...decision(), quiet: true }, 1, confirm);
+    expect(authority.lookup(answer, 1)).not.toBeNull();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
   it("keeps authority keys and revocation bound to the payload digest", async () => {
     const authority = createDesktopAuthority();
     const original = await authority.report(decision(), 1, allow);
@@ -188,7 +234,7 @@ describe("desktop installation authority", () => {
     const { authority, rawRelay } = relayWith();
     const report = decision();
     expect(await authority.report({ ...report, accepted: true }, 1, allow)).toMatchObject({ ok: false });
-    expect(await authority.report(report, 1, async () => false)).toMatchObject({ ok: false });
+    expect(await authority.report({ ...report, modId: "cancelled-mod" }, 1, async () => false)).toMatchObject({ ok: false });
     const handle = await authority.report(report, 1, allow) as Record<string, unknown>;
     const installation = handle["installation"];
     expect(await authority.report(report, 1, async () => false)).toMatchObject({ ok: false });

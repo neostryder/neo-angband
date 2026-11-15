@@ -50,7 +50,8 @@ onModConsentChange((id) => {
     if (!record) continue;
     record.epoch.valid = false;
     records.delete(id);
-    void bridge.consent?.({ modId: id, digest: record.digest, revoke: true }).catch(() => undefined);
+    void bridge.consent?.({ modId: id, digest: record.digest,
+      ...(consentBinding(id) !== record.binding ? { release: true } : { revoke: true }) }).catch(() => undefined);
   }
 });
 
@@ -63,7 +64,7 @@ function installationAnswer(answer: unknown): DesktopInstallation | null {
 }
 
 /** Page decisions are proposals until the main process confirms them natively. */
-export async function desktopInstallation(id: string, bridge: DesktopConsentBridge, destinations: readonly string[] = []): Promise<DesktopInstallation | null> {
+export async function desktopInstallation(id: string, bridge: DesktopConsentBridge, destinations: readonly string[] = [], quiet = false): Promise<DesktopInstallation | null> {
   const binding = consentBinding(id);
   const digest = modPayloadDigest(id);
   const grants = defaultModStore().getConsent(id).filter((cap) => cap === "backup:folder" || cap.startsWith("network:")).sort();
@@ -86,11 +87,13 @@ export async function desktopInstallation(id: string, bridge: DesktopConsentBrid
       const previous = await prior?.result;
       if (!epoch.valid) return null;
       const answer = installationAnswer(await bridge.consent!({ modId: id, digest, grants, destinations: hosts,
+        ...(quiet ? { quiet: true } : {}),
         ...(previous ? { installation: previous.installation } : {}) }));
       if (!epoch.valid || consentBinding(id) !== binding || modPayloadDigest(id) !== digest) {
-        if (answer) await bridge.consent!({ modId: id, digest, revoke: true });
+        if (answer) await bridge.consent!({ modId: id, digest, release: true });
         return null;
       }
+      if (!answer && quiet && records.get(id) === state) records.delete(id);
       return answer?.modId === id && answer.digest === digest ? answer : null;
     } catch { return null; }
   })();

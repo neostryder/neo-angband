@@ -15333,7 +15333,7 @@ async function checkBackupArrivals(): Promise<void> {
     if (!CapabilitySet.fromManifest(loaded.manifest).has("backup:folder")) continue;
     let files: readonly BackupFileRead[];
     try {
-      files = await readBackupFiles(loaded.id);
+      files = await readBackupFiles(loaded.id, globalThis, false, true);
     } catch {
       continue; // a faulting platform bridge must not block the rest of boot
     }

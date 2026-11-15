@@ -24,6 +24,7 @@ import {
   readModBackupFolder,
 } from "./backup-folder.js";
 import { createDesktopAuthority } from "./net-relay.js";
+import { createDesktopConsentStore } from "./desktop-consent.js";
 
 const [{ createBackupFolder }, bindings, snapshots, store] = await Promise.all([
   "../../web/src/mod-backup.ts", "../../web/src/mod-consent-binding.ts", "../../web/src/mod-code-snapshot.ts", "../../web/src/mod-store.ts",
@@ -277,8 +278,8 @@ describe("installation backup allocations", () => {
   const decision = (modId: string, digest = "a".repeat(64)) => ({ modId, digest, grants: ["backup:folder"], destinations: [] });
   const folderKey = (modId: string) => createHash("sha256").update(JSON.stringify(["backup-folder", modId])).digest("hex");
 
-  it.each(["a", "@host/mod-profile-sync"])("remembers %s across digests while requiring fresh consent", async (modId) => {
-    const authority = createDesktopAuthority();
+  it.each(["a", "@host/mod-profile-sync"])("remembers %s and its desktop approval across digests", async (modId) => {
+    const authority = createDesktopAuthority(createDesktopConsentStore(path.join(base, "consent")));
     const original = await authority.report(decision(modId), 1, async () => true) as Record<string, unknown>;
     const choose = vi.fn(async () => base);
     const relay = createBackupRelay({ authority, userBase: path.join(base, "records"), choose,
@@ -287,14 +288,10 @@ describe("installation backup allocations", () => {
     expect(await relay.handle("choose", original, 1)).toBe(path.basename(base));
     expect(await relay.handle("write", { ...original, name, text: "keep" }, 1)).toEqual({ ok: true });
     const changed = decision(modId, "b".repeat(64));
-    const decline = vi.fn(async () => false);
-    const refused = await authority.report({ ...changed, installation: original["installation"] }, 1, decline);
-    expect(decline).toHaveBeenCalledOnce();
-    expect(await relay.handle("list", refused, 1)).toEqual({ ok: false });
     expect(await relay.handle("list", { ...original, digest: changed.digest }, 1)).toEqual({ ok: false });
     const approve = vi.fn(async () => true);
     const updated = await authority.report(changed, 1, approve) as Record<string, unknown>;
-    expect(approve).toHaveBeenCalledOnce();
+    expect(approve).not.toHaveBeenCalled();
     expect(await relay.handle("name", updated, 1)).toBe(path.basename(base));
     expect(await relay.handle("list", updated, 1)).toEqual([{ name, size: 4 }]);
     expect(await relay.handle("read", { ...updated, name }, 1)).toEqual({ name, text: "keep" });

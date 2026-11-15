@@ -108,6 +108,7 @@ import {
 import type { ModRecord, ModSnapshot } from "./mod-origin-merge.js";
 import { ORIGIN_PROBE_ROUTE, planRequest, readStaticFile } from "./routes.js";
 import { createDesktopAuthority, createNetRelay } from "./net-relay.js";
+import { createDesktopConsentStore } from "./desktop-consent.js";
 import type { OriginSnapshot } from "./origin-merge.js";
 import { readWindowState, startPlacement, writeWindowState } from "./window-state.js";
 import { mergedOriginsFormat, deathLedgerFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -614,14 +615,25 @@ function installHostBridge(dirs: Readonly<Partial<Record<HostDir, string>>>): vo
   installNetChannel();
 }
 
+async function showGameMessageBox(parentOrOptions: BrowserWindow | Electron.MessageBoxOptions, options?: Electron.MessageBoxOptions): Promise<Electron.MessageBoxReturnValue> {
+  const existing = parentOrOptions instanceof BrowserWindow ? parentOrOptions : BrowserWindow.getAllWindows().find((window) => window.isVisible());
+  // Startup errors can precede the game page, but still need a visible owner.
+  const win = existing ?? new BrowserWindow({ title: "Neo Angband", width: 640, height: 360, backgroundColor: "#0b0b0b", webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  try { return await dialog.showMessageBox(win, options ?? parentOrOptions as Electron.MessageBoxOptions); }
+  finally { if (!existing) win.destroy(); }
+}
+
 async function confirmAction(sender: Electron.WebContents, message: string, accept: string): Promise<boolean> {
   const win = BrowserWindow.fromWebContents(sender);
   if (!win || sender.isDestroyed()) return false;
-  const allowed = await confirmHostAction((options) => dialog.showMessageBox(win, options), message, accept);
+  const allowed = await confirmHostAction((options) => showGameMessageBox(win, options), message, accept);
   return allowed && !sender.isDestroyed();
 }
 
-const desktopAuthority = createDesktopAuthority();
+const desktopAuthority = createDesktopAuthority({ ...createDesktopConsentStore(USER_BASE), autoApprove: labShell() });
 
 function installAuthorityChannel(): void {
   const watched = new Set<number>();
@@ -673,6 +685,7 @@ function installNetChannel(): void {
     },
     confirmEnv: async ({ modName, variables, hosts }) => {
       const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      if (!win) return false;
       const options = {
         type: "question" as const,
         buttons: ["Share", "Don't share"],
@@ -682,7 +695,7 @@ function installNetChannel(): void {
         message: `${modName} wants to send ${variables.join(" or ")} to ${hosts.join(", ")}.`,
         detail: "The game reads the first of these environment variables that is set and sends it with this mod's requests to those servers only. The mod never sees the value. You are asked again if the mod names other variables or servers.",
       };
-      const result = win ? await dialog.showMessageBox(win, options) : await dialog.showMessageBox(options);
+      const result = await showGameMessageBox(win, options);
       return result.response === 0;
     },
   });
@@ -702,6 +715,9 @@ function installBackupChannel(): void {
     choose: async (entry, owner) => {
       const win = BrowserWindow.getAllWindows().find((window) => window.webContents.id === owner);
       if (!win) return null;
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
       const result = await dialog.showOpenDialog(win, { title: `Backup folder for ${entry.modId}`, properties: ["openDirectory"] });
       return result.canceled ? null : result.filePaths[0] ?? null;
     },
@@ -1765,7 +1781,7 @@ async function recoverStrandedOrigins(
         ? `${String(modPlan.install.length - failedMods.length)} mod(s)`
         : "";
     const both = [chars, mods].filter((s) => s !== "").join(" and ");
-    await dialog.showMessageBox({
+    await showGameMessageBox({
       type: failed.length === 0 ? "info" : "warning",
       title: "Neo Angband",
       message:
@@ -1816,7 +1832,7 @@ async function applyRestorePoints(): Promise<void> {
       const { restored, safety } = restoreFrom(paths, requested, version);
       rememberRunVersion(userDir, version);
       mainLog("info", "restore", `restored ${restored}`, { saved: safety });
-      await dialog.showMessageBox({
+      await showGameMessageBox({
         type: "info",
         title: "Neo Angband",
         message: `Restored ${restored}.`,
@@ -1828,7 +1844,7 @@ async function applyRestorePoints(): Promise<void> {
       });
     } catch (err) {
       mainLog("error", "restore", `could not restore ${requested}`, err);
-      await dialog.showMessageBox({
+      await showGameMessageBox({
         type: "error",
         title: "Neo Angband",
         message: "The restore point could not be restored.",
@@ -2097,7 +2113,7 @@ async function createWindow(): Promise<void> {
    * a player has no terminal to read. */
   win.webContents.on("render-process-gone", (_event, details) => {
     desktopAuthority.revokeWindow(win.webContents.id);
-    void dialog.showMessageBox(win, {
+    void showGameMessageBox(win, {
       type: "error",
       title: "Neo Angband",
       message: "The game stopped unexpectedly.",
@@ -2113,18 +2129,17 @@ async function createWindow(): Promise<void> {
   win.on("unresponsive", () => {
     /* Not fatal, and not necessarily a bug - level generation on a slow machine
      * can hold the thread. Ask rather than announce. */
-    void dialog
-      .showMessageBox(win, {
-        type: "warning",
-        buttons: ["Keep waiting", "Reload from the last save"],
-        defaultId: 0,
-        cancelId: 0,
-        title: "Neo Angband",
-        message: "The game has stopped responding.",
-        detail:
-          "It may just be busy. If it does not come back, reloading starts " +
-          "again from your last save - which is untouched either way.",
-      })
+    void showGameMessageBox(win, {
+      type: "warning",
+      buttons: ["Keep waiting", "Reload from the last save"],
+      defaultId: 0,
+      cancelId: 0,
+      title: "Neo Angband",
+      message: "The game has stopped responding.",
+      detail:
+        "It may just be busy. If it does not come back, reloading starts " +
+        "again from your last save - which is untouched either way.",
+    })
       .then((r) => {
         if (r.response === 1) win.webContents.reload();
       });
@@ -2135,7 +2150,7 @@ async function createWindow(): Promise<void> {
      * reports. Not a failure, and firing a dialog for it would make the app
      * shout during its own startup. */
     if (!isMainFrame || code === -3) return;
-    void dialog.showMessageBox(win, {
+    void showGameMessageBox(win, {
       type: "error",
       title: "Neo Angband",
       message: "The game could not load.",
@@ -2193,7 +2208,7 @@ async function start(): Promise<void> {
 
   if (!fs.existsSync(WEB_ROOT)) {
     // A helpful, honest error rather than a blank window.
-    await dialog.showMessageBox({
+    await showGameMessageBox({
       type: "error",
       title: "Neo Angband",
       message: "Web bundle not found.",
@@ -2212,7 +2227,7 @@ async function start(): Promise<void> {
    * lost at the first autosave. */
   const problem = checkWritable(USER_BASE);
   if (problem !== null) {
-    await dialog.showMessageBox({
+    await showGameMessageBox({
       type: "error",
       title: "Neo Angband",
       message: "The data folder cannot be written to.",

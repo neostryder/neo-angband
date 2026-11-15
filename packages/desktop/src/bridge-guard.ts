@@ -32,7 +32,7 @@ export function desktopConsentReport(
       const modId = "@host/mod-profile-sync";
       const digest = hostDigest();
       if (a["quiet"] === true && !remembered(modId, digest)) return null;
-      return { modId, digest, grants: ["backup:folder"], destinations: [], installation: a["installation"] };
+      return { modId, digest, grants: ["backup:folder"], destinations: [], installation: a["installation"], ...(a["quiet"] === true ? { quiet: true } : {}) };
     } catch { return null; }
   }
   return typeof a["modId"] === "string" && a["modId"].startsWith("@host/") ? null : arg;

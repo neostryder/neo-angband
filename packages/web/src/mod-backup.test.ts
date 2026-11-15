@@ -189,6 +189,21 @@ describe("notifyBackupSinks: per-mod fault containment", () => {
 });
 
 describe("list()/readBackupFiles: ticket #24's read side", () => {
+  it("asks quietly at boot, skips native file reads, and can ask interactively afterward", async () => {
+    const ask = vi.fn(async (decision: unknown) => (decision as { quiet?: boolean }).quiet ? { ok: false } : await consent());
+    const backup = vi.fn<(op: string, arg: unknown) => Promise<unknown>>(async () => []);
+    const scope = { neoDesktop: { consent: ask, backup } };
+    expect(await readBackupFiles("qol", scope, false, true)).toEqual([]);
+    expect(ask.mock.calls[0]?.[0]).toMatchObject({ quiet: true });
+    expect(backup).not.toHaveBeenCalled();
+    await readBackupFiles("qol", scope);
+    expect(ask).toHaveBeenCalledTimes(2);
+    expect(backup).toHaveBeenCalledWith("list", expect.objectContaining({ modId: "qol" }));
+    backup.mockResolvedValueOnce([{ name: "Bilbo.neochar", size: 12 }]);
+    expect(await readBackupFiles("qol", scope, false, true)).toEqual([]);
+    expect(backup.mock.calls.every(([op]) => op === "list")).toBe(true);
+  });
+
   function desktopListScope(
     files: readonly { name: string; text: string }[],
   ) {

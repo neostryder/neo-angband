@@ -44,9 +44,19 @@ function handler(event: string): string {
 }
 
 describe("a window that goes blank says why", () => {
+  it("parents native messages to a visible game window", () => {
+    const start = CODE.indexOf("async function showGameMessageBox");
+    const end = CODE.indexOf("async function confirmAction", start);
+    const body = CODE.slice(start, end);
+    expect(body).toMatch(/win\.show\(\)/u);
+    expect(body).toMatch(/win\.focus\(\)/u);
+    expect(body).toMatch(/dialog\.showMessageBox\(win,/u);
+    expect(CODE.match(/dialog\.showMessageBox\(/gu)).toHaveLength(1);
+  });
+
   it("reports a dead renderer process", () => {
     const h = handler("render-process-gone");
-    expect(h).toMatch(/dialog\.showMessageBox/u);
+    expect(h).toMatch(/showGameMessageBox\(win,/u);
     /* The one sentence a permadeath player needs before any of the rest. */
     expect(h).toMatch(/not touched/u);
     expect(h).toMatch(/issues/u);
@@ -54,7 +64,7 @@ describe("a window that goes blank says why", () => {
 
   it("offers a way out of a wedged renderer instead of only announcing it", () => {
     const h = handler("unresponsive");
-    expect(h).toMatch(/dialog\.showMessageBox/u);
+    expect(h).toMatch(/showGameMessageBox\(win,/u);
     /* Two buttons, because "unresponsive" is often just a slow level
      * generation - the player decides whether to wait. */
     expect(h).toMatch(/buttons:/u);
@@ -63,7 +73,7 @@ describe("a window that goes blank says why", () => {
 
   it("reports a failed load, and does not shout at its own startup", () => {
     const h = handler("did-fail-load");
-    expect(h).toMatch(/dialog\.showMessageBox/u);
+    expect(h).toMatch(/showGameMessageBox\(win,/u);
     /* ERR_ABORTED (-3) is what a navigation replaced by another one reports.
      * Treating it as a failure would raise a dialog during a normal launch. */
     expect(h).toMatch(/=== -3|code === -3/u);

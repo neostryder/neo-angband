@@ -51,10 +51,18 @@ export function desktopAuthorityKey(modId: string, digest: string): string {
   return createHash("sha256").update(JSON.stringify([modId, digest])).digest("hex");
 }
 
-export function createDesktopAuthority() {
+export interface DesktopConsentMemory {
+  readonly autoApprove?: boolean;
+  readonly approved?: (modId: string, grants: readonly string[], destinations: readonly string[]) => boolean;
+  readonly remember?: (modId: string, grants: readonly string[], destinations: readonly string[]) => void;
+  readonly forget?: (modId: string) => void;
+}
+
+export function createDesktopAuthority(consent: DesktopConsentMemory = {}) {
   const entries = new Map<string, { owner: number; token: string; entry: DesktopAuthorityEntry; controller: AbortController }>();
   const pending = new Map<number, { key: string; controller: AbortController }>();
   const attempts = new Map<number, number[]>();
+  const declined = new Set<string>();
   const revoke = (key: string): void => {
     const record = entries.get(key);
     entries.delete(key);
@@ -91,11 +99,13 @@ export function createDesktopAuthority() {
       const refused = { ok: false, code: "not-declared", problem: "The desktop installation is not authorized." };
       if (!arg || typeof arg !== "object" || Array.isArray(arg)) return refused;
       const a = arg as Record<string, unknown>;
-      if (Object.keys(a).some((key) => !["modId", "digest", "grants", "destinations", "installation", "revoke"].includes(key))) return refused;
+      if (Object.keys(a).some((key) => !["modId", "digest", "grants", "destinations", "installation", "revoke", "release", "quiet"].includes(key)) ||
+        a["quiet"] !== undefined && a["quiet"] !== true) return refused;
       const identity = identify(a);
       if (!identity) return refused;
       const slot = `${owner}:${identity.key}`;
-      if (a["revoke"] === true) {
+      if (a["revoke"] === true || a["release"] === true) {
+        if (a["revoke"] === true) consent.forget?.(identity.modId);
         revoke(slot);
         if (pending.get(owner)?.key === slot) pending.get(owner)?.controller.abort();
         return { ok: true };
@@ -116,17 +126,23 @@ export function createDesktopAuthority() {
       }
       const controller = new AbortController();
       const entry: DesktopAuthorityEntry = Object.freeze({ ...identity, grants: Object.freeze(grants), destinations: Object.freeze(destinations), signal: controller.signal });
-      if (widening) {
+      const remembered = consent.autoApprove === true || consent.approved?.(identity.modId, grants, destinations) === true;
+      if (widening && !remembered) {
+        const refusalKey = JSON.stringify([identity.modId, grants, destinations]);
+        if (a["quiet"] === true || declined.has(refusalKey)) return refused;
         const recent = (attempts.get(owner) ?? []).filter((stamp) => Date.now() - stamp < 60_000);
         if (pending.has(owner) || recent.length >= 10 || entries.size >= 128) return refused;
         attempts.set(owner, [...recent, Date.now()]);
         pending.set(owner, { key: slot, controller });
         try {
-          if (!(await confirm(entry)) || controller.signal.aborted) return refused;
+          if (!(await confirm(entry))) { declined.add(refusalKey); return refused; }
+          if (controller.signal.aborted) return refused;
+          consent.remember?.(identity.modId, grants, destinations);
         } catch { return refused; }
         finally { if (pending.get(owner)?.controller === controller) pending.delete(owner); }
       }
       if (controller.signal.aborted) return refused;
+      if (!prior && entries.size >= 128) return refused;
       if (held && prior.entry.grants.every((cap) => grants.includes(cap)) && prior.entry.destinations.every((host) => destinations.includes(host))) {
         entries.set(slot, { ...prior, entry: Object.freeze({ ...entry, signal: prior.controller.signal }) });
         return { ok: true, installation: prior.token, modId: identity.modId, digest: identity.digest };
