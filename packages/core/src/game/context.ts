@@ -634,6 +634,8 @@ export interface GameState {
    * (restAction, game/player-turn.ts); absent when not resting.
    */
   resting?: { count: number; turnsRested: number };
+  /** The host keeps classic search mode out of mod callbacks and save data. */
+  classicSearching?: boolean;
 
   /**
    * player_resting_repeat_count (player-util.c:1523): the file-static count
@@ -1263,6 +1265,11 @@ export function playerRestingIsSpecial(count: number): boolean {
     count === REST_COMPLETE ||
     count === REST_SOME_POINTS
   );
+}
+
+/** The declaration gates every effect of the session's classic search mode. */
+export function playerIsClassicSearching(state: GameState): boolean {
+  return (state.classicSearching ?? false) && (state.modHooks?.classicSearch?.() ?? false);
 }
 
 /**

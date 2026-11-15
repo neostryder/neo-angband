@@ -73,10 +73,12 @@ export interface Api2CommandArgs {
 export interface Api2CommandOptions {
   /** Ask the player for a direction first. */
   readonly direction?: boolean;
+  /** The host runs this operation synchronously; the mod callback receives no result. */
+  readonly hostOperation?: "classic-search" | "toggle-classic-search";
   /**
    * Run inside the game's turn, so `run` can spend game time by returning `{ energy }`.
    * Without it a bound key calls `run` outside the turn and no energy is spent. In-process
-   * mods only; a Worker mod's command spends none.
+   * callbacks only; a Worker callback spends none. Host operations spend their own energy in both runtimes.
    */
   readonly turn?: boolean;
 }

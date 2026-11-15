@@ -18,6 +18,8 @@ import { WorkerGameplay, type WorkerGameplayHost } from "./mod-worker/gameplay";
 import { gameplayIntent } from "./mod-gameplay-intents";
 import {
   AgentCapabilityError,
+  classicSearchAction,
+  toggleClassicSearchAction,
   ContentIdResolver,
   wizCreateObj,
   wizSummonNamed,
@@ -1044,9 +1046,21 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           const commands = options.commands ?? commandHost;
           if (!commands) return api2Unavailable("this front end installs no mod commands");
           if (commands.registry.has(id)) return api2Refused("command-taken", `command "${id}" is already registered`);
+          const hostOperation = commandOptions?.hostOperation;
+          if (hostOperation !== undefined) {
+            if (!granted("registry:command")) return api2NotGranted("registry:command");
+            if (hostOperation !== "classic-search" && hostOperation !== "toggle-classic-search") {
+              return api2Refused("bad-command", 'hostOperation is "classic-search" or "toggle-classic-search"');
+            }
+            if (commandOptions?.turn !== true) return api2Refused("bad-command", "hostOperation requires turn: true");
+          }
           const direction = commandOptions?.direction === true;
           const turn = commandOptions?.turn === true;
-          const invoke = (dir?: number): number => {
+          const invoke = (dir?: number, state = ctx.state): number => {
+            if (hostOperation !== undefined) {
+              if (!state || !granted("registry:command")) return 0;
+              return hostOperation === "classic-search" ? classicSearchAction(state) : toggleClassicSearchAction(state);
+            }
             if (publicMod) { actionBudget = 8; actionUntil = Date.now() + 1000; }
             try {
               const result = run(dir === undefined ? {} : { dir });
@@ -1064,7 +1078,7 @@ export function createApi2Host(ctx: ModPluginContext, options: Api2HostOptions):
           const entry: KeymapCommand = { direction, turn, invoke };
           keymapCommands.set(id, entry);
           ownedCommands.add(id);
-          commands.registry.register(id, (_state, cmd) => invoke(cmd?.dir));
+          commands.registry.register(id, (state, cmd) => invoke(cmd?.dir, state));
           commands.verbs?.set(id, verb);
           cleanups.add(() => {
             commands.registry.unregister(id);

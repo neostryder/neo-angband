@@ -16,7 +16,7 @@ import {
 } from "./policies.js";
 
 describe("checkApi2Policies", () => {
-  it.each(["forcedDescentStairs", "missileCritFromState"] as const)("checks %s and installs only the granted true switch", (name) => {
+  it.each(["forcedDescentStairs", "missileCritFromState", "classicSearch"] as const)("checks %s and installs only the granted true switch", (name) => {
     expect(checkApi2Policies({ [name]: 1 })).toContain(`${name} is true or false`);
     expect(api2PolicyEffects({ [name]: true }).registrations).toEqual({ [name]: true });
     expect(api2PolicyEffects({ [name]: false }).registrations).toEqual({});
@@ -243,6 +243,7 @@ describe("randart set size declarations", () => {
 describe("API2_POLICY_KINDS", () => {
   it("maps every table to its matching registry permission", () => {
     expect(Object.fromEntries(API2_POLICY_KINDS.map((kind) => [kind.name, kind.capability]))).toEqual({
+      classicSearch: "registry:command",
       missileCritFromState: "registry:effect-info",
       forcedDescentStairs: "registry:room",
       trapAllocation: "registry:room",
@@ -268,7 +269,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["missileCritFromState", "forcedDescentStairs", "randartSetSize", "trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
+      else expect(["classicSearch", "missileCritFromState", "forcedDescentStairs", "randartSetSize", "trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
     }
   });
 

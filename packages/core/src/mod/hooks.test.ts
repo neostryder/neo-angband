@@ -661,6 +661,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       no: (log, tag) => ({ forgetUnlitImpassableTerrain: () => { log.push(tag); return false; } }),
       run: (h) => h.forgetUnlitImpassableTerrain?.(),
     },
+    classicSearch: {
+      yes: (log, tag) => ({ classicSearch: () => { log.push(tag); return true; } }),
+      no: (log, tag) => ({ classicSearch: () => { log.push(tag); return false; } }),
+      run: (h) => h.classicSearch?.(),
+    },
     missileCritFromState: {
       yes: (log, tag) => ({ missileCritFromState: () => { log.push(tag); return true; } }),
       no: (log, tag) => ({ missileCritFromState: () => { log.push(tag); return false; } }),
@@ -1128,6 +1133,11 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
   it("missileCritFromState declines when its provider throws", () => {
     const { hooks } = guarded({ missileCritFromState: THROWS });
     expect(hooks.missileCritFromState?.()).toBe(false);
+  });
+
+  it("classicSearch declines when its provider throws", () => {
+    const { hooks } = guarded({ classicSearch: THROWS });
+    expect(hooks.classicSearch?.()).toBe(false);
   });
 
   it("shapeLearnObviousFlagsDirectly declines, the faithful 4.2.6 gap", () => {

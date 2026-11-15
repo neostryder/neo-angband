@@ -563,6 +563,8 @@ export function calcBlows(
 
 /** Options for calcBonuses covering upstream globals. */
 export interface CalcBonusesOptions {
+  /** Classic continuous searching trades ten speed for repeated searches. */
+  searching?: boolean;
   /**
    * character_dungeon (upstream global): true once the character is in play
    * on a generated level. Gates the PF_UNLIGHT / PF_EVIL element-info
@@ -1339,6 +1341,7 @@ export function calcBonuses(
     state.speed -=
       Math.trunc((j - Math.trunc(limit / 2)) / Math.trunc(limit / 10));
   }
+  if (options.searching) state.speed -= 10;
   if (state.speed < 0) state.speed = 0;
   if (state.speed > 199) state.speed = 199;
 

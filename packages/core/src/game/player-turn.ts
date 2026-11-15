@@ -37,6 +37,7 @@ import {
 } from "../generated/index.js";
 import { DDGRID, DDGRID_DDD, locSum } from "../loc.js";
 import type { Loc } from "../loc.js";
+import { SKILL } from "../player/types.js";
 import { pyAttack } from "../combat/melee.js";
 import type { MeleeAttack, MeleeEffectHooks } from "../combat/melee.js";
 import { learnBrandSlayFromMelee } from "../combat/brand-slay.js";
@@ -51,7 +52,7 @@ import {
 } from "../mon/predicate.js";
 import { monsterWake } from "../mon/take-hit.js";
 import { MON_TMD_FLG_NOTIFY, monIncTimed } from "../mon/timed.js";
-import { equipLearnFlag, equipLearnOnMeleeAttack } from "../obj/knowledge.js";
+import { equipLearnFlag, equipLearnOnMeleeAttack, OBJ_NOTICE } from "../obj/knowledge.js";
 import { playerClearTimed, playerTimedGradeEq } from "../player/timed.js";
 import type { GameState, PlayerCommand } from "./context.js";
 import {
@@ -60,6 +61,7 @@ import {
   gameTakeHitHooks,
   movePlayer,
   playerIsResting,
+  playerIsClassicSearching,
   playerRestingIsSpecial,
   squareMonster,
 } from "./context.js";
@@ -74,6 +76,7 @@ import {
   knownIsEnterable,
   knownIsRubble,
   knownFloorObject,
+  objectSeeAt,
   squareForget,
   squareIsKnown,
   squareMemorize,
@@ -88,6 +91,9 @@ import { addMonsterMessage, monsterTimedMessage } from "./mon-message.js";
 import {
   playerIsTrapsafe,
   squareIsDisarmableTrap,
+  squareIsPlayerTrap,
+  squareIsVisibleTrap,
+  squareMemorizeTraps,
   squareIsWebbed,
   squareRemoveAllTraps,
   squareTrap,
@@ -724,6 +730,10 @@ export function jumpAction(state: GameState, cmd: PlayerCommand): number {
  * randint1(7) on success, once per discovered door in y/x scan order.
  */
 export function search(state: GameState): void {
+  if (playerIsClassicSearching(state)) {
+    classicSearch(state, false);
+    return;
+  }
   const p = state.actor.player;
   if (
     (p.timed[TMD.BLIND] ?? 0) > 0 ||
@@ -768,6 +778,81 @@ export function search(state: GameState): void {
       }
     }
   }
+}
+
+/** The host owns discoveries so a command never needs to read hidden state. */
+export function classicSearch(state: GameState, verbose: boolean): boolean {
+  if (!(state.modHooks?.classicSearch?.() ?? false)) return false;
+  const p = state.actor.player;
+  let chance = state.actor.combat.skills[SKILL.SEARCH] ?? 0;
+  if (p.timed[TMD.BLIND] || !squareIsSeen(state.chunk, state.actor.grid)) chance = Math.trunc(chance / 10);
+  if (p.timed[TMD.CONFUSED] || p.timed[TMD.IMAGE]) chance = Math.trunc(chance / 10);
+  if (chance <= 0) {
+    if (verbose) {
+      state.msg?.("You can't make out your surroundings well enough to search.");
+      disturb(state, false);
+    }
+    return false;
+  }
+
+  let found = false;
+  for (let y = state.actor.grid.y - 1; y <= state.actor.grid.y + 1; y++) {
+    for (let x = state.actor.grid.x - 1; x <= state.actor.grid.x + 1; x++) {
+      const grid = { x, y };
+      if (!state.chunk.inBounds(grid) || state.rng.randint0(100) >= chance) continue;
+      if (squareIsPlayerTrap(state, grid) && !squareIsVisibleTrap(state, grid)) {
+        found = true;
+        let count = 0;
+        for (const trap of squareTrap(state, grid)) {
+          if (!trap.flags.has(TRF.TRAP) || trap.flags.has(TRF.VISIBLE)) continue;
+          trap.flags.on(TRF.VISIBLE);
+          count++;
+          if (chance < 100 && state.rng.randint1(100) > chance) break;
+        }
+        if (count) {
+          state.msg?.(count === 1 ? "You have found a trap." : `You have found ${count} traps.`);
+          squareMemorize(state, grid);
+          squareMemorizeTraps(state, grid);
+          disturb(state, false);
+        }
+      }
+      const flags = state.chunk.feature(grid).flags;
+      if (flags.has(TF.DOOR_ANY) && flags.has(TF.ROCK)) {
+        found = true;
+        state.msg?.("You have found a secret door.");
+        state.chunk.setFeat(grid, FEAT.CLOSED);
+        if (state.rng.oneIn(4)) {
+          const power = state.rng.randint1(7);
+          state.setDoorLock?.(grid, power);
+        }
+        squareMemorize(state, grid);
+        disturb(state, false);
+      }
+      for (const obj of floorPile(state, grid)) {
+        if (!isTrappedChest(obj) || obj.knownPval === obj.pval) continue;
+        found = true;
+        state.msg?.("You have discovered a trap on the chest!");
+        obj.knownPval = obj.pval;
+        obj.notice |= OBJ_NOTICE.ASSESSED;
+        objectSeeAt(state, grid, obj);
+        disturb(state, false);
+      }
+    }
+  }
+  if (verbose && !found) state.msg?.(chance >= 100 ? "There are no secrets here." : "You found nothing.");
+  return true;
+}
+
+export function classicSearchAction(state: GameState): number {
+  return classicSearch(state, true) ? state.z.moveEnergy : 0;
+}
+
+export function toggleClassicSearchAction(state: GameState): number {
+  if (!(state.modHooks?.classicSearch?.() ?? false)) return 0;
+  if (state.classicSearching) delete state.classicSearching;
+  else state.classicSearching = true;
+  state.updateBonuses?.();
+  return 0;
 }
 
 /**
@@ -863,6 +948,7 @@ export function restAction(state: GameState, cmd: PlayerCommand): number {
    * BEFORE this call's count takes effect, exactly as upstream checks
    * player_is_resting() before player_resting_set_count() runs. */
   if (!playerIsResting(state)) {
+    delete state.classicSearching;
     /* player->upkeep->update |= PU_BONUS (cmd-cave.c:1636): applied eagerly
      * here rather than deferred, matching how the rest of this port recomputes
      * derived state through direct hook calls instead of dirty bits. */

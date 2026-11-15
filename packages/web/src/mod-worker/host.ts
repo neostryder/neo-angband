@@ -599,9 +599,12 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
         return api2Refused("bad-call", "a UI action needs an id, label and callback id");
       }
       const run = (commandArgs?: { readonly dir?: number }): void => post({ type: "ui.action", ...envelope(), callbackId: callbackId as number, action: id, ...(commandArgs?.dir === undefined ? {} : { value: String(commandArgs.dir) }) });
-      const direction = typeof commandOptions === "object" && commandOptions !== null && (commandOptions as { direction?: unknown }).direction === true;
+      const command = typeof commandOptions === "object" && commandOptions !== null
+        ? commandOptions as { direction?: unknown; turn?: unknown; hostOperation?: unknown } : {};
+      const commandOpts = { direction: command.direction === true, turn: command.turn === true,
+        ...(command.hostOperation === undefined ? {} : { hostOperation: command.hostOperation as "classic-search" | "toggle-classic-search" }) };
       return method === "ui.commands.register"
-        ? host.ui.commands.register(id, label, run, direction ? { direction: true } : undefined)
+        ? host.ui.commands.register(id, label, run, commandOpts)
         : host.ui.gameMenu.register(id, label, run);
     }
     if (method.startsWith("backupFolder.")) {

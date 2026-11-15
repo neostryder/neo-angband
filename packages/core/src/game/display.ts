@@ -65,7 +65,7 @@ import type { Monster } from "../mon/monster.js";
 import type { GameObject } from "../obj/object.js";
 import type { ObjectKind } from "../obj/types.js";
 import type { GameState } from "./context.js";
-import { playerIsResting, playerRestingCount } from "./context.js";
+import { playerIsClassicSearching, playerIsResting, playerRestingCount } from "./context.js";
 
 /** One coloured run of text; color is a COLOUR_* value (see color.ts). */
 export interface DisplayRun {
@@ -203,6 +203,7 @@ interface ResolvedDeps {
   healthWho: Monster | null;
   unignoring: boolean;
   isResting: boolean;
+  searching: boolean;
   restingCount: number;
   nRepeats: number;
   wizard: boolean;
@@ -289,6 +290,7 @@ function resolveDeps(state: GameState, deps: DisplayDeps): ResolvedDeps {
     healthWho: deps.healthWho ?? state.healthWho ?? null,
     unignoring: deps.unignoring ?? false,
     isResting: deps.isResting ?? playerIsResting(state),
+    searching: playerIsClassicSearching(state),
     restingCount: deps.restingCount ?? playerRestingCount(state),
     /* PORT_TODO 3.11. The item pointed at `CommandQueue.getNRepeats`
      * (cmd.ts:534) as the available answer, but that class is a faithful port
@@ -638,7 +640,7 @@ function healthRuns(player: Player, deps: ResolvedDeps): DisplayRun[] {
 
 /** prt_speed (ui-display.c L508). */
 function speedRuns(state: GameState, deps: ResolvedDeps): DisplayRun[] {
-  const s = prtSpeedAux(state.actor.speed, deps.effectiveSpeed);
+  const s = prtSpeedAux(state.actor.speed + (deps.searching ? 10 : 0), deps.effectiveSpeed);
   return s.text ? [{ text: s.text, color: s.color }] : [];
 }
 
@@ -988,6 +990,7 @@ function stateRuns(deps: ResolvedDeps): DisplayRun[] {
         ? `Rep. ${rjust(Math.trunc(n / 100), 3)}00`
         : `Repeat ${rjust(n, 3)}`;
   }
+  if (!text && deps.searching) text = "Searching";
   /* strlen(text) + 1: bake the one trailing gap in; idle reserves one column. */
   return [{ text: text ? `${text} ` : " ", color: COLOUR_WHITE }];
 }

@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FlagSet } from "../bitflag.js";
 import { FEAT, MFLAG, MON_TMD, OF, PF, SQUARE, TMD, TV } from "../generated/index.js";
-import { OF_SIZE, PF_SIZE } from "../player/types.js";
+import { OF_SIZE, PF_SIZE, SKILL } from "../player/types.js";
 import type { PlayerState } from "../player/calcs.js";
 import { MDESC, monsterDesc } from "../mon/desc.js";
 import { loc } from "../loc.js";
@@ -11,10 +11,13 @@ import { bindProjections } from "../world/projection.js";
 import type { ProjectionRecordJson } from "../world/projection.js";
 import {
   ActionRegistry,
+  classicSearchAction,
+  toggleClassicSearchAction,
   attackMonster,
   createDefaultRegistry,
   descendAction,
   holdAction,
+  restAction,
   processPlayer,
   search,
   walkAction,
@@ -22,6 +25,14 @@ import {
 } from "./player-turn.js";
 import { floorCarry } from "./floor.js";
 import { squareKnowPile } from "./known.js";
+import { knownFeat } from "./known.js";
+import { bindTraps, type TrapRecordJson } from "../world/trap.js";
+import { placeTrap, squareIsVisibleTrap, squareKnownTraps, squareTrap } from "./trap.js";
+import { TRF } from "../generated/index.js";
+import { calcBonuses } from "../player/calcs.js";
+import { playerRegenHp, playerRegenMana } from "./loop.js";
+import { sidebarModel, statusLineModel } from "./display.js";
+import { disturb } from "./player-path.js";
 import type { GameObject } from "../obj/object.js";
 import { playerCheckTerrainDamage } from "./world.js";
 import { GRANITE, addMon, featureReg, makeRace, makeState } from "./harness.js";
@@ -39,6 +50,153 @@ const terrainProjections = bindProjections(
 );
 const LAVA = featureReg.byCodeName("LAVA").fidx;
 const LAVA_WALK_MSG = "The lava will scald you!  Really step in? ";
+
+describe("host-owned classic search", () => {
+  const kinds = bindTraps((JSON.parse(readFileSync(new URL("../../../content/pack/trap.json", import.meta.url), "utf8")) as { records: TrapRecordJson[] }).records);
+  const pit = kinds.find((kind) => kind.desc === "pit")!.tidx;
+  function searching(skill = 100): GameState {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN);
+    state.actor.combat = { ...state.actor.combat, skills: state.actor.combat.skills.map((value, index) => index === SKILL.SEARCH ? skill : value) };
+    state.modHooks = { classicSearch: () => true };
+    return state;
+  }
+
+  it("discovers hidden traps, doors and chest traps through player messages and memory", () => {
+    const state = searching();
+    const msgs: string[] = [];
+    state.msg = (text) => msgs.push(text);
+    const trap = loc(14, 10);
+    const door = loc(16, 10);
+    state.chunk.setFeat(door, FEAT.SECRET);
+    placeTrap(state, trap, pit, 10, { kinds });
+    const chest = { tval: TV.CHEST, pval: 5, kind: { dChar: "~", dAttr: "w" } } as GameObject;
+    floorCarry(state, state.actor.grid, chest);
+    expect(classicSearchAction(state)).toBe(state.z.moveEnergy);
+    expect(msgs).toEqual(["You have found a trap.", "You have discovered a trap on the chest!", "You have found a secret door."]);
+    expect(squareIsVisibleTrap(state, trap)).toBe(true);
+    expect(squareKnownTraps(state.known, trap)).toHaveLength(1);
+    expect(knownFeat(state, door)).toBe(FEAT.CLOSED);
+    expect(chest.knownPval).toBe(5);
+    msgs.length = 0;
+    classicSearchAction(state);
+    expect(msgs).toEqual(["There are no secrets here."]);
+  });
+
+  it.each([
+    [100, false, false, true, 99, true],
+    [100, true, false, true, 9, true],
+    [100, true, false, true, 10, false],
+    [100, false, false, false, 10, false],
+    [100, false, true, true, 9, true],
+    [100, true, true, true, 0, true],
+    [99, true, true, true, 0, false],
+  ])("uses classic chance rules for skill=%s blind=%s confused=%s lit=%s roll=%s", (skill, blind, confused, lit, roll, found) => {
+    const state = searching(skill);
+    if (!lit) state.chunk.sqinfoOff(state.actor.grid, SQUARE.SEEN);
+    state.actor.player.timed[TMD.BLIND] = blind ? 1 : 0;
+    state.actor.player.timed[TMD.CONFUSED] = confused ? 1 : 0;
+    const door = loc(16, 10);
+    state.chunk.setFeat(door, FEAT.SECRET);
+    const draws = vi.spyOn(state.rng, "randint0").mockReturnValue(roll);
+    vi.spyOn(state.rng, "oneIn").mockReturnValue(false);
+    const msgs: string[] = [];
+    state.msg = (text) => msgs.push(text);
+    const fruitless = skill === 99;
+    expect(classicSearchAction(state)).toBe(fruitless ? 0 : state.z.moveEnergy);
+    expect(state.chunk.feat(door)).toBe(found ? FEAT.CLOSED : FEAT.SECRET);
+    expect(draws).toHaveBeenCalledTimes(fruitless ? 0 : 9);
+    if (fruitless) expect(msgs).toEqual(["You can't make out your surroundings well enough to search."]);
+    else if (!found) expect(msgs).toEqual(["You found nothing."]);
+  });
+
+  it("uses the classic extra roll before revealing another stacked trap", () => {
+    const state = searching(50);
+    const grid = loc(14, 10);
+    placeTrap(state, grid, pit, 10, { kinds });
+    placeTrap(state, grid, pit, 10, { kinds });
+    vi.spyOn(state.rng, "randint0").mockReturnValue(0);
+    const continuation = vi.spyOn(state.rng, "randint1").mockReturnValue(100);
+    classicSearchAction(state);
+    expect(squareTrap(state, grid).filter((trap) => trap.flags.has(TRF.VISIBLE))).toHaveLength(1);
+    expect(continuation).toHaveBeenCalledExactlyOnceWith(100);
+  });
+
+  it("rolls all nine grids next to the map border", () => {
+    const state = searching();
+    state.actor.grid = loc(1, 1);
+    state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN);
+    const draws = vi.spyOn(state.rng, "randint0").mockReturnValue(99);
+    expect(classicSearchAction(state)).toBe(state.z.moveEnergy);
+    expect(draws).toHaveBeenCalledTimes(9);
+  });
+
+  it("draws a secret door's lock power even without a lock callback", () => {
+    const state = searching();
+    state.chunk.setFeat(loc(16, 10), FEAT.SECRET);
+    delete state.setDoorLock;
+    vi.spyOn(state.rng, "oneIn").mockReturnValue(true);
+    const power = vi.spyOn(state.rng, "randint1");
+    classicSearchAction(state);
+    expect(power).toHaveBeenCalledExactlyOnceWith(7);
+  });
+
+  it("toggles continuous searches, speed, regeneration and the status field without spending energy", () => {
+    const state = searching();
+    const p = state.actor.player;
+    const speed = calcBonuses(p).speed;
+    state.actor.speed = speed;
+    const speedDisplay = sidebarModel(state).find((field) => field.key === "speed")!.runs;
+    state.updateBonuses = () => { state.actor.speed = calcBonuses(p, { searching: state.classicSearching ?? false }).speed; };
+    expect(toggleClassicSearchAction(state)).toBe(0);
+    expect(state.actor.speed).toBe(speed - 10);
+    expect(sidebarModel(state).find((field) => field.key === "speed")!.runs).toEqual(speedDisplay);
+    expect(statusLineModel(state).find((field) => field.key === "state")!.runs.map((run) => run.text).join("")).toBe("Searching ");
+    p.mhp = p.msp = 1000;
+    p.chp = p.csp = 500;
+    p.chpFrac = p.cspFrac = 0;
+    p.timed[TMD.FOOD] = 5000;
+    playerRegenHp(state);
+    playerRegenMana(state);
+    const searchingHp = p.chp * 65536 + p.chpFrac;
+    const searchingMana = p.csp * 65536 + p.cspFrac;
+    toggleClassicSearchAction(state);
+    expect(state.actor.speed).toBe(speed);
+    p.chp = p.csp = 500;
+    p.chpFrac = p.cspFrac = 0;
+    playerRegenHp(state);
+    playerRegenMana(state);
+    expect(searchingHp).toBeGreaterThan(p.chp * 65536 + p.chpFrac);
+    expect(searchingMana).toBeGreaterThan(p.csp * 65536 + p.cspFrac);
+    toggleClassicSearchAction(state);
+    const door = loc(16, 10);
+    state.chunk.setFeat(door, FEAT.SECRET);
+    holdAction(state, { code: "hold" });
+    expect(state.chunk.feat(door)).toBe(FEAT.CLOSED);
+    expect(state.classicSearching).toBe(true);
+    disturb(state);
+    expect(state.classicSearching).toBeUndefined();
+    toggleClassicSearchAction(state);
+    restAction(state, { code: "rest", args: { count: 2 } });
+    expect(state.classicSearching).toBeUndefined();
+  });
+
+  it("leaves commands, passive search and RNG unchanged without a declaration", () => {
+    const states = [searching(), searching()];
+    delete states[0]!.modHooks;
+    states[1]!.modHooks = { classicSearch: () => false };
+    for (const state of states) {
+      const before = state.rng.getState();
+      expect(classicSearchAction(state)).toBe(0);
+      expect(toggleClassicSearchAction(state)).toBe(0);
+      expect(state.rng.getState()).toEqual(before);
+      state.chunk.setFeat(loc(16, 10), FEAT.SECRET);
+      search(state);
+    }
+    expect(states[0]!.chunk.snapshotSquares()).toEqual(states[1]!.chunk.snapshotSquares());
+    expect(states[0]!.rng.getState()).toEqual(states[1]!.rng.getState());
+  });
+});
 
 /** Wire the fire-damage machinery move_player's terrain check needs: neutral
  * fire resistance, no feather fall, no damage reduction, and the projection

@@ -94,7 +94,11 @@ function queueCommand(state: GameState, cmd: PlayerCommand): void {
  * pathfinding auto-open / auto-tunnel branch can re-issue the travel. The
  * sound and redraw halves ride their subsystems (deferred).
  */
-export function disturb(state: GameState): void {
+export function disturb(state: GameState, stopSearch = true): void {
+  if (stopSearch && state.classicSearching) {
+    delete state.classicSearching;
+    state.updateBonuses?.();
+  }
   if (state.run) {
     state.run.running = 0;
     delete state.run.steps;

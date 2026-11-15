@@ -393,6 +393,33 @@ describe("the API 2 host's refusals", () => {
 });
 
 describe("the API 2 host's commands", () => {
+  it("checks host operation names, turn mode and registry consent", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const registry = new ActionRegistry();
+    const api = host(game, ["registry:command"], { commands: { registry } });
+    expect(await api.ui.commands.register("probe:bad", "search", () => undefined, { turn: true, hostOperation: "hidden" as never })).toMatchObject({ code: "bad-command", message: 'hostOperation is "classic-search" or "toggle-classic-search"' });
+    expect(await api.ui.commands.register("probe:free", "search", () => undefined, { hostOperation: "classic-search" })).toMatchObject({ code: "bad-command", message: "hostOperation requires turn: true" });
+    const limited = host(game, ["command:add"], { commands: { registry } });
+    expect(await limited.ui.commands.register("probe:denied", "search", () => undefined, { turn: true, hostOperation: "classic-search" })).toMatchObject({ reason: "not-granted", capability: "registry:command" });
+    expect(registry.has("probe:denied")).toBe(false);
+    disposeApi2Host(limited);
+    disposeApi2Host(api);
+  });
+
+  it("runs classic search in the host without calling the mod", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    game.state.modHooks = { classicSearch: () => true };
+    const registry = new ActionRegistry();
+    const api = host(game, ["registry:command"], { commands: { registry } });
+    const run = vi.fn();
+    expect(await api.ui.commands.register("probe:search", "search", run, { turn: true, hostOperation: "classic-search" })).toEqual({ ok: true, value: null });
+    const before = game.state.rng.getState();
+    expect(registry.get("probe:search")?.(game.state, { code: "probe:search" })).toBe(game.state.z.moveEnergy);
+    expect(run).not.toHaveBeenCalled();
+    expect(game.state.rng.getState()).not.toEqual(before);
+    disposeApi2Host(api);
+  });
+
   it("registers owned callbacks and verbs and releases them at teardown", async () => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const registry = new ActionRegistry();

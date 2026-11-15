@@ -93,6 +93,18 @@ A controller can act in an open store. The host asks it for a decision at phase 
 
 `ui.commands.register(id, verb, run, options?)` registers a command a bound key or the command menu can run. Pass `{ direction: true }` and the game asks for a direction first, with the prompt the open, close and tunnel commands use; `run` receives `{ dir }` with the keypad digit 1 to 9, and Escape runs nothing. A key bound with `ui.keys.bind` to such a command's id reaches it that way, so a command that needs a direction, such as spiking a door, has a key. Without the option `run` receives no direction. Pass `{ turn: true }` as well and the key runs the command inside the player's turn: `run` returns `{ energy }` (0 to 1000, 100 is one standard turn) and the game spends it, so the monsters answer. Without `turn` the return value is ignored and the command costs nothing.
 
+With the `classicSearch` policy and `registry:command`, a turn command can declare a host operation. The host runs it synchronously in either runtime, spends its energy in the player turn, and never calls the mod callback or returns a discovery result. The legal `hostOperation` names are `"classic-search"` and `"toggle-classic-search"`, and either requires `turn: true`. The policy and grant also gate continuous mode; a mod needs no hidden-state permission. For example:
+
+```ts
+policies: () => ({ classicSearch: true }),
+async start(mod) {
+  await mod.ui.commands.register("my-mod:search", "search", () => undefined,
+    { turn: true, hostOperation: "classic-search" });
+  await mod.ui.commands.register("my-mod:toggle-search", "toggle search", () => undefined,
+    { turn: true, hostOperation: "toggle-classic-search" });
+}
+```
+
 ### Title screen rows
 
 A first-party mod with `ui:title` adds a row to the title screen with `ui.title.registerRow({ id, label, run })` and removes it with `ui.title.removeRow`. The `id` uses the same format as a panel `id`: lower-case letters, digits and hyphens, a letter first, 64 characters at most, and free among the mod's own rows. An id outside the format, such as `squire:new-character`, or one already in use comes back `refused` with the code `bad-title-row`. The result is the only sign, since nothing is logged and no row appears, so a mod checks it. `neo-angband-mod-check` flags a literal id outside the format as `checks/title-row-id`.
@@ -171,6 +183,7 @@ Each table needs its matching registry permission from the list below, in both r
 | `monsterOwnDropThefts` | host-owned theft accounting | boolean | `registry:monster` |
 | `monsterLoreCompleteness` | host-owned lore rules | boolean | `registry:monster` |
 | `forgetUnlitImpassableTerrain` | host-owned terrain memory | boolean | `registry:projection` |
+| `classicSearch` | host-owned classic search commands and continuous mode | boolean | `registry:command` |
 | `missileCritFromState` | host-owned item information critical calculations | boolean | `registry:effect-info` |
 | `forcedDescentStairs` | host-owned generation and CREATE_STAIRS handlers | boolean | `registry:room` |
 | `forceFromBlastCenter` | host-owned FORCE and thrust handlers | boolean | `registry:projection` |
@@ -196,6 +209,8 @@ A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whol
 `monsterLoreCompleteness: true` selects upstream 29985cd05 in `lore_update()`, `lore_is_fully_known()`, and the first sighting in `update_mon()`. Display flags join obvious flags, generation flags are learned at death, learned flags must contain the race flags, and spell sets must match. The session binds the live policy to its lore store, including loaded records; Core keeps race truth inside the host. An absent policy keeps the older masks, byte check, and sighting behavior.
 
 `forgetUnlitImpassableTerrain: true` applies upstream `update_view()` (1d2ad35a2, fc29847fd) before seen grids are noted: Core forgets the player's remembered impassable terrain when light is zero or negative and UNLIGHT is absent. Blindness still forgets it with any light or UNLIGHT state. A false or absent policy keeps the blind-only rule.
+
+`classicSearch: true` enables 4.0.5 active search in the host. The chance starts at the search skill, divides by ten for blindness or darkness, then by ten for confusion or hallucination, with each division rounded down. A zero chance spends no energy and says "You can't make out your surroundings well enough to search." Otherwise the host rolls once per adjacent grid, including the player grid, reveals hidden traps, secret doors and chest traps, and spends one standard turn. Trap stacks use the 4.0.5 continuation roll. A failed attempted search says "You found nothing."; a certain search with no discoveries says "There are no secrets here." Discoveries use the player's ordinary messages and map memory. The toggle spends no energy, reduces speed by ten, doubles regeneration under the existing regeneration rules, and searches during movement and hold. The status field shows "Searching". Resting or an outside disturbance cancels the mode; discoveries do not. The mode is not saved. Passive searching outside the mode keeps 4.2.6 rules. An absent or false policy leaves both operations inert without drawing RNG.
 
 `missileCritFromState: true` uses the computed inspection state for missile critical inputs, including bow and throw skills, instead of the live player state. The host applies the rule in both runtimes and folds declarations `any-yes`. The policy changes item information only; O-combat and combat rolls keep their rules. An absent or false policy keeps the original text and RNG. The stock bow and throw skill coefficients are zero.
 

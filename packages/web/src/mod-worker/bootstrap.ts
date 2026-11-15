@@ -231,10 +231,10 @@ export function installModWorkerBootstrap(
           return call("ui.mount", [panel, callbackId, dismissId]);
         },
         patch: method("ui.patch"),
-        commands: { register: (id: string, verb: string, run: (args: { dir?: number }) => void, options?: { direction?: boolean }) => {
+        commands: { register: (id: string, verb: string, run: (args: { dir?: number }) => void, options?: { direction?: boolean; turn?: boolean; hostOperation?: string }) => {
           const callbackId = ++nextCallback;
           callbacks.set(callbackId, (_action: string, value?: string | boolean) => run(typeof value === "string" && /^[1-9]$/.test(value) ? { dir: Number(value) } : {}));
-          return call("ui.commands.register", [id, verb, callbackId, options?.direction === true ? { direction: true } : null]);
+          return call("ui.commands.register", [id, verb, callbackId, options ? { ...(options.direction === true ? { direction: true } : {}), ...(options.turn === true ? { turn: true } : {}), ...(options.hostOperation === undefined ? {} : { hostOperation: options.hostOperation }) } : null]);
         } },
         gameMenu: { register: (action: string, label: string, run: () => void) => {
           const callbackId = ++nextCallback;

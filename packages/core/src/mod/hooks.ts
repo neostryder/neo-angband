@@ -311,6 +311,8 @@ export interface ModHooks {
   forcedDescentStairs?: () => boolean;
   /** object-info.ts: computed missile critical inputs stay with their supplied state. */
   missileCritFromState?: () => boolean;
+  /** player-turn.ts: the host runs classic search and its continuous mode. */
+  classicSearch?: () => boolean;
   /** monster_loves_archery (mon/predicate.ts, reached from getMoveFindRange).
    * Null keeps the faithful freqInnate < 4 test. No random draws. */
   monsterArcheryFrequency?: (frequency: number) => boolean | null;
@@ -853,6 +855,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   forceFromBlastCenter: "any-yes",
   forcedDescentStairs: "any-yes",
   missileCritFromState: "any-yes",
+  classicSearch: "any-yes",
   monsterArcheryFrequency: "last-answer",
   newCharacter: "all-observe",
   walkBlockedByDiggable: "last-answer",
@@ -976,6 +979,8 @@ export function guardModHooks(
   const unlitTerrain = hooks.forgetUnlitImpassableTerrain;
   if (unlitTerrain) out.forgetUnlitImpassableTerrain = () => guard("forgetUnlitImpassableTerrain", () => unlitTerrain(), false);
 
+  const searching = hooks.classicSearch;
+  if (searching) out.classicSearch = () => guard("classicSearch", () => searching(), false);
   const missileState = hooks.missileCritFromState;
   if (missileState) out.missileCritFromState = () => guard("missileCritFromState", () => missileState(), false);
   const forcedStairs = hooks.forcedDescentStairs;
@@ -1225,6 +1230,8 @@ export function composeModHooks(
   const unlitTerrain = list.map((c) => c.forgetUnlitImpassableTerrain).filter(isFn);
   if (unlitTerrain.length > 0) out.forgetUnlitImpassableTerrain = () => unlitTerrain.some((fn) => fn());
 
+  const searching = list.map((c) => c.classicSearch).filter(isFn);
+  if (searching.length > 0) out.classicSearch = () => searching.some((fn) => fn());
   const missileState = list.map((c) => c.missileCritFromState).filter(isFn);
   if (missileState.length > 0) out.missileCritFromState = () => missileState.some((fn) => fn());
   const forcedStairs = list.map((c) => c.forcedDescentStairs).filter(isFn);

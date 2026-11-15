@@ -60,7 +60,7 @@ import {
 } from "./world.js";
 import type { Player } from "../player/player.js";
 import type { GameState, InterruptResponse } from "./context.js";
-import { playerIsResting, playerRestingIsSpecial } from "./context.js";
+import { playerIsClassicSearching, playerIsResting, playerRestingIsSpecial } from "./context.js";
 import {
   givePlayerEnergy,
   processMonsters,
@@ -212,7 +212,7 @@ export function playerRegenHp(state: GameState): void {
 
   /* Various things speed up regeneration. */
   if (playerOfHasWorld(state, OF.REGEN)) percent *= 2;
-  if (playerRestingCanRegenerate(state)) percent *= 2;
+  if (playerIsClassicSearching(state) || playerRestingCanRegenerate(state)) percent *= 2;
 
   /* Some things slow it down. */
   if (playerOfHasWorld(state, OF.IMPAIR_HP)) percent = Math.trunc(percent / 2);
@@ -249,7 +249,7 @@ export function playerRegenMana(state: GameState): void {
   /* Various things speed up regeneration, but shouldn't punish healthy BGs. */
   if (!(combatRegen && p.chp > Math.trunc(p.mhp / 2))) {
     if (playerOfHasWorld(state, OF.REGEN)) percent *= 2;
-    if (playerRestingCanRegenerate(state)) percent *= 2;
+    if (playerIsClassicSearching(state) || playerRestingCanRegenerate(state)) percent *= 2;
   }
 
   /* Some things slow it down. */

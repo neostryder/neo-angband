@@ -10,6 +10,9 @@ import { zipSync } from "fflate";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MFLAG,
+  ActionRegistry,
+  FEAT,
+  SQUARE,
   NOSCORE,
   OPTION_ENTRIES,
   composeModHooks,
@@ -1274,8 +1277,40 @@ describe("asking a Worker mod", () => {
 });
 
 describe("a Worker mod's hooks", () => {
+  it("runs declared classic commands synchronously without a Worker command result", async () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const state = game.state;
+    const registry = new ActionRegistry();
+    const grants = ["registry:command"];
+    let result: unknown;
+    const run = vi.fn();
+    const wired = wire({ api: API, policies: () => ({ classicSearch: true }), start: async (api) => {
+      result = [await api.ui.commands.register("probe:search", "search", run, { turn: true, hostOperation: "classic-search" }),
+        await api.ui.commands.register("probe:toggle-search", "toggle search", run, { turn: true, hostOperation: "toggle-classic-search" })];
+    } }, { grants, api: hostApi({ game, grants, options: { commands: { registry } } }) });
+    expect(await started(wired, () => result)).toEqual([{ ok: true, value: null }, { ok: true, value: null }]);
+    state.modHooks = workerModHooks("probe")!;
+    state.chunk.sqinfoOn(state.actor.grid, SQUARE.SEEN);
+    state.actor.combat = { ...state.actor.combat, skills: state.actor.combat.skills.map((value, index) => index === SKILL.SEARCH ? 100 : value) };
+    const door = { x: state.actor.grid.x + 1, y: state.actor.grid.y };
+    state.chunk.setFeat(door, FEAT.SECRET);
+    const messages: string[] = [];
+    state.msg = (text) => messages.push(text);
+    expect(registry.get("probe:search")?.(state, { code: "probe:search" })).toBe(state.z.moveEnergy);
+    expect(state.chunk.feat(door)).toBe(FEAT.CLOSED);
+    expect(messages).toContain("You have found a secret door.");
+    const speed = state.actor.speed;
+    expect(registry.get("probe:toggle-search")?.(state, { code: "probe:toggle-search" })).toBe(0);
+    expect(state.actor.speed).toBe(speed - 10);
+    expect(run).not.toHaveBeenCalled();
+    expect(wired.worker.sent.some((message) => message.type === "ui.action")).toBe(false);
+    wired.session.teardown();
+    expect(registry.has("probe:search")).toBe(false);
+  });
+
   const tables: Api2Policies = {
     trapAllocation: { kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" },
+    classicSearch: true,
     missileCritFromState: true,
     forcedDescentStairs: true,
     randartSetSize: { multiplier: 2 },

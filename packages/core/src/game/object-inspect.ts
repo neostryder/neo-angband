@@ -128,6 +128,7 @@ export function makeObjectInfoDeps(
       isDaytime: daytime,
       statIndBoost: { str: strBoost, dex: dexBoost },
       knownOnly: (o) => knownBonusView(o, player, state.runeEnv, deriveKnown),
+      searching: (state.classicSearching ?? false) && (state.modHooks?.classicSearch?.() ?? false),
     });
 
   const weaponSlot = player.body.slots.findIndex((s) => s.type === "WEAPON");
