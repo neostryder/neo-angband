@@ -1063,7 +1063,7 @@ describe("production save retention through the classic service", () => {
     if (source === "browser backup") f.stores.get(STORE_HANDLES)!.set("backup:removed-mod", {
       kind: "directory", name: "Backups", getFileHandle: async () => ({}),
       queryPermission: async () => "granted",
-      values: async function* () { yield { kind: "file", name: "Bilbo.neochar", getFile: async () => ({ text: async () => text }) }; },
+      values: async function* () { yield { kind: "file", name: "Bilbo.neochar", getFile: async () => ({ size: new TextEncoder().encode(text).length, text: async () => text }) }; },
     });
     await f.stage(f.makePlan("2.0.0"));
     await activateModTransaction(f.env);
@@ -1099,7 +1099,7 @@ describe("production save retention through the classic service", () => {
     } finally { vi.unstubAllGlobals(); }
   });
 
-  it.each(["denied", "missing handle", "missing getFile", "file disappeared", "iterator failed", "desktop refused"])("keeps all retained bytes when a backup is unreadable: %s", async (condition) => {
+  it.each(["denied", "missing handle", "missing getFile", "file disappeared", "iterator failed", "desktop refused", "oversized", "missing size"])("keeps all retained bytes when a backup is unreadable: %s", async (condition) => {
     const f = transactionFixture();
     await f.installInitial();
     await f.stage(f.makePlan("2.0.0"));
@@ -1109,7 +1109,11 @@ describe("production save retention through the classic service", () => {
       queryPermission: async () => condition === "denied" ? "denied" : "granted",
       values: async function* () {
         if (condition === "iterator failed") throw new Error("The folder disappeared.");
-        yield { kind: "file", name: "Bilbo.neochar", ...(condition === "missing getFile" ? {} : { getFile: async () => { throw new Error("The file disappeared."); } }) };
+        yield { kind: "file", name: "Bilbo.neochar", ...(condition === "missing getFile" ? {} : { getFile: async () => {
+          if (condition === "oversized") return { size: 8 * 1024 * 1024 + 1, text: async () => "" };
+          if (condition === "missing size") return { text: async () => "" };
+          throw new Error("The file disappeared.");
+        } }) };
       },
     });
     const scope = condition === "desktop refused" ? { ...f.scope, neoDesktop: { backup: async () => false } } : f.scope;

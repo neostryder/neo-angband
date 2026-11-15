@@ -12,6 +12,7 @@
  * already proved out for the (read-only) mods folder.
  */
 
+import { BACKUP_LIMITS, isHostFolderFileName } from "@rpgm-tools/neo-angband-mod-sdk/backup-policy";
 import { STORE_HANDLES, idbDelete, idbGet, idbPut, openDb } from "./idb";
 import type { BackupFolder, BackupFolderEntry } from "./mod-plugin";
 import { MAX_TRANSFER_TEXT_BYTES, peekTransferMeta, type TransferPeek } from "./save-transfer";
@@ -97,6 +98,7 @@ type PermState = "granted" | "denied" | "prompt";
 interface FsWritable {
   write(data: string): Promise<void>;
   close(): Promise<void>;
+  abort?(): Promise<void>;
 }
 
 /**
@@ -107,7 +109,7 @@ interface FsWritable {
 interface BackupDirEntry {
   readonly kind: "file" | "directory";
   readonly name: string;
-  getFile?(): Promise<{ readonly size: number; text(): Promise<string> }>;
+  getFile?(): Promise<{ readonly size?: number; text(): Promise<string> }>;
 }
 
 interface BackupDirHandle {
@@ -118,7 +120,7 @@ interface BackupDirHandle {
   getFileHandle(
     name: string,
     opts?: { create?: boolean },
-  ): Promise<{ createWritable(): Promise<FsWritable> }>;
+  ): Promise<BrowserBackupFileHandle>;
   /**
    * The File System Access directory's own async-iterable listing of its
    * entries, each already carrying its own name. Optional in this interface
@@ -134,6 +136,7 @@ interface PickerScope {
     mode?: "readwrite";
   }): Promise<BackupDirHandle>;
   indexedDB?: IDBFactory;
+  confirm?(message: string): boolean;
 }
 
 function pickerScope(scope: unknown): PickerScope {
@@ -183,17 +186,6 @@ async function savedHandle(id: string, scope: unknown): Promise<BackupDirHandle 
 }
 
 /**
- * A directory entry's name looks like a backup file: `.neochar`, no leading
- * dot. Not a security boundary the way `isBackupFileName` is on the desktop
- * side (nothing here crosses an untrusted-renderer IPC channel) - just a
- * filter so a stray file the player dropped in the same folder is not handed
- * to `peekTransferMeta` and reported as an unreadable entry.
- */
-function looksLikeBackupFile(name: string): boolean {
-  return name.endsWith(".neochar") && !name.startsWith(".");
-}
-
-/**
  * Every `.neochar` file the browser tab's directory handle can currently see,
  * name plus full text - read-only, no permission REQUEST (no user gesture is
  * available at a checkpoint like boot), so a lapsed grant reads as "nothing
@@ -205,41 +197,117 @@ async function browserBackupFiles(id: string, scope: unknown, requireReadable = 
     if (requireReadable) throw new Error("The backup folder could not be read.");
     return [];
   }
-  if ((await permission(handle)) !== "granted") {
-    if (requireReadable) throw new Error("The backup folder could not be read.");
-    return [];
-  }
-  const iterate = handle.values?.bind(handle);
-  if (!iterate) {
-    if (requireReadable) throw new Error("The backup folder could not be read.");
-    return [];
-  }
+  return listBrowserBackupFiles(handle, ".neochar", requireReadable);
+}
+
+/** Metadata ceilings bound reads before a File is decoded into text. */
+export async function listBrowserBackupFiles(handle: BackupDirHandle, ext: string, requireReadable = false): Promise<RawBackupFile[]> {
   const files: RawBackupFile[] = [];
+  let total = 0;
   try {
-    for await (const entry of iterate()) {
-      if (!looksLikeBackupFile(entry.name) || entry.kind !== "file") continue;
-      if (!entry.getFile) {
+    if (await permission(handle) !== "granted" || !handle.values) throw new Error("The backup folder could not be read.");
+    for await (const entry of handle.values()) {
+      if (!isHostFolderFileName(entry.name, ext) || entry.kind !== "file") continue;
+      if (files.length >= BACKUP_LIMITS.files) {
         if (requireReadable) throw new Error("The backup folder could not be read.");
-        continue;
+        break;
       }
       try {
+        if (!entry.getFile) throw new Error("The backup folder could not be read.");
         const file = await entry.getFile();
-        if (file.size > MAX_TRANSFER_TEXT_BYTES) {
-          if (requireReadable) throw new Error("The file is larger than the 5 MiB limit.");
+        const size = file.size;
+        /* A character file is held to the 5 MiB import limit, which is below the
+         * facade's general per-file ceiling (#473). */
+        const limit = ext === ".neochar" ? Math.min(MAX_TRANSFER_TEXT_BYTES, BACKUP_LIMITS.fileBytes) : BACKUP_LIMITS.fileBytes;
+        const tooLarge = typeof size === "number" && Number.isSafeInteger(size) && size > limit;
+        if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0 || tooLarge || total + size > BACKUP_LIMITS.totalBytes) {
+          if (requireReadable) throw new Error(tooLarge && limit === MAX_TRANSFER_TEXT_BYTES ? "The file is larger than the 5 MiB limit." : "The backup folder could not be read.");
           continue;
         }
-        files.push({ name: entry.name, text: await file.text() });
+        const text = await file.text();
+        const bytes = new TextEncoder().encode(text).length;
+        if (bytes > limit || total + Math.max(bytes, size) > BACKUP_LIMITS.totalBytes) {
+          if (requireReadable) throw new Error("The backup folder could not be read.");
+          continue;
+        }
+        files.push({ name: entry.name, text });
+        total += Math.max(bytes, size);
       } catch (error) {
         if (requireReadable) throw error;
-        /* One unreadable file (deleted mid-scan, a permissions race) does not
-         * fail the rest of the listing. */
+        /* One unreadable file cannot prevent the remaining backups from loading. */
       }
     }
   } catch (error) {
     if (requireReadable) throw error;
-    return []; // the iterator itself failed: report an empty folder, not a crash
+    return [];
   }
   return files;
+}
+
+interface BrowserBackupFileHandle {
+  getFile?(): Promise<{ readonly size?: number; text(): Promise<string> }>;
+  isSameEntry?(other: BrowserBackupFileHandle): Promise<boolean>;
+  createWritable(): Promise<FsWritable>;
+}
+
+let browserWrites: Promise<unknown> = Promise.resolve();
+
+/** Serialization keeps simultaneous facade calls within one folder budget. */
+export function writeBrowserBackupFile(handle: BackupDirHandle, name: string, text: string, ext: string, scope: unknown): Promise<boolean> {
+  const write = async (): Promise<boolean> => {
+    if (!isHostFolderFileName(name, ext) || typeof text !== "string" || text.length > BACKUP_LIMITS.fileBytes) return false;
+    const bytes = new TextEncoder().encode(text).length;
+    if (bytes > BACKUP_LIMITS.fileBytes) return false;
+    try {
+      if (await permission(handle) !== "granted" || !handle.values) return false;
+      const find = async (): Promise<BrowserBackupFileHandle | null> => {
+        try { return await handle.getFileHandle(name); }
+        catch (error) {
+          if ((error as { name?: string }).name === "NotFoundError") return null;
+          throw error;
+        }
+      };
+      const initial = await find();
+      if (initial) {
+        const host = pickerScope(scope);
+        if (typeof host.confirm !== "function" || host.confirm("Do you want to replace backup " + name + " in " + handle.name + "?") !== true) return false;
+      }
+      if (await permission(handle) !== "granted") return false;
+      const existing = await find();
+      if (initial ? !existing || !initial.isSameEntry || !await initial.isSameEntry(existing) : existing !== null) return false;
+      let count = 0;
+      let total = bytes;
+      for await (const entry of handle.values()) {
+        if (!isHostFolderFileName(entry.name, ext) || entry.kind !== "file") continue;
+        if (!entry.getFile) return false;
+        const file = await entry.getFile();
+        const size = file.size;
+        if (typeof size !== "number" || !Number.isSafeInteger(size) || size < 0) return false;
+        count++;
+        if (entry.name !== name) total += size;
+        if (count + (existing ? 0 : 1) > BACKUP_LIMITS.files || total > BACKUP_LIMITS.totalBytes) return false;
+      }
+      if (await permission(handle) !== "granted") return false;
+      const current = await find();
+      if (existing ? !current || !existing.isSameEntry || !await existing.isSameEntry(current) : current !== null) return false;
+      const file = current ?? await handle.getFileHandle(name, { create: true });
+      const w = await file.createWritable();
+      try {
+        await w.write(text);
+        await w.close();
+        return true;
+      } catch {
+        await w.abort?.().catch(() => undefined);
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  };
+  const locks = (scope as { navigator?: { locks?: { request<T>(name: string, action: () => Promise<T>): Promise<T> } } } | null)?.navigator?.locks;
+  const pending = browserWrites.then(() => locks ? locks.request("neo-backup-folder-write", write) : write()).catch(() => false);
+  browserWrites = pending;
+  return pending;
 }
 
 function browserBackupFolder(id: string, scope: unknown): BackupFolder {
@@ -276,16 +344,7 @@ function browserBackupFolder(id: string, scope: unknown): BackupFolder {
     async write(name: string, text: string): Promise<boolean> {
       const handle = await savedHandle(id, scope);
       if (!handle) return false;
-      if ((await permission(handle)) !== "granted") return false;
-      try {
-        const file = await handle.getFileHandle(name, { create: true });
-        const w = await file.createWritable();
-        await w.write(text);
-        await w.close();
-        return true;
-      } catch {
-        return false;
-      }
+      return writeBrowserBackupFile(handle, name, text, ".neochar", scope);
     },
 
     onSave(fn) {

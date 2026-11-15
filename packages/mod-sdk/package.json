@@ -42,6 +42,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./backup-policy": {
+      "types": "./dist/backup-policy.d.ts",
+      "default": "./dist/backup-policy.js"
+    },
     "./checks": {
       "types": "./dist/checks/index.d.ts",
       "default": "./dist/checks/index.js"

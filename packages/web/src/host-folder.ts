@@ -17,6 +17,7 @@
  * gets nothing when the player has not chosen a folder.
  */
 
+import { listBrowserBackupFiles, writeBrowserBackupFile } from "./mod-backup";
 import { STORE_HANDLES, idbDelete, idbGet, idbPut, openDb } from "./idb";
 import { desktopHostInstallation, type DesktopConsentBridge } from "./host-electron";
 
@@ -136,7 +137,7 @@ interface FsWritable {
 interface HostFolderDirEntry {
   readonly kind: "file" | "directory";
   readonly name: string;
-  getFile?(): Promise<{ text(): Promise<string> }>;
+  getFile?(): Promise<{ readonly size?: number; text(): Promise<string> }>;
 }
 
 interface HostFolderDirHandle {
@@ -173,21 +174,6 @@ export function hostFolderPickingSupported(scope: unknown = globalThis): boolean
   return typeof pickerScope(scope).showDirectoryPicker === "function";
 }
 
-async function permission(
-  handle: HostFolderDirHandle,
-  opts: { request?: boolean } = {},
-): Promise<PermState> {
-  try {
-    const query = handle.queryPermission?.bind(handle);
-    const state = query ? await query({ mode: "readwrite" }) : "granted";
-    if (state === "granted" || !opts.request) return state;
-    const ask = handle.requestPermission?.bind(handle);
-    return ask ? await ask({ mode: "readwrite" }) : "granted";
-  } catch {
-    return "prompt";
-  }
-}
-
 function handleKey(purpose: string): string {
   return `folder:${purpose}`;
 }
@@ -199,8 +185,6 @@ async function savedHandle(purpose: string, scope: unknown): Promise<HostFolderD
 }
 
 function browserHostFolder(purpose: string, ext: string, scope: unknown): HostFolder {
-  const looksLikeMatch = (name: string): boolean => name.endsWith(ext) && !name.startsWith(".");
-
   return {
     async name(): Promise<string | null> {
       const handle = await savedHandle(purpose, scope);
@@ -234,39 +218,13 @@ function browserHostFolder(purpose: string, ext: string, scope: unknown): HostFo
     async write(name: string, text: string): Promise<boolean> {
       const handle = await savedHandle(purpose, scope);
       if (!handle) return false;
-      if ((await permission(handle)) !== "granted") return false;
-      try {
-        const file = await handle.getFileHandle(name, { create: true });
-        const w = await file.createWritable();
-        await w.write(text);
-        await w.close();
-        return true;
-      } catch {
-        return false;
-      }
+      return writeBrowserBackupFile(handle, name, text, ext, scope);
     },
 
     async list(): Promise<readonly HostFolderEntry[]> {
       const handle = await savedHandle(purpose, scope);
       if (!handle) return [];
-      if ((await permission(handle)) !== "granted") return [];
-      const iterate = handle.values?.bind(handle);
-      if (!iterate) return [];
-      const out: HostFolderEntry[] = [];
-      try {
-        for await (const entry of iterate()) {
-          if (!looksLikeMatch(entry.name) || entry.kind !== "file" || !entry.getFile) continue;
-          try {
-            const file = await entry.getFile();
-            out.push({ name: entry.name, text: await file.text() });
-          } catch {
-            /* One unreadable file does not fail the rest of the listing. */
-          }
-        }
-      } catch {
-        return []; // the iterator itself failed: report an empty folder, not a crash
-      }
-      return out;
+      return listBrowserBackupFiles(handle, ext);
     },
   };
 }

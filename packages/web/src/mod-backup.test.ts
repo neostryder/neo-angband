@@ -239,7 +239,7 @@ describe("list()/readBackupFiles: ticket #24's read side", () => {
     entries.set("Bilbo.neochar", {
       kind: "file",
       name: "Bilbo.neochar",
-      getFile: async () => ({ size: 5 * 1024 * 1024, text: async () => neochar("lin-bilbo") }),
+      getFile: async () => ({ size: new TextEncoder().encode(neochar("lin-bilbo")).length, text: async () => neochar("lin-bilbo") }),
     });
     entries.set("notes.txt", {
       kind: "file",
@@ -343,5 +343,129 @@ describe("newBackupArrivals: who is worth asking about", () => {
       new Set(),
     );
     expect(arrivals.map((f) => f.name)).toEqual(["a.neochar"]);
+  });
+});
+
+
+describe("browser backup facade limits", () => {
+  function fixture(initial: Record<string, { text?: string; size: number }> = {}) {
+    const files = new Map(Object.entries(initial));
+    const writes = vi.fn();
+    const handles = new Map<string, object>();
+    const getFileHandle = vi.fn(async (name: string, options?: { create?: boolean }) => {
+      if (!files.has(name)) {
+        if (!options?.create) throw Object.assign(new Error("absent"), { name: "NotFoundError" });
+        files.set(name, { text: "", size: 0 });
+      }
+      if (!handles.has(name)) handles.set(name, {
+        getFile: async () => ({ size: files.get(name)!.size, text: async () => files.get(name)!.text ?? "" }),
+        isSameEntry: async (other: unknown) => other === handles.get(name),
+        createWritable: async () => ({
+          write: async (text: string) => { writes(name, text); files.set(name, { text, size: new TextEncoder().encode(text).length }); },
+          close: async () => {},
+        }),
+      });
+      return handles.get(name)!;
+    });
+    const handle = {
+      kind: "directory", name: "Backups", queryPermission: vi.fn(async () => "granted"), getFileHandle,
+      values: async function* () {
+        for (const [name, file] of files) yield { kind: "file", name, getFile: async () => ({ size: file.size, text: async () => file.text ?? "" }) };
+      },
+    };
+    const scope = {
+      confirm: vi.fn(() => true), showDirectoryPicker: async () => handle,
+      indexedDB: { open: () => {
+        const req: { result?: unknown; onsuccess?: () => void } = {};
+        queueMicrotask(() => { req.result = { transaction: () => ({ objectStore: () => ({ get: () => {
+          const get: { result: unknown; onsuccess?: () => void } = { result: handle };
+          queueMicrotask(() => get.onsuccess?.());
+          return get;
+        } }) }) }; req.onsuccess?.(); });
+        return req;
+      } },
+    };
+    return { backup: createBackupFolder("qol", scope)!, scope, handle, writes, files, getFileHandle };
+  }
+
+  it("refuses unsafe leaves and the wrong extension before requesting any file", async () => {
+    const f = fixture();
+    for (const name of ["../x.neochar", "sub/x.neochar", "sub\\x.neochar", "x:stream.neochar", "CON.neochar", ".hidden.neochar", "x..neochar", "x?.neochar", "x\n.neochar", "x.ndelve", "x.neochar.", "x.neochar ", "a".repeat(256) + ".neochar"]) {
+      expect(await f.backup.write(name, "body"), name).toBe(false);
+    }
+    expect(f.getFileHandle).not.toHaveBeenCalled();
+    expect(f.writes).not.toHaveBeenCalled();
+    expect(await f.backup.write("Bilbo.neochar", "body")).toBe(true);
+  });
+
+  it("requires a replacement decision and leaves the existing bytes after a decline", async () => {
+    const f = fixture({ "Bilbo.neochar": { text: "original", size: 8 } });
+    f.scope.confirm.mockReturnValue(false);
+    expect(await f.backup.write("Bilbo.neochar", "changed")).toBe(false);
+    expect(f.scope.confirm).toHaveBeenCalledWith("Do you want to replace backup Bilbo.neochar in Backups?");
+    expect(f.writes).not.toHaveBeenCalled();
+    expect(f.files.get("Bilbo.neochar")!.text).toBe("original");
+    f.scope.confirm.mockReturnValue(true);
+    expect(await f.backup.write("Bilbo.neochar", "changed")).toBe(true);
+    expect(f.files.get("Bilbo.neochar")!.text).toBe("changed");
+  });
+
+  it("counts UTF-8 bytes and refuses payloads over the per-file limit", async () => {
+    const f = fixture();
+    expect(await f.backup.write("large.neochar", "\u00e9".repeat(4 * 1024 * 1024 + 1))).toBe(false);
+    expect(f.getFileHandle).not.toHaveBeenCalled();
+    expect(f.writes).not.toHaveBeenCalled();
+  });
+
+  it("refuses new files at the count limit and permits a confirmed replacement", async () => {
+    const initial = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [i + ".neochar", { size: 1, text: "x" }]));
+    const f = fixture(initial);
+    expect(await f.backup.write("new.neochar", "x")).toBe(false);
+    expect(f.writes).not.toHaveBeenCalled();
+    expect(await f.backup.write("0.neochar", "replacement")).toBe(true);
+  });
+
+  it("refuses a declared aggregate over the limit before creating a file", async () => {
+    const initial = Object.fromEntries(Array.from({ length: 32 }, (_, i) => [i + ".neochar", { size: 8 * 1024 * 1024 }]));
+    const f = fixture(initial);
+    expect(await f.backup.write("new.neochar", "x")).toBe(false);
+    expect(f.writes).not.toHaveBeenCalled();
+    expect(f.files.has("new.neochar")).toBe(false);
+    expect(await f.backup.write("0.neochar", "replacement")).toBe(true);
+  });
+
+  it("serializes concurrent facade writes so they share one count budget", async () => {
+    const initial = Object.fromEntries(Array.from({ length: 199 }, (_, i) => [i + ".neochar", { size: 1 }]));
+    const f = fixture(initial);
+    expect(await Promise.all([f.backup.write("a.neochar", "x"), f.backup.write("b.neochar", "x")])).toEqual([true, false]);
+    expect(f.files.size).toBe(200);
+  });
+
+  it("bounds browser reads by count, file bytes, and aggregate bytes", async () => {
+    const large = fixture({ "large.neochar": { size: 8 * 1024 * 1024 + 1, text: "unreadable" } });
+    expect(await readBackupFiles("qol", large.scope)).toEqual([]);
+    const many = fixture(Object.fromEntries(Array.from({ length: 201 }, (_, i) => [i + ".neochar", { size: 1 }])));
+    expect(await readBackupFiles("qol", many.scope)).toHaveLength(200);
+    const total = fixture(Object.fromEntries(Array.from({ length: 33 }, (_, i) => [i + ".neochar", { size: 8 * 1024 * 1024 }])));
+    expect(await readBackupFiles("qol", total.scope)).toHaveLength(32);
+  });
+
+  it("refuses a lock failure or a decision failure without writing", async () => {
+    const f = fixture({ "existing.neochar": { size: 1 } });
+    f.scope.confirm.mockImplementation(() => { throw new Error("dialog failed"); });
+    expect(await f.backup.write("existing.neochar", "x")).toBe(false);
+    Object.assign(f.scope, { navigator: { locks: { request: async () => { throw new Error("lock failed"); } } } });
+    expect(await f.backup.write("new.neochar", "x")).toBe(false);
+    expect(f.writes).not.toHaveBeenCalled();
+  });
+
+  it("refuses a failed listing or lapsed permission without creating files", async () => {
+    const f = fixture();
+    f.handle.queryPermission.mockResolvedValue("denied");
+    expect(await f.backup.write("a.neochar", "x")).toBe(false);
+    f.handle.queryPermission.mockResolvedValue("granted");
+    f.handle.values = () => { throw new Error("unreadable"); };
+    expect(await f.backup.write("a.neochar", "x")).toBe(false);
+    expect(f.writes).not.toHaveBeenCalled();
   });
 });

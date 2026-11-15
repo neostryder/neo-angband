@@ -176,7 +176,7 @@ interface FakeDirHandle {
   kind: "directory";
   name: string;
   queryPermission: () => Promise<"granted">;
-  getFileHandle: () => Promise<{ createWritable: () => Promise<{ write: () => Promise<void>; close: () => Promise<void> }> }>;
+  getFileHandle: (name: string, options?: { create?: boolean }) => Promise<{ isSameEntry(other: unknown): Promise<boolean>; createWritable: () => Promise<{ write: () => Promise<void>; close: () => Promise<void> }> }>;
   values: () => IterableIterator<{ kind: "file"; name: string; getFile(): Promise<{ text(): Promise<string> }> }>;
 }
 
@@ -184,16 +184,20 @@ function fakeHandle(name: string, files: Record<string, string> = {}): FakeDirHa
   const entries = new Map(
     Object.entries(files).map(([n, text]) => [
       n,
-      { kind: "file" as const, name: n, getFile: async () => ({ text: async () => text }) },
+      { kind: "file" as const, name: n, getFile: async () => ({ size: new TextEncoder().encode(text).length, text: async () => text }) },
     ]),
   );
   return {
     kind: "directory",
     name,
     queryPermission: async () => "granted",
-    getFileHandle: async () => ({
-      createWritable: async () => ({ write: async () => undefined, close: async () => undefined }),
-    }),
+    getFileHandle: async (name, options) => {
+      if (!entries.has(name)) {
+        if (!options?.create) throw Object.assign(new Error("absent"), { name: "NotFoundError" });
+        entries.set(name, { kind: "file", name, getFile: async () => ({ size: 0, text: async () => "" }) });
+      }
+      return { isSameEntry: async () => true, createWritable: async () => ({ write: async () => undefined, close: async () => undefined }) };
+    },
     values: () => entries.values(),
   };
 }
@@ -332,4 +336,14 @@ describe("browser platform: two purposes, two independent handles", () => {
     await b?.choose();
     expect(await b?.write("ruleset.ndelve", "{}")).toBe(true);
   });
+});
+
+
+it("applies the safe leaf rule and the purpose's extension to browser host-folder writes", async () => {
+  const { scope, setNextPick } = browserScope();
+  const b = createHostFolder("mod-profile-sync", ".ndelve", scope)!;
+  setNextPick(fakeHandle("ModSync"));
+  await b.choose();
+  for (const name of ["ruleset.neochar", "../ruleset.ndelve", "CON.ndelve", ".hidden.ndelve"]) expect(await b.write(name, "{}")).toBe(false);
+  expect(await b.write("ruleset.ndelve", "{}")).toBe(true);
 });

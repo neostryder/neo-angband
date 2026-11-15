@@ -22,6 +22,8 @@ exact same import path Shift-M already uses.
 
 In the browser, reading a backup folder checks each character file's size against the 5 MiB character import limit before reading the file's text. The scan at boot skips an oversized file. A caller that asked for every file to be readable gets an error instead.
 
+The browser and desktop backup facades accept safe leaf names with the purpose's extension. They limit a folder to 200 matching files, 8 MiB per file, and 256 MiB in total. The player confirms each replacement. Browser facade writes share a queue and use an origin-wide Web Lock when the browser provides it. Directory handles remain in the existing shared browser store; this change does not isolate them.
+
 ---
 
 ## The gap this closes

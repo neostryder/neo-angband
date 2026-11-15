@@ -29,6 +29,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomBytes } from "node:crypto";
+import { BACKUP_LIMITS, isHostFolderFileName } from "@rpgm-tools/neo-angband-mod-sdk/backup-policy";
 import { backupFolderFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { DesktopAuthority, DesktopAuthorityEntry } from "./net-relay.js";
 
@@ -68,26 +69,7 @@ export function hostFolderRecordFile(purpose: string): string {
  * `isModZipName` checks, generalised from the single `.neochar` it used to
  * be hardcoded to so a second purpose can supply its own.
  */
-export function isHostFolderFileName(name: unknown, ext: string): name is string {
-  return (
-    /^\.[a-z0-9]{1,16}$/u.test(ext) &&
-    typeof name === "string" &&
-    name.length > 0 &&
-    name.length <= 255 &&
-    !name.includes("/") &&
-    !name.includes("\\") &&
-    !name.includes(":") &&
-    !name.includes("..") &&
-    !/[<>"|?*]/u.test(name) &&
-    ![...name].some((char) => char.charCodeAt(0) < 32) &&
-    !/^(con|prn|aux|nul|conin\$|conout\$|com[1-9\u00b9\u00b2\u00b3]|lpt[1-9\u00b9\u00b2\u00b3])[ .]*(\.|$)/iu.test(name) &&
-    !name.endsWith(" ") &&
-    !name.endsWith(".") &&
-    !name.startsWith(".") &&
-    !name.includes("\0") &&
-    name.endsWith(ext)
-  );
-}
+export { BACKUP_LIMITS, isHostFolderFileName } from "@rpgm-tools/neo-angband-mod-sdk/backup-policy";
 
 /** The original, `.neochar`-specific check - a thin wrap so every existing caller is unchanged. */
 export function isBackupFileName(name: unknown): name is string {
@@ -148,8 +130,6 @@ export function writeBackupFolder(
 export function backupFolderDisplayName(folderPath: string): string {
   return path.basename(folderPath);
 }
-
-export const BACKUP_LIMITS = Object.freeze({ files: 200, fileBytes: 8 * 1024 * 1024, totalBytes: 256 * 1024 * 1024 });
 
 function plainFolder(folder: string): boolean {
   const stat = fs.lstatSync(folder);
