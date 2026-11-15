@@ -706,6 +706,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       no: (log, tag) => ({ classicSearch: () => { log.push(tag); return false; } }),
       run: (h) => h.classicSearch?.(),
     },
+    statusTerrainFromMemory: {
+      yes: (log, tag) => ({ statusTerrainFromMemory: () => { log.push(tag); return true; } }),
+      no: (log, tag) => ({ statusTerrainFromMemory: () => { log.push(tag); return false; } }),
+      run: (h) => h.statusTerrainFromMemory?.(),
+    },
     missileCritFromState: {
       yes: (log, tag) => ({ missileCritFromState: () => { log.push(tag); return true; } }),
       no: (log, tag) => ({ missileCritFromState: () => { log.push(tag); return false; } }),
@@ -1182,6 +1187,11 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
   it("saveNoiseScent omits them, the upstream behaviour", () => {
     const { hooks } = guarded({ saveNoiseScent: THROWS });
     expect(hooks.saveNoiseScent?.()).toBe(false);
+  });
+
+  it("statusTerrainFromMemory declines when its provider throws", () => {
+    const { hooks } = guarded({ statusTerrainFromMemory: THROWS });
+    expect(hooks.statusTerrainFromMemory?.()).toBe(false);
   });
 
   it("missileCritFromState declines when its provider throws", () => {

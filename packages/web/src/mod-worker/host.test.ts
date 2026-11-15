@@ -1360,6 +1360,7 @@ describe("a Worker mod's hooks", () => {
     flagIntersectionResult: "removedBits",
     trapAllocation: { kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" },
     classicSearch: true,
+    statusTerrainFromMemory: true,
     missileCritFromState: true,
     forcedDescentStairs: true,
     randartSetSize: { multiplier: 2 },

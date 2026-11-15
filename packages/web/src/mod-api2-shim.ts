@@ -245,6 +245,7 @@ export function api2PolicyModHooks(registrations: Api2PolicyRegistrations, activ
   if (registrations.monsterLoreCompleteness) hooks.monsterLoreCompleteness = active;
   if (registrations.forgetUnlitImpassableTerrain) hooks.forgetUnlitImpassableTerrain = active;
   if (registrations.classicSearch) hooks.classicSearch = active;
+  if (registrations.statusTerrainFromMemory) hooks.statusTerrainFromMemory = active;
   if (registrations.missileCritFromState) hooks.missileCritFromState = active;
   if (registrations.forcedDescentStairs) hooks.forcedDescentStairs = active;
   if (registrations.forceFromBlastCenter) hooks.forceFromBlastCenter = active;

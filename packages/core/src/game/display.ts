@@ -1067,6 +1067,17 @@ function squareDtrapEdge(state: GameState, grid: Loc): boolean {
 function terrainRuns(state: GameState): DisplayRun[] {
   const grid = state.actor.grid;
   const idx = grid.y * state.chunk.width + grid.x;
+  if (state.modHooks?.statusTerrainFromMemory?.()) {
+    const remembered = state.known.feat[idx] ?? -1;
+    if (remembered < 0) return [];
+    const trap = state.known.traps?.get(idx)?.[0];
+    const feature = state.chunk.features.get(remembered);
+    const mimic = state.chunk.features.get(feature.mimic ?? remembered);
+    return [{
+      text: `${strcap(trap?.name ?? mimic.name)} `,
+      color: colorCharToAttr(trap?.color ?? mimic.dAttr),
+    }];
+  }
   const trap = state.traps.get(idx)?.[0] ?? null;
   let name: string;
   let color: number;

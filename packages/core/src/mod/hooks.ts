@@ -337,6 +337,8 @@ export interface ModHooks {
   forcedDescentStairs?: () => boolean;
   /** object-info.ts: computed missile critical inputs stay with their supplied state. */
   missileCritFromState?: () => boolean;
+  /** True uses remembered terrain, traps, and feature mimics in the status line. */
+  statusTerrainFromMemory?: () => boolean;
   /** player-turn.ts: the host runs classic search and its continuous mode. */
   classicSearch?: () => boolean;
   /** monster_loves_archery (mon/predicate.ts, reached from getMoveFindRange).
@@ -892,6 +894,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   forceFromBlastCenter: "any-yes",
   forcedDescentStairs: "any-yes",
   missileCritFromState: "any-yes",
+  statusTerrainFromMemory: "any-yes",
   classicSearch: "any-yes",
   monsterArcheryFrequency: "last-answer",
   newCharacter: "all-observe",
@@ -1029,6 +1032,8 @@ export function guardModHooks(
 
   const searching = hooks.classicSearch;
   if (searching) out.classicSearch = () => guard("classicSearch", () => searching(), false);
+  const statusTerrain = hooks.statusTerrainFromMemory;
+  if (statusTerrain) out.statusTerrainFromMemory = () => guard("statusTerrainFromMemory", () => statusTerrain(), false);
   const missileState = hooks.missileCritFromState;
   if (missileState) out.missileCritFromState = () => guard("missileCritFromState", () => missileState(), false);
   const forcedStairs = hooks.forcedDescentStairs;
@@ -1296,6 +1301,8 @@ export function composeModHooks(
 
   const searching = list.map((c) => c.classicSearch).filter(isFn);
   if (searching.length > 0) out.classicSearch = () => searching.some((fn) => fn());
+  const statusTerrain = list.map((c) => c.statusTerrainFromMemory).filter(isFn);
+  if (statusTerrain.length > 0) out.statusTerrainFromMemory = () => statusTerrain.some((fn) => fn());
   const missileState = list.map((c) => c.missileCritFromState).filter(isFn);
   if (missileState.length > 0) out.missileCritFromState = () => missileState.some((fn) => fn());
   const forcedStairs = list.map((c) => c.forcedDescentStairs).filter(isFn);

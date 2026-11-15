@@ -12,7 +12,7 @@ The target is a game built for modding throughout: a mod can override code, reso
 
 | | measured |
 | --- | --- |
-| `ModHooks` behaviour hooks | **41** (`MOD_HOOK_FOLDS` in `packages/core/src/mod/hooks.ts`) |
+| `ModHooks` behaviour hooks | **42** (`MOD_HOOK_FOLDS` in `packages/core/src/mod/hooks.ts`) |
 | Switches of >= 8 cases in the tree, counted by a script | **34** (`tools/switch-census.json`, re-derived 2026-08-09 after gap 16; was 47 that morning and 50 before the three glyph decoders became one registry) |
 | ...still `CANDIDATE`, a dispatch point a mod cannot reach | **0** (was 18 on the morning of 2026-08-09). See the caution below: zero candidates is the end of what this TOOL can see, not the end of closed dispatch |
 | ...of those, a mod's CODE can add to or override | **all of them** (`profile`, `blow`, `store` 2026-08-08; `projection`, `glyph`, `effect-info`, `randart`, `tval`, `rune` 2026-08-09) |
@@ -46,7 +46,7 @@ Game behaviour living in `switch` statements with nothing to register into is no
 
 ## (a) Code
 
-### The 41 behaviour hooks, and what each can change
+### The 42 behaviour hooks, and what each can change
 
 `ModHooks` (`packages/core/src/mod/hooks.ts`, the `ModHooks` interface) is a typed interface of optional functions on `GameState.modHooks` (`packages/core/src/game/context.ts`). See `MOD_SEAMS.md` for the fold rules. Call sites below are named by file and by the symbol that reads the hook rather than by line number, since a line number in a document has no test behind it and goes stale with the next commit.
 
@@ -58,6 +58,7 @@ Game behaviour living in `switch` statements with nothing to register into is no
 | `experienceUpdates` | `player/exp.ts`, `adjustLevel`, from session `ExpDeps` | Skip derived updates when the current level is unchanged | Experience and maximum-level bookkeeping; any actual level change |
 | `loadRehydration` | `session/game.ts`, at the end of `loadGame`, and learned curse views | Recover learned object knowledge and rebuild missing noise from saved history | Dead characters, unknown runes, saved heatmaps, or missing historical sources |
 | `classicSearch` | `game/player-turn.ts`, continuous mode speed, regeneration, and status | Enable classic searches that the host runs from declared turn commands | Hidden state never leaves the host; passive search outside continuous mode keeps 4.2.6 rules |
+| `statusTerrainFromMemory` | `game/display.ts` | Use remembered terrain, traps, and feature mimics in the status line | Unknown terrain and leftover trap memory stay hidden |
 | `missileCritFromState` | `obj/object-info.ts` | Use computed state inputs for missile criticals in item information | Combat rolls, O-combat, and the live player state |
 | `forcedDescentStairs` | `gen/generate.ts`, `gen/util.ts`, `gen/room.ts`, `game/effect-terrain.ts` | Prevent new up stairs under forced descent | Seeded reciprocal connectors, which stay in place |
 | `monsterOwnDropThefts` | `mon/steal.ts`, reached from `game/steal.ts` | Count stolen own drops with 16-bit saturation | Item provenance or lore writes in a Worker |

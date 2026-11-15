@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { STAT, TMD, TV } from "../generated/index.js";
+import { FEAT, SQUARE, STAT, TMD, TV } from "../generated/index.js";
 import {
+  colorCharToAttr,
   COLOUR_DARK,
   COLOUR_L_GREEN,
   COLOUR_L_UMBER,
@@ -22,6 +23,54 @@ import { SIDE_HANDLERS, sidebarLayout } from "./display.js";
 import { SHIPPED_FEELING_NEED } from "../constants.js";
 import { loc } from "../loc.js";
 import { cnvStat, panelContains, sidebarModel, statusLineModel } from "./display.js";
+import { bindTraps } from "../world/trap.js";
+
+describe("statusTerrainFromMemory", () => {
+  const traps = bindTraps(JSON.parse(readFileSync(new URL("../../../content/pack/trap.json", import.meta.url), "utf8")).records);
+  const trap = traps[1]!;
+
+  it("hides unknown terrain and leftover trap memory", () => {
+    const state = makeState();
+    const grid = state.actor.grid;
+    const idx = grid.y * state.chunk.width + grid.x;
+    state.modHooks = { statusTerrainFromMemory: () => true };
+    state.known.traps = new Map([[idx, [trap]]]);
+    expect(field(statusLineModel(state), "terrain")).toEqual([]);
+  });
+
+  it("uses remembered terrain and resolves its mimic", () => {
+    const state = makeState();
+    const grid = state.actor.grid;
+    const idx = grid.y * state.chunk.width + grid.x;
+    state.modHooks = { statusTerrainFromMemory: () => true };
+    state.known.feat[idx] = FEAT.SECRET;
+    const mimic = state.chunk.features.get(state.chunk.features.get(FEAT.SECRET).mimic!);
+    expect(field(statusLineModel(state), "terrain")).toEqual([
+      { text: `${mimic.name[0]!.toUpperCase()}${mimic.name.slice(1)} `, color: colorCharToAttr(mimic.dAttr) },
+    ]);
+  });
+
+  it("uses remembered traps without reading the live invisible-trap flag", () => {
+    const state = makeState();
+    const grid = state.actor.grid;
+    const idx = grid.y * state.chunk.width + grid.x;
+    state.modHooks = { statusTerrainFromMemory: () => true };
+    state.known.feat[idx] = FEAT.FLOOR;
+    state.known.traps = new Map([[idx, [trap]]]);
+    state.chunk.sqinfoOn(grid, SQUARE.INVIS);
+    expect(field(statusLineModel(state), "terrain")[0]?.text).toBe(`${trap.name[0]!.toUpperCase()}${trap.name.slice(1)} `);
+  });
+
+  it("keeps the original status bytes and RNG with an absent or false policy", () => {
+    const state = makeState();
+    const before = JSON.stringify(statusLineModel(state));
+    const rng = state.rng.getState();
+    state.modHooks = { statusTerrainFromMemory: () => false };
+    expect(JSON.stringify(statusLineModel(state))).toBe(before);
+    expect(field(statusLineModel(state), "terrain")).toEqual([{ text: "Open floor ", color: COLOUR_WHITE }]);
+    expect(state.rng.getState()).toEqual(rng);
+  });
+});
 
 function field(fields: SidebarField[] | StatusIndicator[], key: string): DisplayRun[] {
   const f = fields.find((x) => x.key === key);

@@ -207,6 +207,7 @@ Each table needs its matching registry permission from the list below, in both r
 | `loadRehydration` | host-owned load and knowledge rules | `{ objectKnowledge: true, noise: "restoreOrRebuild" }` | `registry:rune` |
 | `experienceUpdates` | host-owned experience updates | `"levelChangeOnly"` | `registry:command` |
 | `flagIntersectionResult` | caller-owned flag utility context | `"removedBits"` | `registry:rune` |
+| `statusTerrainFromMemory` | host-owned terrain status display | boolean | `registry:ui-entry` |
 | `missileCritFromState` | host-owned item information critical calculations | boolean | `registry:effect-info` |
 | `forcedDescentStairs` | host-owned generation and CREATE_STAIRS handlers | boolean | `registry:room` |
 | `forceFromBlastCenter` | host-owned FORCE and thrust handlers | boolean | `registry:projection` |
@@ -242,6 +243,8 @@ With the load-rehydration policy, new saves record the last noise source and its
 `experienceUpdates: "levelChangeOnly"` selects upstream e71cc96e8 at the end of `adjustLevel`, just before `onLevelChange`. Any enabled declaration selects it, and the session passes the live policy through `ExpDeps.experienceUpdates`. A gain or loss that leaves the current level unchanged skips the updates to derived bonuses, hit points, mana, and spells. Experience, maximum experience, maximum level, messages, and level-gain history follow their existing rules. A gain or loss that changes the current level still invokes the callback once. Without the policy, the callback runs unconditionally and the RNG matches the original. This port publishes level and experience directly, so it has no upstream redraw masks to change.
 
 `flagIntersectionResult: "removedBits"` selects upstream 0347703f7 for the value that flag-intersection calls return. To use it, pass a `FlagSetContext` with `flagIntersectionResult` to `flagInter(a, b, context)`, `flagsMask(bits, context, ...flags)`, `new FlagSet(sizeOrBits, context)`, or `FlagSet.forFlags(maxFlag, context)`. The host policy hook supplies that member, and an in-process caller can pass its session hooks directly. `inter`, `mask`, and `clone` keep the receiving set's context, and a live context can follow policy changes. A utility call without a context returns the 4.2.6 inequality result. The mutation and the RNG stay the same, and no process-wide setting is involved.
+
+`statusTerrainFromMemory: true` builds the terrain status from remembered terrain and traps, applying the remembered feature's mimic. Unknown terrain produces no terrain or trap text, including leftover trap memory. The policy uses `registry:ui-entry` because it controls status display information. Both runtimes install the same host rule, folded `any-yes`. An absent or false policy keeps the original status text and RNG.
 
 `missileCritFromState: true` takes missile critical inputs, including bow and throw skills, from the computed inspection state instead of the live player state. The host applies the rule in both runtimes, and declarations fold `any-yes`. The policy changes item information only, and O-combat and combat rolls keep their rules. An absent or false policy keeps the original text and RNG. The stock bow and throw skill coefficients are zero.
 

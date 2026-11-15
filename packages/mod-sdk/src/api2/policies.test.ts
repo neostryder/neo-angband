@@ -16,7 +16,7 @@ import {
 } from "./policies.js";
 
 describe("checkApi2Policies", () => {
-  it.each(["forcedDescentStairs", "missileCritFromState", "classicSearch"] as const)("checks %s and installs only the granted true switch", (name) => {
+  it.each(["statusTerrainFromMemory", "forcedDescentStairs", "missileCritFromState", "classicSearch"] as const)("checks %s and installs only the granted true switch", (name) => {
     expect(checkApi2Policies({ [name]: 1 })).toContain(`${name} is true or false`);
     expect(api2PolicyEffects({ [name]: true }).registrations).toEqual({ [name]: true });
     expect(api2PolicyEffects({ [name]: false }).registrations).toEqual({});
@@ -284,6 +284,7 @@ describe("API2_POLICY_KINDS", () => {
       experienceUpdates: "registry:command",
       loadRehydration: "registry:rune",
       classicSearch: "registry:command",
+      statusTerrainFromMemory: "registry:ui-entry",
       missileCritFromState: "registry:effect-info",
       forcedDescentStairs: "registry:room",
       trapAllocation: "registry:room",
@@ -313,7 +314,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["loadRehydration", "experienceUpdates", "flagIntersectionResult", "classicSearch", "missileCritFromState", "forcedDescentStairs", "randartSetSize", "trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
+      else expect(["statusTerrainFromMemory", "loadRehydration", "experienceUpdates", "flagIntersectionResult", "classicSearch", "missileCritFromState", "forcedDescentStairs", "randartSetSize", "trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
     }
   });
 
