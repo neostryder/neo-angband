@@ -1,7 +1,7 @@
 import { classicBrowser, confirmationMod } from "./classic-service";
 import { type MenuItem, showTextScreen, screenRegionSpec, selectFromMenu } from "../overlay";
 import { type BrowseEntry, type ModBrowseDeps } from "./browse-types";
-import { browseRow, browseDetail, aboutLines, sourceLabel } from "./browse-views";
+import { browseRow, browseDetail, aboutLines, detailPaneWidth, sourceLabel } from "./browse-views";
 import { t } from "@rpgm-tools/neo-angband-core";
 import { C_WARN, C_FG, C_DIM, C_BAD } from "./browse-colors";
 import { type GridSurface, type GridPointerInput } from "../term";
@@ -182,7 +182,7 @@ export async function showSource(
            * pane is resizable, and its usable width is narrower than the terminal
            * (the painter keeps the last cell free), so the menu's own figure is
            * the one to wrap to (#424). */
-          const width = Math.max(20, availableCols ?? term.size().cols - 1);
+          const width = detailPaneWidth(availableCols, term.size().cols);
           return browseDetail(
             e,
             e.ok ? (installed.get(e.mod.id) ?? null) : null,

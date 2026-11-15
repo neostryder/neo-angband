@@ -16,6 +16,7 @@ import { join } from "node:path";
 import {
   browseDetail,
   browseRow,
+  detailPaneWidth,
   importedLines,
   installFailureLines,
   installOutcomeLines,
@@ -539,7 +540,16 @@ describe("the detail pane wraps", () => {
   it("is wrapped to the width the menu says its pane can paint (#424)", () => {
     const source = readFileSync(join(import.meta.dirname, "mod-manager/classic-browse-source.ts"), "utf8");
     expect(source).toMatch(/detail: \(i, availableCols\) =>/u);
-    expect(source).toMatch(/availableCols \?\? term\.size\(\)\.cols - 1/u);
+    expect(source).toMatch(/detailPaneWidth\(availableCols, term\.size\(\)\.cols\)/u);
+  });
+
+  it("fits a pane narrower than twenty columns instead of overflowing it (#424)", () => {
+    expect(detailPaneWidth(12, 80)).toBe(12);
+    expect(detailPaneWidth(undefined, 80)).toBe(79);
+    expect(detailPaneWidth(0, 80)).toBe(1);
+    const lines = browseDetail(found({ description: "A short mod that does a few small things." }), null, register, detailPaneWidth(12, 80));
+    const over = lines.map((l) => l.text).filter((t) => t.length > 12 && !/\S{13,}/u.test(t));
+    expect(over).toEqual([]);
   });
 });
 

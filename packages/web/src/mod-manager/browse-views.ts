@@ -181,6 +181,15 @@ export function wrapField(text: string, width: number): string[] {
 }
 
 /**
+ * The width to wrap the detail pane to: the columns the menu says its pane can
+ * paint, or the terminal less the cell the painter keeps free. A pane narrower
+ * than any fixed floor still gets lines that fit it (#424).
+ */
+export function detailPaneWidth(availableCols: number | undefined, terminalCols: number): number {
+  return Math.max(1, availableCols ?? terminalCols - 1);
+}
+
+/**
  * The detail pane for one mod: everything its repository said, attributed.
  *
  * `width` is the pane's columns. It has a default so the pure tests can call this
