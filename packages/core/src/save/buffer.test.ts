@@ -119,6 +119,26 @@ describe("writeSavefile / readSavefile framing", () => {
     expect(() => readSavefile(tampered)).toThrow(/checksum/);
   });
 
+  it.each([1, 27])("rejects a block header truncated to %i bytes", (length) => {
+    const bytes = writeSavefile(1, [block({ name: "Sam", level: 5 })]);
+    expect(() => readSavefile(bytes.subarray(0, 8 + length))).toThrow(/truncated/);
+  });
+
+  it.each([1, 0xfffffffd, 0xfffffffe, 0xffffffff])("rejects a forged block size %i before reading the payload", (size) => {
+    const bytes = writeSavefile(1, [{ name: "empty", version: 1, write: () => {} }]);
+    new DataView(bytes.buffer).setUint32(8 + 20, size, true);
+    expect(() => readSavefile(bytes)).toThrow(/truncated.*payload/);
+  });
+
+  it("rejects missing alignment padding", () => {
+    const bytes = writeSavefile(1, [{ name: "one", version: 1, write: (w) => w.putByte(0) }]);
+    expect(() => readSavefile(bytes.subarray(0, bytes.length - 1))).toThrow(/truncated.*payload/);
+  });
+
+  it("rejects a truncated file header", () => {
+    expect(() => readSavefile(writeSavefile(1, []).subarray(0, 4))).toThrow(/truncated/);
+  });
+
   it("rejects a bad magic", () => {
     const bytes = writeSavefile(1, []);
     const bad = Uint8Array.from(bytes);

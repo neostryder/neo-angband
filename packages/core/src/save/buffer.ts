@@ -248,7 +248,8 @@ function readU32LE(buf: Uint8Array, pos: number): number {
 
 /**
  * Split a savefile stream into blocks and VERIFY each block's additive
- * checksum. Throws on a bad magic or a checksum mismatch (the corruption
+ * checksum. Truncated headers and padded payloads are refused before payload
+ * views are created. Throws on a bad magic or a checksum mismatch (the corruption
  * signal). Callers then feed each payload to a SaveReader + BlockLoader.
  */
 export function readSavefile(buf: Uint8Array): ParsedSavefile {
@@ -257,11 +258,13 @@ export function readSavefile(buf: Uint8Array): ParsedSavefile {
       throw new Error("Not a Neo Angband savefile (bad magic)");
     }
   }
+  if (buf.length < 8) throw new Error("Savefile has a truncated file header");
   const version = readU32LE(buf, 4);
   let pos = 8;
   const blocks: ParsedSavefile["blocks"] = [];
 
   while (pos < buf.length) {
+    if (buf.length - pos < SAVEFILE_HEAD_SIZE) throw new Error("Savefile has a truncated block header");
     let name = "";
     for (let i = 0; i < 16; i++) {
       const c = buf[pos + i] as number;
@@ -272,6 +275,8 @@ export function readSavefile(buf: Uint8Array): ParsedSavefile {
     const check = readU32LE(buf, pos + 24);
     pos += SAVEFILE_HEAD_SIZE;
 
+    const paddedSize = size + (4 - size % 4) % 4;
+    if (paddedSize > buf.length - pos) throw new Error(`Savefile block "${name}" has a truncated payload`);
     const payload = buf.subarray(pos, pos + size);
     let sum = 0;
     for (const b of payload) sum = (sum + b) >>> 0;
