@@ -85,7 +85,7 @@ it("expands only the six UI replacement families and honors every family refusal
   }
   resetModTiers();
 });
-import { consentSessionMod, rowLabel, unreviewedNoticeDue, unreviewedNoticeScreen } from "./mods";
+import { consentSessionMod, rowDetail, rowLabel, unreviewedNoticeDue, unreviewedNoticeScreen } from "./mods";
 import * as overlay from "./overlay";
 import type { GridPointerInput, GridSurface } from "./term";
 import { showThroughPresenter, setScreenPresenter, type InstalledScreen } from "./screen-runtime";
@@ -617,6 +617,18 @@ describe("the unreviewed notice and badge", () => {
     expect(catalogRow(sideloaded).unreviewed).toBe(true);
     expect(rowLabel(catalogRow(sideloaded)).label).toContain("unreviewed");
     expect(rowLabel(catalogRow(firstParty)).label).not.toContain("unreviewed");
+  });
+
+  it("labels a mod's kind from its tier, so an imported mod is never called trusted (#484)", () => {
+    /* A zip import is found in the in-process list, the one the old label read. */
+    const imported = assignTier({ id: "s", source: "installed", execution: "worker", listing: "file" });
+    expect(rowLabel(catalogRow(imported)).label).toContain("(third-party)");
+    expect(rowLabel(catalogRow(imported)).label).not.toContain("trusted");
+    expect(rowLabel(catalogRow(sideloaded)).label).toContain("(third-party)");
+    expect(rowLabel(catalogRow(firstParty)).label).toContain("(trusted)");
+    const detail = rowDetail(catalogRow(imported), 80, 99).map((line) => line.text).join("\n");
+    expect(detail).toContain("third-party plugin");
+    expect(detail).not.toContain("trusted plugin");
   });
 
   it("is due once, before the first enable, and only for a mod that runs code", () => {

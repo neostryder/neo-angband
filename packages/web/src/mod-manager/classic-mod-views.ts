@@ -213,10 +213,7 @@ export function rowLabel(m: CatalogMod, problems: readonly string[] = []): MenuI
     if (needsConsent) flags.push(t("modsScreen.row.flag.needsOk", "NEEDS OK"));
   }
   const suffix = flags.length ? `  ! ${flags.join(", ")}` : "";
-  // Kind distinguishes the two PLUGIN load paths (sandbox vs trusted); for a
-  // non-plugin it is just "content", which mislabels a tiles pack - so show the
-  // shape there instead ("tiles" for a tile pack, not "content").
-  const kindTag = m.kind === "content" ? m.shape : m.kind;
+  const kindTag = modKindTag(m);
   /* THE NAME IS WHAT GIVES WAY, not the badges.
    *
    * selectFromMenu slices a row at the terminal's edge, so an over-long row
@@ -294,6 +291,25 @@ export function describeShape(shape: string): string {
        * this line rather than to one of the three named cases above. */
       return t("modsScreen.shape.other", "A {shape} mod.", { shape });
   }
+}
+
+/**
+ * The word in a row's parentheses that says what kind of mod it is.
+ *
+ * For a mod with no code it is the shape ("tiles" for a tile pack, not
+ * "content"). For a mod with code it comes from the measured tier when there is
+ * one (neostryder/neo-angband#484): the list a manifest was discovered in says
+ * which loader looks at it, not who stands behind it, and a mod imported from a
+ * zip was found in the in-process list and called "trusted" while it ran in an
+ * isolated Worker and asked for each permission. Only a first-party mod is
+ * "trusted"; any other mod with code is "third-party". Without a tier the load
+ * path is all that is known, so it is shown as before.
+ */
+export function modKindTag(m: Pick<CatalogMod, "kind" | "shape" | "tier">): string {
+  if (m.kind === "content") return m.shape;
+  if (m.tier === undefined || m.tier.execution === "data") return m.kind;
+  if (m.tier.trust !== "first-party") return "third-party";
+  return m.tier.execution === "worker" ? "sandbox" : "trusted";
 }
 
 /**
@@ -381,7 +397,7 @@ export function rowDetail(
         : t(
             "modsScreen.detail.head.versionPlugin",
             "version {version}  -  {shape} pack, {kind} plugin",
-            { version: m.version, shape: m.shape, kind: m.kind },
+            { version: m.version, shape: m.shape, kind: modKindTag(m) },
           ),
       w,
     ),
