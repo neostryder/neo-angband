@@ -1573,6 +1573,27 @@ describe("preference errors during composition", () => {
 });
 
 describe("a Worker mod's network access", () => {
+  it.each(["string", "array", "key", "wide"])("refuses an oversized %s before copying its values", async (shape) => {
+    const wired = wire({ api: API });
+    await wired.session.ready;
+    const read = vi.fn(() => 0);
+    let payload: unknown;
+    if (shape === "array") {
+      payload = new Array(0xffffffff);
+      Object.defineProperty(payload, "0", { enumerable: true, get: read });
+    } else if (shape === "key") {
+      payload = {};
+      Object.defineProperty(payload, "x".repeat(MAX_MESSAGE_BYTES), { enumerable: true, get: read });
+    } else {
+      payload = { value: shape === "string" ? "x".repeat(MAX_MESSAGE_BYTES) : Array.from({ length: 20000 }, () => false) };
+      Object.defineProperty(payload, "tail", { enumerable: true, get: read });
+    }
+    wired.worker.onmessage?.({ data: payload } as MessageEvent);
+    expect(read).not.toHaveBeenCalled();
+    expect(wired.problems.at(-1)).toMatch(/larger than 65536 bytes/u);
+    wired.session.teardown();
+  });
+
   it("rejects oversized proxy calls locally without posting them", async () => {
     let found: string | undefined;
     const wired = wire({ api: API, start: async (api) => {

@@ -63,7 +63,7 @@ import { validWorkerBackupCall } from "./protocol";
 import { serveWorkerBackupCall, workerBackupAuthorization } from "../mod-api2-host";
 import { rememberWorkerBackupFile } from "../mod-api2-host";
 import { MAX_WORKER_BACKUP_FILE_BYTES } from "./protocol";
-import { cloneWorkerJson, payloadBytes, toWorkerJson } from "./clone";
+import { boundedPayloadBytes, cloneWorkerJson, payloadBytes, toWorkerJson } from "./clone";
 import {
   MOD_WORKER_PROTOCOL_VERSION,
   WORKER_CALLS,
@@ -344,12 +344,12 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
     receivedTimes.push(time);
     let bytes: number;
     try {
+      bytes = boundedPayloadBytes(raw, MAX_MESSAGE_BYTES);
       if (raw !== null && typeof raw === "object") {
         const method = Object.getOwnPropertyDescriptor(raw, "method");
         if (method && "value" in method && typeof method.value === "string" && Object.hasOwn(GAMEPLAY_WORKER_CALLS, method.value)) copyBridgeJson(raw);
       }
       cloneWorkerJson(raw);
-      bytes = payloadBytes(raw);
     } catch (err) {
       refuse(raw, `refused worker payload: ${messageOf(err)}`);
       return null;

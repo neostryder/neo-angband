@@ -29,6 +29,64 @@ export function cloneWorkerJson(value: unknown, depth: number = 0): WorkerJson {
   return out;
 }
 
+/** The byte budget bounds traversal before a message can allocate a copy. */
+export function boundedPayloadBytes(value: unknown, limit: number): number {
+  let bytes = 0;
+  const charge = (size: number): void => {
+    bytes += size;
+    if (bytes > limit) throw new Error(`payload larger than ${limit} bytes`);
+  };
+  const stringBytes = (text: string): void => {
+    if (text.length > limit - bytes - 2) charge(limit + 1);
+    charge(2);
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      if (code === 34 || code === 92 || code === 8 || code === 9 || code === 10 || code === 12 || code === 13) charge(2);
+      else if (code < 32) charge(6);
+      else if (code < 128) charge(1);
+      else if (code < 2048) charge(2);
+      else if (code >= 0xd800 && code <= 0xdfff) {
+        const next = text.charCodeAt(i + 1);
+        if (code <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) { charge(4); i++; }
+        else charge(6);
+      } else charge(3);
+    }
+  };
+  const visit = (item: unknown, depth: number): void => {
+    if (depth > 32) throw new Error("payload nesting exceeds 32 levels");
+    if (typeof item === "string") { stringBytes(item); return; }
+    if (item === null || typeof item === "boolean") { charge(item === false ? 5 : 4); return; }
+    if (typeof item === "number" && Number.isFinite(item)) { charge(String(item).length); return; }
+    if (item === null || typeof item !== "object") throw new Error("payload must contain only JSON values");
+    charge(2);
+    if (Array.isArray(item)) {
+      if (item.length > 0 && item.length * 2 - 1 > limit - bytes) charge(limit + 1);
+      for (let i = 0; i < item.length; i++) {
+        if (i > 0) charge(1);
+        const descriptor = Object.getOwnPropertyDescriptor(item, i);
+        if (!descriptor || !("value" in descriptor)) throw new Error("payload arrays must contain data without empty slots");
+        visit(descriptor.value, depth + 1);
+      }
+      return;
+    }
+    const proto = Object.getPrototypeOf(item);
+    if (proto !== Object.prototype && proto !== null) throw new Error("payload records must have Object.prototype or null prototype");
+    let first = true;
+    for (const key in item) {
+      if (!Object.hasOwn(item, key)) continue;
+      if (!first) charge(1);
+      first = false;
+      stringBytes(key);
+      charge(1);
+      const descriptor = Object.getOwnPropertyDescriptor(item, key)!;
+      if (!("value" in descriptor)) throw new Error("payload records must contain data properties");
+      visit(descriptor.value, depth + 1);
+    }
+  };
+  visit(value, 0);
+  return bytes;
+}
+
 export function payloadBytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }

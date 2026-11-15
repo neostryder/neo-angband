@@ -49,6 +49,8 @@ These were measured in an opaque-origin frame with Playwright:
 
 The frame uses the last row because it is the only combination the existing harness supports in all three engines. Removing data: from script-src would block the staged-module imports. The current loader has no measured blob/module URL alternative for that matrix, and dynamic imports are not yet restricted to measured sources. As a result, text the broker provides can become runtime code inside the sandbox. A classic Worker still has `import()`, and that is how it loads the mod's modules. In all three engines the `data:` Worker inherits the frame's policy.
 
+The broker counts serialized UTF-8 bytes before copying a Worker message. It stops at 64 KiB, bounds traversal by that budget, and rejects oversized arrays from their length before reading their elements.
+
 ## Browser and desktop
 
 The browser game and the desktop app use the same frame. The desktop app serves the game from its own `neo-angband://game` scheme, every response on that scheme carries the headers that make the page cross-origin isolated, and the window runs with `contextIsolation`, `sandbox`, and no Node integration. A `srcdoc` frame has no response of its own, so those headers do not affect it, and the frame and its Worker behave as they do in Chromium. The frame relay rejects non-JSON Worker traffic before it reaches the page. The desktop setup provides no separate process and no CPU or memory quota.

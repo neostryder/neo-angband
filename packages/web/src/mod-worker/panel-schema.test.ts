@@ -9,7 +9,7 @@ import { CapabilitySet } from "@rpgm-tools/neo-angband-mod-sdk";
 import { api2Plugin } from "../mod-api2-shim";
 import { createApi2Host, disposeApi2Host, serveSimpleWorkerCall } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
-import { cloneWorkerJson } from "./clone";
+import { boundedPayloadBytes, cloneWorkerJson, payloadBytes } from "./clone";
 import type { WorkerJson } from "./protocol";
 import type { ModDisplay } from "../mod-plugin";
 
@@ -308,4 +308,12 @@ it("limits each mod's panels without borrowing another mod's allocation", () => 
     expect(() => renderer.apply("limited", "mount", { id: "overflow", root: { type: "text", text: "Panel" } })).toThrow();
     expect(() => renderer.apply("another", "mount", { id: "available", root: { type: "text", text: "Panel" } })).not.toThrow();
   } finally { renderer.teardown("limited"); renderer.teardown("another"); }
+});
+
+describe("bounded Worker message sizes", () => {
+  it.each([null, false, 1e30, "\u0000\n\t\b\f\r\"\\", "\u00e9\u4e00", "\ud800", "\udc00", "\ud83d\ude00", { a: [0, true, null], "\u00e9": "value" }])("matches serialized UTF-8 size for %j", (value) => {
+    const size = payloadBytes(value);
+    expect(boundedPayloadBytes(value, size)).toBe(size);
+    expect(() => boundedPayloadBytes(value, size - 1)).toThrow(/larger than/);
+  });
 });
