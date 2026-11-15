@@ -28,10 +28,12 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
+import { plainPath } from "@rpgm-tools/neo-angband-cli/host-node";
 import { BACKUP_LIMITS, isHostFolderFileName } from "@rpgm-tools/neo-angband-mod-sdk/backup-policy";
 import { backupFolderFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { DesktopAuthority, DesktopAuthorityEntry } from "./net-relay.js";
+import { desktopAuthorityKey } from "./net-relay.js";
 
 /** The file this module persists the chosen folder's path in, beside `mods/`. */
 export const BACKUP_FOLDER_FILE = "backup-folder.json";
@@ -134,6 +136,66 @@ export function backupFolderDisplayName(folderPath: string): string {
 function plainFolder(folder: string): boolean {
   const stat = fs.lstatSync(folder);
   return stat.isDirectory() && !stat.isSymbolicLink() && path.relative(path.resolve(folder), fs.realpathSync(folder)) === "";
+}
+
+/** Folder identity must survive payload updates without granting authority to them. */
+export function desktopBackupFolderKey(modId: string): string {
+  return createHash("sha256").update(JSON.stringify(["backup-folder", modId])).digest("hex");
+}
+
+function backupAllocation(chosen: string, key: string, legacyKey: string): string {
+  if (!plainFolder(chosen)) throw new Error("refused");
+  const directory = fs.lstatSync(chosen);
+  const stable = path.join(chosen, key);
+  const legacy = path.join(chosen, legacyKey);
+  let destination: fs.Stats | null;
+  try {
+    destination = plainPath(chosen, stable, true);
+    if (destination && !destination.isDirectory()) throw new Error("refused");
+  } catch (error) {
+    if (legacy !== stable && plainPath(chosen, legacy)?.isDirectory()) return legacy;
+    throw error;
+  }
+  if (destination || legacy === stable) return stable;
+  const source = plainPath(chosen, legacy, true);
+  if (!source) return stable;
+  if (!source.isDirectory()) throw new Error("refused");
+  try {
+    const before = plainPath(chosen, chosen);
+    const named = plainPath(chosen, legacy);
+    if (!before || before.dev !== directory.dev || before.ino !== directory.ino ||
+        !named || named.dev !== source.dev || named.ino !== source.ino || plainPath(chosen, stable, true)) return legacy;
+    fs.renameSync(legacy, stable);
+  } catch {
+    // A busy or read-only directory must not strand the existing backups.
+    const fallback = plainPath(chosen, legacy);
+    const parent = plainPath(chosen, chosen);
+    if (!fallback || fallback.dev !== source.dev || fallback.ino !== source.ino ||
+        !parent || parent.dev !== directory.dev || parent.ino !== directory.ino) throw new Error("refused");
+    return legacy;
+  }
+  const after = plainPath(chosen, chosen);
+  const moved = plainPath(chosen, stable);
+  if (!after || after.dev !== directory.dev || after.ino !== directory.ino ||
+      !moved || moved.dev !== source.dev || moved.ino !== source.ino) throw new Error("refused");
+  return stable;
+}
+
+export function readModBackupFolder(userBase: string, modId: string, digest: string): string | null {
+  const key = desktopBackupFolderKey(modId);
+  const remembered = readBackupFolder(userBase, key);
+  // An empty stable record keeps forgetting from reviving an older digest record.
+  if (remembered === null && fs.existsSync(path.join(userBase, hostFolderRecordFile(key)))) return null;
+  const legacyKey = desktopAuthorityKey(modId, digest);
+  const folder = remembered ?? readBackupFolder(userBase, legacyKey);
+  if (folder === null) return null;
+  try {
+    const leaf = path.basename(folder);
+    if (!/^[a-f0-9]{64}$/u.test(leaf) || remembered === null && leaf !== legacyKey) return null;
+    const allocation = backupAllocation(path.dirname(folder), key, leaf);
+    if (remembered !== allocation) writeBackupFolder(userBase, allocation, key);
+    return allocation;
+  } catch { return null; }
 }
 
 function plainFile(file: string): fs.Stats | null {
@@ -295,7 +357,8 @@ export function createBackupRelay(deps: {
       if (busy.has(slot)) return { ok: false };
       busy.add(slot);
       try {
-        const folder = readBackupFolder(deps.userBase, entry.key);
+        const key = desktopBackupFolderKey(entry.modId);
+        const folder = readModBackupFolder(deps.userBase, entry.modId, entry.digest);
         if (op === "prepareChoose" || op === "prepareWrite") {
           plans.delete(slot);
           if (plans.size >= 128) return { ok: false };
@@ -303,7 +366,7 @@ export function createBackupRelay(deps: {
           if (op === "prepareChoose") {
             const chosen = await deps.choose(entry, owner);
             if (chosen === null || entry.signal.aborted || !plainFolder(chosen)) return { ok: false };
-            selected = path.join(chosen, entry.key);
+            selected = path.join(chosen, key);
           } else {
             if (!folder || !plainFolder(folder) || !isHostFolderFileName(a["name"], ext) || typeof a["text"] !== "string" || Buffer.byteLength(a["text"], "utf8") > BACKUP_LIMITS.fileBytes ||
               !deps.confirmWrite || !(await deps.confirmWrite(entry, a["name"], folder, owner)) || entry.signal.aborted) return { ok: false };
@@ -323,24 +386,24 @@ export function createBackupRelay(deps: {
             if (folder !== plan.folder) return { ok: false };
             return { ok: await writeBackupFile(plan.folder, plan.name, plan.text, ext, async () => true, () => !entry.signal.aborted) };
           }
-          if (!plainFolder(path.dirname(plan.folder))) return { ok: false };
-          if (!fs.existsSync(plan.folder)) fs.mkdirSync(plan.folder);
-          if (!plainFolder(plan.folder)) return { ok: false };
-          writeBackupFolder(deps.userBase, plan.folder, entry.key);
+          const allocation = backupAllocation(path.dirname(plan.folder), key, entry.key);
+          if (!fs.existsSync(allocation)) fs.mkdirSync(allocation);
+          if (!plainFolder(allocation) || entry.signal.aborted) return { ok: false };
+          writeBackupFolder(deps.userBase, allocation, key);
           return { ok: true, name: backupFolderDisplayName(path.dirname(plan.folder)) };
         }
         if (op === "name") return folder === null ? null : backupFolderDisplayName(path.dirname(folder));
         if (op === "choose") {
           const chosen = await deps.choose(entry, owner);
           if (chosen === null || entry.signal.aborted || !plainFolder(chosen)) return null;
-          const allocation = path.join(chosen, entry.key);
+          const allocation = backupAllocation(chosen, key, entry.key);
           if (!fs.existsSync(allocation)) fs.mkdirSync(allocation);
           if (!plainFolder(allocation) || entry.signal.aborted) return null;
-          writeBackupFolder(deps.userBase, allocation, entry.key);
+          writeBackupFolder(deps.userBase, allocation, key);
           return backupFolderDisplayName(chosen);
         }
         if (op === "forget") {
-          writeBackupFolder(deps.userBase, null, entry.key);
+          writeBackupFolder(deps.userBase, "", key);
           return { ok: true };
         }
         if (folder === null || !plainFolder(folder)) return op === "list" ? [] : { ok: false };

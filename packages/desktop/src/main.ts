@@ -52,7 +52,7 @@ import {
   UPDATE_CHANNEL,
   UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
-import { createBackupRelay, readBackupFolder } from "./backup-folder.js";
+import { createBackupRelay, readModBackupFolder } from "./backup-folder.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
 import { MOD_AUTHORITY_CHANNEL, capLogBatch, confirmHostAction, desktopConsentReport, hostFsCallIsSafe, hostFsFailure, updateCallIsSafe } from "./bridge-guard.js";
 import { confirmExternalOpen, createCheckedFetch } from "./net-guard.js";
@@ -107,7 +107,7 @@ import {
 } from "./mod-origin-merge.js";
 import type { ModRecord, ModSnapshot } from "./mod-origin-merge.js";
 import { ORIGIN_PROBE_ROUTE, planRequest, readStaticFile } from "./routes.js";
-import { createDesktopAuthority, createNetRelay, desktopAuthorityKey } from "./net-relay.js";
+import { createDesktopAuthority, createNetRelay } from "./net-relay.js";
 import type { OriginSnapshot } from "./origin-merge.js";
 import { readWindowState, startPlacement, writeWindowState } from "./window-state.js";
 import { mergedOriginsFormat, deathLedgerFormat, parseDocument, serializeDocument } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -636,7 +636,7 @@ function installAuthorityChannel(): void {
       sender.once("destroyed", () => { desktopAuthority.revokeWindow(sender.id); watched.delete(sender.id); });
     }
     const decision = desktopConsentReport(arg, () => hostPayloadDigest(WEB_ROOT, __filename),
-      (modId, digest) => readBackupFolder(USER_BASE, desktopAuthorityKey(modId, digest)) !== null);
+      (modId, digest) => readModBackupFolder(USER_BASE, modId, digest) !== null);
     if (decision === null) return { ok: false };
     return desktopAuthority.report(decision, sender.id, (entry) => confirmAction(sender,
       `Allow desktop access for ${entry.modId}?\nSHA-256: ${entry.digest}\nCapabilities: ${entry.grants.join(", ") || "none"}\nNetwork destinations: ${entry.destinations.join(", ") || "none"}`, "Allow"));

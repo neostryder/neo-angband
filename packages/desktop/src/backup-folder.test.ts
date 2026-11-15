@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createHash } from "node:crypto";
 import {
   CHARACTER_BACKUP_PURPOSE,
   BACKUP_LIMITS,
@@ -20,6 +21,7 @@ import {
   writeBackupFolder,
   writeBackupFile,
   createBackupRelay,
+  readModBackupFolder,
 } from "./backup-folder.js";
 import { createDesktopAuthority } from "./net-relay.js";
 
@@ -273,6 +275,178 @@ describe("backup writes", () => {
 
 describe("installation backup allocations", () => {
   const decision = (modId: string, digest = "a".repeat(64)) => ({ modId, digest, grants: ["backup:folder"], destinations: [] });
+  const folderKey = (modId: string) => createHash("sha256").update(JSON.stringify(["backup-folder", modId])).digest("hex");
+
+  it.each(["a", "@host/mod-profile-sync"])("remembers %s across digests while requiring fresh consent", async (modId) => {
+    const authority = createDesktopAuthority();
+    const original = await authority.report(decision(modId), 1, async () => true) as Record<string, unknown>;
+    const choose = vi.fn(async () => base);
+    const relay = createBackupRelay({ authority, userBase: path.join(base, "records"), choose,
+      confirmReplace: async () => true, confirmRead: async () => true });
+    const name = modId.startsWith("@host/") ? "keep.ndelve" : "keep.neochar";
+    expect(await relay.handle("choose", original, 1)).toBe(path.basename(base));
+    expect(await relay.handle("write", { ...original, name, text: "keep" }, 1)).toEqual({ ok: true });
+    const changed = decision(modId, "b".repeat(64));
+    const decline = vi.fn(async () => false);
+    const refused = await authority.report({ ...changed, installation: original["installation"] }, 1, decline);
+    expect(decline).toHaveBeenCalledOnce();
+    expect(await relay.handle("list", refused, 1)).toEqual({ ok: false });
+    expect(await relay.handle("list", { ...original, digest: changed.digest }, 1)).toEqual({ ok: false });
+    const approve = vi.fn(async () => true);
+    const updated = await authority.report(changed, 1, approve) as Record<string, unknown>;
+    expect(approve).toHaveBeenCalledOnce();
+    expect(await relay.handle("name", updated, 1)).toBe(path.basename(base));
+    expect(await relay.handle("list", updated, 1)).toEqual([{ name, size: 4 }]);
+    expect(await relay.handle("read", { ...updated, name }, 1)).toEqual({ name, text: "keep" });
+    expect(await relay.handle("list", original, 1)).toEqual({ ok: false });
+    expect(choose).toHaveBeenCalledOnce();
+    expect(readBackupFolder(path.join(base, "records"), folderKey(modId))).toBe(path.join(base, folderKey(modId)));
+    const other = await authority.report(decision(modId, "c".repeat(64)), 2, async () => true);
+    const otherMachine = createBackupRelay({ authority, userBase: path.join(base, "other-records"), choose,
+      confirmReplace: async () => true, confirmRead: async () => true });
+    await otherMachine.handle("choose", other, 2);
+    expect(await otherMachine.handle("list", other, 2)).toEqual([{ name, size: 4 }]);
+  });
+
+  it("adopts the current digest record and renames its folder without losing files", async () => {
+    const { authority, relay, a } = await fixture();
+    const legacyKey = authority.lookup(a, 1)!.key;
+    const legacy = path.join(base, legacyKey);
+    const stable = path.join(base, folderKey("a"));
+    fs.mkdirSync(legacy);
+    fs.writeFileSync(path.join(legacy, "keep.neochar"), "keep");
+    fs.writeFileSync(path.join(legacy, "unrelated.txt"), "also keep");
+    writeBackupFolder(path.join(base, "records"), legacy, legacyKey);
+    expect(await relay.handle("list", a, 1)).toEqual([{ name: "keep.neochar", size: 4 }]);
+    expect(readBackupFolder(path.join(base, "records"), folderKey("a"))).toBe(stable);
+    expect(readBackupFolder(path.join(base, "records"), legacyKey)).toBe(legacy);
+    expect(fs.existsSync(legacy)).toBe(false);
+    expect(fs.readFileSync(path.join(stable, "unrelated.txt"), "utf8")).toBe("also keep");
+    const updated = await authority.report(decision("a", "b".repeat(64)), 1, async () => true) as Record<string, unknown>;
+    expect(await relay.handle("read", { ...updated, name: "keep.neochar" }, 1)).toEqual({ name: "keep.neochar", text: "keep" });
+    expect(await relay.handle("forget", updated, 1)).toEqual({ ok: true });
+    expect(await relay.handle("name", updated, 1)).toBeNull();
+    const original = await authority.report(decision("a"), 1, async () => true);
+    expect(await relay.handle("name", original, 1)).toBeNull();
+    expect(fs.readFileSync(path.join(stable, "keep.neochar"), "utf8")).toBe("keep");
+  });
+
+  it.each([false, true])("adopts a known old subfolder when choosing again, prepared=%s", async (prepared) => {
+    const { authority, relay, a } = await fixture();
+    const legacy = path.join(base, authority.lookup(a, 1)!.key);
+    fs.mkdirSync(legacy);
+    fs.writeFileSync(path.join(legacy, "keep.neochar"), "keep");
+    if (prepared) {
+      const plan = await relay.handle("prepareChoose", a, 1) as { ticket: string };
+      expect(fs.existsSync(legacy)).toBe(true);
+      expect(await relay.handle("commit", { ...a, ticket: plan.ticket }, 1)).toMatchObject({ ok: true });
+    } else {
+      expect(await relay.handle("choose", a, 1)).toBe(path.basename(base));
+    }
+    expect(await relay.handle("list", a, 1)).toEqual([{ name: "keep.neochar", size: 4 }]);
+    expect(fs.readFileSync(path.join(base, folderKey("a"), "keep.neochar"), "utf8")).toBe("keep");
+  });
+
+  it("keeps reading the legacy folder if a safe rename fails, including after an update", async () => {
+    const { authority, relay, a } = await fixture();
+    const legacyKey = authority.lookup(a, 1)!.key;
+    const legacy = path.join(base, legacyKey);
+    fs.mkdirSync(legacy);
+    fs.writeFileSync(path.join(legacy, "keep.neochar"), "keep");
+    writeBackupFolder(path.join(base, "records"), legacy, legacyKey);
+    const rename = vi.spyOn(fs, "renameSync").mockImplementation(() => { throw new Error("busy"); });
+    try {
+      expect(await relay.handle("list", a, 1)).toEqual([{ name: "keep.neochar", size: 4 }]);
+      expect(readBackupFolder(path.join(base, "records"), folderKey("a"))).toBe(legacy);
+      const updated = await authority.report(decision("a", "b".repeat(64)), 1, async () => true) as Record<string, unknown>;
+      expect(await relay.handle("read", { ...updated, name: "keep.neochar" }, 1)).toEqual({ name: "keep.neochar", text: "keep" });
+      expect(fs.readFileSync(path.join(legacy, "keep.neochar"), "utf8")).toBe("keep");
+    } finally { rename.mockRestore(); }
+  });
+
+  it("preserves both folders when the stable destination already exists", async () => {
+    const { authority, relay, a } = await fixture();
+    const legacyKey = authority.lookup(a, 1)!.key;
+    const legacy = path.join(base, legacyKey);
+    const stable = path.join(base, folderKey("a"));
+    fs.mkdirSync(legacy);
+    fs.mkdirSync(stable);
+    fs.writeFileSync(path.join(legacy, "keep.neochar"), "old");
+    fs.writeFileSync(path.join(stable, "keep.neochar"), "new");
+    writeBackupFolder(path.join(base, "records"), legacy, legacyKey);
+    expect(await relay.handle("read", { ...a, name: "keep.neochar" }, 1)).toEqual({ name: "keep.neochar", text: "new" });
+    expect(fs.readFileSync(path.join(legacy, "keep.neochar"), "utf8")).toBe("old");
+    expect(fs.readFileSync(path.join(stable, "keep.neochar"), "utf8")).toBe("new");
+  });
+
+  it("leaves an unknown digest record and its files untouched", async () => {
+    const { relay, a } = await fixture();
+    const legacyKey = createHash("sha256").update(JSON.stringify(["a", "b".repeat(64)])).digest("hex");
+    const legacy = path.join(base, legacyKey);
+    fs.mkdirSync(legacy);
+    fs.writeFileSync(path.join(legacy, "keep.neochar"), "keep");
+    writeBackupFolder(path.join(base, "records"), legacy, legacyKey);
+    expect(await relay.handle("name", a, 1)).toBeNull();
+    await relay.handle("choose", a, 1);
+    expect(await relay.handle("list", a, 1)).toEqual([]);
+    expect(fs.readFileSync(path.join(legacy, "keep.neochar"), "utf8")).toBe("keep");
+    expect(readBackupFolder(path.join(base, "records"), legacyKey)).toBe(legacy);
+  });
+
+  it("refuses a linked legacy folder and leaves its target untouched", async () => {
+    const { authority, relay, a } = await fixture();
+    const legacyKey = authority.lookup(a, 1)!.key;
+    const legacy = path.join(base, legacyKey);
+    const target = path.join(base, "outside");
+    fs.mkdirSync(target);
+    fs.writeFileSync(path.join(target, "keep.neochar"), "keep");
+    fs.symlinkSync(target, legacy, "junction");
+    writeBackupFolder(path.join(base, "records"), legacy, legacyKey);
+    expect(await relay.handle("read", { ...a, name: "keep.neochar" }, 1)).toEqual({ ok: false });
+    expect(await relay.handle("write", { ...a, name: "new.neochar", text: "bad" }, 1)).toEqual({ ok: false });
+    expect(fs.lstatSync(legacy).isSymbolicLink()).toBe(true);
+    expect(fs.readdirSync(target)).toEqual(["keep.neochar"]);
+    expect(fs.existsSync(path.join(base, folderKey("a")))).toBe(false);
+  });
+
+  it("reads the known legacy folder without following a linked stable destination", async () => {
+    const { authority, relay, a } = await fixture();
+    const legacyKey = authority.lookup(a, 1)!.key;
+    const legacy = path.join(base, legacyKey);
+    const target = path.join(base, "outside");
+    fs.mkdirSync(legacy);
+    fs.mkdirSync(target);
+    fs.writeFileSync(path.join(legacy, "keep.neochar"), "keep");
+    fs.writeFileSync(path.join(target, "outside.neochar"), "private");
+    fs.symlinkSync(target, path.join(base, folderKey("a")), "junction");
+    writeBackupFolder(path.join(base, "records"), legacy, legacyKey);
+    expect(await relay.handle("list", a, 1)).toEqual([{ name: "keep.neochar", size: 4 }]);
+    expect(await relay.handle("read", { ...a, name: "outside.neochar" }, 1)).toEqual({ ok: false });
+    expect(fs.readFileSync(path.join(target, "outside.neochar"), "utf8")).toBe("private");
+    expect(fs.readFileSync(path.join(legacy, "keep.neochar"), "utf8")).toBe("keep");
+  });
+
+  it("keeps hard-link refusal and replacement confirmation after migration", async () => {
+    const { authority, relay, a } = await fixture();
+    const legacyKey = authority.lookup(a, 1)!.key;
+    const legacy = path.join(base, legacyKey);
+    const sentinel = path.join(base, "sentinel.txt");
+    fs.mkdirSync(legacy);
+    fs.writeFileSync(sentinel, "private");
+    fs.linkSync(sentinel, path.join(legacy, "linked.neochar"));
+    fs.writeFileSync(path.join(legacy, "keep.neochar"), "keep");
+    writeBackupFolder(path.join(base, "records"), legacy, legacyKey);
+    expect(readModBackupFolder(path.join(base, "records"), "a", "a".repeat(64))).toBe(path.join(base, folderKey("a")));
+    expect(await relay.handle("read", { ...a, name: "linked.neochar" }, 1)).toEqual({ ok: false });
+    expect(await relay.handle("write", { ...a, name: "linked.neochar", text: "bad" }, 1)).toEqual({ ok: false });
+    const confirmReplace = vi.fn(async () => false);
+    const guarded = createBackupRelay({ authority, userBase: path.join(base, "records"), choose: async () => base,
+      confirmReplace, confirmRead: async () => true });
+    expect(await guarded.handle("write", { ...a, name: "keep.neochar", text: "bad" }, 1)).toEqual({ ok: false });
+    expect(confirmReplace).toHaveBeenCalledOnce();
+    expect(fs.readFileSync(sentinel, "utf8")).toBe("private");
+    expect(fs.readFileSync(path.join(base, folderKey("a"), "keep.neochar"), "utf8")).toBe("keep");
+  });
 
   async function fixture() {
     const authority = createDesktopAuthority();
@@ -315,7 +489,7 @@ describe("installation backup allocations", () => {
     expect(await relay.handle("write", { ...b, name: "victim.neochar", text: "private" }, 1)).toEqual({ ok: true });
     expect(await relay.handle("list", a, 1)).toEqual([]);
     expect(await relay.handle("list", b, 1)).toEqual([{ name: "victim.neochar", size: 7 }]);
-    const key = authority.lookup(b, 1)!.key;
+    const key = folderKey(authority.lookup(b, 1)!.modId);
     for (const arg of [
       { ...a, modId: "b", name: "victim.neochar", text: "bad" },
       { ...a, purpose: key, name: "victim.neochar", text: "bad" },
@@ -332,7 +506,7 @@ describe("installation backup allocations", () => {
     expect(await relay.handle("list", b, 2)).toEqual({ ok: false });
   });
 
-  it("fails closed without backup consent and keeps payload versions separate", async () => {
+  it("fails closed without backup consent and preserves files across approved payload versions", async () => {
     const { authority, relay, a } = await fixture();
     const noBackup = await authority.report({ ...decision("network"), grants: ["network:*"] }, 1, async () => true);
     expect(await relay.handle("choose", noBackup, 1)).toEqual({ ok: false });
@@ -343,7 +517,7 @@ describe("installation backup allocations", () => {
     await relay.handle("write", { ...a, name: "old.neochar", text: "old" }, 1);
     const updated = await authority.report(decision("a", "b".repeat(64)), 1, async () => true);
     await relay.handle("choose", updated, 1);
-    expect(await relay.handle("list", updated, 1)).toEqual([]);
+    expect(await relay.handle("list", updated, 1)).toEqual([{ name: "old.neochar", size: 3 }]);
     expect(await relay.handle("list", a, 1)).toEqual({ ok: false });
     authority.revokeWindow(1);
     expect(await relay.handle("list", a, 1)).toEqual({ ok: false });
@@ -353,7 +527,7 @@ describe("installation backup allocations", () => {
     const { authority, relay, a } = await fixture();
     await relay.handle("choose", a, 1);
     await relay.handle("write", { ...a, name: "keep.neochar", text: "keep" }, 1);
-    const key = authority.lookup(a, 1)!.key;
+    const key = folderKey(authority.lookup(a, 1)!.modId);
     const guarded = createBackupRelay({ authority, userBase: path.join(base, "records"), choose: async () => base,
       confirmReplace: async () => { await authority.report({ ...decision("a"), revoke: true }, 1, async () => true); return true; },
       confirmRead: async () => false });
@@ -365,7 +539,7 @@ describe("installation backup allocations", () => {
 
   it("rejects overlapping writes and cancels a pending file read on revocation", async () => {
     const { authority, relay, a } = await fixture();
-    const key = authority.lookup(a, 1)!.key;
+    const key = folderKey(authority.lookup(a, 1)!.modId);
     await relay.handle("choose", a, 1);
     await relay.handle("write", { ...a, name: "keep.neochar", text: "keep" }, 1);
     let finish: (allowed: boolean) => void = () => {};
@@ -381,7 +555,7 @@ describe("installation backup allocations", () => {
 
   it("keeps a folder plan inert until a single host commit and rejects foreign or widened authority", async () => {
     const { authority, relay, a, b } = await fixture();
-    const key = authority.lookup(a, 1)!.key;
+    const key = folderKey(authority.lookup(a, 1)!.modId);
     const plan = await relay.handle("prepareChoose", a, 1) as { ticket: string };
     expect(fs.existsSync(path.join(base, key))).toBe(false);
     expect(readBackupFolder(path.join(base, "records"), key)).toBeNull();
@@ -399,7 +573,7 @@ describe("installation backup allocations", () => {
     const confirmWrite = vi.fn(async (_entry: unknown, _name: string, _folder: string, _owner: number) => true);
     const guarded = createBackupRelay({ authority, userBase: path.join(base, "records"), choose: async () => base,
       confirmReplace: async () => true, confirmRead: async () => false, confirmWrite });
-    const key = authority.lookup(a, 1)!.key;
+    const key = folderKey(authority.lookup(a, 1)!.modId);
     const plan = await guarded.handle("prepareWrite", { ...a, name: "own.neochar", text: "confirmed" }, 1) as { ticket: string };
     expect(confirmWrite).toHaveBeenCalledWith(expect.objectContaining({ modId: "a" }), "own.neochar", path.join(base, key), 1);
     expect(fs.existsSync(path.join(base, key, "own.neochar"))).toBe(false);
@@ -427,7 +601,7 @@ describe("installation backup allocations", () => {
 
   it("expires native plans and refuses excess confirmation requests without a folder mutation", async () => {
     const { relay, a, authority } = await fixture();
-    const key = authority.lookup(a, 1)!.key;
+    const key = folderKey(authority.lookup(a, 1)!.modId);
     const now = vi.spyOn(Date, "now").mockReturnValue(1000);
     try {
       const plan = await relay.handle("prepareChoose", a, 1) as { ticket: string };

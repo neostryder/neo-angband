@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as http from "node:http";
 import type { AddressInfo } from "node:net";
-import { createDesktopAuthority, createNetRelay, type NetRelayDeps } from "./net-relay.js";
+import { createDesktopAuthority, createNetRelay, desktopAuthorityKey, type NetRelayDeps } from "./net-relay.js";
 
 const [{ createModNet }, bindings, snapshots, store] = await Promise.all([
   "../../web/src/mod-net.ts", "../../web/src/mod-consent-binding.ts", "../../web/src/mod-code-snapshot.ts", "../../web/src/mod-store.ts",
@@ -119,6 +119,19 @@ const url = (path: string) => `https://${here()}${path}`;
 describe("desktop installation authority", () => {
   const decision = () => ({ modId: "squire", digest: "a".repeat(64), grants: [`network:${here()}`], destinations: [here()] });
   const allow = async () => true;
+
+  it("keeps authority keys and revocation bound to the payload digest", async () => {
+    const authority = createDesktopAuthority();
+    const original = await authority.report(decision(), 1, allow);
+    const entry = authority.lookup(original, 1)!;
+    expect(entry.key).toBe(desktopAuthorityKey(entry.modId, entry.digest));
+    const changed = { ...decision(), digest: "b".repeat(64) };
+    const updated = await authority.report(changed, 1, allow);
+    expect(authority.lookup(updated, 1)?.key).toBe(desktopAuthorityKey(changed.modId, changed.digest));
+    expect(authority.lookup(updated, 1)?.key).not.toBe(entry.key);
+    expect(entry.signal.aborted).toBe(true);
+    expect(authority.lookup(original, 1)).toBeNull();
+  });
 
   it("carries a measured renderer caller through native consent to the relay transport and revokes it", async () => {
     const digest = vi.spyOn(snapshots, "modPayloadDigest").mockReturnValue("a".repeat(64));

@@ -46,7 +46,7 @@ export interface DesktopAuthorityEntry {
   readonly signal: AbortSignal;
 }
 
-/** The stable key for one installation: its mod id and payload digest. Backup folder records use it too. */
+/** The authority key binds consent and tokens to one mod id and payload digest. */
 export function desktopAuthorityKey(modId: string, digest: string): string {
   return createHash("sha256").update(JSON.stringify([modId, digest])).digest("hex");
 }
