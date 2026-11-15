@@ -229,17 +229,22 @@ describe("list()/readBackupFiles: ticket #24's read side", () => {
     ]);
   });
 
-  it("browser: entries() lists every readable .neochar file, filtering anything else", async () => {
-    const entries = new Map<string, { kind: "file"; name: string; getFile(): Promise<{ text(): Promise<string> }> }>();
+  it.each([false, true])("browser: refuses oversized arrivals before reading text (requireReadable=%s)", async (requireReadable) => {
+    const oversizedText = vi.fn(async () => "hostile");
+    const entries = new Map<string, { kind: "file"; name: string; getFile(): Promise<{ size: number; text(): Promise<string> }> }>();
+    entries.set("huge.neochar", {
+      kind: "file", name: "huge.neochar",
+      getFile: async () => ({ size: 5 * 1024 * 1024 + 1, text: oversizedText }),
+    });
     entries.set("Bilbo.neochar", {
       kind: "file",
       name: "Bilbo.neochar",
-      getFile: async () => ({ text: async () => neochar("lin-bilbo") }),
+      getFile: async () => ({ size: 5 * 1024 * 1024, text: async () => neochar("lin-bilbo") }),
     });
     entries.set("notes.txt", {
       kind: "file",
       name: "notes.txt",
-      getFile: async () => ({ text: async () => "irrelevant" }),
+      getFile: async () => ({ size: 10, text: async () => "irrelevant" }),
     });
     const handle = {
       kind: "directory" as const,
@@ -281,10 +286,15 @@ describe("list()/readBackupFiles: ticket #24's read side", () => {
         },
       },
     };
-    const files = await readBackupFiles("qol", scope);
-    expect(files).toHaveLength(1);
-    expect(files[0]?.name).toBe("Bilbo.neochar");
-    expect(files[0]?.peek.ok && files[0].peek.lineage).toBe("lin-bilbo");
+    if (requireReadable) {
+      await expect(readBackupFiles("qol", scope, true)).rejects.toThrow(/size limit/);
+    } else {
+      const files = await readBackupFiles("qol", scope);
+      expect(files).toHaveLength(1);
+      expect(files[0]?.name).toBe("Bilbo.neochar");
+      expect(files[0]?.peek.ok && files[0].peek.lineage).toBe("lin-bilbo");
+    }
+    expect(oversizedText).not.toHaveBeenCalled();
   });
 
   /** A minimal IDBRequest-shaped object that resolves on the next microtask. */

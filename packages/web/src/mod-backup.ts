@@ -14,7 +14,7 @@
 
 import { STORE_HANDLES, idbDelete, idbGet, idbPut, openDb } from "./idb";
 import type { BackupFolder, BackupFolderEntry } from "./mod-plugin";
-import { peekTransferMeta, type TransferPeek } from "./save-transfer";
+import { MAX_TRANSFER_TEXT_BYTES, peekTransferMeta, type TransferPeek } from "./save-transfer";
 import { desktopInstallation, type DesktopConsentBridge } from "./host-electron";
 
 /* ------------------------------------------------------------------ *
@@ -107,7 +107,7 @@ interface FsWritable {
 interface BackupDirEntry {
   readonly kind: "file" | "directory";
   readonly name: string;
-  getFile?(): Promise<{ text(): Promise<string> }>;
+  getFile?(): Promise<{ readonly size: number; text(): Promise<string> }>;
 }
 
 interface BackupDirHandle {
@@ -224,6 +224,10 @@ async function browserBackupFiles(id: string, scope: unknown, requireReadable = 
       }
       try {
         const file = await entry.getFile();
+        if (file.size > MAX_TRANSFER_TEXT_BYTES) {
+          if (requireReadable) throw new Error("The backup file exceeds the import size limit.");
+          continue;
+        }
         files.push({ name: entry.name, text: await file.text() });
       } catch (error) {
         if (requireReadable) throw error;
