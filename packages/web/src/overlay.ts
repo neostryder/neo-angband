@@ -224,7 +224,7 @@ export async function showTextScreen(
   if (isCoreDrawn(built.id)) {
     const restore = suspendModPanels();
     try {
-      return await showViewOnTerminal(term, built.title, screenBodyLines(built, term.size().cols), built.footer, roguelike);
+      return await showViewOnTerminal(term, built.title, coreDrawnBodyLines(built, term.size().cols), built.footer, roguelike);
     } finally {
       restore();
     }
@@ -249,6 +249,54 @@ export async function showTextScreen(
     view.footer,
     roguelike,
   );
+}
+
+/**
+ * A Core-drawn screen's rows, every one inside what the terminal shows
+ * (neostryder/neo-angband#481).
+ *
+ * The painter below keeps the rightmost cell free, so a row is shown to
+ * `cols - 1` and anything past that is cut. Prose blocks were wrapped to the
+ * full `cols`, and `lines` rows - the consent notices are mostly those - were
+ * not wrapped at all, so the end of a long sentence or permission line was cut
+ * off mid-word: on the questions that decide what a mod may do, the part a
+ * player most needs to read. These screens are the port's own, not upstream's
+ * pictures, so here every block wraps to the painted width and a long plain row
+ * breaks at spaces, keeping its indent, with a bullet's text hung under itself.
+ */
+export function coreDrawnBodyLines(view: ScreenView, cols: number): ScreenLine[] {
+  const width = Math.max(1, cols - 1);
+  return screenBodyLines(view, width).flatMap((line) => fitLine(line, width));
+}
+
+function fitLine(line: ScreenLine, width: number): ScreenLine[] {
+  if (line.runs !== undefined || line.text.length <= width) return [line];
+  const lead = /^ */u.exec(line.text)?.[0] ?? "";
+  const hang = lead + (/^- /u.test(line.text.slice(lead.length)) ? "  " : "");
+  const out: string[] = [];
+  let current = lead;
+  let fresh = true;
+  for (const word of line.text.slice(lead.length).split(/ +/u).filter((w) => w !== "")) {
+    if (!fresh && current.length + 1 + word.length <= width) {
+      current += ` ${word}`;
+      continue;
+    }
+    if (!fresh) {
+      out.push(current);
+      current = hang;
+    }
+    let rest = word;
+    while (current.length + rest.length > width && width > current.length) {
+      const room = width - current.length;
+      out.push(current + rest.slice(0, room));
+      rest = rest.slice(room);
+      current = hang;
+    }
+    current += rest;
+    fresh = false;
+  }
+  out.push(current);
+  return out.map((text) => ({ ...line, text }));
 }
 
 /**
