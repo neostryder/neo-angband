@@ -77,6 +77,8 @@ export interface ProjectPlayerSource {
 
 /** Context passed to the per-type side-effect hook (upstream handler context). */
 export interface ProjectPlayerSideContext {
+  /** The computed blast centre, independent of the source. */
+  centre?: Loc;
   origin: ProjectPlayerSource;
   /** Distance from the blast centre. */
   r: number;
@@ -126,6 +128,8 @@ export interface ProjectPlayerHooks {
 
 /** Everything the per-grid player driver needs. */
 export interface ProjectPlayerCtx {
+  /** The computed blast centre, independent of the source. */
+  centre?: Loc;
   rng: Rng;
   actor: PlayerProjActor;
   /** The player's grid (square_isplayer check). */
@@ -224,6 +228,7 @@ export function projectPlayer(
   /* Handle side effects, possibly including extra damage. */
   const sideCtx: ProjectPlayerSideContext = {
     origin,
+    ...(pctx.centre ? { centre: pctx.centre } : {}),
     r: dist,
     grid,
     dam: d,

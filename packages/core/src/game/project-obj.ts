@@ -104,6 +104,8 @@ function elemental(
 
 /** What an object handler is handed. Mirrors project_object_handler_context_t. */
 export interface ProjectObjCtx {
+  /** The computed blast centre; absent in legacy direct calls. */
+  readonly centre?: Loc;
   /** The object being affected. */
   readonly obj: GameObject;
   /** The PROJ_ value, for a handler that wants it. */
@@ -188,11 +190,12 @@ export function runObjectHandler(
   typ: number,
   obj: GameObject,
   env: ProjectWorldEnv = {},
+  centre?: Loc,
 ): ObjHandlerResult {
   const out: ObjHandlerResult = { doKill: false, ignore: false, noteKill: null };
   const code = projectionCodeFor(typ, env.projections);
   const handler = code === undefined ? undefined : (env.objHandlers ?? PROJECT_OBJ_HANDLERS).get(code);
-  handler?.({ obj, typ, out });
+  handler?.({ obj, typ, out, ...(centre ? { centre } : {}) });
   return out;
 }
 
@@ -207,6 +210,7 @@ export function projectObject(
   _dam: number,
   typ: number,
   env: ProjectWorldEnv = {},
+  centre?: Loc,
 ): boolean {
   let obvious = false;
 
@@ -230,7 +234,7 @@ export function projectObject(
       continue;
     }
 
-    const { doKill: rawKill, ignore, noteKill } = runObjectHandler(typ, obj, env);
+    const { doKill: rawKill, ignore, noteKill } = runObjectHandler(typ, obj, env, centre);
     /* protected_obj never destroys itself. */
     const doKill = rawKill && obj !== env.protectedObj;
     if (!doKill) continue;

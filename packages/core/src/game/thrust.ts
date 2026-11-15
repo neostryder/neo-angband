@@ -94,7 +94,10 @@ export function thrustAway(
   /* Determine where target is in relation to caster, extend. */
   const rel = loc(target.x - centre.x + 20, target.y - centre.y + 20);
   /* The angle (/2) of the line from caster to target. */
-  const angle = GET_ANGLE_TO_GRID[rel.y]?.[rel.x] ?? 0;
+  let angle = GET_ANGLE_TO_GRID[rel.y]?.[rel.x] ?? 0;
+  if (angle === 255 && state.modHooks?.forceFromBlastCenter?.()) {
+    angle = Math.trunc(state.rng.randint0(8) * 45 / 2);
+  }
 
   /* Start at the target grid. */
   let grid = target;

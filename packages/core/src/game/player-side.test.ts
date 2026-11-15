@@ -266,6 +266,20 @@ describe("project-player side effects (project-player.c handlers)", () => {
     expect(state.actor.player.timed[TMD.SLOW]!).toBeGreaterThan(0);
   });
 
+  it.each([false, true])("FORCE chooses source or blast centre: %s (project_player_handler_FORCE, b4fb34b36)", (enabled) => {
+    const state = makeState({ playerGrid: loc(12, 12), seed: 42 });
+    state.modHooks = enabled ? { forceFromBlastCenter: () => true } : {};
+    const start = state.actor.grid;
+    makePlayerSideEffects(state, {
+      timed: plReg.timed, actor: stubActor(), projections: [],
+      expDeps: { rng: state.rng }, lifeDrainPercent: 2,
+    })({
+      origin: { isPlayer: false, isMonster: true, killer: "a test", grid: loc(7, 12) },
+      centre: loc(17, 12), r: 0, grid: start, obvious: true, dam: 60, typ: PROJ.FORCE, power: 0,
+    });
+    expect(enabled ? state.actor.grid.x < start.x : state.actor.grid.x > start.x).toBe(true);
+  });
+
   it("FORCE stuns and thrusts the player away from the origin", () => {
     const state = makeState({ seed: 42 });
     const start = state.actor.grid;

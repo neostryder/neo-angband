@@ -198,6 +198,7 @@ const CONTEXT_FIELDS = [
   "rng",
   "hooks",
   "originIsMonster",
+  "centre",
   "r",
   "grid",
   "dam",

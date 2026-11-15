@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RF } from "../generated/index.js";
 import { distance, loc, locEq } from "../loc.js";
 import { addMon, makeState, monReg } from "./harness.js";
@@ -64,6 +64,15 @@ describe("thrust_away (project-mon.c L87)", () => {
     thrustAway(state, loc(30, 12), loc(36, 12), 10, { msg: () => {} });
     expect(state.chunk.inBoundsFully(state.actor.grid)).toBe(true);
     expect(state.chunk.isPassable(state.actor.grid)).toBe(true);
+  });
+
+  it.each([false, true])("uses the coincident-angle draw only under policy: %s (thrust_away, b4fb34b36)", (enabled) => {
+    const state = makeState({ playerGrid: loc(12, 12) });
+    state.modHooks = enabled ? { forceFromBlastCenter: () => true } : {};
+    const draw = vi.spyOn(state.rng, "randint0").mockReturnValue(0);
+    thrustAway(state, state.actor.grid, state.actor.grid, 1);
+    expect(draw).toHaveBeenCalledTimes(enabled ? 2 : 1);
+    draw.mockRestore();
   });
 
   it("is deterministic for a fixed seed", () => {

@@ -75,6 +75,8 @@ export interface ProjectFeatEnv extends ProjectWorldEnv {
 
 /** What a terrain handler is handed. Fields mirror project_f's parameters. */
 export interface ProjectFeatCtx {
+  /** The computed blast centre; absent in legacy direct calls. */
+  readonly centre?: Loc;
   readonly state: GameState;
   /** The grid being affected. */
   readonly grid: Loc;
@@ -548,9 +550,10 @@ export function projectFeature(
   dam: number,
   typ: number,
   env: ProjectFeatEnv = {},
+  centre?: Loc,
 ): boolean {
   const code = projectionCodeFor(typ, env.projections);
   const table = env.featHandlers ?? PROJECT_FEAT_HANDLERS;
   const handler = (code === undefined ? undefined : table.get(code)) ?? observeOnly;
-  return handler({ state, grid, dam, typ, env });
+  return handler({ state, grid, dam, typ, env, ...(centre ? { centre } : {}) });
 }

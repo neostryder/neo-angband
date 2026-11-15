@@ -645,6 +645,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
   }
 
   const PROBES: Record<keyof ModHooks, Probe> = {
+    forceFromBlastCenter: {
+      yes: (log, tag) => ({ forceFromBlastCenter: () => { log.push(tag); return true; } }),
+      no: (log, tag) => ({ forceFromBlastCenter: () => { log.push(tag); return false; } }),
+      run: (h) => h.forceFromBlastCenter?.(),
+    },
     monsterArcheryFrequency: {
       yes: (log, tag, nth) => ({ monsterArcheryFrequency: () => { log.push(tag); return nth === 1; } }),
       no: (log, tag) => ({ monsterArcheryFrequency: () => { log.push(tag); return null; } }),

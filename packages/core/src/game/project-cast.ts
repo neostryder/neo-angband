@@ -373,8 +373,8 @@ export function castProjection(
   };
 
   const projectHooks: ProjectHooks = {
-    onMonster: (dist, g, d, t, f) => projectMonster(monCtx, dist, g, d, t, f),
-    onPlayer: (dist, g, d, t, self) => {
+    onMonster: (dist, g, d, t, f, centre) => projectMonster({ ...monCtx, centre }, dist, g, d, t, f),
+    onPlayer: (dist, g, d, t, self, centre) => {
       /* project_p (project-player.c L822): a damaging projection that reaches
        * the player's decoy grid destroys it, whether or not the player is
        * there. */
@@ -383,7 +383,7 @@ export function castProjection(
           cctx.worldEnv?.msg?.(text),
         );
       }
-      return projectPlayer(plCtx, dist, g, d, t, self);
+      return projectPlayer({ ...plCtx, centre }, dist, g, d, t, self);
     },
     playerIsDead: () => cctx.playerActor.isDead,
     ...(hooks.onTrackMonster ? { onTrackMonster: hooks.onTrackMonster } : {}),
@@ -392,16 +392,17 @@ export function castProjection(
     /* project_o / project_f over the live floor piles and terrain. */
     ...(cctx.worldEnv
       ? {
-          onObject: (dist: number, g: Loc, d: number, t: number): boolean =>
-            projectObject(state, dist, g, d, t, worldEnv),
-          onFeature: (dist: number, g: Loc, d: number, t: number): boolean =>
-            projectFeature(state, dist, g, d, t, worldEnv),
+          onObject: (dist: number, g: Loc, d: number, t: number, centre: Loc): boolean =>
+            projectObject(state, dist, g, d, t, worldEnv, centre),
+          onFeature: (dist: number, g: Loc, d: number, t: number, centre: Loc): boolean =>
+            projectFeature(state, dist, g, d, t, worldEnv, centre),
         }
       : {}),
   };
 
   const params: ProjectParams = {
     origin: source.grid,
+    forceFromBlastCenter: state.modHooks?.forceFromBlastCenter?.() ?? false,
     finish: target,
     rad,
     typ,

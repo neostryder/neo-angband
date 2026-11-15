@@ -93,6 +93,41 @@ describe("resolveAimedTarget", () => {
   });
 });
 
+describe("FORCE blast centres (project, project_m, b4fb34b36)", () => {
+  it.each([false, true])("selects the monster thrust centre only when enabled: %s", (enabled) => {
+    const state = makeState({ playerGrid: loc(5, 5) });
+    state.modHooks = enabled ? { forceFromBlastCenter: () => true } : {};
+    addMon(state, plainRace, loc(11, 6), { hp: 500 });
+    const centres: unknown[] = [];
+    const ctx = cctx(state, { monster: { thrustAway: (centre) => { centres.push(centre); } } });
+    castBall(state, ctx, playerCastSource(state), loc(10, 5), 20, PROJ.FORCE, 2, { aimedAtTarget: true });
+    expect(centres).toEqual([enabled ? loc(10, 5) : loc(5, 5)]);
+  });
+});
+
+describe("projection centre context", () => {
+  it.each(["ball", "bolt", "beam"])("carries the centre to the player and terrain for a %s", (kind) => {
+    const state = makeState({ playerGrid: loc(10, 5) });
+    state.modHooks = { forceFromBlastCenter: () => true };
+    state.actor.player.chp = 100;
+    const mon = addMon(state, plainRace, loc(5, 5), { hp: 500 });
+    const expected = kind === "ball" ? state.actor.grid : mon.grid;
+    const playerCentres: unknown[] = [];
+    const terrainCentres: unknown[] = [];
+    const ctx = cctx(state, { player: { onSideEffects: (context) => { playerCentres.push(context.centre); return 0; } } });
+    ctx.worldEnv = { featHandlers: new Map([["FORCE", (context) => { terrainCentres.push(context.centre); return false; }]]) };
+    const source = monsterCastSource(state, mon.midx);
+    if (kind === "ball") castBall(state, ctx, source, state.actor.grid, 20, PROJ.FORCE, 2);
+    else if (kind === "beam") castLine(state, ctx, source, state.actor.grid, 20, PROJ.FORCE);
+    else castBolt(state, ctx, source, state.actor.grid, 20, PROJ.FORCE);
+    expect(playerCentres).toEqual([expected]);
+    if (kind !== "bolt") {
+      expect(terrainCentres.length).toBeGreaterThan(0);
+      expect(terrainCentres.every((centre) => JSON.stringify(centre) === JSON.stringify(expected))).toBe(true);
+    }
+  });
+});
+
 describe("castBolt", () => {
   it("a player bolt damages the monster it stops at", () => {
     const state = makeState({ playerGrid: loc(5, 5) });

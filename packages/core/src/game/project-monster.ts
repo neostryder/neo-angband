@@ -130,6 +130,8 @@ export interface ProjectMonsterSource {
 
 /** Everything the per-grid driver needs, built once per project() call. */
 export interface ProjectMonsterCtx {
+  /** The computed blast centre, distinct from its source. */
+  centre?: Loc;
   state: GameState;
   projections: readonly ProjectionInfo[];
   origin: ProjectMonsterSource;
@@ -191,6 +193,7 @@ export function projectMonster(
   const ctx = newMonProjectContext(state.rng, mon, typ, dam, {
     originIsMonster: origin.monster !== 0,
     r: dist,
+    centre: pctx.centre ?? origin.grid,
     grid,
     charm: origin.charm,
     /* player->upkeep->health_who == mon (project-mon.c:929). PROJ_MON_HEAL's
@@ -243,7 +246,7 @@ export function projectMonster(
 
   /* PROJ_FORCE thrust happens in the handler upstream, before wake / damage. */
   if (ctx.thrustGridsAway > 0) {
-    hooks.thrustAway?.(origin.grid, grid, ctx.thrustGridsAway);
+    hooks.thrustAway?.(state.modHooks?.forceFromBlastCenter?.() ? ctx.centre : origin.grid, grid, ctx.thrustGridsAway);
   }
 
   /* Wake the monster if the projection type forces it. */

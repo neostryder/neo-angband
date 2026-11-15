@@ -299,6 +299,8 @@ export interface KnownArtifactFind {
 }
 
 export interface ModHooks {
+  /** project/project_m/project_p and thrust_away: use the blast centre and randomize a coincident angle. */
+  forceFromBlastCenter?: () => boolean;
   /** monster_loves_archery (mon/predicate.ts, reached from getMoveFindRange).
    * Null keeps the faithful freqInnate < 4 test. No random draws. */
   monsterArcheryFrequency?: (frequency: number) => boolean | null;
@@ -833,6 +835,7 @@ export type ModHookFold =
  * interface without adding it here does not compile.
  */
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
+  forceFromBlastCenter: "any-yes",
   monsterArcheryFrequency: "last-answer",
   newCharacter: "all-observe",
   walkBlockedByDiggable: "last-answer",
@@ -945,6 +948,9 @@ export function guardModHooks(
       return neutral;
     }
   }
+
+  const forceCentre = hooks.forceFromBlastCenter;
+  if (forceCentre) out.forceFromBlastCenter = () => guard("forceFromBlastCenter", () => forceCentre(), false);
 
   const archery = hooks.monsterArcheryFrequency;
   if (archery) out.monsterArcheryFrequency = (frequency) =>
@@ -1175,6 +1181,9 @@ export function composeModHooks(
       return null;
     };
   }
+
+  const forceCentre = list.map((c) => c.forceFromBlastCenter).filter(isFn);
+  if (forceCentre.length > 0) out.forceFromBlastCenter = () => forceCentre.some((fn) => fn());
 
   const archery = list.map((c) => c.monsterArcheryFrequency).filter(isFn).reverse();
   if (archery.length > 0) out.monsterArcheryFrequency = (frequency) => {

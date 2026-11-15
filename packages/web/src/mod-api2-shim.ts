@@ -232,6 +232,7 @@ export interface Api2PolicyTargets {
 
 export function api2PolicyModHooks(registrations: Api2PolicyRegistrations, active: () => boolean): ModHooks {
   const hooks: ModHooks = {};
+  if (registrations.forceFromBlastCenter) hooks.forceFromBlastCenter = active;
   if (registrations.monsterArcheryFrequency) hooks.monsterArcheryFrequency = (frequency) =>
     active() ? frequency > registrations.monsterArcheryFrequency!.greaterThan : null;
   if (registrations.walkBlockedByDiggable) hooks.walkBlockedByDiggable = (state, grid, deps) => {

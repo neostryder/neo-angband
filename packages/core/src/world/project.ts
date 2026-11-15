@@ -327,6 +327,8 @@ export interface ProjectParams {
    * the damage table below is sized by.
    */
   resolveRadius?: (rad: number, maxRange: number) => number;
+  /** b4fb34b36: bolts and beams keep their centre at the source. */
+  forceFromBlastCenter?: boolean;
 }
 
 /** The computed blast: pure geometry + damage, no side effects. */
@@ -447,7 +449,7 @@ export function computeProjection(c: Chunk, p: ProjectParams): Projection {
     }
 
     /* Save the "blast epicenter". */
-    centre = loc(x, y);
+    if (!p.forceFromBlastCenter || (rad > 0 && !(flg & PROJECT.BEAM))) centre = loc(x, y);
   }
 
   /* Now check for explosions. Non-beam projections with positive radius
@@ -599,7 +601,7 @@ export interface ProjectHooks {
   /** UI: display the whole blast, once, before per-grid effects. */
   onBlast?: (proj: Projection, typ: number) => void;
   /** project_o: affect an object on the ground. */
-  onObject?: (dist: number, grid: Loc, dam: number, typ: number) => boolean;
+  onObject?: (dist: number, grid: Loc, dam: number, typ: number, centre: Loc) => boolean;
   /** project_m: affect a monster in the grid. */
   onMonster?: (
     dist: number,
@@ -607,6 +609,7 @@ export interface ProjectHooks {
     dam: number,
     typ: number,
     flg: number,
+    centre: Loc,
   ) => MonsterHitResult;
   /** project_p: affect the player. */
   onPlayer?: (
@@ -615,9 +618,10 @@ export interface ProjectHooks {
     dam: number,
     typ: number,
     projSelf: boolean,
+    centre: Loc,
   ) => boolean;
   /** project_f: affect a terrain feature. */
-  onFeature?: (dist: number, grid: Loc, dam: number, typ: number) => boolean;
+  onFeature?: (dist: number, grid: Loc, dam: number, typ: number, centre: Loc) => boolean;
   /** Recall/health-track the single monster a player projection hit. */
   onTrackMonster?: (grid: Loc) => void;
   /** Whether the player has just died (checked after project_p). */
@@ -665,7 +669,7 @@ export function project(
   if (flg & PROJECT.ITEM && hooks.onObject) {
     for (let i = 0; i < grids.length; i++) {
       const d = distanceToGrid[i]!;
-      if (hooks.onObject(d, grids[i]!, damAtDist[d]!, params.typ)) notice = true;
+      if (hooks.onObject(d, grids[i]!, damAtDist[d]!, params.typ, proj.centre)) notice = true;
     }
   }
 
@@ -684,7 +688,7 @@ export function project(
       if (c.mon(g) === 0) continue;
 
       const d = distanceToGrid[i]!;
-      const res = hooks.onMonster(d, g, damAtDist[d]!, params.typ, flg);
+      const res = hooks.onMonster(d, g, damAtDist[d]!, params.typ, flg, proj.centre);
       if (res.wasObvious) notice = true;
       if (res.didHit) {
         numHit++;
@@ -704,7 +708,7 @@ export function project(
     const projSelf = !!(flg & PROJECT.SELF);
     for (let i = 0; i < grids.length; i++) {
       const d = distanceToGrid[i]!;
-      if (hooks.onPlayer(d, grids[i]!, damAtDist[d]!, params.typ, projSelf)) {
+      if (hooks.onPlayer(d, grids[i]!, damAtDist[d]!, params.typ, projSelf, proj.centre)) {
         notice = true;
         if (hooks.playerIsDead?.()) {
           clearMarks();
@@ -719,7 +723,7 @@ export function project(
   if (flg & PROJECT.GRID && hooks.onFeature) {
     for (let i = 0; i < grids.length; i++) {
       const d = distanceToGrid[i]!;
-      if (hooks.onFeature(d, grids[i]!, damAtDist[d]!, params.typ)) notice = true;
+      if (hooks.onFeature(d, grids[i]!, damAtDist[d]!, params.typ, proj.centre)) notice = true;
     }
   }
 

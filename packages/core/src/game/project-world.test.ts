@@ -57,6 +57,18 @@ function makeObj(
 }
 
 describe("project_o (project-obj.c)", () => {
+  it("carries the separate blast centre to object handlers (b4fb34b36)", () => {
+    const state = makeState();
+    const grid = loc(5, 5);
+    const centre = loc(7, 5);
+    floorCarry(state, grid, makeObj(TV.SCROLL));
+    const centres: unknown[] = [];
+    projectObject(state, 0, grid, 20, PROJ.FIRE, {
+      objHandlers: new Map([["FIRE", (context) => { centres.push(context.centre); }]]),
+    }, centre);
+    expect(centres).toEqual([centre]);
+  });
+
   it("fire burns a flammable floor object and spares an ignoring one", () => {
     const state = makeState();
     const grid = loc(5, 5);

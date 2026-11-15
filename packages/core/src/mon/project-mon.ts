@@ -69,6 +69,8 @@ export interface MonProjectContext {
   r: number;
   /** The grid the monster is in (used by the driver, not the handlers here). */
   grid: Loc;
+  /** The computed blast centre, independent of the source. */
+  centre: Loc;
   /** Current, mutable damage; distance-adjusted before it reaches here. */
   dam: number;
   /** PROJ_ projection type. */
@@ -112,6 +114,7 @@ export interface MonProjectContextOptions {
   originIsMonster?: boolean;
   r?: number;
   grid?: Loc;
+  centre?: Loc;
   charm?: boolean;
   /** player->upkeep->health_who == mon (project-mon.c:929). */
   healthTracked?: boolean;
@@ -137,6 +140,7 @@ export function newMonProjectContext(
     originIsMonster: opts.originIsMonster ?? false,
     r: opts.r ?? 0,
     grid: opts.grid ?? mon.grid,
+    centre: opts.centre ?? opts.grid ?? mon.grid,
     dam,
     type,
     mon,

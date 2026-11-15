@@ -582,10 +582,11 @@ const inertia: PlayerSideHandler = (c) => {
 };
 
 const force: PlayerSideHandler = (c) => {
-  let centre = c.proj.origin.grid ?? c.proj.grid;
+  const fromBlast = c.state.modHooks?.forceFromBlastCenter?.() ?? false;
+  let centre = (fromBlast ? c.proj.centre : undefined) ?? c.proj.origin.grid ?? c.proj.grid;
 
   /* Player gets pushed in a random direction if on the trap. */
-  if (c.proj.origin.isTrap && locEq(c.state.actor.grid, centre)) {
+  if (!fromBlast && c.proj.origin.isTrap && locEq(c.state.actor.grid, centre)) {
     centre = locSum(centre, DDGRID_DDD[c.rng.randint0(8)]!);
   }
 
