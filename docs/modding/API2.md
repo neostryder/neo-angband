@@ -166,6 +166,7 @@ Each table needs its matching registry permission from the list below, in both r
 | `cursedLightRadius` | the same | not a rule table | `registry:ui-entry` |
 | `completeRestEffects` | the same | not a rule table | `registry:command` |
 | `projectionRadiusClamp` | `projectionRadius` | not a rule table | `registry:projection` |
+| `forgetUnlitImpassableTerrain` | host-owned terrain memory | boolean | `registry:projection` |
 | `forceFromBlastCenter` | host-owned FORCE and thrust handlers | boolean | `registry:projection` |
 | `monsterArcheryFrequency` | host-owned archery predicate | `{ greaterThan: 0..100 }` | `registry:monster` |
 | `levelRevisitTracking` | `levelRevisited` | not a rule table | `registry:monster` |
@@ -181,6 +182,8 @@ A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whol
 `completeRestEffects` lists timed-effect names, from none up to 64. A complete rest waits until each named effect has run out, in place of the ten effects the game waits for when the table is left out. A name this game does not have does not count. An empty list waits on none of them. Hit points, spell points, word of recall and deep descent stay as they are, and the other rest modes do not read the list. The later mod's list is the one used.
 
 `cursedLightRadius` is `true` or `false`. `true` gives a wielded item no light when it carries an active curse or the sticky flag. This game has no light-curse flag. An active curse is one whose power is above zero on the item itself, and a sticky item is one with the sticky flag and no curse record. `false`, or leaving the table out, leaves that light as it is. One mod asking is enough.
+
+`forgetUnlitImpassableTerrain: true` applies upstream `update_view()` (1d2ad35a2, fc29847fd) before seen grids are noted: Core forgets the player's remembered impassable terrain when light is zero or negative and UNLIGHT is absent. Blindness still forgets it with any light or UNLIGHT state. A false or absent policy keeps the blind-only rule.
 
 `forceFromBlastCenter: true` selects upstream b4fb34b36 in `project()`, both FORCE handlers, and `thrust_away()`: balls push from their blast centre, bolts and beams keep their source centre, and coincident targets draw a random angle. Projection contexts carry `centre` separately from the source. Core keeps those coordinates inside the host; an absent or false policy preserves the old source-based thrust and RNG.
 

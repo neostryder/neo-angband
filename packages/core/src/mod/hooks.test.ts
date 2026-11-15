@@ -645,6 +645,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
   }
 
   const PROBES: Record<keyof ModHooks, Probe> = {
+    forgetUnlitImpassableTerrain: {
+      yes: (log, tag) => ({ forgetUnlitImpassableTerrain: () => { log.push(tag); return true; } }),
+      no: (log, tag) => ({ forgetUnlitImpassableTerrain: () => { log.push(tag); return false; } }),
+      run: (h) => h.forgetUnlitImpassableTerrain?.(),
+    },
     forceFromBlastCenter: {
       yes: (log, tag) => ({ forceFromBlastCenter: () => { log.push(tag); return true; } }),
       no: (log, tag) => ({ forceFromBlastCenter: () => { log.push(tag); return false; } }),

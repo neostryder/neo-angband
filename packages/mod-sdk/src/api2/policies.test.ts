@@ -214,7 +214,7 @@ describe("API2_POLICY_KINDS", () => {
       historyDisplay: "registry:message", objectListOrder: "registry:tval", saveNoiseScent: "registry:monster",
       shapeLearnObviousFlagsDirectly: "registry:rune", cursedLightRadius: "registry:ui-entry", completeRestEffects: "registry:command",
       storeDiscountRoll: "registry:store", valueFloor: "registry:tval", tileMap: "registry:tiles",
-      projectionRadiusClamp: "registry:projection", levelRevisitTracking: "registry:monster", monsterArcheryFrequency: "registry:monster", forceFromBlastCenter: "registry:projection",
+      projectionRadiusClamp: "registry:projection", levelRevisitTracking: "registry:monster", monsterArcheryFrequency: "registry:monster", forceFromBlastCenter: "registry:projection", forgetUnlitImpassableTerrain: "registry:projection",
     });
   });
 
@@ -224,7 +224,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
+      else expect(["forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
     }
   });
 
@@ -315,6 +315,16 @@ describe("the store discount roll", () => {
     expect(checkApi2Policies({ storeDiscountRoll: { tiers: [{ oneIn: 0, percent: 10 }] } })).toMatch(/oneIn is a whole number/u);
     expect(checkApi2Policies({ storeDiscountRoll: { tiers: [{ oneIn: 2, percent: 10, odds: 3 }] } })).toMatch(/unknown field "odds"/u);
     expect(checkApi2Policies({ storeDiscountRoll: { minCost: -1, tiers: [{ oneIn: 2, percent: 10 }] } })).toMatch(/minCost/u);
+  });
+});
+
+describe("the unlit terrain switch", () => {
+  it("checks booleans and installs only the granted true policy", () => {
+    expect(checkApi2Policies({ forgetUnlitImpassableTerrain: true })).toBeNull();
+    expect(checkApi2Policies({ forgetUnlitImpassableTerrain: "yes" })).not.toBeNull();
+    expect(api2PolicyEffects({ forgetUnlitImpassableTerrain: false }).registrations).toEqual({});
+    expect(api2PolicyEffects({ forgetUnlitImpassableTerrain: true }, () => false).registrations).toEqual({});
+    expect(api2PolicyEffects({ forgetUnlitImpassableTerrain: true }).registrations).toEqual({ forgetUnlitImpassableTerrain: true });
   });
 });
 

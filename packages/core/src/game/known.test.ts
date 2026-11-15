@@ -340,6 +340,30 @@ function getLoreSights(state: GameState, mon: Monster): number {
 }
 
 describe("noteSpots (note_spot + update_mon)", () => {
+  it.each([
+    [false, 0, false, false, false, true],
+    [false, -1, false, false, false, true],
+    [true, 0, false, false, false, false],
+    [true, -1, false, false, false, false],
+    [true, 1, false, false, false, true],
+    [true, 0, true, false, false, true],
+    [true, -1, true, false, false, true],
+    [true, 1, true, true, false, false],
+    [true, 0, false, false, true, true],
+  ])("forgets impassable terrain under update_view policy: %j %i %j %j %j", (enabled, light, unlight, blind, passable, remembered) => {
+    const state = makeState({ playerGrid: loc(10, 10) });
+    state.modHooks = enabled ? { forgetUnlitImpassableTerrain: () => true } : {};
+    state.actor.light = light;
+    state.actor.unlight = unlight;
+    state.actor.player.timed[TMD.BLIND] = blind ? 10 : 0;
+    state.chunk.setFeat(state.actor.grid, passable ? FLOOR : GRANITE);
+    squareMemorize(state, state.actor.grid);
+    state.chunk.setFeat(state.actor.grid, FLOOR);
+    /* UC-8a/8b: update_view, 1d2ad35a2 and fc29847fd. */
+    noteSpots(state);
+    expect(squareIsKnown(state, state.actor.grid)).toBe(remembered);
+  });
+
   it("memorizes seen grids with their piles", () => {
     const state = makeState({ playerGrid: loc(10, 10) });
     const grid = loc(12, 10);

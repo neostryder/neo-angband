@@ -299,6 +299,8 @@ export interface KnownArtifactFind {
 }
 
 export interface ModHooks {
+  /** noteSpots (update_view): light <= 0 without UNLIGHT also forgets impassable player terrain. */
+  forgetUnlitImpassableTerrain?: () => boolean;
   /** project/project_m/project_p and thrust_away: use the blast centre and randomize a coincident angle. */
   forceFromBlastCenter?: () => boolean;
   /** monster_loves_archery (mon/predicate.ts, reached from getMoveFindRange).
@@ -835,6 +837,7 @@ export type ModHookFold =
  * interface without adding it here does not compile.
  */
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
+  forgetUnlitImpassableTerrain: "any-yes",
   forceFromBlastCenter: "any-yes",
   monsterArcheryFrequency: "last-answer",
   newCharacter: "all-observe",
@@ -948,6 +951,9 @@ export function guardModHooks(
       return neutral;
     }
   }
+
+  const unlitTerrain = hooks.forgetUnlitImpassableTerrain;
+  if (unlitTerrain) out.forgetUnlitImpassableTerrain = () => guard("forgetUnlitImpassableTerrain", () => unlitTerrain(), false);
 
   const forceCentre = hooks.forceFromBlastCenter;
   if (forceCentre) out.forceFromBlastCenter = () => guard("forceFromBlastCenter", () => forceCentre(), false);
@@ -1181,6 +1187,9 @@ export function composeModHooks(
       return null;
     };
   }
+
+  const unlitTerrain = list.map((c) => c.forgetUnlitImpassableTerrain).filter(isFn);
+  if (unlitTerrain.length > 0) out.forgetUnlitImpassableTerrain = () => unlitTerrain.some((fn) => fn());
 
   const forceCentre = list.map((c) => c.forceFromBlastCenter).filter(isFn);
   if (forceCentre.length > 0) out.forceFromBlastCenter = () => forceCentre.some((fn) => fn());

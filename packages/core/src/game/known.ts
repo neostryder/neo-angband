@@ -1401,10 +1401,12 @@ export function noteSpots(state: GameState): void {
   /*
    * Blind forget of the current non-passable remembered square
    * (cave-view.c:894-897): when blind and the player grid is known as
-   * impassable in map memory, forget it. Lives here (not pure view.ts)
+   * impassable in map memory, forget it. The optional unlit rule uses the same
+   * light and UNLIGHT facts as updateView (1d2ad35a2, fc29847fd). Lives here
    * because it mutates KnownMap; called immediately after every updateView.
    */
-  if ((state.actor.player.timed[TMD.BLIND] ?? 0) > 0) {
+  if ((state.actor.player.timed[TMD.BLIND] ?? 0) > 0 ||
+      (state.modHooks?.forgetUnlitImpassableTerrain?.() && state.actor.light <= 0 && !state.actor.unlight)) {
     const pgrid = state.actor.grid;
     if (squareIsKnown(state, pgrid)) {
       const feat = knownFeat(state, pgrid);
