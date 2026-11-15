@@ -16,6 +16,8 @@ import {
   NOSCORE,
   OPTION_ENTRIES,
   composeModHooks,
+  gearGet,
+  OF,
   loc,
   GlyphTable,
   glyphTableSink,
@@ -1518,6 +1520,45 @@ describe("a Worker mod's hooks", () => {
     await vi.waitFor(() => expect(seen).toEqual([option]));
     expect(workerModHooks("probe")?.birthConfirmNote?.({ name: "Fred", raceName: "Human", className: "Warrior", birthOptions: {} })).toBe("Review your birth choices.");
   });
+});
+
+it("applies the LIGHT_CURSE selector in both runtimes without exposing item truth", async () => {
+  const policies: Api2Policies = { cursedLightRadius: { marker: "LIGHT_CURSE" } };
+  const definition: Api2ModDefinition = { api: API, policies: (context) => {
+    expect(Object.keys(context).sort()).toEqual(["flags", "id", "settings"]);
+    return policies;
+  } };
+  const wired = wire(definition, { grants: ["registry:ui-entry"] });
+  await wired.session.ready;
+  const grants = CapabilitySet.fromManifest({ id: "light", name: "Light", version: "1.0.0", shape: "plugin", capabilities: ["registry:ui-entry"] });
+  const plugin = api2Plugin(definition, () => ({ grants }));
+  const pluginHooks = plugin.hooks!(modPluginContext("light", {}, undefined, {}, { capabilities: grants }))!;
+  for (const hooks of [workerModHooks("probe")!, pluginHooks]) {
+    for (const marked of [false, true]) {
+      const content = structuredClone(pack);
+      if (marked) for (const record of content.obj.object.records) {
+        if (record.type === "light") Object.assign(record, { "light-curse": true });
+      }
+      const { state } = startGame(content, { seed: SEED, depth: DEPTH });
+      const p = state.actor.player;
+      const lightSlot = p.body.slots.findIndex((slot) => slot.type === "LIGHT");
+      const torch = gearGet(state.gear, p.equipment[lightSlot]!)!;
+      const lit = state.actor.light;
+      expect(lit).toBeGreaterThan(0);
+      torch.flags.on(OF.STICKY);
+      torch.curses = [{ power: 4, timeout: 0 }];
+      state.modHooks = composeModHooks([hooks, { cursedLightRadius: () => false }])!;
+      state.updateBonuses!();
+      expect(state.actor.light).toBe(marked ? 0 : lit);
+      expect(state.knownPlayerState!.curLight).toBe(marked ? 0 : lit);
+      state.modHooks = composeModHooks([hooks, { cursedLightRadius: () => true }])!;
+      state.updateBonuses!();
+      expect(state.actor.light).toBe(0);
+      state.modHooks = {};
+      state.updateBonuses!();
+      expect(state.actor.light).toBe(lit);
+    }
+  }
 });
 
 describe("a host-owned walk declaration", () => {

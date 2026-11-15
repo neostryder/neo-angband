@@ -88,6 +88,7 @@ export {
 } from "./policies.js";
 export type {
   Api2TrapAllocationPolicy,
+  Api2CursedLightRadiusPolicy,
   Api2DiscountRoll,
   Api2DiscountRollPolicy,
   Api2MonsterArcheryFrequencyPolicy,

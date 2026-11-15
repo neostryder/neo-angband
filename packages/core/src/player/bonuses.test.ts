@@ -358,6 +358,28 @@ function ringSlot(p: Player): number {
 }
 
 describe("calcLight (player-calcs.c:1598-1645)", () => {
+  it.each(["kind", "active curse", "inactive curse", "unrelated curse", "sticky", "plain"])("selects only a light-curse marker on %s", (site) => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    const eq = emptyEquipment(p);
+    const obj = objectNew({} as ObjectKind);
+    obj.tval = TV.LIGHT;
+    obj.flags.on(OF.LIGHT_2);
+    obj.timeout = 5000;
+    eq[lightSlot(p)] = obj;
+    const curses = curseTableWith(newCurseTemplate());
+    if (site === "kind") obj.kind = { ...obj.kind, lightCurse: true };
+    if (site.includes("curse")) {
+      obj.curses = [{ power: 0, timeout: 0 }, { power: site === "inactive curse" ? 0 : 4, timeout: 0 }];
+      if (site !== "unrelated curse") curses[1] = { ...curses[1]!, lightCurse: true };
+    }
+    if (site === "sticky") obj.flags.on(OF.STICKY);
+    const marked = ["kind", "active curse"].includes(site);
+    expect(calcBonuses(p, { equipment: eq, curses }).curLight).toBe(2);
+    expect(calcBonuses(p, { equipment: eq, curses, cursedLightRadius: { marker: "LIGHT_CURSE" } }).curLight).toBe(marked ? 0 : 2);
+    expect(calcBonuses(p, { equipment: eq, curses, cursedLightRadius: { marker: "LIGHT_CURSE" }, knownOnly: () => ({ flags: new FlagSet(OF_SIZE), elInfo: newElemInfo(), toA: 0, toH: 0, toD: 0 }) }).curLight).toBe(marked ? 0 : 2);
+    expect(calcBonuses(p, { equipment: eq, curses, cursedLightRadius: true }).curLight).toBe(["active curse", "unrelated curse", "sticky"].includes(site) ? 0 : 2);
+  });
+
   it("keeps curLight 0 for an unarmed player with no light source", () => {
     const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
     expect(calcBonuses(p).curLight).toBe(0);

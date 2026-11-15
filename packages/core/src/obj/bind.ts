@@ -394,6 +394,12 @@ function bindEffects(
   return records && records.length > 0 ? records : null;
 }
 
+function lightCurseMarker(file: string, record: { "light-curse"?: boolean }): { lightCurse?: true } {
+  const marker = record["light-curse"];
+  if (marker !== undefined && typeof marker !== "boolean") throw new Error(`${file}: light-curse must be true or false`);
+  return marker === true ? { lightCurse: true } : {};
+}
+
 /**
  * All object-domain registries, bound from the compiled pack JSON.
  *
@@ -885,6 +891,7 @@ export class ObjRegistry {
       const weight = ObjRegistry.curseWeight(rec.name, rec.weight);
       this.curseWeightConflict(rec, weight, objFlags);
       this.curses.push(attachExt<Curse>("curse", rec, {
+        ...lightCurseMarker("curse", rec),
         index: this.curses.length,
         name: rec.name,
         poss,
@@ -945,6 +952,7 @@ export class ObjRegistry {
        */
       const pile = rec.pile?.[rec.pile.length - 1];
       const kind: ObjectKind = {
+        ...lightCurseMarker("object", rec),
         name: rec.name,
         text: joinLines(rec.desc),
         base,

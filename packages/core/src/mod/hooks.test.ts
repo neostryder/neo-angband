@@ -465,6 +465,16 @@ describe("any-hooks are disjunctive", () => {
     expect(composed?.cursedLightRadius?.()).toBe(true);
   });
 
+  it("cursedLightRadius: preserves selectors and lets true suppress every curse", () => {
+    const selector = { marker: "LIGHT_CURSE" as const };
+    const selected = { cursedLightRadius: () => selector };
+    expect(composeModHooks([selected, { cursedLightRadius: () => false }])?.cursedLightRadius?.()).toEqual(selector);
+    expect(composeModHooks([{ cursedLightRadius: () => false }, selected])?.cursedLightRadius?.()).toEqual(selector);
+    expect(composeModHooks([selected, { cursedLightRadius: () => true }])?.cursedLightRadius?.()).toBe(true);
+    expect(composeModHooks([{ cursedLightRadius: () => true }, selected])?.cursedLightRadius?.()).toBe(true);
+    expect(guardModHooks(selected, () => undefined).cursedLightRadius?.()).toEqual(selector);
+  });
+
   it("cursedLightRadius: nobody asking leaves a cursed light shining", () => {
     const composed = composeModHooks([
       { cursedLightRadius: () => false },

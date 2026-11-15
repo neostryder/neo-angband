@@ -667,12 +667,12 @@ export interface CalcBonusesOptions {
   isDaytime?: boolean;
   /**
    * 4.0.5 calc_torch (player-calcs.c) zeroed a light on OF_LIGHT_CURSE. This
-   * port has no such flag, so the choice stays off unless a mod asks. When
+   * choice stays off unless a mod asks. When
    * true, an item with an active curse (power above 0) or OF_STICKY
    * contributes no radius. Stock sticky items carry the flag and no curse
-   * record.
+   * record. A LIGHT_CURSE selector checks content markers inside the host.
    */
-  cursedLightRadius?: boolean;
+  cursedLightRadius?: boolean | { readonly marker: "LIGHT_CURSE" };
 }
 
 /**
@@ -705,7 +705,11 @@ function curseUnknown(elemCount: number): KnownBonusView {
 }
 
 /** An active curse, or the sticky flag stock items use in place of a curse record. */
-function cursedLightGivesNone(obj: GameObject): boolean {
+function cursedLightGivesNone(obj: GameObject, selector: CalcBonusesOptions["cursedLightRadius"], curses: CalcBonusesOptions["curses"]): boolean {
+  if (typeof selector === "object") {
+    if (obj.kind.lightCurse) return true;
+    return obj.curses?.some((curse, index) => curse.power > 0 && curses?.[index]?.lightCurse === true) ?? false;
+  }
   if (obj.flags.has(OF.STICKY)) return true;
   const list = obj.curses;
   if (!list) return false;
@@ -790,7 +794,7 @@ function calcLight(
 
     /* After the radius is otherwise settled. The object is the real one, not
      * the known twin the known_only pass consults for runes. */
-    if (options.cursedLightRadius && cursedLightGivesNone(obj)) amt = 0;
+    if (options.cursedLightRadius && cursedLightGivesNone(obj, options.cursedLightRadius, options.curses)) amt = 0;
 
     /* Alter cur_light if reasonable (1643). */
     state.curLight += amt;

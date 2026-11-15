@@ -181,6 +181,8 @@ export interface Api2RandartSetSizePolicy {
   readonly multiplier: number;
 }
 
+export type Api2CursedLightRadiusPolicy = boolean | { readonly marker: "LIGHT_CURSE" };
+
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
   /** True counts only a monster's own stolen drops and saturates thefts at 65535. */
@@ -232,8 +234,8 @@ export interface Api2Policies {
   readonly saveNoiseScent?: boolean;
   /** True lets a shapechange teach its obvious flags directly. */
   readonly shapeLearnObviousFlagsDirectly?: boolean;
-  /** True gives a cursed or sticky light no radius. */
-  readonly cursedLightRadius?: boolean;
+  /** True includes every active curse and sticky item; the selector limits suppression to marked content. */
+  readonly cursedLightRadius?: Api2CursedLightRadiusPolicy;
   /**
    * Timed-effect names a complete rest waits out, in place of the ten the
    * game waits for when this table is absent. An empty list waits on none.
@@ -508,7 +510,7 @@ function textKind(
 }
 
 /** A switch kind: true installs a hook that answers true. */
-function switchKind(name: Api2PolicyName, hook: "saveNoiseScent" | "shapeLearnObviousFlagsDirectly" | "cursedLightRadius", summary: string, capability: string): Api2PolicyKind {
+function switchKind(name: Api2PolicyName, hook: "saveNoiseScent" | "shapeLearnObviousFlagsDirectly", summary: string, capability: string): Api2PolicyKind {
   return {
     name,
     summary,
@@ -872,7 +874,21 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   },
   switchKind("saveNoiseScent", "saveNoiseScent", "Keeps monster noise and scent in the save.", "registry:monster"),
   switchKind("shapeLearnObviousFlagsDirectly", "shapeLearnObviousFlagsDirectly", "Lets a shapechange teach its obvious flags directly.", "registry:rune"),
-  switchKind("cursedLightRadius", "cursedLightRadius", "Gives a cursed or sticky light source no radius.", "registry:ui-entry"),
+  {
+    name: "cursedLightRadius",
+    capability: "registry:ui-entry",
+    summary: "Gives cursed or sticky light sources no radius, or selects only LIGHT_CURSE markers.",
+    target: { hook: "cursedLightRadius" },
+    check(value) {
+      if (typeof value === "boolean") return null;
+      if (!isRecord(value) || value["marker"] !== "LIGHT_CURSE") return 'cursedLightRadius is true or false, or { marker: "LIGHT_CURSE" }';
+      return unknownField("cursedLightRadius", value, ["marker"]);
+    },
+    apply(value, out) {
+      if (value === true) out.hooks.cursedLightRadius = () => true;
+      else if (isRecord(value)) out.hooks.cursedLightRadius = () => ({ marker: "LIGHT_CURSE" });
+    },
+  },
   {
     name: "completeRestEffects",
     capability: "registry:command",

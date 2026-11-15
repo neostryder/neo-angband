@@ -580,14 +580,15 @@ export interface ModHooks {
    * OF_LIGHT_CURSE).
    *
    * Return true to zero that item's contribution after the ordinary radius,
-   * fuel and UNLIGHT math. This port has no light-curse flag. An active curse
+   * fuel and UNLIGHT math. An active curse
    * is power above 0 on the object itself, and a stock sticky item carries
    * OF_STICKY with no curse record, so both count. Return false, or leave the
-   * hook absent, and the light shines as 4.2.6 calculates it.
+   * hook absent, and the light shines as 4.2.6 calculates it. A LIGHT_CURSE
+   * selector limits suppression to marked content without exposing item truth.
    *
    * Serves: a mod that wants 4.0.5's dark cursed light back.
    */
-  cursedLightRadius?: () => boolean;
+  cursedLightRadius?: () => boolean | { readonly marker: "LIGHT_CURSE" };
 
   /**
    * The timed effects a complete rest waits out
@@ -1122,7 +1123,7 @@ export function guardModHooks(
   const cursedLight = hooks.cursedLightRadius;
   if (cursedLight) {
     /* DECLINE, so a cursed light still shines. */
-    out.cursedLightRadius = (): boolean =>
+    out.cursedLightRadius = () =>
       guard("cursedLightRadius", () => cursedLight(), false);
   }
 
@@ -1385,7 +1386,15 @@ export function composeModHooks(
   const cursedLight = list.map((c) => c.cursedLightRadius).filter(isFn);
   if (cursedLight.length > 0) {
     /* One mod asking is enough. A second mod cannot keep the light on. */
-    out.cursedLightRadius = (): boolean => cursedLight.some((fn) => fn());
+    out.cursedLightRadius = () => {
+      let selected = false;
+      for (const fn of cursedLight) {
+        const answer = fn();
+        if (answer === true) return true;
+        if (answer && answer.marker === "LIGHT_CURSE") selected = true;
+      }
+      return selected ? { marker: "LIGHT_CURSE" } : false;
+    };
   }
 
   /* REVERSE load order: the later mod's list replaces the earlier one, and a

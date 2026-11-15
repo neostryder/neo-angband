@@ -38,6 +38,21 @@ export function loadPack(): ObjPackJson {
 const pack = loadPack();
 const reg = new ObjRegistry(pack);
 
+describe("light-curse content marker", () => {
+  it.each(["object", "curse"] as const)("binds %s markers without changing shipped records", (file) => {
+    const marked = structuredClone(pack);
+    Object.assign(marked[file].records[0]!, { "light-curse": true });
+    const bound = new ObjRegistry(marked);
+    const records = (registry: ObjRegistry) => file === "object" ? registry.kinds : registry.curses;
+    expect(records(bound).filter((record) => record?.lightCurse === true)).toHaveLength(1);
+    expect(records(reg).every((record) => !record || !("lightCurse" in record))).toBe(true);
+    Object.assign(marked[file].records[0]!, { "light-curse": "true" });
+    expect(() => new ObjRegistry(marked)).toThrow(/light-curse must be true or false/u);
+    Object.assign(marked[file].records[0]!, { "light-curse": false });
+    expect(records(new ObjRegistry(marked)).every((record) => !record || !("lightCurse" in record))).toBe(true);
+  });
+});
+
 describe("ObjRegistry counts", () => {
   it("binds the full 4.2.6 pack", () => {
     // 34 object_base records bind; "gold" is nameless upstream

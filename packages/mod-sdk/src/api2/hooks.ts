@@ -15,6 +15,7 @@
 
 import type { KnownMonster } from "./known.js";
 import type { RunReport } from "./character.js";
+import type { Api2CursedLightRadiusPolicy } from "./policies.js";
 
 export type Api2RunEndFacts = Pick<RunReport, "outcome" | "name" | "turn" | "seed">;
 
@@ -205,8 +206,8 @@ export interface Api2Hooks {
   saveNoiseScent?(): boolean;
   /** True to let a shapechange teach its obvious flags directly. Any mod saying yes is enough. */
   shapeLearnObviousFlagsDirectly?(): boolean;
-  /** True to give a cursed or sticky light no radius. Any mod saying yes is enough. */
-  cursedLightRadius?(): boolean;
+  /** True includes every active curse and sticky item; selectors limit suppression to marked content. */
+  cursedLightRadius?(): Api2CursedLightRadiusPolicy;
   /**
    * Timed-effect names a complete rest waits out, or null to leave the ten
    * 4.2.6 effects in place. An empty list waits on none of them. The later

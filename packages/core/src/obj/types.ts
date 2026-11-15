@@ -188,6 +188,7 @@ export interface ObjectBaseHeaderJson {
 }
 
 export interface ObjectKindRecordJson {
+  "light-curse"?: boolean;
   name: string;
   type: string;
   graphics?: { glyph: string; color: string };
@@ -255,6 +256,7 @@ export interface ArtifactRecordJson {
 }
 
 export interface CurseRecordJson {
+  "light-curse"?: boolean;
   name: string;
   type?: string[];
   weight?: number;
@@ -375,6 +377,7 @@ export interface ObjectBase extends ModExtensible {
 
 /** struct object_kind. */
 export interface ObjectKind extends ModExtensible {
+  lightCurse?: true;
   name: string;
   text: string;
   base: ObjectBase;
@@ -512,6 +515,7 @@ export interface CurseObject {
 
 /** struct curse. */
 export interface Curse extends ModExtensible {
+  lightCurse?: true;
   /** 1-based index in the curses array (matches upstream ordering). */
   index: number;
   name: string;

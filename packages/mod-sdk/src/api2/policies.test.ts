@@ -320,6 +320,17 @@ describe("API2_POLICY_KINDS", () => {
 });
 
 describe("cursedLightRadius", () => {
+  it("accepts the LIGHT_CURSE selector only with its capability", () => {
+    const policies = { cursedLightRadius: { marker: "LIGHT_CURSE" as const } };
+    expect(checkApi2Policies(policies)).toBeNull();
+    expect(api2PoliciesToHooks(policies).cursedLightRadius?.()).toEqual(policies.cursedLightRadius);
+    expect(api2PolicyEffects(policies, () => false).hooks.cursedLightRadius).toBeUndefined();
+  });
+
+  it.each([{}, { marker: "STICKY" }, { marker: "LIGHT_CURSE", extra: true }, { marker: true }])("rejects the invalid selector %j", (selector) => {
+    expect(checkApi2Policies({ cursedLightRadius: selector })).not.toBeNull();
+  });
+
   it("accepts true and false, and true installs the hook", () => {
     expect(checkApi2Policies({ cursedLightRadius: true })).toBeNull();
     expect(checkApi2Policies({ cursedLightRadius: false })).toBeNull();
