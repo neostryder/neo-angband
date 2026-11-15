@@ -185,10 +185,16 @@ export async function writeBackupFile(
   if (bytes > BACKUP_LIMITS.fileBytes) return false;
   try {
     if (!authorized() || !plainFolder(folder)) return false;
+    const directory = fs.lstatSync(folder);
+    const sameDirectory = (): boolean => {
+      if (!plainFolder(folder)) return false;
+      const current = fs.lstatSync(folder);
+      return current.dev === directory.dev && current.ino === directory.ino;
+    };
     const full = path.join(folder, name);
     const initial = plainFile(full);
     if (initial && !(await confirmReplace())) return false;
-    if (!authorized() || !plainFolder(folder)) return false;
+    if (!authorized() || !sameDirectory()) return false;
     const existing = plainFile(full);
     if (!initial && existing) return false;
     let count = 0;
@@ -201,9 +207,13 @@ export async function writeBackupFile(
       if (entry !== name) total += stat.size;
     }
     if (count + (existing ? 0 : 1) > BACKUP_LIMITS.files || total > BACKUP_LIMITS.totalBytes) return false;
+    if (!authorized() || !sameDirectory()) return false;
     const fd = fs.openSync(full, existing ? "r+" : "wx", 0o600);
     try {
-      if (existing && !sameFile(existing, fs.fstatSync(fd))) return false;
+      if (!authorized() || !sameDirectory()) return false;
+      const named = plainFile(full);
+      const opened = fs.fstatSync(fd);
+      if (!named || !sameFile(named, opened) || existing && !sameFile(existing, opened)) return false;
       fs.ftruncateSync(fd, 0);
       fs.writeFileSync(fd, text, "utf8");
       return true;

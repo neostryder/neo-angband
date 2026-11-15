@@ -6,7 +6,6 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import {
   CHARACTER_BACKUP_PURPOSE,
@@ -28,13 +27,24 @@ const [{ createBackupFolder }, bindings, snapshots, store] = await Promise.all([
   "../../web/src/mod-backup.ts", "../../web/src/mod-consent-binding.ts", "../../web/src/mod-code-snapshot.ts", "../../web/src/mod-store.ts",
 ].map((modulePath) => import(modulePath)));
 
+const openRace = vi.hoisted(() => ({ beforeOpen: undefined as ((file: unknown) => void) | undefined }));
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, openSync: (...args: Parameters<typeof actual.openSync>) => {
+    openRace.beforeOpen?.(args[0]);
+    return actual.openSync(...args);
+  } };
+});
+
 let base: string;
 
 beforeEach(() => {
-  base = fs.mkdtempSync(path.join(os.tmpdir(), "neo-backup-"));
+  base = fs.mkdtempSync(path.join(process.cwd(), "neo-backup-"));
 });
 
 afterEach(() => {
+  openRace.beforeOpen = undefined;
+  if (path.dirname(path.resolve(base)) !== process.cwd()) throw new Error("The fixture left the workspace.");
   fs.rmSync(base, { recursive: true, force: true });
 });
 
@@ -427,5 +437,29 @@ describe("installation backup allocations", () => {
       expect(await relay.handle("prepareChoose", a, 1)).toEqual({ ok: false });
       expect(fs.existsSync(path.join(base, key))).toBe(false);
     } finally { now.mockRestore(); }
+  });
+});
+
+
+describe("new backup directory identity", () => {
+  it.each([false, true])("refuses a directory replaced immediately before open, junction=%s", async (junction) => {
+    const folder = path.join(base, "chosen");
+    const held = path.join(base, "held");
+    const outside = path.join(base, "outside");
+    fs.mkdirSync(folder);
+    fs.mkdirSync(outside);
+    fs.writeFileSync(path.join(outside, "keep.neochar"), "original");
+    const full = path.join(folder, "new.neochar");
+    openRace.beforeOpen = (file) => {
+      if (file !== full) return;
+      openRace.beforeOpen = undefined;
+      fs.renameSync(folder, held);
+      if (junction) fs.symlinkSync(outside, folder, "junction");
+      else fs.mkdirSync(folder);
+    };
+    expect(await writeBackupFile(folder, "new.neochar", "private backup bytes", ".neochar", async () => true)).toBe(false);
+    expect(fs.readFileSync(path.join(outside, "keep.neochar"), "utf8")).toBe("original");
+    expect(fs.readFileSync(full, "utf8")).toBe("");
+    expect(fs.readdirSync(held)).toEqual([]);
   });
 });
