@@ -406,6 +406,11 @@ export function readEnabledModIds(input: {
   forced?: readonly string[];
   /** Answer with the set a normal start would load, even in safe mode. */
   ignoreSafeLaunch?: boolean;
+  /**
+   * The profile storage whose saved set and choices to read, when it is not the
+   * active one: a profile switch asks what the destination will load.
+   */
+  storage?: StorageLike | null;
 }): string[] {
   if (safeLaunch() && input.ignoreSafeLaunch !== true) return [];
   let url: string[] | null = null;
@@ -417,7 +422,7 @@ export function readEnabledModIds(input: {
   }
   /* Each read is already cleaned: a stored document is validated, and an older
    * key is filtered the way the getters filter it. */
-  const store = modStorage();
+  const store = input.storage === undefined ? modStorage() : input.storage;
   const saved = modState.read(store, "enabled");
   const stored: string[] | null = saved === undefined ? null : [...saved];
   const choices: Record<string, boolean> = { ...modState.read(store, "choices") };

@@ -74,7 +74,7 @@ import { setConsentBindings } from "../mod-consent-binding";
 import { createModProfiles } from "../profile-runtime";
 import { ProfileStore } from "../profiles";
 import { scopedStorage, type ScopedStorage } from "../profile-scope";
-import { buildCatalog, ModStore, MOD_STATE_STORAGE_KEY } from "../mod-store";
+import { buildCatalog, ModStore, MOD_STATE_STORAGE_KEY, readEnabledModIds } from "../mod-store";
 import { createModSaves, type SavesDoorDeps } from "../saves-facade";
 import type { CharMeta } from "../roster";
 import type { WorkerManagementHost } from "../mod-api2-host";
@@ -273,7 +273,7 @@ async function managementProbe(grants = ["profiles:manage", "session:control", "
   const manager = createModManagerService({ store, listCatalog: () => buildCatalog({ content: [], sandbox: [], trusted: [manifest, { ...manifest, id: "victim", name: "Victim", capabilities: ["engine:access"] }], enabled: store.getEnabled(), consents: store.getConsents(), refusals: store.getRefusals() }) });
   const profilesStore = new ProfileStore(storage);
   const reload = vi.fn();
-  const profiles = createModProfiles("probe", caps, { store: profilesStore, storage, pendingStorage: storage, installed: () => [manifest], hasController: () => true, reload, canSwitch: () => ({ ok: true }) });
+  const profiles = createModProfiles("probe", caps, { store: profilesStore, storage, pendingStorage: storage, installed: () => [manifest], enabledIn: (scoped) => readEnabledModIds({ discovered: ["probe"], storage: scoped, ignoreSafeLaunch: true }), hasController: () => true, reload, canSwitch: () => ({ ok: true }) });
   const foreignProfile = profilesStore.create("Another profile");
   const character: CharMeta = { id: "raw-a", name: "Alice", race: "Human", cls: "Mage", sex: "", level: 1, depth: 0, maxDepth: 0, turn: 0, alive: true, updatedAt: 1 };
   let roster = [character, { ...character, id: "raw-b", name: "Bob" }];

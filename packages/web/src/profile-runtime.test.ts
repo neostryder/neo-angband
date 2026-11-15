@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setConsentBindings } from "./mod-consent-binding";
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modPluginContext, setModControllerArmedControl, setModProfilesControl } from "./mod-context";
-import { ModStore, MOD_SETTINGS_STORAGE_KEY, setSessionConsents } from "./mod-store";
+import { ModStore, MOD_SETTINGS_STORAGE_KEY, readEnabledModIds, setSessionConsents } from "./mod-store";
 import { consumeProfileAction, createModProfiles, PROFILE_ACTION_KEY } from "./profile-runtime";
 import { ProfileStore } from "./profiles";
 import { scopedStorage, type ScopedStorage } from "./profile-scope";
@@ -30,9 +30,13 @@ function fixture(grants = ["profiles:manage", "saves:manage"]) {
   const caps = CapabilitySet.fromManifest(manifest);
   new ModStore(storage).setDecisions(manifest.id, { granted: grants, refused: [], binding: "measured-player" }, manifest.version);
   const reload = vi.fn();
-  const deps = { storage, pendingStorage, store, installed: () => installed, reload, hasController: () => true, canSwitch: () => ({ ok: true as const }) };
+  /* The load order on disk, which the loader and the Mods screen count as enabled. */
+  const diskOrder: string[] = [];
+  const enabledIn = (scoped: ScopedStorage) =>
+    readEnabledModIds({ discovered: installed.map((m) => m.id), diskOrder, storage: scoped, ignoreSafeLaunch: true });
+  const deps = { storage, pendingStorage, store, installed: () => installed, enabledIn, reload, hasController: () => true, canSwitch: () => ({ ok: true as const }) };
   const api = createModProfiles(manifest.id, caps, deps);
-  return { storage, pendingStorage, store, caps, api, deps, reload, installed };
+  return { storage, pendingStorage, store, caps, api, deps, reload, installed, diskOrder };
 }
 
 afterEach(() => { setConsentBindings(new Map()); setSessionConsents({}); vi.restoreAllMocks(); });
@@ -271,5 +275,35 @@ describe("mod profiles", () => {
     expect(source).toContain("setActiveId(newCharId())");
     expect(source).toContain("setModProfilesControl((id, caps) => createModProfiles(id, caps");
     expect(source).toContain("requestedControllerId === id && (birthPending || sessionFacts.newCharacter === true)");
+  });
+});
+
+describe("a title-row start reads the same enabled set as the loader (#491)", () => {
+  it("starts a character for a mod that is on through the load order alone", () => {
+    const f = fixture();
+    const id = created(f);
+    approve(f, id);
+    /* The stored list is shorter than the load order: the mod was staged on disk
+     * and never toggled in the Mods screen. */
+    new ModStore(scopedStorage(f.storage, id)).setEnabled(["helper"]);
+    f.diskOrder.push("helper", "test-player");
+    expect(f.api.switchTo(id, { kind: "create-character" })).toEqual({ ok: true, value: undefined });
+    expect(f.reload).toHaveBeenCalledOnce();
+  });
+
+  it("still refuses a mod the player turned off, even when the load order lists it", () => {
+    const f = fixture();
+    const id = created(f);
+    approve(f, id);
+    new ModStore(scopedStorage(f.storage, id)).setModEnabled("test-player", false);
+    f.diskOrder.push("test-player");
+    expect(f.api.switchTo(id, { kind: "create-character" })).toMatchObject({ ok: false, reason: "This mod is disabled in the destination profile." });
+    expect(f.reload).not.toHaveBeenCalled();
+  });
+
+  it("is wired to the loader's resolver in the shell", () => {
+    const source = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+    expect(source).toContain("enabledIn: (storage) => enabledModIds({ ignoreSafeLaunch: true, storage })");
+    expect(readFileSync(new URL("./profile-runtime.ts", import.meta.url), "utf8")).not.toMatch(/\.isEnabled\(id\)/u);
   });
 });

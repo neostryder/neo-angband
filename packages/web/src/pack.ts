@@ -38,7 +38,7 @@ import type {
   RecordConflict,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ConflictRow } from "./mod-conflicts";
-import { defaultModStore, isShippedMod, readEnabledModIds } from "./mod-store";
+import { defaultModStore, isShippedMod, readEnabledModIds, type StorageLike } from "./mod-store";
 import { diskPacks, sessionPacks, type ModDirKind, type ModOrigin } from "./disk-packs";
 import type { InstalledModMeta } from "./mod-install";
 import { sessionMods } from "./mod-session";
@@ -347,7 +347,7 @@ export function modConflictLines(
  * In safe mode the set is empty, unless `ignoreSafeLaunch` asks for the set a
  * normal start would load (the Mods screen shows that one).
  */
-export function enabledModIds(options: { ignoreSafeLaunch?: boolean } = {}): string[] {
+export function enabledModIds(options: { ignoreSafeLaunch?: boolean; storage?: StorageLike | null } = {}): string[] {
   /* The URL/localStorage reading, the player's explicit per-mod decisions and the
    * external manager's load-order.json all live in mod-store.readEnabledModIds, so
    * this surface and the tile discovery cannot answer differently. */
@@ -359,6 +359,7 @@ export function enabledModIds(options: { ignoreSafeLaunch?: boolean } = {}): str
      * silence the copy they just asked to try (mod-session.ts). */
     forced: sessionPacks().packs.map((p) => p.manifest.id),
     ...(options.ignoreSafeLaunch === true ? { ignoreSafeLaunch: true } : {}),
+    ...(options.storage === undefined ? {} : { storage: options.storage }),
   });
 }
 

@@ -29,6 +29,12 @@ export interface ProfileRuntimeDeps {
   readonly storage: ScopedStorage | null;
   readonly pendingStorage: ProfileStorage | null;
   readonly installed: () => readonly PackManifest[];
+  /**
+   * The mods a profile's storage will load: the same resolver the loader and the
+   * Mods screen use (mod-store.ts readEnabledModIds), so a mod enabled through
+   * the load order alone counts as enabled here too (#491).
+   */
+  readonly enabledIn: (storage: ScopedStorage) => readonly string[];
   readonly hasController: (id: string) => boolean;
   readonly reload: () => void;
   readonly canSwitch: () => SaveResult;
@@ -112,7 +118,7 @@ export function createModProfiles(id: string, caps: CapabilitySet, deps: Profile
       if (action) {
         if (action.kind !== "create-character") return refused("The profile action is not supported.");
         if (!caps.has("saves:manage")) return refused('Character creation needs capability "saves:manage".');
-        if (!new ModStore(scopedStorage(deps.storage, profileId)).isEnabled(id)) return refused("This mod is disabled in the destination profile.");
+        if (!deps.enabledIn(scopedStorage(deps.storage, profileId)).includes(id)) return refused("This mod is disabled in the destination profile.");
         const manifest = deps.installed().find((mod) => mod.id === id);
         const target = new ModStore(scopedStorage(deps.storage, profileId));
         const decisions = { granted: target.getConsents()[id] ?? [], refused: target.getRefusals()[id] ?? [] };
