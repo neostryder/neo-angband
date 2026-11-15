@@ -299,6 +299,10 @@ export interface KnownArtifactFind {
 }
 
 export interface ModHooks {
+  /** monster_loves_archery (mon/predicate.ts, reached from getMoveFindRange).
+   * Null keeps the faithful freqInnate < 4 test. No random draws. */
+  monsterArcheryFrequency?: (frequency: number) => boolean | null;
+
   /**
    * A newly created character after startGame has built and wired its state.
    * This runs once for new characters only; loadGame and reloads do not call it.
@@ -829,6 +833,7 @@ export type ModHookFold =
  * interface without adding it here does not compile.
  */
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
+  monsterArcheryFrequency: "last-answer",
   newCharacter: "all-observe",
   walkBlockedByDiggable: "last-answer",
   objectListTiebreak: "last-answer",
@@ -940,6 +945,10 @@ export function guardModHooks(
       return neutral;
     }
   }
+
+  const archery = hooks.monsterArcheryFrequency;
+  if (archery) out.monsterArcheryFrequency = (frequency) =>
+    guard("monsterArcheryFrequency", () => archery(frequency), null);
 
   const walk = hooks.walkBlockedByDiggable;
   if (walk) {
@@ -1166,6 +1175,15 @@ export function composeModHooks(
       return null;
     };
   }
+
+  const archery = list.map((c) => c.monsterArcheryFrequency).filter(isFn).reverse();
+  if (archery.length > 0) out.monsterArcheryFrequency = (frequency) => {
+    for (const fn of archery) {
+      const answer = fn(frequency);
+      if (answer !== null) return answer;
+    }
+    return null;
+  };
 
   const tiebreak = list.map((c) => c.objectListTiebreak).filter(isFn).reverse();
   if (tiebreak.length > 0) {

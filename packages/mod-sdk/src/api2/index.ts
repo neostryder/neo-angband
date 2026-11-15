@@ -84,6 +84,7 @@ export {
 export type {
   Api2DiscountRoll,
   Api2DiscountRollPolicy,
+  Api2MonsterArcheryFrequencyPolicy,
   Api2DisplayOptionsPolicy,
   Api2PurgeInputPolicy,
   Api2DiscountTier,

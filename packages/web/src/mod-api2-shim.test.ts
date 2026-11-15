@@ -78,6 +78,17 @@ function capabilities(id: string, granted: string[]): CapabilitySet {
   });
 }
 
+describe("monster archery policy", () => {
+  it("declines while disabled and uses a strict lower bound while active", () => {
+    let active = true;
+    const hooks = api2PolicyModHooks({ monsterArcheryFrequency: { greaterThan: 25 } }, () => active);
+    expect(hooks.monsterArcheryFrequency?.(25)).toBe(false);
+    expect(hooks.monsterArcheryFrequency?.(26)).toBe(true);
+    active = false;
+    expect(hooks.monsterArcheryFrequency?.(26)).toBeNull();
+  });
+});
+
 describe("starting-options policy", () => {
   it("applies through OptionState setters on a new character and skips birth options", () => {
     const options = new OptionState();
@@ -555,6 +566,7 @@ describe("policy tables that install registrations", () => {
     shapeLearnObviousFlagsDirectly: true, cursedLightRadius: true, completeRestEffects: ["AMNESIA"],
     storeDiscountRoll: { tiers: [{ oneIn: 1, percent: 20 }] },
     tileMap: [{ monster: 2, like: 1 }], projectionRadiusClamp: true, levelRevisitTracking: true,
+    monsterArcheryFrequency: { greaterThan: 25 },
     valueFloor: { kind: "valueFloor", tvals: [10, 11], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" },
   };
 
@@ -570,7 +582,7 @@ describe("policy tables that install registrations", () => {
       () => ({ grants: capabilities("tables", [capability]) }));
     const hooks = load("tables", plugin).hooks;
     const registrations = api2PluginRegistrations(plugin, "tables", { loud: true });
-    const policyHook: Partial<Record<string, string>> = { walkBlockedByDiggable: "walkBlockedByDiggable", startingOptions: "newCharacter", projectionRadiusClamp: "projectionRadius", levelRevisitTracking: "levelRevisited" };
+    const policyHook: Partial<Record<string, string>> = { monsterArcheryFrequency: "monsterArcheryFrequency", walkBlockedByDiggable: "walkBlockedByDiggable", startingOptions: "newCharacter", projectionRadiusClamp: "projectionRadius", levelRevisitTracking: "levelRevisited" };
     expect(Object.keys(hooks ?? {})).toEqual("hook" in target ? [target.hook] : policyHook[name] ? [policyHook[name]] : []);
     expect(Object.keys(registrations ?? {})).toEqual("registration" in target ? [target.registration] : []);
     plugin.uninstall?.();

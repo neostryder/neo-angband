@@ -504,7 +504,7 @@ export function getMoveFindRange(mon: Monster, state: GameState): void {
   mon.bestRange = mon.minRange;
 
   /* Archers are quite happy at a good distance. */
-  if (monsterLovesArchery(mon)) {
+  if (monsterLovesArchery(mon, state.modHooks?.monsterArcheryFrequency)) {
     mon.bestRange += 3;
   }
 

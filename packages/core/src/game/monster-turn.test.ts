@@ -1135,6 +1135,17 @@ describe("get_move_find_range best_range (mon-move.c L285-300)", () => {
     expect(mon.bestRange).toBe(Math.max(1, mon.minRange));
   });
 
+  it.each([2, 25, 26, 100])("applies the monster_loves_archery frequency policy at %i (dd0e40858)", (frequency) => {
+    const state = makeState({ playerGrid: loc(15, 10) });
+    const mon = rangedMon(state, { freqInnate: frequency, spells: [RSF.ARROW] });
+    state.modHooks = { monsterArcheryFrequency: (freq) => freq > 25 };
+    getMoveFindRange(mon, state);
+    expect(mon.bestRange).toBe(mon.minRange + (frequency > 25 ? 3 : 0));
+    mon.race.spellFlags.wipe();
+    getMoveFindRange(mon, state);
+    expect(mon.bestRange).toBe(mon.minRange);
+  });
+
   it("an archer (RST_ARCHERY, freq_innate < 4) prefers +3 distance", () => {
     const state = makeState({ playerGrid: loc(15, 10) });
     const mon = rangedMon(state, { freqInnate: 2, spells: [RSF.ARROW] });

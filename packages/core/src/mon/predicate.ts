@@ -158,9 +158,9 @@ export function monsterHasNonInnateSpells(mon: Monster): boolean {
 }
 
 /** monster_loves_archery: has archery spells and casts them often. */
-export function monsterLovesArchery(mon: Monster): boolean {
+export function monsterLovesArchery(mon: Monster, frequency?: (freq: number) => boolean | null): boolean {
   if (!raceHasSpellType(mon, "RST_ARCHERY")) return false;
-  return mon.race.freqInnate < 4;
+  return frequency?.(mon.race.freqInnate) ?? (mon.race.freqInnate < 4);
 }
 
 /* ------------------------------------------------------------------ */

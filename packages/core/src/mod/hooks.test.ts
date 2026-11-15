@@ -645,6 +645,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
   }
 
   const PROBES: Record<keyof ModHooks, Probe> = {
+    monsterArcheryFrequency: {
+      yes: (log, tag, nth) => ({ monsterArcheryFrequency: () => { log.push(tag); return nth === 1; } }),
+      no: (log, tag) => ({ monsterArcheryFrequency: () => { log.push(tag); return null; } }),
+      run: (h) => h.monsterArcheryFrequency?.(30),
+    },
     newCharacter: {
       yes: (log, tag) => ({
         newCharacter: () => {

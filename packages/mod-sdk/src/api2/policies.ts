@@ -164,8 +164,15 @@ export interface Api2ValueFloorPolicy {
   readonly price: "objectValueReal";
 }
 
+/** A strict lower bound on how often a monster with archery spells shoots. */
+export interface Api2MonsterArcheryFrequencyPolicy {
+  /** Whole percentage from 0 to 100; upstream dd0e40858 uses 25. */
+  readonly greaterThan: number;
+}
+
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
+  readonly monsterArcheryFrequency?: Api2MonsterArcheryFrequencyPolicy;
   readonly prefErrors?: Api2PrefErrorsPolicy;
   readonly startingOptions?: Api2StartingOptionsPolicy;
   readonly ignore?: readonly Api2IgnorePolicyEntry[];
@@ -256,6 +263,7 @@ export type Api2PlayerTileProvider<T = unknown> = (view: Api2PlayerTileView) => 
 
 /** The game registrations a table can install, beside the hooks. */
 export interface Api2PolicyRegistrations {
+  monsterArcheryFrequency?: Api2MonsterArcheryFrequencyPolicy;
   prefErrors?: Api2PrefErrorsPolicy;
   startingOptions?: Api2StartingOptionsPolicy;
   ignore?: readonly Api2IgnorePolicyEntry[];
@@ -491,6 +499,22 @@ const LIST_KEYS: readonly string[] = ["dy", "-dy", "dx", "-dx"];
  * policies.test.ts, and list it under Policy tables in docs/modding/API2.md.
  */
 export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
+  {
+    name: "monsterArcheryFrequency",
+    capability: "registry:monster",
+    summary: "Chooses how often a monster with archery spells must shoot to prefer range.",
+    target: { registration: "monsterArcheryFrequency" },
+    check(value) {
+      if (!isRecord(value)) return "monsterArcheryFrequency is an object";
+      const extra = unknownField("monsterArcheryFrequency", value, ["greaterThan"]);
+      if (extra) return extra;
+      if (!isInt(value["greaterThan"], 0, 100)) return "monsterArcheryFrequency.greaterThan is a whole number from 0 to 100";
+      return null;
+    },
+    apply(value, out) {
+      out.registrations.monsterArcheryFrequency = value as Api2MonsterArcheryFrequencyPolicy;
+    },
+  },
   {
     name: "prefErrors",
     capability: "registry:ui-entry",

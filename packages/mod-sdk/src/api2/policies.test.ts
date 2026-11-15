@@ -214,7 +214,7 @@ describe("API2_POLICY_KINDS", () => {
       historyDisplay: "registry:message", objectListOrder: "registry:tval", saveNoiseScent: "registry:monster",
       shapeLearnObviousFlagsDirectly: "registry:rune", cursedLightRadius: "registry:ui-entry", completeRestEffects: "registry:command",
       storeDiscountRoll: "registry:store", valueFloor: "registry:tval", tileMap: "registry:tiles",
-      projectionRadiusClamp: "registry:projection", levelRevisitTracking: "registry:monster",
+      projectionRadiusClamp: "registry:projection", levelRevisitTracking: "registry:monster", monsterArcheryFrequency: "registry:monster",
     });
   });
 
@@ -224,7 +224,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
+      else expect(["monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
     }
   });
 
@@ -315,6 +315,19 @@ describe("the store discount roll", () => {
     expect(checkApi2Policies({ storeDiscountRoll: { tiers: [{ oneIn: 0, percent: 10 }] } })).toMatch(/oneIn is a whole number/u);
     expect(checkApi2Policies({ storeDiscountRoll: { tiers: [{ oneIn: 2, percent: 10, odds: 3 }] } })).toMatch(/unknown field "odds"/u);
     expect(checkApi2Policies({ storeDiscountRoll: { minCost: -1, tiers: [{ oneIn: 2, percent: 10 }] } })).toMatch(/minCost/u);
+  });
+});
+
+describe("the monster archery frequency", () => {
+  it("accepts a bounded threshold and installs data only under the monster grant", () => {
+    const policy = { monsterArcheryFrequency: { greaterThan: 25 } };
+    expect(checkApi2Policies(policy)).toBeNull();
+    expect(api2PolicyEffects(policy, () => false).registrations).toEqual({});
+    expect(api2PolicyEffects(policy).registrations.monsterArcheryFrequency).toEqual({ greaterThan: 25 });
+  });
+
+  it.each([null, true, {}, { greaterThan: -1 }, { greaterThan: 101 }, { greaterThan: 1.5 }, { greaterThan: "25" }, { greaterThan: 25, extra: true }])("rejects malformed thresholds: %j", (value) => {
+    expect(checkApi2Policies({ monsterArcheryFrequency: value })).not.toBeNull();
   });
 });
 

@@ -97,6 +97,7 @@ The `Fold` column uses the code's own vocabulary. `MOD_HOOK_FOLDS` (`packages/co
 | --- | --- | --- | --- |
 | `walkBlockedByDiggable(state, grid, deps)` | `last-answer` | `game/cave-cmd.ts` (`movementAutoDig`), reached from `walkAction` in `game/player-turn.ts` | `?? null` - bump the wall, spend nothing, draw no RNG |
 | `objectListTiebreak(a, b)` | `last-answer` | `game/obj-list.ts` | `?? 0`, i.e. leave the entries equal (stable sort keeps collect order) |
+| `monsterArcheryFrequency(frequency)` | `last-answer` | `mon/predicate.ts` (`monsterLovesArchery`), reached from `game/monster-turn.ts` | `?? null` keeps `freqInnate < 4`; the API 2 table supplies a strict lower bound |
 | `projectionRadius(rad, maxRange)` | `chained` | `world/project.ts` (`computeProjection`, reached through `ProjectParams.resolveRadius`, which `game/project-cast.ts` fills from `state.modHooks`) | the radius as given, unchecked against `max_range` |
 | `levelGenerated(gen, quest)` | `all-must-agree` | `gen/generate.ts` | accept the level as generated |
 | `artifactCommit(aidx, alreadyCreated)` | `all-must-agree` | `obj/make.ts` | commit it unconditionally |

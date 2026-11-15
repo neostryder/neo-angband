@@ -166,6 +166,7 @@ Each table needs its matching registry permission from the list below, in both r
 | `cursedLightRadius` | the same | not a rule table | `registry:ui-entry` |
 | `completeRestEffects` | the same | not a rule table | `registry:command` |
 | `projectionRadiusClamp` | `projectionRadius` | not a rule table | `registry:projection` |
+| `monsterArcheryFrequency` | host-owned archery predicate | `{ greaterThan: 0..100 }` | `registry:monster` |
 | `levelRevisitTracking` | `levelRevisited` | not a rule table | `registry:monster` |
 | `storeDiscountRoll` | the stores' discount roll | not a rule table | `registry:store` |
 | `tileMap` | the mod's tile filler | not a rule table | `registry:tiles` |
@@ -179,6 +180,8 @@ A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whol
 `completeRestEffects` lists timed-effect names, from none up to 64. A complete rest waits until each named effect has run out, in place of the ten effects the game waits for when the table is left out. A name this game does not have does not count. An empty list waits on none of them. Hit points, spell points, word of recall and deep descent stay as they are, and the other rest modes do not read the list. The later mod's list is the one used.
 
 `cursedLightRadius` is `true` or `false`. `true` gives a wielded item no light when it carries an active curse or the sticky flag. This game has no light-curse flag. An active curse is one whose power is above zero on the item itself, and a sticky item is one with the sticky flag and no curse record. `false`, or leaving the table out, leaves that light as it is. One mod asking is enough.
+
+`monsterArcheryFrequency: { greaterThan: 25 }` applies upstream dd0e40858's strict frequency bound inside `monster_loves_archery()`. A monster still needs an archery spell. Core reads its race internally; an absent policy keeps the faithful `< 4` test.
 
 Two more tables are plain switches. `projectionRadiusClamp: true` keeps a blast from growing past the maximum projection range, which is what upstream's `project()` does. `levelRevisitTracking: true` makes a level you come back to forget its old noise and age its scent by the world ticks you were away, the way upstream's `age_scent()` and `forget_noise()` do. The game applies both itself, so the mod never sees the level or the projection.
 
