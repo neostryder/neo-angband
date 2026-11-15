@@ -364,6 +364,8 @@ export interface KnownLevelCell {
   readonly lit: boolean | null;
   readonly seen: boolean;
   readonly glow: boolean;
+  /** Remembered from the last time the square was seen, so it is not the live vault flag. */
+  readonly vault: boolean;
 }
 
 /** The level as the player remembers it, never the real map. */

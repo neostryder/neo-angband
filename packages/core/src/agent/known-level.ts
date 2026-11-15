@@ -95,6 +95,8 @@ export interface KnownLevelCell {
   readonly lit: boolean | null;
   readonly seen: boolean;
   readonly glow: boolean;
+  /** Remembered from the last time the square was seen, so it is not the live vault flag. */
+  readonly vault: boolean;
   readonly actual?: ActualCell;
 }
 
@@ -187,6 +189,7 @@ export function captureKnownLevel(
         lit: chunk.sqinfoHas(grid, SQUARE.VIEW) ? squareIsSeen(chunk, grid) : null,
         seen: squareIsSeen(chunk, grid),
         glow: (state.known.glow?.[y * chunk.width + x] ?? 0) !== 0,
+        vault: (state.known.vault?.[y * chunk.width + x] ?? 0) !== 0,
       };
       if (includeActual) {
         const index = y * chunk.width + x;

@@ -2005,6 +2005,8 @@ export function deserializeMessages(
 export interface SavedKnown {
   feat: number[];
   glow?: number[];
+  /** Absent when the square was never seen. Older saves omit it and read as not a vault. */
+  vault?: number[];
   /**
    * The remembered PILE per grid, in the order map_info walks it. SAVE_VERSION
    * 4; version 3 stored a single memory per grid, which migrate3to4 widens to
@@ -2466,6 +2468,7 @@ export function serializeGame(
           known: {
             feat: knownFeat,
             ...(state.known.glow ? { glow: Array.from(state.known.glow) } : {}),
+            ...(state.known.vault ? { vault: Array.from(state.known.vault) } : {}),
             objects: Array.from(state.known.objects.entries()).map(([i, pile]) => [
               i,
               pile.map((e) => serializeKnownObject(e, liveFloorAt, ids)),
@@ -2798,6 +2801,10 @@ export function deserializeKnown(
     known.glow = new Uint8Array(width * height);
     known.glow.set(data.glow.slice(0, known.glow.length).map((value) => value ? 1 : 0));
   }
+  if (data.vault) {
+    known.vault = new Uint8Array(width * height);
+    known.vault.set(data.vault.slice(0, known.vault.length).map((value) => value ? 1 : 0));
+  }
   if (trapKinds) {
     if (data.traps) {
       const disabled = new Map(data.trapDisabled ?? []);
@@ -3101,6 +3108,7 @@ export function serializeStoredLevel(
     known: {
       feat: knownFeat,
       ...(level.known.glow ? { glow: Array.from(level.known.glow) } : {}),
+      ...(level.known.vault ? { vault: Array.from(level.known.vault) } : {}),
       objects: Array.from(level.known.objects.entries()).map(([i, pile]) => [
         i,
         pile.map((e) => serializeKnownObject(e, cachedFloorAt, ids)),

@@ -13,7 +13,7 @@ import { runGameLoop } from "../game/loop.js";
 import { loadGame, saveGame, startGame } from "../session/game.js";
 import type { GamePack, StartedGame } from "../session/game.js";
 import { TMD, FEAT, TRF, SQUARE } from "../generated/index.js";
-import { squareKnowPile, squareMemorize } from "../game/known.js";
+import { squareForget, squareKnowPile, squareMemorize } from "../game/known.js";
 import { gearGet } from "../game/gear.js";
 import { squareMemorizeTraps } from "../game/trap.js";
 import type { Trap } from "../game/trap.js";
@@ -235,6 +235,53 @@ describe("known level", () => {
     state.chunk.sqinfoOn(grid, SQUARE.SEEN);
     squareMemorize(state, grid);
     expect(cell().glow).toBe(false);
+  });
+
+  it("remembers a vault only from a square the player saw", () => {
+    const game = newGame();
+    const { state } = game;
+    const grid = gridAwayFromPlayer(game);
+    const index = grid.y * state.chunk.width + grid.x;
+    state.chunk.sqinfoOff(grid, SQUARE.SEEN);
+    state.chunk.sqinfoOn(grid, SQUARE.VAULT);
+    squareMemorize(state, grid);
+    const cell = () => createAgentView(state).knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)!;
+    expect(cell().vault).toBe(false);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    squareMemorize(state, grid);
+    state.chunk.sqinfoOff(grid, SQUARE.SEEN);
+    const before = cell();
+    expect(before.vault).toBe(true);
+    state.chunk.sqinfoOff(grid, SQUARE.VAULT);
+    expect(cell()).toEqual(before);
+    squareForget(state, grid);
+    expect(state.known.vault?.[index]).toBe(1);
+    expect(state.known.feat[index]).toBe(-1);
+    squareMemorize(state, grid);
+    const loaded = loadGame(pack, saveGame(game));
+    const loadedIndex = grid.y * loaded.state.chunk.width + grid.x;
+    expect(loaded.state.known.vault?.[loadedIndex]).toBe(1);
+    expect(createAgentView(loaded.state).knownLevel!()!.cells.find((c) => c.x === grid.x && c.y === grid.y)?.vault).toBe(true);
+    state.chunk.sqinfoOn(grid, SQUARE.SEEN);
+    squareMemorize(state, grid);
+    expect(cell().vault).toBe(false);
+
+    const pile = { x: grid.x + 1, y: grid.y };
+    const pileIndex = pile.y * state.chunk.width + pile.x;
+    state.chunk.sqinfoOff(pile, SQUARE.SEEN);
+    state.chunk.sqinfoOn(pile, SQUARE.VAULT);
+    state.floor.set(pileIndex, [floorObject(game)]);
+    squareKnowPile(state, pile);
+    state.known.feat[pileIndex] = -1;
+    const pileCell = createAgentView(state).knownLevel!()!.cells.find((c) => c.x === pile.x && c.y === pile.y)!;
+    expect(pileCell.remembered.feat).toBe(0);
+    expect(pileCell.vault).toBe(false);
+
+    const hidden = { x: grid.x, y: grid.y + 1 };
+    state.chunk.sqinfoOff(hidden, SQUARE.SEEN);
+    state.chunk.sqinfoOn(hidden, SQUARE.VAULT);
+    const hiddenCell = createAgentView(state).knownLevel!()!.cells.find((c) => c.x === hidden.x && c.y === hidden.y);
+    expect(hiddenCell?.vault ?? false).toBe(false);
   });
 
   it("distinguishes a seen square from an unlit square in view", () => {

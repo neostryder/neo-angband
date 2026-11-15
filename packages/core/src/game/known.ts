@@ -185,6 +185,8 @@ export interface KnownMap {
   /** Remembered feat per grid; -1 = unknown. May be stale, as upstream. */
   feat: Int16Array;
   glow?: Uint8Array;
+  /** Written only while the square is seen, so a later change to the live vault flag stays out of memory. */
+  vault?: Uint8Array;
   /**
    * The remembered floor PILE per grid index (y * width + x), in the order
    * upstream's `square_object(player->cave, grid)` list walks: oldest memory
@@ -228,6 +230,8 @@ export function squareMemorize(state: GameState, grid: Loc): void {
   if (squareIsSeen(state.chunk, grid)) {
     const glow = (state.known.glow ??= new Uint8Array(state.known.width * state.known.height));
     glow[gi(state, grid)] = state.chunk.sqinfoHas(grid, SQUARE.GLOW) ? 1 : 0;
+    const vault = (state.known.vault ??= new Uint8Array(state.known.width * state.known.height));
+    vault[gi(state, grid)] = state.chunk.sqinfoHas(grid, SQUARE.VAULT) ? 1 : 0;
   }
 }
 
