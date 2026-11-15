@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { APP_ORIGIN, GAME_PAGE_CSP, appRequestPath, hostPayloadDigest, isGameBridgeFrame, isGameUrl, isLegacyProbe, legacyOrigin } from "./app-origin.js";
@@ -111,5 +111,22 @@ describe("reaching an old loopback origin without its port", () => {
     expect(isLegacyProbe(`${legacyOrigin(45871)}${ORIGIN_PROBE_ROUTE}?x=1`, ports)).toBe(false);
     expect(isLegacyProbe(`http://localhost:45871${ORIGIN_PROBE_ROUTE}`, ports)).toBe(false);
     expect(isLegacyProbe(`https://127.0.0.1:45871${ORIGIN_PROBE_ROUTE}`, ports)).toBe(false);
+  });
+});
+
+
+describe("main window child policy", () => {
+  it("denies every renderer child, including blank and same-origin mod pages", async () => {
+    const { runInNewContext } = await import("node:vm");
+    const source = fs.readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+    const policy = source.match(/win\.webContents\.setWindowOpenHandler\([\s\S]*?\r?\n {2}\}\);/u)?.[0];
+    expect(policy).toBeDefined();
+    const register = vi.fn();
+    const external = vi.fn();
+    runInNewContext(policy!, { win: { webContents: { setWindowOpenHandler: register } }, isGameUrl, confirmExternalOpen: external });
+    const handler = register.mock.calls[0]![0] as (details: { url: string }) => { action: string };
+    for (const url of ["neo-angband://game/", "neo-angband://game/mods/untrusted/index.html", "about:blank", "data:text/html,test", "blob:neo-angband://game/test", "file:///test", "https://github.com/neostryder/neo-angband/releases"]) {
+      expect(handler({ url }), url).toEqual({ action: "deny" });
+    }
   });
 });

@@ -2064,7 +2064,6 @@ async function createWindow(): Promise<void> {
 
   // External links open in the user's real browser, not inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isGameUrl(url)) return { action: "allow" };
     void confirmExternalOpen(url, (message, accept) => confirmAction(win.webContents, message, accept), (href) => shell.openExternal(href));
     return { action: "deny" };
   });
