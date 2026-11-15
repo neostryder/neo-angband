@@ -90,6 +90,7 @@ describe("composeModHooks: nothing in, nothing out", () => {
     expect(composed?.walkBlockedByDiggable).toBeUndefined();
     expect(composed?.objectListTiebreak).toBeUndefined();
     expect(composed?.projectionRadius).toBeUndefined();
+    expect(composed?.trapAllocation).toBeUndefined();
     expect(composed?.shapeLearnObviousFlagsDirectly).toBeUndefined();
     expect(composed?.cursedLightRadius).toBeUndefined();
     expect(composed?.completeRestEffects).toBeUndefined();
@@ -714,6 +715,14 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.objectListTiebreak?.({ dy: 0, dx: 0 }, { dy: 0, dx: 0 }),
     },
+    trapAllocation: {
+      yes: (log, tag, nth) => ({ trapAllocation: (allocation) => {
+        log.push(tag);
+        return { ...allocation, count: { ...allocation.count, min: allocation.count.min * 10 + nth } };
+      } }),
+      no: (log, tag) => ({ trapAllocation: (allocation) => { log.push(tag); return allocation; } }),
+      run: (h) => h.trapAllocation?.({ kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 5 }, placement: "corridors" }).count.min,
+    },
     projectionRadius: {
       /* Deliberately NOT commutative. A contributor that added `nth` would give
        * the same total in both orders, and the observer would read an
@@ -1176,6 +1185,12 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
   it("effectIntro writes the introduction core was about to write", () => {
     const { hooks } = guarded({ effectIntro: THROWS });
     expect(hooks.effectIntro?.(INTRO)).toBe("When aimed, it ");
+  });
+
+  it("keeps the original trap allocation when a policy throws", () => {
+    const allocation = { kind: "trap-allocation" as const, count: { depthDivisor: 3, min: 2, max: 10, divisor: 5 }, placement: "corridors" as const };
+    const { hooks } = guarded({ trapAllocation: THROWS });
+    expect(hooks.trapAllocation?.(allocation)).toBe(allocation);
   });
 
   it("projectionRadius returns the radius it was given, not the maximum", () => {

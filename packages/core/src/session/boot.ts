@@ -390,7 +390,8 @@ export interface BootLevelOptions {
   /**
    * The composed behaviour of every enabled mod (mod/hooks.ts), passed through to
    * GenDeps so a mod can inspect, repair or reject a generated level. The only
-   * hook cave_generate consults is `levelGenerated`. Omitted (the default, and
+   * finished-level hook is `levelGenerated`; `trapAllocation` reaches classic_gen
+   * before allocation so Core owns its random draws. Omitted (the default, and
    * the only possibility with no mod enabled) = faithful 4.2.6.
    */
   modHooks?: import("../mod/hooks.js").ModHooks | undefined;

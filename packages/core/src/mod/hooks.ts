@@ -62,7 +62,7 @@
  *
  * DETERMINISM
  *
- * Two of these run inside the generation and object pipelines, where an extra
+ * These include the generation and object pipelines, where an extra
  * RNG draw does not merely change a value, it desynchronises every draw after
  * it - so a seed would stop meaning the same level. Those hooks are documented
  * RNG-FREE and are given no rng to draw from. That is a contract a mod can still
@@ -381,6 +381,8 @@ export interface ModHooks {
    * f0f6bd223b6b9faf0072b0ae7ffb34a812b97349, upstream issue #6671).
    */
   projectionRadius?: (rad: number, maxRange: number) => number;
+  /** RNG-free general trap count and placement in classic_gen, before alloc_objects. */
+  trapAllocation?: (allocation: import("../gen/cave.js").TrapAllocationPolicy) => import("../gen/cave.js").TrapAllocationPolicy;
 
   /**
    * A finished, otherwise-accepted level, before cave_generate returns it
@@ -781,7 +783,7 @@ export interface ModHooks {
  *    mod's comparator is the primary key and earlier ones break the ties it
  *    leaves, which is a valid total order and is "later wins" for a comparator.
  *  - TRANSFORM hooks (messageText, screenText, historyDisplay,
- *    characterBackground, objectInfoText, effectIntro, projectionRadius) compose in
+ *    characterBackground, objectInfoText, effectIntro, projectionRadius, trapAllocation) compose in
  *    load order, each seeing the previous one's output - so the last mod still
  *    speaks last and has the final say over the text that reaches the player,
  *    or over the radius the blast is built from.
@@ -850,6 +852,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   walkBlockedByDiggable: "last-answer",
   objectListTiebreak: "last-answer",
   projectionRadius: "chained",
+  trapAllocation: "chained",
   levelGenerated: "all-must-agree",
   artifactCommit: "all-must-agree",
   partialStackMerge: "all-must-agree",
@@ -1003,6 +1006,9 @@ export function guardModHooks(
     out.projectionRadius = (rad, maxRange): number =>
       guard("projectionRadius", () => radius(rad, maxRange), rad);
   }
+
+  const traps = hooks.trapAllocation;
+  if (traps) out.trapAllocation = (allocation) => guard("trapAllocation", () => traps(allocation), allocation);
 
   const level = hooks.levelGenerated;
   if (level) {
@@ -1243,6 +1249,9 @@ export function composeModHooks(
     out.projectionRadius = (rad, maxRange): number =>
       radius.reduce((r, fn) => fn(r, maxRange), rad);
   }
+
+  const traps = list.map((c) => c.trapAllocation).filter(isFn);
+  if (traps.length > 0) out.trapAllocation = (allocation) => traps.reduce((value, fn) => fn(value), allocation);
 
   const level = list.map((c) => c.levelGenerated).filter(isFn);
   if (level.length > 0) {

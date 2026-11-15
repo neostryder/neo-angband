@@ -26,9 +26,9 @@
  * cache.
  *
  * NO ADDITIONS BEYOND UPSTREAM. This file holds no fix and no mod's name. It
- * offers ONE extension point - the levelGenerated hook (mod/hooks.ts), consulted
- * on an otherwise-accepted level, which a mod may use to inspect, repair or reject
- * it. With no mod loaded the hook is absent and this loop is a faithful
+ * offers the levelGenerated hook on an otherwise-accepted level and threads
+ * trapAllocation to classic_gen so allocation uses the generation RNG.
+ * With no mod loaded the hooks are absent and this loop is a faithful
  * cave_generate, stranded floors included.
  *
  * The staircase-reachability repair used to live in gen/util.ts behind a
@@ -87,7 +87,7 @@ export interface GenDeps {
   /**
    * The mod behaviour seam (mod/hooks.ts), threaded from session/game.ts so the
    * pure generation path can offer its extension point without importing session
-   * state. Only `levelGenerated` is consulted here. Absent - always the case with
+   * state. `trapAllocation` reaches classic_gen before general allocation. Absent - always the case with
    * no mod enabled - keeps cave_generate faithful to 4.2.6, unreachable
    * staircases included.
    */
@@ -483,6 +483,7 @@ export function generateLevel(
       objDeps: deps.objDeps,
       monDeps: deps.monDeps,
       trapKinds: deps.trapKinds ?? null,
+      ...(deps.hooks ? { hooks: deps.hooks } : {}),
       rooms: deps.rooms,
       createStair: options.createStair ?? null,
       /* new_player_spot's placement-failure message (gen-util.c:422). Kept

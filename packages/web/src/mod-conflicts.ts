@@ -276,6 +276,7 @@ function hookDescription(hook: keyof ModHooks): string {
     forgetUnlitImpassableTerrain: "when you forget impassable terrain underfoot without light",
     forceFromBlastCenter: "where a blast pushes its targets from",
     monsterArcheryFrequency: "how often an archer shoots before it prefers range",
+    trapAllocation: "how many general traps classic levels contain and where they appear",
     newCharacter: "the state of a newly created character",
     walkBlockedByDiggable: "what happens when you walk into diggable rock",
     objectListTiebreak: "the order of items on the floor list",

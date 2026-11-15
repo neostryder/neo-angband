@@ -868,6 +868,18 @@ describe("full level generation", () => {
    * accepted level, its refusal re-rolls, and its mere presence changes nothing.
    * ------------------------------------------------------------------ */
 
+  it("threads the classic allocation policy through cave_generate without extra RNG", () => {
+    const deps = makeDeps();
+    let calls = 0;
+    deps.hooks = { trapAllocation: (allocation) => { calls++; return allocation; } };
+    const hooked = generateLevel(new Rng(31337), 5, deps);
+    const faithful = generateLevel(new Rng(31337), 5, makeDeps());
+    expect(calls).toBeGreaterThan(0);
+    expect(hooked.c.snapshotSquares(true)).toEqual(faithful.c.snapshotSquares(true));
+    expect(hooked.trapGrids).toEqual(faithful.trapGrids);
+    expect(hooked.rng.getState()).toEqual(faithful.rng.getState());
+  });
+
   it("offers the accepted level to the hook, with the quest flag", () => {
     const seen: Array<{ isGen: boolean; quest: boolean; spot: boolean }> = [];
     const deps = makeDeps();
@@ -1114,6 +1126,59 @@ function builderCtx(depth: number, seed: number): CaveBuildContext {
     rooms: deps.rooms,
   };
 }
+
+describe("classic trap allocation policy", () => {
+  function context(depth: number, seed: number): CaveBuildContext {
+    const ctx = builderCtx(depth, seed);
+    const simple = ctx.profile.roomProfiles.find((room) => room.builder === "simple")!;
+    ctx.profile = { ...ctx.profile, tun: { ...ctx.profile.tun, jct: 0 }, roomProfiles: [{ ...simple, cutoff: 100, rarity: 0 }] };
+    return ctx;
+  }
+
+  it("keeps 4.2.x generation and RNG identical with no declaration", () => {
+    const a = context(30, 4242);
+    const b = context(30, 4242);
+    b.hooks = { trapAllocation: (allocation) => allocation };
+    const faithful = classicGen(a).gen!;
+    const neutral = classicGen(b).gen!;
+    expect(neutral).not.toBeNull();
+    expect(neutral.c.snapshotSquares(true)).toEqual(faithful.c.snapshotSquares(true));
+    expect(neutral.trapGrids).toEqual(faithful.trapGrids);
+    expect(neutral.objects).toEqual(faithful.objects);
+    expect(neutral.monsters).toEqual(faithful.monsters);
+    expect(neutral.playerSpot).toEqual(faithful.playerSpot);
+    expect(neutral.rng.getState()).toEqual(faithful.rng.getState());
+  });
+
+  it.each([1, 12, 60])("restores the 4.0.5 classic_gen 1d(clamp(depth / 3, 2, 10)) roll at depth %s", (depth) => {
+    const ctx = context(depth, 4242);
+    let expected = 0;
+    const k = Math.max(2, Math.min(Math.trunc(depth / 3), 10));
+    ctx.hooks = { trapAllocation: () => {
+      const twin = new Rng(1);
+      twin.setState(ctx.rng.getState());
+      expected = twin.randint1(k);
+      return { kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" };
+    } };
+    const built = classicGen(ctx).gen!;
+    expect(built).not.toBeNull();
+    expect(expected).toBeGreaterThan(0);
+    expect(built.trapGrids.size).toBe(expected);
+  });
+
+  it.each(["rooms", "corridors"] as const)("keeps alloc_objects eligibility in %s", (placement) => {
+    const ctx = context(30, 4242);
+    ctx.hooks = { trapAllocation: () => ({ kind: "trap-allocation",
+      count: { depthDivisor: 3, min: 20, max: 20, divisor: 1 }, placement }) };
+    const built = classicGen(ctx).gen!;
+    expect(built).not.toBeNull();
+    expect(built.trapGrids.size).toBeGreaterThan(2);
+    for (const index of built.trapGrids) {
+      const grid = loc(index % built.c.width, Math.trunc(index / built.c.width));
+      expect(built.c.sqinfoHas(grid, SQUARE.ROOM)).toBe(placement === "rooms");
+    }
+  });
+});
 
 describe("labyrinth generator", () => {
   it("registers labyrinthGen as the 'labyrinth' builder (not the modified alias)", () => {

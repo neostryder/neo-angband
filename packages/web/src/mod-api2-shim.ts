@@ -247,6 +247,7 @@ export function api2PolicyModHooks(registrations: Api2PolicyRegistrations, activ
     if (!active() || !state.options) return;
     applyStartingOptions(state.options, registrations.startingOptions!);
   };
+  if (registrations.trapAllocation) hooks.trapAllocation = (allocation) => active() ? registrations.trapAllocation! : allocation;
   if (registrations.projectionRadiusClamp) hooks.projectionRadius = (rad, maxRange) => (active() && rad > maxRange ? maxRange : rad);
   if (registrations.levelRevisitTracking) hooks.levelRevisited = (chunk, frozenAt, now) => {
     if (!active()) return;

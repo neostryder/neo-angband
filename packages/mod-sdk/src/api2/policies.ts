@@ -170,6 +170,12 @@ export interface Api2MonsterArcheryFrequencyPolicy {
   readonly greaterThan: number;
 }
 
+export interface Api2TrapAllocationPolicy {
+  readonly kind: "trap-allocation";
+  readonly count: { readonly depthDivisor: number; readonly min: number; readonly max: number; readonly divisor: number };
+  readonly placement: "rooms" | "corridors" | "both";
+}
+
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
   /** True counts only a monster's own stolen drops and saturates thefts at 65535. */
@@ -181,6 +187,7 @@ export interface Api2Policies {
   /** True applies FORCE thrust from the blast centre, including coincident targets. */
   readonly forceFromBlastCenter?: boolean;
   readonly monsterArcheryFrequency?: Api2MonsterArcheryFrequencyPolicy;
+  readonly trapAllocation?: Api2TrapAllocationPolicy;
   readonly prefErrors?: Api2PrefErrorsPolicy;
   readonly startingOptions?: Api2StartingOptionsPolicy;
   readonly ignore?: readonly Api2IgnorePolicyEntry[];
@@ -276,6 +283,7 @@ export interface Api2PolicyRegistrations {
   forgetUnlitImpassableTerrain?: true;
   forceFromBlastCenter?: true;
   monsterArcheryFrequency?: Api2MonsterArcheryFrequencyPolicy;
+  trapAllocation?: Api2TrapAllocationPolicy;
   prefErrors?: Api2PrefErrorsPolicy;
   startingOptions?: Api2StartingOptionsPolicy;
   ignore?: readonly Api2IgnorePolicyEntry[];
@@ -525,6 +533,32 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
     },
     apply(value, out) {
       out.registrations.monsterArcheryFrequency = value as Api2MonsterArcheryFrequencyPolicy;
+    },
+  },
+  {
+    name: "trapAllocation",
+    capability: "registry:room",
+    summary: "Sets the general trap count and room or corridor placement on classic levels.",
+    target: { registration: "trapAllocation" },
+    check(value) {
+      if (!isRecord(value)) return "trapAllocation is an object";
+      const extra = unknownField("trapAllocation", value, ["kind", "count", "placement"]);
+      if (extra) return extra;
+      if (value["kind"] !== "trap-allocation") return 'trapAllocation.kind is "trap-allocation"';
+      if (!["rooms", "corridors", "both"].includes(value["placement"] as string)) return 'trapAllocation.placement is "rooms", "corridors", or "both"';
+      const count = value["count"];
+      if (!isRecord(count)) return "trapAllocation.count is an object";
+      const unknown = unknownField("trapAllocation.count", count, ["depthDivisor", "min", "max", "divisor"]);
+      if (unknown) return unknown;
+      for (const field of ["depthDivisor", "min", "max", "divisor"]) {
+        if (!isInt(count[field], 1, 256)) return "trapAllocation.count." + field + " is a whole number from 1 to 256";
+      }
+      if ((count["min"] as number) > (count["max"] as number)) return "trapAllocation.count.min must not exceed max";
+      return null;
+    },
+    apply(value, out) {
+      const policy = value as Api2TrapAllocationPolicy;
+      out.registrations.trapAllocation = { ...policy, count: { ...policy.count } };
     },
   },
   {

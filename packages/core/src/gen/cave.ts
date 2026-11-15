@@ -240,7 +240,15 @@ export function loadDunProfile(rec: DunProfileRecordJson): DunProfile {
  * The cave-build context and builder type.
  * ------------------------------------------------------------------ */
 
+/** General traps in classic_gen; room and vault traps keep their own allocation. */
+export interface TrapAllocationPolicy {
+  readonly kind: "trap-allocation";
+  readonly count: { readonly depthDivisor: number; readonly min: number; readonly max: number; readonly divisor: number };
+  readonly placement: "rooms" | "corridors" | "both";
+}
+
 export interface CaveBuildContext {
+  hooks?: Pick<import("../mod/hooks.js").ModHooks, "trapAllocation"> | undefined;
   rng: Rng;
   reg: FeatureRegistry;
   constants: Constants;
@@ -1139,7 +1147,14 @@ export const classicGen: CaveBuilder = (ctx) => {
 
   const k = Math.max(Math.min(Math.trunc(c.depth / 3), 10), 2);
   allocObjects(g, SET_CORR, TYP_RUBBLE, rng.randint1(k), c.depth, 0);
-  allocObjects(g, SET_CORR, TYP_TRAP, Math.trunc(rng.randint1(k) / 5), c.depth, 0);
+  const allocation = ctx.hooks?.trapAllocation?.({ kind: "trap-allocation",
+    count: { depthDivisor: 3, min: 2, max: 10, divisor: 5 }, placement: "corridors" });
+  const trapBound = allocation
+    ? Math.max(allocation.count.min, Math.min(Math.trunc(c.depth / allocation.count.depthDivisor), allocation.count.max))
+    : k;
+  const trapSet = !allocation || allocation.placement === "corridors" ? SET_CORR
+    : allocation.placement === "rooms" ? SET_ROOM : SET_BOTH;
+  allocObjects(g, trapSet, TYP_TRAP, Math.trunc(rng.randint1(trapBound) / (allocation?.count.divisor ?? 5)), c.depth, 0);
 
   const pspot = newPlayerSpot(g, ctx.createStair ?? null);
   if (!pspot) return { gen: null, error: "could not place player" };

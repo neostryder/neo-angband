@@ -172,6 +172,7 @@ Each table needs its matching registry permission from the list below, in both r
 | `forceFromBlastCenter` | host-owned FORCE and thrust handlers | boolean | `registry:projection` |
 | `monsterArcheryFrequency` | host-owned archery predicate | `{ greaterThan: 0..100 }` | `registry:monster` |
 | `levelRevisitTracking` | `levelRevisited` | not a rule table | `registry:monster` |
+| `trapAllocation` | `trapAllocation` | not a rule table | `registry:room` |
 | `storeDiscountRoll` | the stores' discount roll | not a rule table | `registry:store` |
 | `tileMap` | the mod's tile filler | not a rule table | `registry:tiles` |
 
@@ -196,6 +197,8 @@ A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whol
 `monsterArcheryFrequency: { greaterThan: 25 }` applies upstream dd0e40858's strict frequency bound inside `monster_loves_archery()`. A monster still needs an archery spell. Core reads its race internally; an absent policy keeps the faithful `< 4` test.
 
 Two more tables are plain switches. `projectionRadiusClamp: true` keeps a blast from growing past the maximum projection range, which is what upstream's `project()` does. `levelRevisitTracking: true` makes a level you come back to forget its old noise and age its scent by the world ticks you were away, the way upstream's `age_scent()` and `forget_noise()` do. The game applies both itself, so the mod never sees the level or the projection.
+
+`trapAllocation` is `{ kind: "trap-allocation", count: { depthDivisor, min, max, divisor }, placement }` under `registry:room`. On classic levels, Core rolls one die with `clamp(trunc(depth / depthDivisor), min, max)` sides, divides the roll by `divisor`, rounds down, and allocates that many general traps through `alloc_objects`. Every count field is an integer from 1 to 256, and `min` cannot exceed `max`. `placement` is `"rooms"`, `"corridors"`, or `"both"`. The 4.0.5 `classic_gen` rule is `{ kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" }`. Room, vault, and junction traps keep their own placement rules. With no declaration, Core keeps the 4.2.x corridor-only allocation and division by 5. The host installs the same data in both runtimes, draws from Core's generation RNG, and gives the mod no unfinished map. A later declaration replaces an earlier one; an inactive declaration leaves the incoming allocation unchanged.
 
 Both runtimes install registrations in the selected mod order. A later discount roll replaces an earlier one, and tile fillers run in that order, so the first filler for an empty tile wins.
 

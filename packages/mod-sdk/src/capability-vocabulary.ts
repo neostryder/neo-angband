@@ -191,7 +191,7 @@ const REGISTRY_DOMAINS: readonly (readonly [string, string, boolean])[] = [
 
 const WORKER_REGISTRY_CONSENT: Readonly<Record<string, string>> = {
   effect: "Install bounded heal, damage, and message effect programs. Any character they touch becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
-  room: "Select host room builders for named room types. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
+  room: "Select host room builders for named room types and set general trap counts and placement on classic levels. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
   profile: "Add weighted dungeon profiles copied from existing profiles. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
   blow: "Set fixed damage and visibility for monster blow effects. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",
   glyph: "Map room or vault symbols to existing symbol behavior. Any character this touches becomes permanently unscorable, and its run can no longer be reproduced from its seed.",

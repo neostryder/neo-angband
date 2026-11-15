@@ -36,6 +36,26 @@ describe("checkApi2Policies", () => {
     expect(checkApi2Policies(policies)).toBeNull();
   });
 
+  it("checks and installs a bounded classic trap allocation table", () => {
+    const trapAllocation = { kind: "trap-allocation" as const,
+      count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" as const };
+    expect(checkApi2Policies({ trapAllocation })).toBeNull();
+    for (const placement of ["rooms", "corridors", "both"]) {
+      expect(checkApi2Policies({ trapAllocation: { ...trapAllocation, placement } })).toBeNull();
+    }
+    for (const [field, value] of [["depthDivisor", 0], ["min", 0], ["max", 257], ["divisor", 0], ["max", 1], ["min", 2.5]]) {
+      expect(checkApi2Policies({ trapAllocation: { ...trapAllocation, count: { ...trapAllocation.count, [field as string]: value } } })).not.toBeNull();
+    }
+    for (const value of [null, {}, { ...trapAllocation, kind: "traps" }, { ...trapAllocation, placement: "anywhere" },
+      { ...trapAllocation, count: [] }, { ...trapAllocation, count: { ...trapAllocation.count, dice: 1 } },
+      { ...trapAllocation, hidden: true }]) expect(checkApi2Policies({ trapAllocation: value })).not.toBeNull();
+    expect(api2PolicyEffects({ trapAllocation }, () => false).registrations).toEqual({});
+    const result = api2PolicyEffects({ trapAllocation }, (cap) => cap === "registry:room").registrations.trapAllocation;
+    expect(result).toEqual(trapAllocation);
+    expect(result).not.toBe(trapAllocation);
+    expect(result!.count).not.toBe(trapAllocation.count);
+  });
+
   it("refuses unknown tables and fields, so a misspelling is reported", () => {
     expect(checkApi2Policies({ mesageText: [] })).toMatch(/no policy table "mesageText"/u);
     expect(checkApi2Policies({ messageText: [{ find: "a", replace: "b", regex: true }] })).toMatch(/unknown field "regex"/u);
@@ -203,6 +223,7 @@ describe("api2PoliciesToHooks", () => {
 describe("API2_POLICY_KINDS", () => {
   it("maps every table to its matching registry permission", () => {
     expect(Object.fromEntries(API2_POLICY_KINDS.map((kind) => [kind.name, kind.capability]))).toEqual({
+      trapAllocation: "registry:room",
       prefErrors: "registry:ui-entry",
       startingOptions: "registry:ui-entry",
       ignore: "registry:ui-entry",
@@ -224,7 +245,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
+      else expect(["trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
     }
   });
 
