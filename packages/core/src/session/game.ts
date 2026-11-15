@@ -898,6 +898,7 @@ function wireGame(
     update,
     depth: state.chunk.depth,
     isDaytime: isDaytime(state.turn, state.z.dayLength),
+    cursedLightRadius: state.modHooks?.cursedLightRadius?.() ?? false,
   });
 
   const refreshDerived = (): void => {

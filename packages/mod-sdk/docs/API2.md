@@ -129,7 +129,7 @@ A `null` payload is a notice that something changed: read the view for the new v
 
 An API 2 mod declares its hooks in `hooks(context)`. Each one gets plain, frozen data and returns plain data. The host composes them with every other mod's hooks in load order, the same way it composes API 1 hooks. A mod can also give hook answers as data in `policies(context)`, which a Worker mod has to do for every hook that answers (see Policy tables).
 
-`messageText`, `screenText`, `characterBackground`, `objectInfoText`, `effectIntro` and `historyDisplay` restate text. `historyAdd` returns `{ keep, what?, expandUserInput? }`, and an entry is written only if every mod keeps it. `objectListTiebreak`, `saveNoiseScent`, `shapeLearnObviousFlagsDirectly` and `completeRestEffects` answer a question. `optionsChanged`, `abilityGained`, `monsterBecameVisible` and `artifactIdentified` tell the mod something happened.
+`messageText`, `screenText`, `characterBackground`, `objectInfoText`, `effectIntro` and `historyDisplay` restate text. `historyAdd` returns `{ keep, what?, expandUserInput? }`, and an entry is written only if every mod keeps it. `objectListTiebreak`, `saveNoiseScent`, `shapeLearnObviousFlagsDirectly`, `cursedLightRadius` and `completeRestEffects` answer a question. `optionsChanged`, `abilityGained`, `monsterBecameVisible` and `artifactIdentified` tell the mod something happened.
 
 These API 1 hooks have no API 2 form:
 
@@ -163,19 +163,22 @@ Each table needs its matching registry permission from the list below, in both r
 | `objectListOrder` | `objectListTiebreak` | not a rule table | `registry:tval` |
 | `saveNoiseScent` | the same | not a rule table | `registry:monster` |
 | `shapeLearnObviousFlagsDirectly` | the same | not a rule table | `registry:rune` |
+| `cursedLightRadius` | the same | not a rule table | `registry:ui-entry` |
 | `completeRestEffects` | the same | not a rule table | `registry:command` |
 | `projectionRadiusClamp` | `projectionRadius` | not a rule table | `registry:projection` |
 | `levelRevisitTracking` | `levelRevisited` | not a rule table | `registry:monster` |
 | `storeDiscountRoll` | the stores' discount roll | not a rule table | `registry:store` |
 | `tileMap` | the mod's tile filler | not a rule table | `registry:tiles` |
 
-A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whole text, and the default), `"substring"` (every occurrence) or `"prefix"`. Matching is literal text with no regular expressions, so a rule cannot stall a turn. Rules run in order, each on the text the one before it produced, and `where` limits a rule to call sites whose named fields equal the values given. A `historyAdd` rule may be `{ find, drop: true }` instead, which keeps a matching entry out of the history. `objectListOrder` lists the keys `dy`, `dx`, `-dy` and `-dx`: the first key that differs between two entries orders them, and a minus sign sorts that key high to low. The two switches take `true`.
+A text rule is `{ find, replace, match, where }`. `match` is `"exact"` (the whole text, and the default), `"substring"` (every occurrence) or `"prefix"`. Matching is literal text with no regular expressions, so a rule cannot stall a turn. Rules run in order, each on the text the one before it produced, and `where` limits a rule to call sites whose named fields equal the values given. A `historyAdd` rule may be `{ find, drop: true }` instead, which keeps a matching entry out of the history. `objectListOrder` lists the keys `dy`, `dx`, `-dy` and `-dx`: the first key that differs between two entries orders them, and a minus sign sorts that key high to low. A switch takes `true` or `false`.
 
 `storeDiscountRoll` is `{ minCost, tiers }`. When a store stocks an object worth at least `minCost` (0 if left out), it tries each tier `{ oneIn, percent }` in order, and the first one-in-`oneIn` roll that comes up takes `percent` off that stack. The rolls come from the game's own random numbers, so a seeded game stays repeatable. If two mods declare a discount roll, the one that loads later is used.
 
 `tileMap` lists rules of the form `{ monster, like, hue, packs }` or `{ monster, cell, packs }`, with `object` in place of `monster`. A rule gives a monster race or object kind the tile that the `like` index has now, turned `hue` degrees around the colour wheel when `hue` is set. It only fills a tile the pack leaves empty, so it never repaints anything a pack draws. `packs` limits a rule to those pack ids, and a pack that cannot recolour skips any rule with a `hue`. A `cell` rule names a spot on a tile sheet instead of a donor: `[column, row]`, each from 0 to 127. It only works on a pack that is a fixed tile sheet, so it has to list its `packs`, it cannot also take a `hue`, and any other pack skips it.
 
 `completeRestEffects` lists timed-effect names, from none up to 64. A complete rest waits until each named effect has run out, in place of the ten effects the game waits for when the table is left out. A name this game does not have does not count. An empty list waits on none of them. Hit points, spell points, word of recall and deep descent stay as they are, and the other rest modes do not read the list. The later mod's list is the one used.
+
+`cursedLightRadius` is `true` or `false`. `true` gives a wielded item no light when it carries an active curse or the sticky flag. This game has no light-curse flag. An active curse is one whose power is above zero on the item itself, and a sticky item is one with the sticky flag and no curse record. `false`, or leaving the table out, leaves that light as it is. One mod asking is enough.
 
 Two more tables are plain switches. `projectionRadiusClamp: true` keeps a blast from growing past the maximum projection range, which is what upstream's `project()` does. `levelRevisitTracking: true` makes a level you come back to forget its old noise and age its scent by the world ticks you were away, the way upstream's `age_scent()` and `forget_noise()` do. The game applies both itself, so the mod never sees the level or the projection.
 

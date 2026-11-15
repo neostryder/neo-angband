@@ -161,6 +161,10 @@ export function api2ToModHooks(hooks: Api2Hooks): ModHooks {
     const f = hooks.shapeLearnObviousFlagsDirectly.bind(hooks);
     out.shapeLearnObviousFlagsDirectly = () => f();
   }
+  if (hooks.cursedLightRadius) {
+    const f = hooks.cursedLightRadius.bind(hooks);
+    out.cursedLightRadius = () => f();
+  }
   if (hooks.completeRestEffects) {
     const f = hooks.completeRestEffects.bind(hooks);
     out.completeRestEffects = () => f();

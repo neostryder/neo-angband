@@ -91,6 +91,7 @@ describe("composeModHooks: nothing in, nothing out", () => {
     expect(composed?.objectListTiebreak).toBeUndefined();
     expect(composed?.projectionRadius).toBeUndefined();
     expect(composed?.shapeLearnObviousFlagsDirectly).toBeUndefined();
+    expect(composed?.cursedLightRadius).toBeUndefined();
     expect(composed?.completeRestEffects).toBeUndefined();
     expect(composed?.monsterBecameVisible).toBeUndefined();
     expect(composed?.artifactIdentified).toBeUndefined();
@@ -454,6 +455,22 @@ describe("any-hooks are disjunctive", () => {
     ]);
     expect(composed?.shapeLearnObviousFlagsDirectly?.()).toBe(false);
   });
+
+  it("cursedLightRadius: one mod asking is enough", () => {
+    const composed = composeModHooks([
+      { cursedLightRadius: () => false },
+      { cursedLightRadius: () => true },
+    ]);
+    expect(composed?.cursedLightRadius?.()).toBe(true);
+  });
+
+  it("cursedLightRadius: nobody asking leaves a cursed light shining", () => {
+    const composed = composeModHooks([
+      { cursedLightRadius: () => false },
+      { cursedLightRadius: () => false },
+    ]);
+    expect(composed?.cursedLightRadius?.()).toBe(false);
+  });
 });
 
 describe("completeRestEffects is last-answer", () => {
@@ -812,6 +829,21 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       }),
       run: (h) => h.shapeLearnObviousFlagsDirectly?.(),
     },
+    cursedLightRadius: {
+      yes: (log, tag) => ({
+        cursedLightRadius: () => {
+          log.push(tag);
+          return true;
+        },
+      }),
+      no: (log, tag) => ({
+        cursedLightRadius: () => {
+          log.push(tag);
+          return false;
+        },
+      }),
+      run: (h) => h.cursedLightRadius?.(),
+    },
     completeRestEffects: {
       yes: (log, tag, nth) => ({
         completeRestEffects: () => {
@@ -1054,6 +1086,11 @@ describe("guardModHooks: a throwing hook answers with nothing, per hook's meanin
     expect(hooks.shapeLearnObviousFlagsDirectly?.()).toBe(false);
   });
 
+  it("cursedLightRadius declines, so a cursed light still shines", () => {
+    const { hooks } = guarded({ cursedLightRadius: THROWS });
+    expect(hooks.cursedLightRadius?.()).toBe(false);
+  });
+
   it("completeRestEffects declines, so the ten 4.2.6 effects stay", () => {
     const { hooks } = guarded({ completeRestEffects: THROWS });
     expect(hooks.completeRestEffects?.()).toBeNull();
@@ -1235,6 +1272,7 @@ describe("guardModHooks: it wraps, and does not invent", () => {
     expect(hooks.walkBlockedByDiggable).toBeUndefined();
     expect(hooks.objectListTiebreak).toBeUndefined();
     expect(hooks.shapeLearnObviousFlagsDirectly).toBeUndefined();
+    expect(hooks.cursedLightRadius).toBeUndefined();
     expect(hooks.completeRestEffects).toBeUndefined();
     expect(hooks.monsterBecameVisible).toBeUndefined();
     expect(hooks.artifactIdentified).toBeUndefined();

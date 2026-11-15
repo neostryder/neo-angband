@@ -387,6 +387,37 @@ describe("calcLight (player-calcs.c:1598-1645)", () => {
     expect(calcBonuses(p, { equipment: eq }).curLight).toBe(0);
   });
 
+  it("keeps a cursed or sticky torch at radius 2 until a mod asks for none", () => {
+    const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
+    const fuelled = (): { eq: (GameObject | null)[]; obj: GameObject } => {
+      const eq = emptyEquipment(p);
+      const obj = objectNew({} as ObjectKind);
+      obj.tval = TV.LIGHT;
+      obj.flags.on(OF.LIGHT_2);
+      obj.timeout = 5000;
+      eq[lightSlot(p)] = obj;
+      return { eq, obj };
+    };
+    const cursed = fuelled();
+    cursed.obj.curses = [{ power: 4, timeout: 0 }];
+    expect(calcBonuses(p, { equipment: cursed.eq }).curLight).toBe(2);
+    expect(calcBonuses(p, { equipment: cursed.eq, cursedLightRadius: true }).curLight).toBe(0);
+    const inactive = fuelled();
+    inactive.obj.curses = [{ power: 0, timeout: 0 }];
+    expect(calcBonuses(p, { equipment: inactive.eq, cursedLightRadius: true }).curLight).toBe(2);
+    const sticky = fuelled();
+    sticky.obj.flags.on(OF.STICKY);
+    expect(calcBonuses(p, { equipment: sticky.eq }).curLight).toBe(2);
+    expect(calcBonuses(p, { equipment: sticky.eq, cursedLightRadius: true }).curLight).toBe(0);
+    const plain = fuelled();
+    expect(calcBonuses(p, { equipment: plain.eq, cursedLightRadius: true }).curLight).toBe(2);
+    const burnt = fuelled();
+    burnt.obj.timeout = 0;
+    burnt.obj.curses = [{ power: 4, timeout: 0 }];
+    expect(calcBonuses(p, { equipment: burnt.eq }).curLight).toBe(0);
+    expect(calcBonuses(p, { equipment: burnt.eq, cursedLightRadius: true }).curLight).toBe(0);
+  });
+
   it("lights a LIGHT_3 lantern to radius 3", () => {
     const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
     const eq = emptyEquipment(p);

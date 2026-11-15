@@ -5,6 +5,8 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { OF } from "../generated/index.js";
+import { gearGet } from "../game/gear.js";
 import { startGame } from "./game.js";
 import type { GamePack } from "./game.js";
 
@@ -89,5 +91,29 @@ describe("the view follows the light radius", () => {
     state.updateBonuses!();
     expect(state.actor.light).toBe(litRadius);
     expect(rebuilt).toBe(2);
+  });
+
+  it("zeros a cursed or sticky light only when a mod asks", () => {
+    const game = startGame(pack, { seed: 7, depth: 5 });
+    const { state } = game;
+    const p = state.actor.player;
+    const lightSlot = p.body.slots.findIndex((s) => s.type === "LIGHT");
+    const handle = p.equipment[lightSlot]!;
+    const torch = gearGet(state.gear, handle)!;
+    const lit = state.actor.light;
+    expect(lit).toBeGreaterThan(0);
+    torch.curses = [{ power: 4, timeout: 0 }];
+    state.updateBonuses!();
+    expect(state.actor.light).toBe(lit);
+    state.modHooks = { cursedLightRadius: () => true };
+    state.updateBonuses!();
+    expect(state.actor.light).toBe(0);
+    torch.curses = null;
+    torch.flags.on(OF.STICKY);
+    state.updateBonuses!();
+    expect(state.actor.light).toBe(0);
+    state.modHooks = { cursedLightRadius: () => false };
+    state.updateBonuses!();
+    expect(state.actor.light).toBe(lit);
   });
 });

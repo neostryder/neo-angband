@@ -283,6 +283,7 @@ function hookDescription(hook: keyof ModHooks): string {
     historyDisplay: "how entries in your character history are shown",
     saveNoiseScent: "whether noise and scent maps go into the save",
     shapeLearnObviousFlagsDirectly: "whether a shapechange's obvious flags are learned right away",
+    cursedLightRadius: "whether a cursed or sticky light source gives no light",
     completeRestEffects: "which timed effects a complete rest waits out",
     levelRevisited: "what happens to transient tracking when a frozen level returns",
     messageText: "the wording of game messages",

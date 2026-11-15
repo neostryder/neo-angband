@@ -31,6 +31,7 @@ describe("checkApi2Policies", () => {
       objectListOrder: ["-dy", "dx"],
       saveNoiseScent: true,
       shapeLearnObviousFlagsDirectly: false,
+      cursedLightRadius: true,
     };
     expect(checkApi2Policies(policies)).toBeNull();
   });
@@ -211,7 +212,7 @@ describe("API2_POLICY_KINDS", () => {
       messageText: "registry:message", screenText: "registry:ui-entry", characterBackground: "registry:message",
       objectInfoText: "registry:effect-info", effectIntro: "registry:effect-info", historyAdd: "registry:message",
       historyDisplay: "registry:message", objectListOrder: "registry:tval", saveNoiseScent: "registry:monster",
-      shapeLearnObviousFlagsDirectly: "registry:rune", completeRestEffects: "registry:command",
+      shapeLearnObviousFlagsDirectly: "registry:rune", cursedLightRadius: "registry:ui-entry", completeRestEffects: "registry:command",
       storeDiscountRoll: "registry:store", valueFloor: "registry:tval", tileMap: "registry:tiles",
       projectionRadiusClamp: "registry:projection", levelRevisitTracking: "registry:monster",
     });
@@ -229,6 +230,20 @@ describe("API2_POLICY_KINDS", () => {
 
   it("names the kinds the first requests asked for: a message rewrite, a store discount roll and a tile mapping", () => {
     expect(API2_POLICY_NAMES).toEqual(expect.arrayContaining(["messageText", "storeDiscountRoll", "tileMap"]));
+  });
+});
+
+describe("cursedLightRadius", () => {
+  it("accepts true and false, and true installs the hook", () => {
+    expect(checkApi2Policies({ cursedLightRadius: true })).toBeNull();
+    expect(checkApi2Policies({ cursedLightRadius: false })).toBeNull();
+    expect(api2PoliciesToHooks({ cursedLightRadius: true }).cursedLightRadius?.()).toBe(true);
+    expect(api2PoliciesToHooks({ cursedLightRadius: false }).cursedLightRadius).toBeUndefined();
+  });
+
+  it("rejects a value that is not true or false", () => {
+    expect(checkApi2Policies({ cursedLightRadius: "yes" })).toMatch(/true or false/u);
+    expect(checkApi2Policies({ cursedLightRadius: 1 })).toMatch(/true or false/u);
   });
 });
 

@@ -190,6 +190,8 @@ export interface Api2Policies {
   readonly saveNoiseScent?: boolean;
   /** True lets a shapechange teach its obvious flags directly. */
   readonly shapeLearnObviousFlagsDirectly?: boolean;
+  /** True gives a cursed or sticky light no radius. */
+  readonly cursedLightRadius?: boolean;
   /**
    * Timed-effect names a complete rest waits out, in place of the ten the
    * game waits for when this table is absent. An empty list waits on none.
@@ -454,7 +456,7 @@ function textKind(
 }
 
 /** A switch kind: true installs a hook that answers true. */
-function switchKind(name: Api2PolicyName, hook: "saveNoiseScent" | "shapeLearnObviousFlagsDirectly", summary: string, capability: string): Api2PolicyKind {
+function switchKind(name: Api2PolicyName, hook: "saveNoiseScent" | "shapeLearnObviousFlagsDirectly" | "cursedLightRadius", summary: string, capability: string): Api2PolicyKind {
   return {
     name,
     summary,
@@ -710,6 +712,7 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   },
   switchKind("saveNoiseScent", "saveNoiseScent", "Keeps monster noise and scent in the save.", "registry:monster"),
   switchKind("shapeLearnObviousFlagsDirectly", "shapeLearnObviousFlagsDirectly", "Lets a shapechange teach its obvious flags directly.", "registry:rune"),
+  switchKind("cursedLightRadius", "cursedLightRadius", "Gives a cursed or sticky light source no radius.", "registry:ui-entry"),
   {
     name: "completeRestEffects",
     capability: "registry:command",

@@ -535,6 +535,21 @@ export interface ModHooks {
   shapeLearnObviousFlagsDirectly?: () => boolean;
 
   /**
+   * Whether a cursed or sticky light source gives no radius
+   * (calc_light, player/calcs.ts, the sum 4.0.5 calc_torch zeroed on
+   * OF_LIGHT_CURSE).
+   *
+   * Return true to zero that item's contribution after the ordinary radius,
+   * fuel and UNLIGHT math. This port has no light-curse flag. An active curse
+   * is power above 0 on the object itself, and a stock sticky item carries
+   * OF_STICKY with no curse record, so both count. Return false, or leave the
+   * hook absent, and the light shines as 4.2.6 calculates it.
+   *
+   * Serves: a mod that wants 4.0.5's dark cursed light back.
+   */
+  cursedLightRadius?: () => boolean;
+
+  /**
    * The timed effects a complete rest waits out
    * (player_resting_complete_special, player-util.c:1495, the check
    * player_timed_continues_rest performs after 41319eef9).
@@ -760,7 +775,8 @@ export interface ModHooks {
  *    or over the radius the blast is built from.
  *  - VETO hooks (levelGenerated, artifactCommit, historyAdd, partialStackMerge)
  *    are conjunctive: every contributor runs and any refusal decides.
- *  - ANY hooks (saveNoiseScent, shapeLearnObviousFlagsDirectly) are disjunctive:
+ *  - ANY hooks (saveNoiseScent, shapeLearnObviousFlagsDirectly,
+ *    cursedLightRadius) are disjunctive:
  *    one mod asking for the data is enough, because the data is additive and a
  *    second mod cannot object.
  *  - NOTIFICATION hooks (optionsChanged, levelRevisited, abilityGained,
@@ -825,6 +841,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   historyDisplay: "chained",
   saveNoiseScent: "any-yes",
   shapeLearnObviousFlagsDirectly: "any-yes",
+  cursedLightRadius: "any-yes",
   completeRestEffects: "last-answer",
   levelRevisited: "all-observe",
   messageText: "chained",
@@ -1017,6 +1034,13 @@ export function guardModHooks(
     /* DECLINE, the upstream 4.2.6-era gap this seam exists to let a mod close. */
     out.shapeLearnObviousFlagsDirectly = (): boolean =>
       guard("shapeLearnObviousFlagsDirectly", () => shapeFlags(), false);
+  }
+
+  const cursedLight = hooks.cursedLightRadius;
+  if (cursedLight) {
+    /* DECLINE, so a cursed light still shines. */
+    out.cursedLightRadius = (): boolean =>
+      guard("cursedLightRadius", () => cursedLight(), false);
   }
 
   const restEffects = hooks.completeRestEffects;
@@ -1236,6 +1260,12 @@ export function composeModHooks(
     /* One mod asking for direct learning is enough - two mods both wanting the
      * 4.2.6-era gap closed are not in conflict, they are two mods agreeing. */
     out.shapeLearnObviousFlagsDirectly = (): boolean => shapeFlags.some((fn) => fn());
+  }
+
+  const cursedLight = list.map((c) => c.cursedLightRadius).filter(isFn);
+  if (cursedLight.length > 0) {
+    /* One mod asking is enough. A second mod cannot keep the light on. */
+    out.cursedLightRadius = (): boolean => cursedLight.some((fn) => fn());
   }
 
   /* REVERSE load order: the later mod's list replaces the earlier one, and a

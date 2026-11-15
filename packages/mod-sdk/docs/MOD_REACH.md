@@ -12,7 +12,7 @@ The target is a game built for modding throughout: a mod can override code, reso
 
 | | measured |
 | --- | --- |
-| `ModHooks` behaviour hooks | **23** (`MOD_HOOK_FOLDS` in `packages/core/src/mod/hooks.ts`) |
+| `ModHooks` behaviour hooks | **24** (`MOD_HOOK_FOLDS` in `packages/core/src/mod/hooks.ts`) |
 | Switches of >= 8 cases in the tree, counted by a script | **34** (`tools/switch-census.json`, re-derived 2026-08-09 after gap 16; was 47 that morning and 50 before the three glyph decoders became one registry) |
 | ...still `CANDIDATE`, a dispatch point a mod cannot reach | **0** (was 18 on the morning of 2026-08-09). See the caution below: zero candidates is the end of what this TOOL can see, not the end of closed dispatch |
 | ...of those, a mod's CODE can add to or override | **all of them** (`profile`, `blow`, `store` 2026-08-08; `projection`, `glyph`, `effect-info`, `randart`, `tval`, `rune` 2026-08-09) |
@@ -46,7 +46,7 @@ Game behaviour living in `switch` statements with nothing to register into is no
 
 ## (a) Code
 
-### The 23 behaviour hooks, and what each can change
+### The 24 behaviour hooks, and what each can change
 
 `ModHooks` (`packages/core/src/mod/hooks.ts`, the `ModHooks` interface) is a typed interface of optional functions on `GameState.modHooks` (`packages/core/src/game/context.ts`). See `MOD_SEAMS.md` for the fold rules. Call sites below are named by file and by the symbol that reads the hook rather than by line number, since a line number in a document has no test behind it and goes stale with the next commit.
 
@@ -72,6 +72,7 @@ Game behaviour living in `switch` statements with nothing to register into is no
 | `packOverflowVictim` | `game/obj-cmd.ts`, `packOverflow` | Name which pack item is dropped when the pack overflows. Returning null leaves the choice to core, which drops the last item as usual. Folded `last-answer` | Whether the pack overflows at all |
 | `shapeLearnObviousFlagsDirectly` | `game/effect-general.ts`, the shapechange effect, before `shapeLearnOnAssume` | Have the player learn the shape's obvious flags directly when shapechanging. Folded `any-yes` | Which flags those are. Core computes the set the same way either way |
 | `completeRestEffects` | `game/world.ts`, `playerRestingCompleteSpecial` | Name the timed effects a complete rest waits out, in place of the ten 4.2.6 effects. An empty list waits on none of them. Folded `last-answer`; null leaves the ten in place | Hit points, mana, word of recall and deep descent, and whether the player is resting |
+| `cursedLightRadius` | `player/calcs.ts`, `calcLight`, from `session/game.ts` `liveBonusOptions` | Give a wielded item no light when it carries an active curse or the sticky flag. Folded `any-yes` | Which curses those are, and the radius of an item that has neither |
 | `abilityGained` | `game/spell-cmd.ts` (`installSpellCommands`), `game/pickup.ts` (`playerPickupAux`), `game/obj-cmd.ts` (`checkDevices`) | Observe a spell learned or an activatable item becoming known, with the command a keymap would use. Folded `all-observe` | Nothing, because core has already recorded the knowledge |
 | `monsterBecameVisible` | `game/known.ts`, `noteSighting`, on every fresh sighting by sight, telepathy or detection, and when a seen mimic is unmasked | Observe a monster coming into view. It receives a frozen `KnownMonster`: what the look command and monster recall show, with a health band in place of hit points and only the race flags and spells the player has learned. Nothing fires while the player hallucinates. Folded `all-observe` | Whether it is seen. A monster that stays in view does not fire it again |
 | `artifactIdentified` | `obj/known-object.ts`, `objectTouch` | Observe an artifact being identified. It receives the artifact's name and index, which the player has just learned. Folded `all-observe`, and it fires once per object | Nothing about the identification itself |
