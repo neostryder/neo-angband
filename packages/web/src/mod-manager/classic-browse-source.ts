@@ -175,12 +175,14 @@ export async function showSource(
       items,
       t("modBrowse.common.footer.escBack", "[ ESC to go back ]"),
       {
-        detail: (i) => {
+        detail: (i, availableCols) => {
           const e = rowEntries[i];
           if (!e) return [];
-          /* The REAL width, asked at paint time. The pane is resizable and the
-           * function's default is only there so the pure tests need no terminal. */
-          const width = Math.max(20, term.size().cols - 2);
+          /* The width the menu says its pane can paint, asked at paint time. The
+           * pane is resizable, and its usable width is narrower than the terminal
+           * (the painter keeps the last cell free), so the menu's own figure is
+           * the one to wrap to (#424). */
+          const width = Math.max(20, availableCols ?? term.size().cols - 1);
           return browseDetail(
             e,
             e.ok ? (installed.get(e.mod.id) ?? null) : null,

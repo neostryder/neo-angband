@@ -159,6 +159,28 @@ export function wrapTo(text: string, width: number): string[] {
 }
 
 /**
+ * Wrap one "Label    value" line so the value's continuation hangs under the
+ * value rather than under the label (neostryder/neo-angband#424).
+ *
+ * These lines used to go out unwrapped, so a long version, tag or engine range
+ * at 80 columns lost its end at the pane's edge, and the end of the Engine line
+ * is "- will not run here". The label is the text before the first run of two
+ * or more spaces; a translation without that gap wraps flush left instead.
+ * A single token wider than the pane (a URL-like tag) still runs past it.
+ */
+export function wrapField(text: string, width: number): string[] {
+  if (text.length <= width) return [text];
+  const gap = /^\S.*?\s{2,}(?=\S)/u.exec(text);
+  const hung = gap && gap[0].length <= width / 2 ? gap[0].length : 0;
+  const tokens = text.slice(hung).split(/\s+/u);
+  /* A token too long for the hung column (a long tag at a narrow width) gets
+   * the full width rather than spilling past the edge. */
+  const indent = tokens.some((w) => w.length > width - hung) ? 0 : hung;
+  const lines = wrapTo(text.slice(indent), width - indent);
+  return lines.map((l, i) => (i === 0 ? text.slice(0, indent) : " ".repeat(indent)) + l);
+}
+
+/**
  * The detail pane for one mod: everything its repository said, attributed.
  *
  * `width` is the pane's columns. It has a default so the pure tests can call this
@@ -173,6 +195,8 @@ export function browseDetail(
 ): ScreenLine[] {
   const wrap = (text: string, color: string): ScreenLine[] =>
     wrapTo(text, width).map((t) => ({ text: t, color }));
+  const field = (text: string, color: string): ScreenLine[] =>
+    wrapField(text, width).map((t) => ({ text: t, color }));
 
   if (!entry.ok) {
     return [
@@ -190,34 +214,36 @@ export function browseDetail(
     ...wrap(m.description ?? t("modBrowse.detail.noDescription", "No description."), C_FG),
   ];
   out.push({ text: "", color: C_FG });
-  out.push({
-    text: t("modBrowse.detail.version", "Version    {version}  (tag {tag})", {
-      version: m.version,
-      tag: m.tag,
-    }),
-    color: C_DIM,
-  });
+  out.push(
+    ...field(
+      t("modBrowse.detail.version", "Version    {version}  (tag {tag})", {
+        version: m.version,
+        tag: m.tag,
+      }),
+      C_DIM,
+    ),
+  );
   if (installedTag !== null) {
-    out.push({
-      text: t("modBrowse.detail.installed", "Installed  {tag}", { tag: installedTag }),
-      color: C_DIM,
-    });
+    out.push(...field(t("modBrowse.detail.installed", "Installed  {tag}", { tag: installedTag }), C_DIM));
   }
-  out.push({
-    text:
+  out.push(
+    ...field(
       t("modBrowse.detail.engine", "Engine     {engine}", {
         engine: m.engine ?? t("modBrowse.detail.engineNotStated", "not stated"),
       }) + (m.compatible ? "" : `  ${t("modBrowse.detail.engineWontRun", "- will not run here")}`),
-    color: m.compatible ? C_DIM : C_BAD,
-  });
+      m.compatible ? C_DIM : C_BAD,
+    ),
+  );
   if (m.bytes !== null) {
-    out.push({
-      text: t("modBrowse.detail.download", "Download   {bytes} in {count} file(s)", {
-        bytes: formatBytes(m.bytes),
-        count: m.payload.length,
-      }),
-      color: C_DIM,
-    });
+    out.push(
+      ...field(
+        t("modBrowse.detail.download", "Download   {bytes} in {count} file(s)", {
+          bytes: formatBytes(m.bytes),
+          count: m.payload.length,
+        }),
+        C_DIM,
+      ),
+    );
   }
   /* NOT wrapped: a URL has no spaces to break at, so wrapping cannot help it and
    * folding it mid-path would produce something unusable to copy. Long repository
@@ -238,14 +264,16 @@ export function browseDetail(
      * look is the honest middle ground between showing nothing and promising a
      * picture this pane cannot draw. */
     out.push({ text: "", color: C_FG });
-    out.push({
-      text: t(
-        "modBrowse.detail.screenshots",
-        "Screenshots  {count} declared - open the repository above to view:",
-        { count: m.screenshots.length },
+    out.push(
+      ...field(
+        t(
+          "modBrowse.detail.screenshots",
+          "Screenshots  {count} declared - open the repository above to view:",
+          { count: m.screenshots.length },
+        ),
+        C_DIM,
       ),
-      color: C_DIM,
-    });
+    );
     for (const path of m.screenshots) {
       out.push({ text: `  ${path}`, color: C_DIM });
     }

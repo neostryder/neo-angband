@@ -515,6 +515,32 @@ describe("the detail pane wraps", () => {
     const lines = browseDetail(found({ description: word }), null, register, 40);
     expect(lines.map((l) => l.text)).toContain(word);
   });
+
+  it("wraps the labelled lines too, so the Engine line keeps its end (#424)", () => {
+    const long = found({
+      version: "2.10.0-beta.7+build.20261114",
+      tag: "v2.10.0-beta.7+build.20261114",
+      engine: ">=1.23.0-beta.4 <2.0.0 || >=2.1.0-canary.3 <3.0.0",
+      compatible: false,
+      screenshots: ["docs/screens/inventory.png"],
+    });
+    for (const width of [40, 60, 79]) {
+      const lines = browseDetail(long, "v2.9.0-beta.1+build.20261001", register, width).map((l) => l.text);
+      const over = lines.filter((t) => t.length > width && !t.includes("http"));
+      expect(over, `width ${String(width)}`).toEqual([]);
+      const engine = lines.findIndex((t) => t.startsWith("Engine"));
+      const tail = lines.slice(engine, engine + 4).join(" ");
+      expect(tail.replace(/\s+/gu, " "), `width ${String(width)}`).toContain("- will not run here");
+      /* The continuation hangs under the value, not under the label. */
+      if (lines[engine + 1]?.trim()) expect(lines[engine + 1]?.startsWith(" ".repeat("Engine     ".length))).toBe(true);
+    }
+  });
+
+  it("is wrapped to the width the menu says its pane can paint (#424)", () => {
+    const source = readFileSync(join(import.meta.dirname, "mod-manager/classic-browse-source.ts"), "utf8");
+    expect(source).toMatch(/detail: \(i, availableCols\) =>/u);
+    expect(source).toMatch(/availableCols \?\? term\.size\(\)\.cols - 1/u);
+  });
 });
 
 describe("what the screen says after importing a zip", () => {
