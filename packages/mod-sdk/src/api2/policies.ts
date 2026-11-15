@@ -546,7 +546,7 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   {
     name: "birthConfirmNote",
     capability: "registry:ui-entry",
-    summary: "Adds a plain note acknowledged before a character starts.",
+    summary: "Adds a plain note the player acknowledges before a character starts.",
     target: { hook: "birthConfirmNote" },
     check(value) {
       return typeof value === "string" && value.length >= 1 && value.length <= 160 && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value)
@@ -577,7 +577,7 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   {
     name: "messagePauseAfter",
     capability: "registry:message",
-    summary: "Requests a pause after messages matching literal prefixes.",
+    summary: "Requests a pause after messages that start with listed literal prefixes.",
     target: { hook: "messagePauseAfter" },
     check(value) {
       if (!Array.isArray(value) || value.length > 256 || value.some((v) => typeof v !== "string" || v.length < 1 || v.length > 256)) {
@@ -901,8 +901,8 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   registrationSwitch("monsterLoreCompleteness", "Uses upstream lore masks, completeness checks, and first-sight learning.", "registry:monster"),
   registrationSwitch("forgetUnlitImpassableTerrain", "Forgets remembered impassable terrain without light, except with UNLIGHT.", "registry:projection"),
   registrationSwitch("classicSearch", "Enables host-owned classic searches and continuous search mode.", "registry:command"),
-  registrationSwitch("missileCritFromState", "Uses computed state inputs for missile criticals in item information.", "registry:effect-info"),
-  registrationSwitch("forcedDescentStairs", "Prevents new up stairs under forced descent while keeping seeded connectors.", "registry:room"),
+  registrationSwitch("missileCritFromState", "Uses computed state for missile critical inputs in item information.", "registry:effect-info"),
+  registrationSwitch("forcedDescentStairs", "Prevents new up stairs under forced descent and keeps seeded connectors.", "registry:room"),
   registrationSwitch("forceFromBlastCenter", "Applies FORCE thrust from the blast centre, including coincident targets.", "registry:projection"),
   registrationSwitch("projectionRadiusClamp", "Holds a blast's radius at the game's maximum projection range.", "registry:projection"),
   registrationSwitch("levelRevisitTracking", "Clears the noise and ages the scent of a level that comes back after being put aside.", "registry:monster"),

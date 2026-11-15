@@ -31,6 +31,7 @@ describe("checkApi2Policies", () => {
     expect(api2PoliciesToHooks({}).birthConfirmNote).toBeUndefined();
     for (const value of ["", "x".repeat(161), "two\nlines", true]) expect(checkApi2Policies({ birthConfirmNote: value })).toContain("birthConfirmNote is plain text of 1 to 160");
   });
+
   it("selects a bounded end line deterministically from report facts", () => {
     const p = { runEndLine: ["A quiet end.", "A long road."] };
     expect(checkApi2Policies(p)).toBeNull();
@@ -41,6 +42,7 @@ describe("checkApi2Policies", () => {
     expect(api2PolicyEffects(p, () => false).hooks).toEqual({});
     for (const value of [[], [""], ["x".repeat(73)], ["two\nlines"], Array(257).fill("x")]) expect(checkApi2Policies({ runEndLine: value })).toContain("runEndLine is a list of 1 to 256");
   });
+
   it("bounds pause prefixes and installs them only with message consent", () => {
     const p = { messagePauseAfter: ["You feel that"] };
     expect(checkApi2Policies(p)).toBeNull();
