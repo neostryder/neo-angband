@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.23.0-beta.4] - 2026-11-14
+
 - [Visible] [Security] **After the player consents, a Worker mod can add bounded behavior to eight registry domains: effects, rooms, profiles, blows, glyphs, randarts, vocabulary, and gameplay menu rows.** Each domain takes validated data and runs through host primitives. Before the behavior activates, the host saves marks that make the character permanently unscorable and nondeterministic. The host rejects stale or revoked requests, and it falls back if consent is revoked or the Worker stalls. Engine access stays closed until persistence is atomic. The registry wildcard also stays closed until every domain it covers has a Worker mechanism.
 - [Visible] [Security] **With consent, Worker mods can propose a character and request desktop backups.** A proposed birth goes through legal, host-owned steps and ends on a summary the host draws, and only the player can accept that summary. The UI replacement wildcard now covers all six families. Each desktop backup write asks for native confirmation and follows a single-use plan checked against current authority. Filenames and text are bounded and stay inside the installation's own subfolder. A save backup can point to a host-held file by opaque id without uploading the file's bytes.
 
