@@ -77,6 +77,7 @@ function pendingHooks(id: string): ModHooks {
   const hooks = (): ModHooks | undefined => entry()?.hooks;
   return {
     messageText: (raw) => hooks()?.messageText?.(raw) ?? raw,
+    helpText: (raw, site) => hooks()?.helpText?.(raw, site) ?? null,
     messagePauseAfter: (raw) => hooks()?.messagePauseAfter?.(raw) ?? false,
     runEndLine: (report) => hooks()?.runEndLine?.(report) ?? null,
     birthOptionHighlight: forward(entry, "birthOptionHighlight"),

@@ -16,13 +16,18 @@
  * keeps the text it was given without copying anything.
  */
 
-import type { ScreenTextSite } from "@rpgm-tools/neo-angband-core";
-import { restateView, type ScreenTextRestate, type ScreenView } from "./screen-view";
+import type { ModHooks, ScreenTextSite } from "@rpgm-tools/neo-angband-core";
+import { restateHelpView, restateView, type ScreenTextRestate, type ScreenView } from "./screen-view";
 
 /** The site every row-0 prompt reports. */
 export const PROMPT_SITE: ScreenTextSite = Object.freeze({ screen: "core:prompt", part: "prompt" });
 
 let source: () => ScreenTextRestate | undefined = () => undefined;
+let helpSource: () => ModHooks["helpText"] = () => undefined;
+
+export function setHelpTextSource(next: (() => ModHooks["helpText"]) | null): void {
+  helpSource = next ?? (() => undefined);
+}
 
 /**
  * Install where the live screenText hook comes from. The shell passes
@@ -41,6 +46,8 @@ export function restatePrompt(raw: string): string {
 
 /** A whole screen, restated by the live hook when there is one; the same view otherwise. */
 export function restateScreen(view: ScreenView): ScreenView {
+  const help = helpSource();
+  if (help) view = restateHelpView(view, help);
   const hook = source();
   return hook === undefined ? view : restateView(view, hook);
 }

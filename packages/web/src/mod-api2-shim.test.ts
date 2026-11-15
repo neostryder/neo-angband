@@ -642,6 +642,7 @@ describe("policy tables that install registrations", () => {
     messagePauseAfter: ["You feel that"],
     runEndLine: ["A quiet end."],
     birthConfirmNote: "Review your birth choices.",
+    helpText: [{ find: "old prose", replace: "new prose", where: { kind: "paragraph" } }],
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],
     effectIntro: [{ find: "a", replace: "b" }], historyAdd: [{ find: "a", replace: "b" }],
     historyDisplay: [{ find: "a", replace: "b" }], objectListOrder: ["dy"], saveNoiseScent: true,

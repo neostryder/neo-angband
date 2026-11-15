@@ -12,7 +12,7 @@ The target is a game built for modding throughout: a mod can override code, reso
 
 | | measured |
 | --- | --- |
-| `ModHooks` behaviour hooks | **37** (`MOD_HOOK_FOLDS` in `packages/core/src/mod/hooks.ts`) |
+| `ModHooks` behaviour hooks | **38** (`MOD_HOOK_FOLDS` in `packages/core/src/mod/hooks.ts`) |
 | Switches of >= 8 cases in the tree, counted by a script | **34** (`tools/switch-census.json`, re-derived 2026-08-09 after gap 16; was 47 that morning and 50 before the three glyph decoders became one registry) |
 | ...still `CANDIDATE`, a dispatch point a mod cannot reach | **0** (was 18 on the morning of 2026-08-09). See the caution below: zero candidates is the end of what this TOOL can see, not the end of closed dispatch |
 | ...of those, a mod's CODE can add to or override | **all of them** (`profile`, `blow`, `store` 2026-08-08; `projection`, `glyph`, `effect-info`, `randart`, `tval`, `rune` 2026-08-09) |
@@ -46,7 +46,7 @@ Game behaviour living in `switch` statements with nothing to register into is no
 
 ## (a) Code
 
-### The 37 behaviour hooks, and what each can change
+### The 38 behaviour hooks, and what each can change
 
 `ModHooks` (`packages/core/src/mod/hooks.ts`, the `ModHooks` interface) is a typed interface of optional functions on `GameState.modHooks` (`packages/core/src/game/context.ts`). See `MOD_SEAMS.md` for the fold rules. Call sites below are named by file and by the symbol that reads the hook rather than by line number, since a line number in a document has no test behind it and goes stale with the next commit.
 
@@ -74,6 +74,7 @@ Game behaviour living in `switch` statements with nothing to register into is no
 | `runEndLine` | Last non-null answer adds one plain line to end screens and dumps; absent adds none. |
 | `birthOptionHighlight` | Every listener receives the full highlighted birth option before terminal clipping. |
 | `birthConfirmNote` | Last non-null answer adds a note the player dismisses before play; absent adds no step. |
+| `helpText` | Chained text for classified raw help groups; null or absent preserves original rows. |
 | `messageText` | `packages/web/src/main.ts` (host, not core) | Restate message text | What a message MEANS - restating only, by contract |
 | `screenText` | `packages/web/src/overlay.ts` (host, not core): screens shown through `showTextScreen`, and the row-0 prompt functions | Restate help-page lines, table cells, legends, titles, footers and prompts, matched by screen id, part and row | What the text means; art blocks; menus, which have their own `ui:menu.replace` seam; text drawn by other means than those two paths |
 | `characterBackground` | `packages/web/src/screens.ts` (host, not core): the character sheet, birth screen and character dump | Restate the whole background paragraph before it is wrapped | The stored `player.history` or the save |

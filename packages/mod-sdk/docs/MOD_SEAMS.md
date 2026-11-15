@@ -123,6 +123,7 @@ The `Fold` column uses the code's own vocabulary. `MOD_HOOK_FOLDS` (`packages/co
 | `runEndLine(report)` | `last-answer` | `packages/web/src/run-report.ts` (`runEndLineFor`) | null or absent adds no line to end screens or dumps |
 | `birthOptionHighlight(option)` | `all-observe` | `packages/web/src/options.ts` (birth editor paint) | absent observes nothing and draws the same rows |
 | `birthConfirmNote(choice)` | `last-answer` | `packages/web/src/birth.ts` (`confirmCharacter`) | null or absent adds no confirmation step |
+| `helpText(text, site)` | `chained` | `packages/web/src/screen-text.ts` and `screen-view.ts` (`restateHelpView`) | null or absent preserves raw help rows without reflow |
 | `messageText(raw)` | `chained` | `packages/web/src/main.ts` (the HOST's single message sink, not core) | `?? raw` - show what core was given, warts and all |
 | `screenText(raw, site)` | `chained` | `packages/web/src/overlay.ts` (the HOST's `showTextScreen`, through `restateView` in `screen-view.ts`, and its row-0 prompt functions) | `?? raw` - show the screen text or prompt as built |
 | `characterBackground(text)` | `chained` | `packages/web/src/screens.ts` (the HOST's `historyTextBlock`, which feeds the character sheet, the birth screen and the character dump) | `?? text` - show the background get_history stored |

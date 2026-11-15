@@ -64,8 +64,8 @@ import type { GridPointerInput, GridSurface } from "./term";
 import { showTextScreen, selectFromMenu } from "./overlay";
 import type { ScreenLine } from "./overlay";
 import {
-  freezeView,
-  linesScreen,
+  freezeHelpView,
+  helpLinesScreen,
   screenBodyLines,
   SCREEN_FOOTER,
   type ScreenBlock,
@@ -348,7 +348,7 @@ export function helpCommandsScreen(
     ? t("help.commands.title.roguelike", "Angband Help - Roguelike Keyset Commands")
     : t("help.commands.title", "Angband Help - Original Keyset Commands"),
 ): ScreenView {
-  return freezeView({
+  return freezeHelpView({
     id: "core:help-commands",
     title,
     footer: SCREEN_FOOTER,
@@ -576,7 +576,7 @@ export function helpSymbolsScreen(
       ...(i === SYMBOL_SECTIONS.length - 1 ? {} : { gapAfter: 1 }),
     });
   });
-  return freezeView({ id: "core:help-symbols", title, footer: SCREEN_FOOTER, blocks });
+  return freezeHelpView({ id: "core:help-symbols", title, footer: SCREEN_FOOTER, blocks });
 }
 
 /** The faithful terminal's rows for `helpSymbolsScreen`. */
@@ -603,7 +603,7 @@ export function helpSymbolLines(cols = 80): ScreenLine[] {
 export function helpGuideScreen(
   title = t("help.guide.title", "Angband Help - Playing Guide"),
 ): ScreenView {
-  return freezeView({
+  return freezeHelpView({
     id: "core:help-guide",
     title,
     footer: SCREEN_FOOTER,
@@ -727,7 +727,7 @@ function routeTable(
 export function helpCommunityScreen(
   title = t("help.community.title", "Neo Angband - Help and reporting"),
 ): ScreenView {
-  return freezeView({
+  return freezeHelpView({
     id: "core:help-community",
     title,
     footer: SCREEN_FOOTER,
@@ -867,28 +867,11 @@ export function helpLinesFromText(text: string): ScreenLine[] {
 }
 
 /**
- * A mod's page as a screen: `core:text`, the UNMODELLED id, even when it is
- * sitting in the slot of a page core has modelled.
- *
- * WHY IT DOES NOT INHERIT CORE'S ID. What arrives is `helpLinesFromText`'s
- * output - a `.txt` split on newlines, already wrapped by whoever wrote it, with
- * no columns to address, no paragraph breaks to re-flow and no key or glyph to
- * publish. Giving it `core:help-symbols` would promise a presenter the model
- * that id stands for and then hand it a `lines` block: a tileset mod matching on
- * `core:help-symbols` to draw sprites would find no glyph cells and draw an
- * empty legend, and it would have no way to tell that from a legend with nothing
- * in it. `core:text` states exactly what is true - pre-wrapped prose, a frame to
- * reskin and nothing to reimagine - which is what `UNMODELLED_SCREEN` is for.
- *
- * The alternative that lost was core's id with a `lines` block inside it. It
- * reads tidier from the index, and it makes the id stop predicting the blocks,
- * which is the one thing a screen id is worth anything for.
- *
- * A mod that wants its page REIMAGINED already has the better route: its own
- * `screen` presenter, which sees every view including this one.
+ * Raw pages retain core:text because classified text groups do not provide
+ * the semantic columns a core help page promises.
  */
 function modPageView(label: string, lines: readonly ScreenLine[]): ScreenView {
-  return linesScreen(label, lines, SCREEN_FOOTER);
+  return helpLinesScreen(label, lines, SCREEN_FOOTER);
 }
 
 /** Core's own pages, then a mod's, with a mod's replacement swapped in place. */

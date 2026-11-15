@@ -608,7 +608,7 @@ import {
 import { promptRequest } from "./prompt-view";
 import { installRegions } from "./region-runtime";
 import type { ScreenHost, ScreenView } from "./screen-view";
-import { setScreenTextSource } from "./screen-text";
+import { setHelpTextSource, setScreenTextSource } from "./screen-text";
 import { showMonsterList } from "./monster-list";
 import { htmlScreenshot, DUMP_HTML, DUMP_FORUM } from "./screenshot";
 import { downloadUserFile, pickTextFile, setUserStorage } from "./userdir";
@@ -16757,6 +16757,7 @@ setUiFaultReporter(reportDisplayFault);
  * state.modHooks) reaches the next screen without re-wiring. With no mod
  * contributing it the getter answers undefined and every text stays as built. */
 setScreenTextSource(() => state.modHooks?.screenText);
+setHelpTextSource(() => state.modHooks?.helpText);
 setMenuPresenter(
   installMenu([...activeModCode().plugins], displayCandidateContext, reportDisplayFault),
 );

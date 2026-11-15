@@ -646,6 +646,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
   }
 
   const PROBES: Record<keyof ModHooks, Probe> = {
+    helpText: {
+      yes: (log, tag) => ({ helpText: (text) => { log.push(tag); return text + tag; } }),
+      no: (log, tag) => ({ helpText: (text) => { log.push(tag); return text; } }),
+      run: (h) => h.helpText?.("x", { screen: "core:text", kind: "paragraph", index: 0, page: [] }),
+    },
     birthOptionHighlight: {
       yes: (log, tag) => ({ birthOptionHighlight: () => { log.push(tag); } }),
       no: (log, tag) => ({ birthOptionHighlight: () => { log.push(tag); } }),
@@ -1100,6 +1105,10 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
 });
 
 describe("guardModHooks: a throwing hook answers with nothing, per hook's meaning", () => {
+  it("declines help reflow when the hook throws", () => {
+    const { hooks } = guarded({ helpText: THROWS });
+    expect(hooks.helpText?.("old prose", { screen: "core:text", kind: "paragraph", index: 0, page: [] })).toBeNull();
+  });
   it("walkBlockedByDiggable declines, so core bumps the wall", () => {
     const { hooks } = guarded({ walkBlockedByDiggable: THROWS });
     expect(hooks.walkBlockedByDiggable?.(STATE, GRID, DEPS)).toBeNull();

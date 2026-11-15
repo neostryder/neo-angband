@@ -73,6 +73,7 @@ import {
   type WorkerApiOptions,
 } from "./host";
 import { MOD_WORKER_PROTOCOL_VERSION, type HostToModWorker, type ModWorkerToHost, type WorkerJson } from "./protocol";
+import { helpLinesScreen, restateHelpView, screenBodyLines } from "../screen-view";
 import { setConsentBindings } from "../mod-consent-binding";
 import { createModProfiles } from "../profile-runtime";
 import { ProfileStore } from "../profiles";
@@ -1308,6 +1309,19 @@ describe("a Worker mod's hooks", () => {
     expect(registry.has("probe:search")).toBe(false);
   });
 
+  it("restates a complete raw help paragraph with the same policy as an in-process mod", async () => {
+    const wired = wire({ api: API, policies: () => ({ helpText: [{ find: "old prose", replace: "new prose", where: { kind: "paragraph" } }] }) }, { grants: ["registry:ui-entry"] });
+    const view = helpLinesScreen("Help", [{ text: "old" }, { text: "prose" }], "Close");
+    const pending = workerModHooks("probe")!;
+    expect(screenBodyLines(restateHelpView(view, pending.helpText!))).toEqual(screenBodyLines(view));
+    await wired.session.ready;
+    const result = restateHelpView(view, pending.helpText!);
+    expect(screenBodyLines(result)[0]?.text).toBe("new prose");
+    const grants = CapabilitySet.fromManifest({ id: "help", name: "Help", version: "1.0.0", shape: "plugin", capabilities: ["registry:ui-entry"] });
+    const plugin = api2Plugin({ api: API, policies: () => ({ helpText: [{ find: "old prose", replace: "new prose", where: { kind: "paragraph" } }] }) }, () => ({ grants }));
+    const hooks = plugin.hooks!(modPluginContext("help", {}, undefined, {}, { capabilities: grants }))!;
+    expect(restateHelpView(view, hooks.helpText!)).toEqual(result);
+  });
   const tables: Api2Policies = {
     trapAllocation: { kind: "trap-allocation", count: { depthDivisor: 3, min: 2, max: 10, divisor: 1 }, placement: "both" },
     classicSearch: true,
@@ -1324,6 +1338,7 @@ describe("a Worker mod's hooks", () => {
     messagePauseAfter: ["You feel that"],
     runEndLine: ["A quiet end."],
     birthConfirmNote: "Review your birth choices.",
+    helpText: [{ find: "old prose", replace: "new prose", where: { kind: "paragraph" } }],
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],
     effectIntro: [{ find: "a", replace: "b" }], historyAdd: [{ find: "a", replace: "b" }],
     historyDisplay: [{ find: "a", replace: "b" }], objectListOrder: ["dy"], saveNoiseScent: true,

@@ -211,6 +211,8 @@ export type ScreenBlock = ScreenTableBlock | ScreenTextBlock | ScreenArtBlock | 
 
 /** One full screen the game is showing. */
 export interface ScreenView {
+  /** Classified raw help before layout; absent for other screens. */
+  readonly help?: readonly import("./api2/hooks.js").Api2HelpTextBlock[];
   /**
    * Stable screen id - `core:inventory`, `core:equipment`. Match on this to decide
    * whether you have a better way to show THIS screen. `core:text` is the shared

@@ -53,7 +53,7 @@
  * rendered by a test with no canvas.
  */
 
-import type { MenuSemantics, ScreenTextSite } from "@rpgm-tools/neo-angband-core";
+import type { HelpTextBlock, HelpTextSite, MenuSemantics, ScreenTextSite } from "@rpgm-tools/neo-angband-core";
 import type { ScreenLine } from "./overlay";
 import type { PromptRequest } from "./prompt-view";
 
@@ -414,6 +414,7 @@ export interface ScreenHost {
 
 /** One full screen the game is showing. */
 export interface ScreenView {
+  readonly help?: readonly HelpTextBlock[];
   /**
    * Stable screen id - `core:inventory`, `core:equipment`. Match on this to
    * decide whether you have a better way to show THIS screen.
@@ -568,6 +569,60 @@ export function linesScreen(title: string, lines: readonly ScreenLine[], footer:
   });
 }
 
+/** Keep raw rows beside classified groups so an absent hook preserves every byte. */
+function classifyHelpLines(lines: readonly ScreenLine[]): Omit<HelpTextBlock, "sourceBlock">[] {
+  const classify = (text: string): HelpTextBlock["kind"] => {
+    if (/^\s*\|.*\|\s*$/u.test(text) || /^\s*[+=-]{3,}(?:[ +|]+[+=-]+)*\s*$/u.test(text)) return "table";
+    if (/^\s*(?:\[[^\]]+\]|\S+\))\s+/u.test(text)) return "key-hints";
+    if (/[\\/]/u.test(text) && /^[\s\\/|_+*#().:=^-]+$/u.test(text)) return "art";
+    if (/\S[ \t]{2,}\S/u.test(text)) return "aligned";
+    return "paragraph";
+  };
+  const groups: Array<{ kind: HelpTextBlock["kind"]; lines: ScreenLine[] }> = [];
+  for (const line of lines) {
+    const kind = classify(line.text);
+    const last = groups[groups.length - 1];
+    if (line.text.trim() && last?.kind === kind && last.lines[last.lines.length - 1]!.text.trim()) last.lines.push(line);
+    else groups.push({ kind, lines: [line] });
+  }
+  const help = groups.map((group) => ({ ...group,
+    text: group.kind === "paragraph" ? group.lines.map((line) => line.text.trim()).join(" ") : group.lines.map((line) => line.text).join("\n"),
+  }));
+  return help;
+}
+
+export function freezeHelpView(view: ScreenView): ScreenView {
+  const help: HelpTextBlock[] = view.blocks.flatMap((block, sourceBlock): HelpTextBlock[] => {
+    if (block.kind === "lines") return classifyHelpLines(block.lines).map((group) => ({ ...group, sourceBlock }));
+    if (block.kind === "text") return block.paragraphs.map((runs) => ({ sourceBlock, kind: "paragraph", text: runs.map((run) => run.text).join(""), lines: runs }));
+    const lines = block.kind === "art" ? block.lines.map((text) => ({ text }))
+      : block.rows.map((row) => ({ text: block.columns.map((column) => row.cells[column.key]?.text ?? "").join(" | ") }));
+    return [{ sourceBlock, kind: block.kind === "art" ? "art" : "table", text: lines.map((line) => line.text).join("\n"), lines }];
+  });
+  return freezeView({ ...view, help });
+}
+
+export function helpLinesScreen(title: string, lines: readonly ScreenLine[], footer: string): ScreenView {
+  return freezeHelpView(linesScreen(title, lines, footer));
+}
+
+/** Keeping classification in the host prevents text rewrites from changing table layout. */
+export function restateHelpView(view: ScreenView, restate: (text: string, site: HelpTextSite) => string | null): ScreenView {
+  const page = view.help;
+  if (!page) return view;
+  const restated = (group: HelpTextBlock, index: number): ScreenBlock => {
+    const answer = restate(group.text, Object.freeze({ screen: view.id, kind: group.kind, index, page }));
+    if (answer === null) return { kind: "lines", lines: group.lines };
+    const text = typeof answer === "string" ? answer : group.text;
+    const style = group.lines[0]?.color === undefined ? {} : { color: group.lines[0].color };
+    if (group.kind === "paragraph" && text) return { kind: "text", paragraphs: [[{ text, ...style }]] };
+    return { kind: "lines", lines: text === group.text ? group.lines : text.split("\n").map((text) => ({ text, ...style })) };
+  };
+  const blocks = view.blocks.flatMap((block, sourceBlock) => block.kind === "lines"
+    ? page.flatMap((group, index) => group.sourceBlock === sourceBlock ? [restated(group, index)] : []) : [block]);
+  return freezeView({ ...view, blocks });
+}
+
 /**
  * The same view with every piece of its prose passed through `restate`, once,
  * and frozen again: the host's half of the screenText mod seam (mod/hooks.ts).
@@ -667,6 +722,9 @@ export function freezeView(view: ScreenView): ScreenView {
     title: view.title,
     footer: view.footer,
     blocks: Object.freeze(view.blocks.map(freezeBlock)),
+    ...(view.help === undefined ? {} : { help: Object.freeze(view.help.map((block) => Object.freeze({ ...block,
+      lines: Object.freeze(block.lines.map((line) => Object.freeze({ ...line }))),
+    }))) }),
     ...(view.actions === undefined
       ? {}
       : { actions: Object.freeze(view.actions.map((a) => Object.freeze({ ...a }))) }),

@@ -670,7 +670,7 @@ describe("the unmodelled path is honest about being unmodelled", () => {
        * it silently missed the object list, whose call fits on one line. A
        * derived check that a reformat can blind is a declared check wearing a
        * disguise. */
-      for (const m of src.matchAll(/freezeView\(\s*\{\s*id:\s*"(core:[^"]+)"/gu)) {
+      for (const m of src.matchAll(/freeze(?:Help)?View\(\s*\{\s*id:\s*"(core:[^"]+)"/gu)) {
         built.add(m[1]!);
       }
     }

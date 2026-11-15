@@ -200,6 +200,20 @@ export interface ScreenTextSite {
   readonly row?: Readonly<Record<string, string>>;
 }
 
+export interface HelpTextBlock {
+  readonly sourceBlock: number;
+  readonly kind: "paragraph" | "table" | "key-hints" | "art" | "aligned";
+  readonly text: string;
+  readonly lines: readonly { readonly text: string; readonly color?: string }[];
+}
+
+export interface HelpTextSite {
+  readonly screen: string;
+  readonly kind: HelpTextBlock["kind"];
+  readonly index: number;
+  readonly page: readonly HelpTextBlock[];
+}
+
 /**
  * The part of object_info_out (obj-info.c L2315) that wrote a fragment of an
  * item description, named after the describe_* function that wrote it:
@@ -299,6 +313,8 @@ export interface KnownArtifactFind {
 }
 
 export interface ModHooks {
+  /** Raw help groups before layout. The host reflows paragraphs only when declared. */
+  helpText?: (text: string, site: HelpTextSite) => string | null;
   /** The birth editor reports full option prose before clipping it for the terminal. */
   birthOptionHighlight?: (option: { readonly name: string; readonly description: string; readonly value: boolean; readonly defaultValue: boolean }) => void;
   /** A plain note the host asks the player to dismiss before starting; null declines. */
@@ -857,6 +873,7 @@ export type ModHookFold =
  * interface without adding it here does not compile.
  */
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
+  helpText: "chained",
   birthOptionHighlight: "all-observe",
   birthConfirmNote: "last-answer",
   monsterOwnDropThefts: "any-yes",
@@ -1126,6 +1143,7 @@ export function guardModHooks(
   }
 
   const text = hooks.messageText;
+  if (hooks.helpText) out.helpText = (text, site) => guard("helpText", () => hooks.helpText!(text, site), null);
   if (hooks.birthOptionHighlight) out.birthOptionHighlight = (option) => guard("birthOptionHighlight", () => hooks.birthOptionHighlight!({ ...option }), undefined);
   if (hooks.birthConfirmNote) out.birthConfirmNote = (choice) => guard("birthConfirmNote", () => hooks.birthConfirmNote!(choice), null);
   if (hooks.runEndLine) out.runEndLine = (report) => guard("runEndLine", () => hooks.runEndLine!({ ...report }), null);
@@ -1397,6 +1415,16 @@ export function composeModHooks(
   }
 
   const text = list.map((c) => c.messageText).filter(isFn);
+  const help = list.map((c) => c.helpText).filter(isFn);
+  if (help.length) out.helpText = (raw, site) => {
+    let text = raw;
+    let answered = false;
+    for (const fn of help) {
+      const answer = fn(text, site);
+      if (typeof answer === "string") { text = answer; answered = true; }
+    }
+    return answered ? text : null;
+  };
   const highlighted = list.map((c) => c.birthOptionHighlight).filter(isFn);
   if (highlighted.length) out.birthOptionHighlight = (option) => { for (const fn of highlighted) fn(option); };
   const confirmNotes = list.map((c) => c.birthConfirmNote).filter(isFn).reverse();

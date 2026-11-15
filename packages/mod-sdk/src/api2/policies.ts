@@ -32,6 +32,7 @@ import type {
   Api2ListOffset,
   Api2ObjectInfoTextSite,
   Api2ScreenTextSite,
+  Api2HelpTextSite,
 } from "./hooks.js";
 
 /** How a rule's `find` text matches: the whole text, anywhere in it (every occurrence), or its start. */
@@ -214,6 +215,8 @@ export interface Api2Policies {
   readonly birthConfirmNote?: string;
   /** `where` may name `screen`, `part` and `column`. */
   readonly screenText?: readonly Api2TextRule[];
+  /** Whole help groups; `where` may name `screen`, `kind` and `index`. */
+  readonly helpText?: readonly Api2TextRule[];
   readonly characterBackground?: readonly Api2TextRule[];
   /** `where` may name `section`, `tval`, `kind` and `aware`. */
   readonly objectInfoText?: readonly Api2TextRule[];
@@ -776,6 +779,9 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   }),
   textKind("screenText", "screenText", "Rewrites text on the game's screens.", "registry:ui-entry", ["screen", "part", "column"], (rules, hooks) => {
     hooks.screenText = (raw: string, site: Api2ScreenTextSite) => applyRules(rules, raw, site);
+  }),
+  textKind("helpText", "helpText", "Rewrites grouped raw help and reflows its paragraphs.", "registry:ui-entry", ["screen", "kind", "index"], (rules, hooks) => {
+    hooks.helpText = (raw: string, site: Api2HelpTextSite) => applyRules(rules, raw, site);
   }),
   textKind("characterBackground", "characterBackground", "Rewrites a new character's background text.", "registry:message", [], (rules, hooks) => {
     hooks.characterBackground = (text: string) => applyRules(rules, text);

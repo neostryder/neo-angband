@@ -14,8 +14,8 @@ import { EQUIP_CMP_FILTER_PROMPT, type ScreenTextSite } from "@rpgm-tools/neo-an
 import { getChar, getString, promptTextInline, showTextScreen } from "./overlay";
 import { helpSymbolsScreen } from "./help";
 import { equipCmpSelectHelpScreen } from "./equip-cmp";
-import { restateView, screenBodyLines, type ScreenTextRestate } from "./screen-view";
-import { PROMPT_SITE, restateScreen, setScreenTextSource } from "./screen-text";
+import { helpLinesScreen, restateView, screenBodyLines, type ScreenTextRestate } from "./screen-view";
+import { PROMPT_SITE, restateScreen, setHelpTextSource, setScreenTextSource } from "./screen-text";
 import type { GlyphTerm } from "./term";
 
 /* No jsdom here (help.test.ts explains why): a fake `window` and a plain
@@ -102,11 +102,29 @@ const pageDownFix: ScreenTextRestate = (raw, site) =>
 const QOL_PROMPT = "Enter 2-character code (3 for a stat) and Return, or just Return to clear ";
 
 afterEach(() => {
+  setHelpTextSource(null);
   setScreenTextSource(null);
   delete (globalThis as { window?: unknown }).window;
 });
 
 describe("restateView: the help pages, line by line and cell by cell", () => {
+  it("groups raw help before layout and reflows only when the help hook is declared", () => {
+    const lines = ["Wrapped prose with", "another line.", "", "| Name | Value |", "| A    | B     |", "", "[ESC] Return", "", " /\\_", " \\__/", "", "Left    Right"].map((text) => ({ text, color: "white" }));
+    const view = helpLinesScreen("Raw help", lines, "Close");
+    expect(view.help?.filter((block) => block.text).map((block) => block.kind)).toEqual(["paragraph", "table", "key-hints", "art", "aligned"]);
+    expect(restateScreen(view)).toBe(view);
+    expect(screenBodyLines(view)).toEqual(lines);
+    setHelpTextSource(() => () => null);
+    expect(screenBodyLines(restateScreen(view))).toEqual(lines);
+    setHelpTextSource(() => (raw, site) => {
+      expect(Object.isFrozen(site.page)).toBe(true);
+      expect(Object.isFrozen(site.page[0]?.lines)).toBe(true);
+      return raw;
+    });
+    const restated = restateScreen(view);
+    expect(screenBodyLines(restated)[0]?.text).toBe("Wrapped prose with another line.");
+    expect(screenBodyLines(restated).slice(1)).toEqual(lines.slice(2));
+  });
   it("offers a symbols paragraph line and a symbols table cell, each with its site", () => {
     const { hook, seen } = recorder();
     restateView(helpSymbolsScreen(), hook);

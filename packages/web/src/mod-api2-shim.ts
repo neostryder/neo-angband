@@ -107,6 +107,7 @@ function plain<T>(value: T): T {
  */
 export function api2ToModHooks(hooks: Api2Hooks): ModHooks {
   const out: ModHooks = {};
+  if (hooks.helpText) out.helpText = (text, site) => hooks.helpText!(text, plain(site));
   if (hooks.birthOptionHighlight) out.birthOptionHighlight = (option) => hooks.birthOptionHighlight!(plain(option));
   if (hooks.birthConfirmNote) out.birthConfirmNote = (choice) => hooks.birthConfirmNote!(plain(choice));
   if (hooks.messagePauseAfter) out.messagePauseAfter = (raw) => hooks.messagePauseAfter!(raw);
