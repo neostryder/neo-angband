@@ -913,7 +913,7 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   {
     name: "cursedLightRadius",
     capability: "registry:ui-entry",
-    summary: "Gives cursed or sticky light sources no radius, or selects only LIGHT_CURSE markers.",
+    summary: "Removes the light radius of cursed or sticky light sources, or only of those with a LIGHT_CURSE marker.",
     target: { hook: "cursedLightRadius" },
     check(value) {
       if (typeof value === "boolean") return null;

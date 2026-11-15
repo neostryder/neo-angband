@@ -108,7 +108,7 @@ describe("a folder can supply code", () => {
     });
     expect(report.workers).toEqual([]);
     expect(report.problems).toEqual([
-      { id: "preview", why: expect.stringMatching(/retired Worker preview ABI.*rebuild it against mod API 2\.3\.0/u) },
+      { id: "preview", why: expect.stringMatching(/retired Worker preview ABI.*rebuild it against mod API 2\.4\.0/u) },
     ]);
   });
 
