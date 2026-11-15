@@ -32,6 +32,22 @@ function loadPack(): PlayerPackRecords {
 
 const reg = bindPlayer(loadPack());
 
+describe("class experience parser checks", () => {
+  it.each([[-1, 1], [1, -1], [2, 1073741824]])("rejects spell level %s and experience %s", (level, exp) => {
+    const pack = loadPack();
+    const spell = pack.classes.find((cls) => cls.book?.[0]?.spell?.[0])!.book![0]!.spell![0]!;
+    Object.assign(spell, { level, exp });
+    expect(() => bindPlayer(pack)).toThrow(/spell.*level|spell.*exp/);
+  });
+
+  it.each([[0, 2147483647], [1, 2147483647], [2, 1073741823]])("accepts spell level %s and experience %s", (level, exp) => {
+    const pack = loadPack();
+    const cls = pack.classes.find((entry) => entry.book?.[0]?.spell?.[0])!;
+    Object.assign(cls.book![0]!.spell![0]!, { level, exp });
+    expect(bindPlayer(pack).classByName(cls.name)!.magic.books[0]!.spells[0]).toMatchObject({ level, exp });
+  });
+});
+
 describe("PlayerRegistry counts", () => {
   it("binds every pack record", () => {
     expect(reg.races.length).toBe(11);

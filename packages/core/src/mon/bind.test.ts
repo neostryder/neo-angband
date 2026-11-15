@@ -35,6 +35,20 @@ function loadPack(): MonsterPackRecords {
 
 const reg = bindMonsters(loadPack());
 
+describe("monster experience parser checks", () => {
+  it.each([[-1, 1], [129, 1], [1, -1], [1, 16777216]])("rejects depth %s and experience %s", (depth, experience) => {
+    const pack = loadPack();
+    Object.assign(pack.monsters[1]!, { depth, experience });
+    expect(() => bindMonsters(pack, { maxDepth: 128 })).toThrow(/depth|experience/);
+  });
+
+  it.each([0, 128])("accepts depth %s and the experience ceiling", (depth) => {
+    const pack = loadPack();
+    Object.assign(pack.monsters[1]!, { depth, experience: 16777215 });
+    expect(bindMonsters(pack, { maxDepth: 128 }).races[1]).toMatchObject({ level: depth, mexp: 16777215 });
+  });
+});
+
 describe("MonsterRegistry counts", () => {
   it("uses C truthiness for blow-method and summon boolean directives", () => {
     const pack = loadPack();

@@ -26,7 +26,8 @@ export const constantsSpec: FileSpec = {
   directives: [
     { fmt: "level-max sym label int value", repeat: true },
     { fmt: "mon-gen sym label int value", repeat: true },
-    { fmt: "mon-play sym label int value", repeat: true },
+    { fmt: "mon-play sym label int value", repeat: true, validate: ({ values }) =>
+      values.label === "life-drain" && (Number(values.value) < 0 || Number(values.value) > 100) ? "INVALID_VALUE" : undefined },
     { fmt: "dun-gen sym label int value", repeat: true },
     { fmt: "world sym label int value", repeat: true },
     { fmt: "carry-cap sym label int value", repeat: true },
@@ -281,9 +282,13 @@ export const classSpec: FileSpec = {
       repeat: true,
       /* parse_class_spell uses the current book's declared spell capacity
        * (init.c:3842-3854). */
-      validate: ({ target }) => {
+      validate: ({ target, values }) => {
         const spells = (target.spell as unknown[] | undefined)?.length ?? 0;
-        return spells >= Number(target.spells) ? "TOO_MANY_ENTRIES" : undefined;
+        if (spells >= Number(target.spells)) return "TOO_MANY_ENTRIES";
+        const level = Number(values.level);
+        const exp = Number(values.exp);
+        return level < 0 || exp < 0 || exp > Math.trunc(2147483647 / Math.max(1, level))
+          ? "INVALID_VALUE" : undefined;
       },
     },
     /* parse_class_effect requires a preceding spell (and therefore a book and

@@ -11,6 +11,18 @@ const json = JSON.parse(
 ) as ConstantsJson;
 
 describe("bindConstants", () => {
+  it.each([-1, 101])("rejects life-drain outside 0 through 100: %s", (value) => {
+    const bad = structuredClone(json);
+    (bad.records[0]!["mon-play"] as Array<{ label: string; value: number }>).find((entry) => entry.label === "life-drain")!.value = value;
+    expect(() => bindConstants(bad)).toThrow(/life-drain/);
+  });
+
+  it.each([0, 100])("accepts the life-drain boundary %s", (value) => {
+    const good = structuredClone(json);
+    (good.records[0]!["mon-play"] as Array<{ label: string; value: number }>).find((entry) => entry.label === "life-drain")!.value = value;
+    expect(bindConstants(good).lifeDrainPercent).toBe(value);
+  });
+
   const z = bindConstants(json);
 
   it("binds the classic world shape values", () => {

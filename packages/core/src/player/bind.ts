@@ -975,6 +975,13 @@ function bindClassMagic(
     }
     const spells: ClassSpell[] = [];
     for (const s of b.spell ?? []) {
+      if (!Number.isInteger(s.level) || s.level < 0 || s.level > 2147483647) {
+        throw new Error(`player: class ${rec.name}: spell ${s.name} level is a whole number from 0 to 2147483647 (PARSE_ERROR_INVALID_VALUE)`);
+      }
+      const maxExp = Math.trunc(2147483647 / Math.max(1, s.level));
+      if (!Number.isInteger(s.exp) || s.exp < 0 || s.exp > maxExp) {
+        throw new Error(`player: class ${rec.name}: spell ${s.name} exp is a whole number from 0 to ${maxExp} (PARSE_ERROR_INVALID_VALUE)`);
+      }
       spells.push({
         name: s.name,
         sidx: sidx++,

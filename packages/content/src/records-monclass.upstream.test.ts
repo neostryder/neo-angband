@@ -51,6 +51,25 @@ function codeOf(file: string, ...lines: string[]): string {
   throw new Error("expected a parse failure");
 }
 
+describe("experience input checks (e44ac90f1)", () => {
+  it.each([-1, 101])("rejects constants life-drain %s", (value) => {
+    expect(codeOf("constants", `mon-play:life-drain:${value}`)).toContain("INVALID_VALUE");
+  });
+
+  it.each([[-1, 1], [1, -1], [2, 1073741824]])("rejects spell level %s and experience %s", (level, exp) => {
+    expect(codeOf("class", "name:Test", "magic:1:300:1", "book:magic book:town:[One]:1:arcane", `spell:S:${level}:1:20:${exp}`)).toContain("INVALID_VALUE");
+  });
+
+  it.each([[0, 2147483647], [2, 1073741823]])("accepts spell level %s and experience %s", (level, exp) => {
+    const rec = one("class", "name:Test", "magic:1:300:1", "book:magic book:town:[One]:1:arcane", `spell:S:${level}:1:20:${exp}`);
+    expect(rec.book).toMatchObject([{ spell: [{ level, exp }] }]);
+  });
+
+  it.each(["depth:-1", "experience:-1"])("rejects monster %s", (line) => {
+    expect(codeOf("monster", "name:Test", line)).toContain("INVALID_VALUE");
+  });
+});
+
 /* ================================================================== *
  * c-info.c -> class.txt (init.c parse_class_*)
  * ================================================================== */

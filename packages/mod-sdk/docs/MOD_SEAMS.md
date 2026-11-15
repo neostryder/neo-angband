@@ -893,3 +893,5 @@ The generation and object hooks are RNG-free by contract, so a seed still means 
 | Host wiring + message sink | `packages/web/src/main.ts` |
 | Per-mod design | `docs/modding/QOL.md`, `docs/modding/BUG_FIXES.md` |
 | Measured reach + gap list | `docs/modding/MOD_REACH.md` |
+
+Compiled content checks life-drain in `mon-play` from 0 to 100, nonnegative spell levels, and spell experience from 0 through `floor(2147483647 / max(1, level))`. Monster depth is from 0 through the bound maximum dungeon depth, and monster experience is from 0 through `floor(2147483647 / max(1, maxDepth))`. The text compiler rejects negative monster values; the runtime binder checks the depth-dependent ceilings after constants bind. Invalid records fail with `PARSE_ERROR_INVALID_VALUE`. These input checks do not add a policy or hook and do not change valid data or RNG.

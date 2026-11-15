@@ -304,6 +304,9 @@ function bindSection(
       // shipped constants.txt).
       throw new Error(`constants: negative value ${section}:${label}`);
     }
+    if (section === "mon-play" && label === "life-drain" && (!Number.isInteger(value) || value < 0 || value > 100)) {
+      throw new Error("constants: mon-play:life-drain is a whole number from 0 to 100 (PARSE_ERROR_INVALID_VALUE)");
+    }
     target[field] = value;
   }
 }

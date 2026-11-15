@@ -229,7 +229,7 @@ export function bindCore(pack: CorePack): CoreRegistries {
   const topology = bindWorld(pack.world, constants.maxDepth);
   const features = new FeatureRegistry(pack.terrain);
   const objects = new ObjRegistry(pack.obj);
-  const monsters = bindMonsters(pack.mon, { maxSight: constants.maxSight });
+  const monsters = bindMonsters(pack.mon, { maxSight: constants.maxSight, maxDepth: constants.maxDepth });
   const rooms = createRoomRegistry({
     templates: loadRoomTemplates(pack.roomTemplates),
     vaults: loadVaults(pack.vaults, constants.maxDepth),

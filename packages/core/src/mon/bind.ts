@@ -262,6 +262,8 @@ export interface MonsterPackRecords {
 export interface BindMonstersOptions {
   /** z_info->max_sight; hearing/smell scale by maxSight / 20. */
   maxSight?: number;
+  /** The bound maximum dungeon depth sets the experience scaling ceiling. */
+  maxDepth?: number;
 }
 
 /** string_append semantics: desc lines concatenate without a separator. */
@@ -666,7 +668,7 @@ export class MonsterRegistry {
     for (const rec of pack.monsters) {
       if (this.rejectDuplicateName(rec)) continue;
       if (this.rejectMissingBase(rec)) continue;
-      const race = this.bindRace(rec, maxSight, innate, breathOrInnate);
+      const race = this.bindRace(rec, maxSight, innate, breathOrInnate, options.maxDepth ?? 128);
       /* Keys core does not read ride along instead of being dropped - the same
        * seam as ObjectKind.ext, for the same reason. */
       this.races.push(attachExt("monster", rec, race));
@@ -854,6 +856,7 @@ export class MonsterRegistry {
     maxSight: number,
     innate: FlagSet,
     breathOrInnate: FlagSet,
+    maxDepth: number,
   ): MonsterRace {
     /* SAFETY NET, not a live path: the constructor's `rejectMissingBase` has
      * already refused or thrown on a race whose base does not resolve, so
@@ -905,6 +908,14 @@ export class MonsterRegistry {
     }
 
     const level = rec.depth ?? 0;
+    if (!Number.isInteger(level) || level < 0 || level > maxDepth) {
+      throw new Error(`mon: ${rec.name}: depth is a whole number from 0 to ${maxDepth} (PARSE_ERROR_INVALID_VALUE)`);
+    }
+    const mexp = rec.experience ?? 0;
+    const maxExp = Math.trunc(2147483647 / Math.max(1, maxDepth));
+    if (!Number.isInteger(mexp) || mexp < 0 || mexp > maxExp) {
+      throw new Error(`mon: ${rec.name}: experience is a whole number from 0 to ${maxExp} (PARSE_ERROR_INVALID_VALUE)`);
+    }
 
     /* innate-freq / spell-freq stored as 100 / pct (C int division). */
     let freqInnate =
@@ -1026,7 +1037,7 @@ export class MonsterRegistry {
       smell: Math.trunc(((rec.smell ?? 0) * maxSight) / 20),
       speed: rec.speed ?? 0,
       light: rec.light ?? 0,
-      mexp: rec.experience ?? 0,
+      mexp,
       freqInnate,
       freqSpell,
       spellPower,

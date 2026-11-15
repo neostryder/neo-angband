@@ -445,3 +445,5 @@ Most of the API 1 context has a direct home in API 2. `API1_CONTEXT_MAP` in `pac
 | `ctx.data`, `ctx.assetUrl`, `ctx.composedRecords` | `content.own`, `content.asset`, `content.records` |
 | `ctx.net` | `net`, with credentials passed by reference |
 | `ctx.profiles`, `ctx.session` | `manage`, with Workers limited to the bounded operations above |
+
+Compiled content checks life-drain in `mon-play` from 0 to 100, nonnegative spell levels, and spell experience from 0 through `floor(2147483647 / max(1, level))`. Monster depth is from 0 through the bound maximum dungeon depth, and monster experience is from 0 through `floor(2147483647 / max(1, maxDepth))`. The text compiler rejects negative monster values; the runtime binder checks the depth-dependent ceilings after constants bind. Invalid records fail with `PARSE_ERROR_INVALID_VALUE`. These input checks do not add a policy or hook and do not change valid data or RNG.
