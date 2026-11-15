@@ -1174,6 +1174,7 @@ function wireGame(
   // mexp * rlev / plev with the fractional carry.
   const expDeps: ExpDeps = {
     rng: state.rng,
+    experienceUpdates: () => state.modHooks?.experienceUpdates?.() ?? false,
     /* msgt(MSG_LEVEL, "Welcome to level %d.") (player.c L250). This sink was
      * missing, so every level-up was silent: the level and max HP simply
      * changed on the status line with no message at all. */

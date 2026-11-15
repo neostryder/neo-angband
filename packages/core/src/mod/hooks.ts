@@ -321,6 +321,8 @@ export interface ModHooks {
   birthConfirmNote?: (choice: { readonly name: string; readonly raceName: string; readonly className: string; readonly birthOptions: Readonly<Record<string, boolean>> }) => string | null;
   /** steal_monster_item, through game/steal.ts: own-drop provenance and 16-bit saturation. */
   monsterOwnDropThefts?: () => boolean;
+  /** Only a current-level change requests derived experience side effects. */
+  experienceUpdates?: () => boolean;
   /** The caller supplies this context to flag utilities to report removed bits. */
   flagIntersectionResult?: () => boolean;
   /** lore_update/lore_is_fully_known and update_mon: select the 29985cd05 lore rules. */
@@ -880,6 +882,7 @@ export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   birthOptionHighlight: "all-observe",
   birthConfirmNote: "last-answer",
   monsterOwnDropThefts: "any-yes",
+  experienceUpdates: "any-yes",
   flagIntersectionResult: "any-yes",
   monsterLoreCompleteness: "any-yes",
   forgetUnlitImpassableTerrain: "any-yes",
@@ -1005,6 +1008,9 @@ export function guardModHooks(
 
   const flagIntersectionResult = hooks.flagIntersectionResult;
   if (flagIntersectionResult) out.flagIntersectionResult = () => guard("flagIntersectionResult", () => flagIntersectionResult(), false);
+
+  const experienceUpdates = hooks.experienceUpdates;
+  if (experienceUpdates) out.experienceUpdates = () => guard("experienceUpdates", () => experienceUpdates(), false);
 
   const ownDropThefts = hooks.monsterOwnDropThefts;
   if (ownDropThefts) out.monsterOwnDropThefts = () => guard("monsterOwnDropThefts", () => ownDropThefts(), false);
@@ -1266,6 +1272,9 @@ export function composeModHooks(
 
   const flagIntersectionResult = list.map((c) => c.flagIntersectionResult).filter(isFn);
   if (flagIntersectionResult.length > 0) out.flagIntersectionResult = () => flagIntersectionResult.some((fn) => fn());
+
+  const experienceUpdates = list.map((c) => c.experienceUpdates).filter(isFn);
+  if (experienceUpdates.length > 0) out.experienceUpdates = () => experienceUpdates.some((fn) => fn());
 
   const ownDropThefts = list.map((c) => c.monsterOwnDropThefts).filter(isFn);
   if (ownDropThefts.length > 0) out.monsterOwnDropThefts = () => ownDropThefts.some((fn) => fn());

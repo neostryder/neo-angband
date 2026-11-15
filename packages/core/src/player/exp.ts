@@ -52,6 +52,7 @@ export interface ExpDeps {
    * from the new level. Runs once after the level loops settle.
    */
   onLevelChange?(p: Player): void;
+  experienceUpdates?(): boolean;
   /**
    * history_add(HIST_GAIN_LEVEL) (player.c L246-247): fired once per level
    * gained, inside the verbose block, immediately BEFORE the "Welcome to
@@ -135,7 +136,9 @@ export function adjustLevel(p: Player, deps: ExpDeps, verbose = true): void {
       }
     }
   }
-  deps.onLevelChange?.(p);
+  if (!(deps.experienceUpdates?.() ?? false) || p.lev !== levBefore) {
+    deps.onLevelChange?.(p);
+  }
 }
 
 /** player_exp_gain (player.c L269). */

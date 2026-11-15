@@ -656,6 +656,11 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
   }
 
   const PROBES: Record<keyof ModHooks, Probe> = {
+    experienceUpdates: {
+      yes: (log, tag) => ({ experienceUpdates: () => { log.push(tag); return true; } }),
+      no: (log, tag) => ({ experienceUpdates: () => { log.push(tag); return false; } }),
+      run: (h) => h.experienceUpdates?.(),
+    },
     flagIntersectionResult: {
       yes: (log, tag) => ({ flagIntersectionResult: () => { log.push(tag); return true; } }),
       no: (log, tag) => ({ flagIntersectionResult: () => { log.push(tag); return false; } }),
@@ -1562,4 +1567,10 @@ describe("the modding docs count the hooks MOD_HOOK_FOLDS has", () => {
 it("flagIntersectionResult declines when its provider throws", () => {
   const { hooks } = guarded({ flagIntersectionResult: THROWS });
   expect(hooks.flagIntersectionResult?.()).toBe(false);
+});
+
+
+it("experienceUpdates declines when its provider throws", () => {
+  const { hooks } = guarded({ experienceUpdates: THROWS });
+  expect(hooks.experienceUpdates?.()).toBe(false);
 });

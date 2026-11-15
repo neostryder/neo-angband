@@ -185,6 +185,7 @@ export type Api2CursedLightRadiusPolicy = boolean | { readonly marker: "LIGHT_CU
 
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
+  readonly experienceUpdates?: "levelChangeOnly";
   readonly flagIntersectionResult?: "removedBits";
   /** True counts only a monster's own stolen drops and saturates thefts at 65535. */
   readonly monsterOwnDropThefts?: boolean;
@@ -301,6 +302,7 @@ export type Api2PlayerTileProvider<T = unknown> = (view: Api2PlayerTileView) => 
 
 /** The game registrations a table can install, beside the hooks. */
 export interface Api2PolicyRegistrations {
+  experienceUpdates?: "levelChangeOnly";
   flagIntersectionResult?: "removedBits";
   monsterOwnDropThefts?: true;
   monsterLoreCompleteness?: true;
@@ -547,6 +549,14 @@ const LIST_KEYS: readonly string[] = ["dy", "-dy", "dx", "-dx"];
  * policies.test.ts, and list it under Policy tables in docs/modding/API2.md.
  */
 export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
+  {
+    name: "experienceUpdates",
+    capability: "registry:command",
+    summary: "Updates derived experience state only when the current level changes.",
+    target: { registration: "experienceUpdates" },
+    check: (value) => value === "levelChangeOnly" ? null : "experienceUpdates is levelChangeOnly",
+    apply(_value, out) { out.registrations.experienceUpdates = "levelChangeOnly"; },
+  },
   {
     name: "flagIntersectionResult",
     capability: "registry:rune",

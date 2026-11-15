@@ -23,6 +23,7 @@ import { histHas, historyIsArtifactKnown } from "../player/history.js";
 import { floorCarry } from "../game/floor.js";
 import { objectPrep } from "../obj/make.js";
 import { squareIsKnown } from "../game/known.js";
+import { playerExpGain } from "../player/exp.js";
 import { squareIsView } from "../world/view.js";
 import { getLore, loreUpdate } from "../mon/lore.js";
 import { loc } from "../loc.js";
@@ -858,5 +859,28 @@ describe("player_outfit flavour awareness (player-birth.c:650)", () => {
     expect(unowned.every((k) => state.flavorKnown?.isAware(k) !== true)).toBe(
       true,
     );
+  });
+});
+
+
+describe("experience update session policy", () => {
+  it("reads live hooks and loads a policy save with the policy absent", () => {
+    const game = startGame(pack, { seed: 711, depth: 1, modHooks: { experienceUpdates: () => true } });
+    const p = game.state.actor.player;
+    p.mhp = 12345;
+    const before = game.state.rng.getState();
+    playerExpGain(p, 1, game.wizardBundles.expDeps!);
+    expect(p.exp).toBe(1);
+    expect(p.lev).toBe(1);
+    expect(p.mhp).toBe(12345);
+    expect(game.state.rng.getState()).toEqual(before);
+    delete game.state.modHooks;
+    playerExpGain(p, 1, game.wizardBundles.expDeps!);
+    expect(p.mhp).not.toBe(12345);
+    game.state.modHooks = { experienceUpdates: () => true };
+    const loaded = loadGame(pack, saveGame(game), new Set(["core"]));
+    expect(loaded.state.actor.player.exp).toBe(2);
+    expect(loaded.state.actor.player.lev).toBe(1);
+    expect(loaded.state.modHooks?.experienceUpdates).toBeUndefined();
   });
 });

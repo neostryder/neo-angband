@@ -224,3 +224,36 @@ describe("player_stat_inc / player_stat_dec (player.c)", () => {
     expect(playerStatInc(p, rng, 1)).toBe(false);
   });
 });
+
+
+describe("experienceUpdates", () => {
+  it("skips unchanged-level gains, losses, and maximum-level-only updates", () => {
+    const p = human();
+    let calls = 0;
+    const options = { ...deps(), experienceUpdates: () => true, onLevelChange: () => { calls++; } };
+    const before = options.rng.getState();
+    playerExpGain(p, 5, options);
+    playerExpLose(p, 2, false, options);
+    p.maxExp = 25;
+    adjustLevel(p, options);
+    expect(calls).toBe(0);
+    expect([p.lev, p.exp, p.maxLev, p.maxExp]).toEqual([1, 3, 3, 25]);
+    expect(options.rng.getState()).toEqual(before);
+  });
+
+  it("keeps actual level gains and losses and reads a live policy", () => {
+    const p = human();
+    let active = true;
+    const levels: number[] = [];
+    const options = { ...deps(), experienceUpdates: () => active, onLevelChange: (p: Player) => levels.push(p.lev) };
+    playerExpGain(p, 25, options);
+    playerExpLose(p, 24, false, options);
+    expect(levels).toEqual([3, 1]);
+    active = false;
+    playerExpGain(p, 1, options);
+    expect(levels).toEqual([3, 1, 1]);
+    const legacy = { ...deps(), onLevelChange: (p: Player) => levels.push(p.lev) };
+    playerExpLose(p, 1, false, legacy);
+    expect(levels).toEqual([3, 1, 1, 1]);
+  });
+});
