@@ -258,7 +258,7 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
     }).then((choice) => { finished = true; return choice; });
     for (const key of ["a", "a", "a", "Enter", "Enter", "a"]) { press(win, key); await tick(); }
     const text = term.snapshot().join("\n");
-    for (const entry of entries) expect(text).toContain(entry.name);
+    for (const entry of entries) expect(text).toContain(entry.description);
     expect(text).toContain("default: no");
     expect(finished).toBe(false);
     press(win, " ");
@@ -275,12 +275,12 @@ describe("runBirth: faithful stage order (no sex stage)", () => {
       .then((choice) => { finished = true; return choice; });
     for (const pressKey of ["a", "a", "a", "Enter", "Enter", "a"]) { press(win, pressKey); await tick(); }
     const pages = [term.snapshot().join("\n")];
-    while (term.snapshot().join("\n").includes("Any key for more")) {
+    while (term.snapshot().join("\n").includes("for more options")) {
       press(win, " "); await tick();
       expect(finished).toBe(false);
       pages.push(term.snapshot().join("\n"));
     }
-    for (const entry of entries) expect(pages.join("\n")).toContain(entry.name);
+    for (const entry of entries) expect(pages.join("\n")).toContain(entry.description);
     expect(pages.length).toBeGreaterThan(1);
     press(win, key); await tick();
     if (key === " ") expect((await done)?.birthOptions).toMatchObject(values);
