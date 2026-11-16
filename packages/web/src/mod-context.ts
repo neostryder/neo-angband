@@ -253,7 +253,8 @@ export function modPluginContext(
     ...(shared ? { shared } : {}),
     ...(title ? { title } : {}),
     ...(profiles ? { profiles } : {}),
-    ...(session.capabilities?.has("profiles:manage") && session.capabilities?.has("saves:manage") && controllerArmedControl?.(id)
+    ...(((state?.actor?.player?.noscore ?? 0) & neoCore.NOSCORE.BORG) !== 0 ||
+      (session.capabilities?.has("profiles:manage") && session.capabilities?.has("saves:manage") && controllerArmedControl?.(id))
       ? { controllerArmed: true } : {}),
     ...(state && (session.capabilities?.has("state:player.read") || session.capabilities?.has("state:*.read")) &&
       (session.snapshotSource ?? snapshotSource)?.characterKey

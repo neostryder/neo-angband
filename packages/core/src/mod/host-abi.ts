@@ -604,7 +604,7 @@ export interface ModPluginContext {
   readonly title?: ModTitle;
   /** Manage player profiles after declaring `profiles:manage`. */
   readonly profiles?: ModProfiles;
-  /** True when this mod's controller was requested for the new character. */
+  /** True when the character has NOSCORE.BORG or this mod has a pending controller handoff. */
   readonly controllerArmed?: boolean;
   /**
    * The attached character, under `state:player.read`. `key()` is its stable host

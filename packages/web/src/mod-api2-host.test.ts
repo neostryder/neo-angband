@@ -1400,6 +1400,29 @@ describe("API 2 engine and content", () => {
 });
 
 describe("API 2 controller decisions", () => {
+  it("reports character arming before and after a Ctrl-Z save reload without engine access", () => {
+    const game = startGame(pack, { seed: SEED, depth: DEPTH });
+    const caps = capabilities("probe", ["input:controller", "input:intent", "state:interaction.read"]);
+    const seen: boolean[] = [];
+    const plugin = api2Plugin({ api: ">=2.0.0 <3.0.0", armed: (context) => {
+      expect(context.engine).toBeUndefined();
+      seen.push(context.armed);
+      return context.armed;
+    }, controller: () => undefined }, () => ({ grants: caps, tier: "first-party" }));
+    const probe = (current: StartedGame) => {
+      const ctx = modPluginContext("probe", {}, current.state, {}, { capabilities: caps });
+      expect(createApi2Host(ctx, { grants: caps }).meta.controllerArmed).toBe((current.state.actor.player.noscore & NOSCORE.BORG) !== 0);
+      return plugin.controller!(ctx);
+    };
+    game.state.actor.player.noscore = NOSCORE.DEBUG;
+    expect(probe(game)).toBeUndefined();
+    game.state.actor.player.noscore |= NOSCORE.BORG;
+    expect(probe(game)).toBeTypeOf("function");
+    expect(probe(loadGame(pack, structuredClone(saveGame(game))))).toBeTypeOf("function");
+    expect(seen).toEqual([false, true, true]);
+    plugin.uninstall?.();
+  });
+
   function controller(definition: Api2ModDefinition, tier: "first-party" | "public" = "first-party", sensitive: string[] = []) {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     game.state.events = new GameEvents();

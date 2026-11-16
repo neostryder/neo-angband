@@ -110,6 +110,7 @@ export interface Api2Meta {
   readonly flags: Readonly<Record<string, boolean>>;
   /** True when the character was created this session rather than loaded. */
   readonly newCharacter: boolean;
+  /** The character has been armed for an autoplayer, or this mod has a pending controller handoff. */
   readonly controllerArmed: boolean;
   /** Whether the player granted a permission. No call is needed to ask. */
   granted(capability: Api2Capability): boolean;
@@ -717,6 +718,7 @@ export interface Api2HookContext {
 }
 
 export interface Api2ControllerContext extends Api2HookContext {
+  /** The same character arming snapshot as meta.controllerArmed, independent of keyboard ownership. */
   readonly armed: boolean;
 }
 

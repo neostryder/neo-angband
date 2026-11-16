@@ -32,6 +32,7 @@ import {
   squareMemorize,
   startGame,
   saveGame,
+  loadGame,
   ObjRegistry,
   StoreBehaviourRegistry,
   TV,
@@ -2000,6 +2001,35 @@ it("keeps a Worker's arming decision separate from controller availability", asy
   const armed = wire(definition, { grants, controllerArmed: true, api: hostApi({ grants }) });
   await armed.session.ready;
   expect(armed.session.controllerArmed()).toBe(true);
+});
+
+it("reports character arming across a Ctrl-Z save reload to a Worker without engine access", async () => {
+  const grants = ["input:controller", "input:intent", "state:interaction.read"];
+  const capabilities = CapabilitySet.fromManifest({ id: "probe", name: "Probe", version: "1.0.0", shape: "plugin", capabilities: grants });
+  const game = startGame(pack, { seed: SEED, depth: DEPTH });
+  const seen: boolean[] = [];
+  const definition: Api2ModDefinition = { api: API, armed: (context) => {
+    expect(context.engine).toBeUndefined();
+    seen.push(context.armed);
+    return context.armed;
+  }, controller: () => undefined };
+  for (const armed of [false, true]) {
+    game.state.actor.player.noscore = NOSCORE.DEBUG | (armed ? NOSCORE.BORG : 0);
+    const restored = loadGame(pack, structuredClone(saveGame(game)));
+    const context = modPluginContext("probe", {}, restored.state, {}, { capabilities });
+    const wired = wire(definition, { grants, controllerArmed: context.controllerArmed === true, api: hostApi({ game: restored, grants }) });
+    await wired.session.ready;
+    expect(wired.session.controllerArmed()).toBe(armed);
+    let meta: boolean | undefined;
+    const startedWire = wire({ ...definition, start: (mod) => {
+      expect(mod.engine).toBeUndefined();
+      meta = mod.meta.controllerArmed;
+    } }, { grants, controllerArmed: context.controllerArmed === true, api: hostApi({ game: restored, grants }) });
+    expect(await started(startedWire, () => meta)).toBe(armed);
+  }
+  expect(seen).toEqual([false, false, true, true]);
+  const main = readFileSync(new URL("../main.ts", import.meta.url), "utf8");
+  expect(main).toContain("controllerArmed: context.controllerArmed === true,");
 });
 
 it("runs a declarative Worker title action through the host's row", async () => {
