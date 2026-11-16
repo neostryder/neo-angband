@@ -25,6 +25,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   blitCellAssets,
+  bitmapGlyphBox,
   expandTallDirty,
   glyphIsTall,
   setActiveCellTap,
@@ -36,6 +37,33 @@ import {
 import { carryGrid } from "./term";
 
 const TERM = readFileSync(new URL("./term.ts", import.meta.url), "utf8");
+
+describe("bitmap glyph placement", () => {
+  it.each([
+    [16, 26, { scale: 2, x: 0, y: 0, w: 16, h: 26 }],
+    [23, 35, { scale: 2, x: 3, y: 4, w: 16, h: 26 }],
+    [32, 26, { scale: 2, x: 8, y: 0, w: 16, h: 26 }],
+    [8, 13, { scale: 1, x: 0, y: 0, w: 8, h: 13 }],
+    [7, 20, { scale: 0, x: 0, y: 0, w: 7, h: 20 }],
+    [20, 12, { scale: 0, x: 0, y: 0, w: 20, h: 12 }],
+  ])("fits an 8x13 font in a %sx%s cell", (w, h, expected) => {
+    expect(bitmapGlyphBox(8, 13, w, h)).toEqual(expected);
+  });
+
+  it("keeps glyph pixels and offsets whole in device pixels at a fractional pixel ratio", () => {
+    const box = bitmapGlyphBox(8, 13, 20, 30, 1.5);
+    expect(box.scale).toBe(3);
+    expect([box.x, box.y, box.w, box.h].map((value) => value * 1.5)).toEqual([3, 3, 24, 39]);
+  });
+
+  it("preserves the small-cell fallback on a high-density display", () => {
+    expect(bitmapGlyphBox(8, 13, 7, 20, 2)).toEqual({ scale: 0, x: 0, y: 0, w: 7, h: 20 });
+  });
+
+  it("keeps the fallback when native pixels do not fit after zooming out", () => {
+    expect(bitmapGlyphBox(8, 13, 8, 13, 0.5)).toEqual({ scale: 0, x: 0, y: 0, w: 8, h: 13 });
+  });
+});
 
 describe("carryGrid", () => {
   it("carries every cell when the dimensions are unchanged (the fixed 80x24 term)", () => {

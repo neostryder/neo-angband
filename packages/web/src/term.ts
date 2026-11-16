@@ -29,6 +29,17 @@ import { FONT_16X24, type BitmapFontData } from "./font-16x24";
  * consumer that needs it rather than inside the renderer that answers it. */
 import type { GridGeometry, GridPixelMetrics } from "./regions";
 
+export function bitmapGlyphBox(fontW: number, fontH: number, cellW: number, cellH: number, dpr = 1): { scale: number; x: number; y: number; w: number; h: number } {
+  const deviceW = Math.round(cellW * dpr);
+  const deviceH = Math.round(cellH * dpr);
+  const scale = Math.floor(Math.min(deviceW / fontW, deviceH / fontH));
+  if (cellW < fontW || cellH < fontH || scale < 1) return { scale: 0, x: 0, y: 0, w: cellW, h: cellH };
+  const w = fontW * scale;
+  const h = fontH * scale;
+  // Whole device pixels keep fractional display ratios from blurring the font.
+  return { scale, x: Math.floor((deviceW - w) / 2) / dpr, y: Math.floor((deviceH - h) / 2) / dpr, w: w / dpr, h: h / dpr };
+}
+
 /**
  * A renderer-neutral reference to art associated with a grid cell.  The grid
  * owns the meaning ("this cell has this asset"), while the selected renderer
@@ -1024,11 +1035,9 @@ export class GlyphTerm
 
   /** Responsive grid (reflow opt-in): the pre-REND-1 behavior. */
   private fitReflow(w: number, h: number): void {
-    // Bitmap font: scale the native cell to the requested CSS height, then
-    // derive the grid from the window. Fractional source scaling is safe here:
-    // destination cells are still integer CSS pixels and bitmap blits stay
-    // nearest-neighbour. Shrink the target when necessary so the declared
-    // minimum grid fits instead of producing a clipped phone viewport.
+    // The requested cell size remains the grid pitch so fitting bitmap glyphs
+    // cannot move map coordinates or tiles. The declared phone floor must fit
+    // the viewport even when the requested size is too large.
     if (this.font) {
       const requested = Math.max(8, this.options.fontPx);
       const widthLimit = (w / this.options.minCols) * (this.font.h / this.font.w);
@@ -1399,16 +1408,11 @@ export class GlyphTerm
     this.ctx.fillRect(px, py, cw, ch);
     if (blitCellAssets(canvasAssetRenderer, this.ctx, g, px, py, cw, ch)) return;
     if (g && g.ch !== " ") {
-      // FONT-1: blit the original 16x24 bitmap glyph, tinted to fg and scaled to
-      // the cell (nearest-neighbour). Falls back to FONT_STACK fillText for any
-      // glyph the bitmap font lacks (code >= 256, blank, or a rare colour form).
       const code = g.ch.codePointAt(0) ?? 0;
       const glyph = this.tintedGlyph(code, g.fg);
       if (glyph) {
-        /* The snapped size, not cellW/cellH: the glyph has to fill the same
-         * rect the background just filled, or it reintroduces the seam it was
-         * drawn to cover. */
-        this.ctx.drawImage(glyph, px, py, cw, ch);
+        const box = bitmapGlyphBox(glyph.width, glyph.height, cw, ch, this.dpr());
+        this.ctx.drawImage(glyph, px + box.x, py + box.y, box.w, box.h);
       } else {
         this.ctx.fillStyle = g.fg;
         this.ctx.fillText(g.ch, px, py + Math.floor(ch * 0.1));

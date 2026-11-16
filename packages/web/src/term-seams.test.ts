@@ -132,6 +132,24 @@ function makeTerm(): GlyphTerm {
   });
 }
 
+describe("bitmap glyphs within tile cells", () => {
+  it("centers integer-scaled text while tiles still fill the cell", () => {
+    useDpr(1);
+    const term = new GlyphTerm(stubCanvas(), {
+      minCols: 32, minRows: 18, fontPx: 35, reflow: true,
+      bitmapFont: { w: 8, h: 13, glyphs: Array.from({ length: 66 }, () => Array<number>(13).fill(255)) },
+    });
+    term.put(0, 0, { ch: "A", fg: "#ffffff" });
+    term.put(1, 0, { ch: "A", fg: "#ffffff", tile: { kind: "canvas-image", data: { image: stubCanvas() } } });
+    term.flush();
+    expect(term.metrics()).toMatchObject({ cellWidth: 22, cellHeight: 35 });
+    expect(images).toEqual([
+      { x: 3, y: 4, w: 16, h: 26 },
+      { x: 22, y: 0, w: 22, h: 35 },
+    ]);
+  });
+});
+
 /** The cell fills of one frame, ignoring the full-canvas clear (much bigger). */
 function cellFills(): Rect[] {
   const term = { w: 0, h: 0 };

@@ -335,6 +335,8 @@ browser's database. The host composes your path with your mod's own resolver.
 | `art` | one screen of `{colour}...{/}` markup | per `slot` |
 | `locale` | one language, `slot` being its BCP 47 tag | per `slot` |
 
+The terminal centers bitmap glyphs at the largest whole device-pixel scale that fits each cell, with smoothing off. Cells smaller than the font's native glyph size keep the stretched fallback. This placement does not change grid geometry or tile rendering.
+
 Four things that will otherwise cost you an afternoon:
 
 - **A preference document applies for the session only.** It never changes the player's own saved preferences, and it stops applying when your mod is turned off. A subwindow layout, or any document outside that list, is reported on your mod's row instead of being applied.
