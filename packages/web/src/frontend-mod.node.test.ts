@@ -84,8 +84,8 @@ function fixtureSource(): ModDirSource {
  * The disk-code portion of main.ts's boot block, with the physical fixture
  * folder standing in for the desktop shell's already-enumerated folder.  Keep
  * this deliberately literal: the latches and the enabled/consent gates are
- * part of the shipped route. The explicit importer keeps these URL fixtures
- * separate from the compartment tests that irreversibly freeze their own process.
+ * part of the shipped route, and omitting `importer` makes loadModCode use its
+ * production dynamic import rather than a test substitute.
  */
 async function bootDiskFrontendCode() {
   setDiskPacks(await readModDir(fixtureSource()));
@@ -95,7 +95,6 @@ async function bootDiskFrontendCode() {
   const store = defaultModStore();
   setModCode(
     await loadModCode({
-      importer: (url) => import(/* @vite-ignore */ url),
       tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }),
     acknowledged: () => true,
       packs: disk.packs,

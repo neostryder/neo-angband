@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
@@ -125,6 +125,34 @@ beforeAll(() => {
 }, 70000);
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+it("leaves lockdown and compartment construction untouched when the setting is absent", () => {
+  const bundle = join(dir, "startup.mjs");
+  buildSync({
+    entryPoints: [fileURLToPath(new URL("./mod-lockdown.ts", import.meta.url))],
+    outfile: bundle,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' },
+    logLevel: "silent",
+  });
+  const probe = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+    let lockdownCalls = 0;
+    let compartments = 0;
+    globalThis.lockdown = () => { lockdownCalls++; };
+    globalThis.Compartment = function () { compartments++; };
+    const initialLockdown = globalThis.lockdown;
+    const initialCompartment = globalThis.Compartment;
+    const startup = await import(${JSON.stringify(pathToFileURL(bundle).href)});
+    console.log(JSON.stringify({ lockdownCalls, compartments, frozen: Object.isFrozen(Object.prototype),
+      sameLockdown: globalThis.lockdown === initialLockdown, sameCompartment: globalThis.Compartment === initialCompartment,
+      enabled: startup.modCompartmentsEnabled, runtimeAbsent: startup.compartmentRuntime === undefined }));
+  `], { encoding: "utf8", windowsHide: true, timeout: 60000 });
+  expect(probe.status, probe.stderr).toBe(0);
+  expect(JSON.parse(probe.stdout.trim())).toEqual({ lockdownCalls: 0, compartments: 0, frozen: false,
+    sameLockdown: true, sameCompartment: true, enabled: false, runtimeAbsent: true });
+}, 70000);
 
 describe("measured mod compartments", () => {
   it("keeps the page globals out of the module", () => {
