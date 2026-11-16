@@ -64,7 +64,7 @@ export interface BoltEventData {
   x: number;
 }
 
-/** EVENT_MISSILE requires the known item projection because subscribers can be mods. */
+/** EVENT_MISSILE requires the known item projection because mods can subscribe to it. */
 export interface MissileEventData {
   obj: ItemView;
   seen: boolean;
