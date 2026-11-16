@@ -29,6 +29,7 @@ const validator = json.object({
   controlProfile: json.optional(json.string),
   /** Mods from third-party sources may be installed. */
   allowThirdPartyMods: json.optional(json.boolean),
+  modCompartments: json.optional(json.boolean),
 });
 
 export const settingsFormat = defineFormat({
@@ -46,6 +47,7 @@ export const settingsFormat = defineFormat({
     tileMode: 2,
     controlProfile: "desktop",
     allowThirdPartyMods: false,
+    modCompartments: false,
   },
 });
 

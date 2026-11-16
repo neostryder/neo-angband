@@ -4,6 +4,7 @@ import { buildModuleGraph } from "./mod-modules";
 import { sha256Hex } from "./mod-install";
 import { setConsentBindings } from "./mod-consent-binding";
 import type { ModTier } from "./mod-tier";
+import { modCompartmentsEnabled } from "./mod-lockdown";
 
 interface Payload {
   readonly files: ReadonlyMap<string, Uint8Array>;
@@ -16,6 +17,7 @@ interface Payload {
 let payloads: ReadonlyMap<string, Payload> = new Map();
 
 function publishMeasuredMod(id: string, digest: string): void {
+  if (!modCompartmentsEnabled) return;
   const desktop = (globalThis as { neoDesktop?: { recordMeasuredMod?(modId: string, digest: string): boolean } }).neoDesktop;
   try { desktop?.recordMeasuredMod?.(id, digest); } catch { /* A browser tab has no desktop bridge. */ }
 }

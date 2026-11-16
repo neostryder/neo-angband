@@ -75,6 +75,7 @@ export interface ModFolderPicker {
 
 /** What the manager needs from the host (discovery + reload are browser-only). */
 export interface ModManagerDeps {
+  modCompartments?: { get(): boolean; set(enabled: boolean): boolean };
   look?: import("../look-state").LookStore;
   modLists?: import("./mod-lists").ModListStore;
   saveReferences?: (id: string, tag?: string) => boolean | Promise<boolean>;

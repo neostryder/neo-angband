@@ -304,7 +304,7 @@ An API 1 plugin's code runs in the game's page with `ctx.core`, `ctx.state`, `ct
 
 An API 1 plugin cannot be moved into that Worker as it stands. Its `hooks(ctx)` returns functions that the turn loop calls synchronously, `register(host, ctx)` changes live state, and a message port carries copies of data, never functions, DOM nodes or object identity. A plugin that wants isolation has to be rewritten against mod API 2, whose calls take and return plain data (`docs/modding/MIGRATING_TO_API2.md`).
 
-Giving each plugin its own set of globals on the game's thread would fence an API 1 plugin without changing how it runs. No browser the game targets ships ShadowRealm, and an imitation built out of proxies would be a second host needing its own audit, so this stays open until the platform offers one.
+The Mods screen offers "Mod compartments" on desktop and web. It is off by default and takes effect after restart. When enabled, SES gives each in-process mod separate globals and a DOM facade filters page bridges and reserved storage. Startup and mod calls take longer. Live engine objects still cross this boundary, so compartments do not give API 1 plugins the isolation of Worker mods.
 
 ### A save written under session-only content is loadable but not reproducible
 

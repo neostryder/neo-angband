@@ -95,6 +95,17 @@ describe("the settings document", () => {
     expect(s.map.size).toBe(1);
   });
 
+  it("persists the compartment setting without changing other settings", () => {
+    const s = memory({});
+    expect(readSetting(s, "modCompartments")).toBeUndefined();
+    expect(writeSetting(s, "locale", "fr")).toBe(true);
+    expect(writeSetting(s, "modCompartments", true)).toBe(true);
+    expect(readSetting(s, "modCompartments")).toBe(true);
+    expect(stored(s)).toEqual({ locale: "fr", modCompartments: true });
+    expect(writeSetting(s, "modCompartments", false)).toBe(true);
+    expect(readSetting(s, "modCompartments")).toBe(false);
+  });
+
   it("never overwrites a document from a newer build", () => {
     const future = JSON.stringify({ format: "neo-angband/web/settings", schemaVersion: 99, data: { tileMode: 5 } });
     const s = memory({ [SETTINGS_STORAGE_KEY]: future, "neo-angband:graf": "2" });

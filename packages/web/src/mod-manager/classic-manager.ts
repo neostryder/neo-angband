@@ -68,6 +68,7 @@ export async function runModManager(
     type ActionKind =
       | "conflicts"
       | "profiler"
+      | "compartments"
       | "orphans"
       | "autosort"
       | "install"
@@ -102,6 +103,7 @@ export async function runModManager(
       /* Every digit is taken, so this is another punctuation tag, as "+" and
        * "-" are. */
       profiler: "*",
+      compartments: "!",
       autosort: "4",
       orphans: "5",
       install: "6",
@@ -322,6 +324,14 @@ export async function runModManager(
             ? t("modsScreen.run.sourcesHintFolder", "The folder layout, and how one is read.")
             : t("modsScreen.run.sourcesHintNoFolder", "Why this build has no mods folder."),
     );
+    if (deps.modCompartments) {
+      addAction(
+        t("modsScreen.run.compartments", "[{mark}] Mod compartments", { mark: deps.modCompartments.get() ? "x" : " " }),
+        "compartments",
+        C_FG,
+        t("modsScreen.run.compartmentsHint", "Separate mod globals and filter DOM access. Slows startup. Applies after restart."),
+      );
+    }
     if (dirty) {
       addAction(
         t("modsScreen.run.applyReload", "Apply changes and reload"),
@@ -599,6 +609,8 @@ export async function runModManager(
        * preference, not a change to the mod set - nothing here warrants the
        * "Apply changes and reload" prompt. */
       if (deps.delveSync) await manageDelveSyncFolder(term, deps.delveSync, savedSyncFolder);
+    } else if (rk.kind === "compartments") {
+      if (deps.modCompartments?.set(!deps.modCompartments.get())) dirty = true;
     } else if (rk.kind === "reload") {
       deps.requestReload();
       return; // reload takes over

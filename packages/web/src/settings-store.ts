@@ -43,6 +43,7 @@ const LEGACY: LegacyFields<Settings> = {
     key: "neo-angband:allow-third-party-mods",
     parse: (raw) => (raw === "yes" ? true : raw === "no" ? false : undefined),
   },
+  modCompartments: null,
 };
 
 const settings = fieldDocument({ format: settingsFormat, storageKey: SETTINGS_STORAGE_KEY, empty: {}, legacy: LEGACY });

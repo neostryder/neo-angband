@@ -53,9 +53,9 @@
  *
  * `plugin.js` is the ENTRY POINT, not the whole mod. A mod may hold as many
  * scripts as it likes, in subdirectories, and import them relatively. In-process
- * imports use retained bytes in a compartment, because refetching a URL would
- * allow replacement code to run under the measured payload's permissions.
- * Workers retain the URL graph path (mod-modules.ts).
+ * imports use retained bytes when compartments are enabled, because refetching
+ * a URL would allow replacement code under the measured payload's permissions.
+ * Otherwise imports retain the URL graph path (mod-modules.ts).
  *
  * What a folder plugin still cannot do is import a BARE specifier
  * ("@rpgm-tools/neo-angband-core"): a package name cannot identify a file in the
@@ -76,7 +76,7 @@ import {
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { consentBinding } from "./mod-consent-binding";
 import { modPayloadBytes, modPayloadUrl } from "./mod-code-snapshot";
-import { importModCompartment } from "./mod-compartment";
+import { compartmentRuntime } from "./mod-lockdown";
 import type { CodeUrlResolver, DiskPack } from "./disk-packs";
 import { api2Plugin, checkApi2Definition } from "./mod-api2-shim";
 import { engineBlocksCode } from "./mod-engine";
@@ -256,6 +256,9 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
     }
     return { plugins, workers, problems, skipped };
   }
+
+  const doImport = opts.importer ?? ((url: string) => import(/* @vite-ignore */ url));
+  const compartment = opts.importer ? undefined : compartmentRuntime;
 
   for (const pack of withCode) {
     const id = pack.manifest.id;
@@ -457,9 +460,9 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
 
     let url: string | null;
     try {
-      url = opts.importer
-        ? await codeUrl(id, PLUGIN_FILE)
-        : modPayloadBytes(id, PLUGIN_FILE) ? `mod:${id}/${PLUGIN_FILE}` : null;
+      url = compartment
+        ? modPayloadBytes(id, PLUGIN_FILE) ? `mod:${id}/${PLUGIN_FILE}` : null
+        : await codeUrl(id, PLUGIN_FILE);
     } catch (e) {
       /* The message from here already names the file at fault - which script is
        * missing, which two import each other (mod-modules.ts). Prefixing it with
@@ -476,21 +479,21 @@ export async function loadModCode(opts: LoadModCodeOptions): Promise<ModCodeRepo
       continue;
     }
     if (consentBinding(id) !== binding) {
-      if (opts.importer && measuredTier.trust !== "first-party") opts.codeUrl.release?.(url);
+      if (!compartment && measuredTier.trust !== "first-party") opts.codeUrl.release?.(url);
       problems.push({ id, why: MOD_PERMISSION_TEXT.changed });
       continue;
     }
 
     let mod: unknown;
     try {
-      mod = opts.importer
-        ? await opts.importer(url)
-        : importModCompartment(id, (path) => modPayloadBytes(id, path));
+      mod = compartment
+        ? compartment.importModCompartment(id, (path) => modPayloadBytes(id, path))
+        : await doImport(url);
     } catch (e) {
       problems.push({ id, why: `${PLUGIN_FILE} failed to load: ${importAdvice(e)}` });
       continue;
     } finally {
-      if (opts.importer && measuredTier.trust !== "first-party") opts.codeUrl.release?.(url);
+      if (!compartment && measuredTier.trust !== "first-party") opts.codeUrl.release?.(url);
     }
 
     const entry = (mod as { default?: unknown } | null)?.default;

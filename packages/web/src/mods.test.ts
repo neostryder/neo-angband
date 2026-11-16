@@ -201,6 +201,25 @@ function open(
 }
 
 describe("leaving the mod manager untouched never offers to reload", () => {
+  it("saves compartments for restart and offers the existing apply action", async () => {
+    let enabled = false;
+    const set = vi.fn((value: boolean) => { enabled = value; return true; });
+    const { win, term, done, requestReload } = open([], {
+      modCompartments: { get: () => enabled, set },
+    });
+    await flush();
+    expect(term.snapshot().some((line) => line.includes("[ ] Mod compartments"))).toBe(true);
+    press(win, "!");
+    await flush();
+    expect(set).toHaveBeenCalledWith(true);
+    expect(term.snapshot().some((line) => line.includes("[x] Mod compartments"))).toBe(true);
+    expect(term.snapshot().some((line) => line.includes("Apply changes and reload"))).toBe(true);
+    expect(requestReload).not.toHaveBeenCalled();
+    press(win, "9");
+    expect((await raceTimeout(done)).timedOut).toBe(false);
+    expect(requestReload).toHaveBeenCalledOnce();
+  });
+
   it("does not call requestReload, and returns promptly, when nothing was touched", async () => {
     const { win, done, requestReload } = open([manifest("qol", "Quality of Life")]);
     await flush();

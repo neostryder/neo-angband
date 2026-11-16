@@ -1,7 +1,7 @@
 import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModWorkerPanel, ModWorkerPanelNode, ModWorkerPanelPatch, WorkerJson } from "./protocol";
 import { panelDescription, panelPatch } from "./panel-schema";
-import { membraneTarget } from "../mod-dom-facade.js";
+import { compartmentRuntime } from "../mod-lockdown";
 import { closeTopModPanel, createModUi, modPresentationSuspended as modPanelsSuspended, onModPanelSuspension, topModPanelId } from "../panel-runtime";
 import { addControlDomOwner, inputEvents } from "../input-door";
 import type { ModPanel } from "../mod-plugin";
@@ -95,7 +95,8 @@ export function createModWorkerPanelRenderer(doc: Document = document): ModWorke
         close(); return;
       }
       const controls = [...root.querySelectorAll<HTMLElement>("button:not(:disabled),input:not(:disabled),a[href]")];
-      const focused = membraneTarget(host?.root.activeElement ?? doc.activeElement);
+      const focusedElement = host?.root.activeElement ?? doc.activeElement;
+      const focused = compartmentRuntime ? compartmentRuntime.membraneTarget(focusedElement) : focusedElement;
       if (["Tab", "ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "2", "4", "6", "8"].includes(event.key)) {
         if (!controls.length) return;
         event.preventDefault();

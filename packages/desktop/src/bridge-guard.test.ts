@@ -2,7 +2,7 @@
  * Preload argument checks. A bad call fails closed and does not become a path.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { applyMeasuredConsent, capLogBatch, confirmHostAction, desktopConsentReport, hostFsCallIsSafe, hostFsFailure, isSafeHostLeaf, updateCallIsSafe } from "./bridge-guard.js";
 
 describe("measured mod consent", () => {
@@ -108,6 +108,24 @@ vi.mock("electron", () => ({
 }));
 
 describe("preload rejection", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    preload.invoke.mockReset();
+  });
+
+  it("keeps consent unchanged with compartments off for the whole session", async () => {
+    await import("./preload.js");
+    const desktop = preload.globals["neoDesktop"] as {
+      configureModCompartments(enabled: boolean): void;
+      consent(decision: unknown): Promise<unknown>;
+    };
+    desktop.configureModCompartments(false);
+    desktop.configureModCompartments(true);
+    const decision = { modId: "qol", digest: "a".repeat(64), quiet: true, release: true };
+    await desktop.consent(decision);
+    expect(preload.invoke).toHaveBeenCalledWith("neo-mod-authority", decision);
+  });
+
   it("refuses hostile arguments before sending any IPC or filesystem call", async () => {
     await import("./preload.js");
     const desktop = preload.globals["neoDesktop"] as { log(lines: unknown): void; update(op: string, arg?: unknown): Promise<unknown> };
@@ -131,7 +149,10 @@ describe("preload rejection", () => {
       consent(decision: unknown): Promise<unknown>;
       recordMeasuredMod(modId: string, digest: string): boolean;
       useMeasuredMod(modId: string, digest: string): string | null;
+      configureModCompartments(enabled: boolean): void;
     };
+    desktop.configureModCompartments(true);
+    desktop.configureModCompartments(false);
     const measured = "a".repeat(64);
     preload.invoke.mockClear();
     expect(await desktop.consent({ modId: "victim", digest: "b".repeat(64), grants: ["backup:folder"], destinations: [] })).toEqual({ ok: false });

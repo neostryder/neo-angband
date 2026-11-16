@@ -2,6 +2,8 @@ import "ses";
 import { ModuleSource } from "@endo/module-source";
 import { domCompartmentGlobals } from "./mod-dom-facade.js";
 
+export { domCompartmentGlobals, membraneNode, membraneTarget } from "./mod-dom-facade.js";
+
 // Engine objects passed into a compartment stay live host objects. The DOM membrane does not cover them.
 let initialized = false;
 

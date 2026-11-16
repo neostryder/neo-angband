@@ -22,6 +22,7 @@ import { RawFsHost, rawFsOverTransport } from "@rpgm-tools/neo-angband-core";
 import { consentBinding, onModConsentChange } from "./mod-consent-binding";
 import { modPayloadDigest } from "./mod-code-snapshot";
 import { defaultModStore } from "./mod-store";
+import { modCompartmentsEnabled } from "./mod-lockdown";
 
 export interface DesktopConsentBridge {
   consent?(decision: unknown): Promise<unknown>;
@@ -45,6 +46,7 @@ interface InstallationState {
 const installations = new Map<DesktopConsentBridge, Map<string, InstallationState>>();
 
 function withMeasuredIdentity(id: string, digest: string, decision: Record<string, unknown>): Record<string, unknown> {
+  if (!modCompartmentsEnabled) return decision;
   const desktop = (globalThis as { neoDesktop?: { useMeasuredMod?(modId: string, digest: string): string | null } }).neoDesktop;
   const measuredToken = desktop?.useMeasuredMod?.(id, digest);
   return typeof measuredToken === "string" ? { ...decision, measuredToken } : decision;

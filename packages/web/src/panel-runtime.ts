@@ -105,7 +105,7 @@
  */
 
 import type { ModPanel, ModPanelSpec, ModUi } from "./mod-plugin";
-import { membraneNode } from "./mod-dom-facade.js";
+import { compartmentRuntime } from "./mod-lockdown";
 import { setDomKeyboardOwner, type DomKeyboardOwner } from "./input-door";
 import { registerPanelKind } from "./panel-provider";
 
@@ -778,7 +778,7 @@ function mountPanel(
   return {
     id,
     // A raw shadow root's ownerDocument.defaultView is the page, bridges included.
-    root: membraneNode(root),
+    root: compartmentRuntime ? compartmentRuntime.membraneNode(root) : root,
     get open(): boolean {
       return open;
     },

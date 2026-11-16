@@ -7942,6 +7942,10 @@ async function buildModManagerDeps(): Promise<ModManagerDeps> {
   return {
     store,
     look: lookStore,
+    modCompartments: {
+      get: () => readSetting(localStorage, "modCompartments") === true,
+      set: (enabled) => writeSetting(localStorage, "modCompartments", enabled),
+    },
     modLists,
     saveReferences: (id, tag) => savedModReferences(id, tag, realGameStorage),
     listCatalog: () =>

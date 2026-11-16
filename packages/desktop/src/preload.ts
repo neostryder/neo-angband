@@ -59,6 +59,7 @@ const info = platformInfo();
 const measuredMods = new Map<string, string>();
 const measuredTokens = new Map<string, MeasuredCaller>();
 let measuredTicket = 0;
+let modCompartments: boolean | undefined;
 
 contextBridge.exposeInMainWorld("neoDesktop", {
   isDesktop: true,
@@ -166,7 +167,11 @@ contextBridge.exposeInMainWorld("neoDesktop", {
     return true;
   },
 
-  /** Arm one consent call. The token is the only way to name a mod on this bridge. */
+  configureModCompartments(enabled: boolean): void {
+    modCompartments ??= enabled === true;
+  },
+
+  /** The token binds a consent call to the host's retained measurement. */
   useMeasuredMod(modId: string, digest: string): string | null {
     if (measuredMods.get(modId) !== digest) return null;
     measuredTicket += 1;
@@ -177,6 +182,7 @@ contextBridge.exposeInMainWorld("neoDesktop", {
 
   /** The main process confirms new authority natively before issuing a handle. */
   consent(decision: unknown): Promise<unknown> {
+    if (modCompartments !== true) return ipcRenderer.invoke(MOD_AUTHORITY_CHANNEL, decision) as Promise<unknown>;
     if (decision && typeof decision === "object" && !Array.isArray(decision) &&
       (decision as Record<string, unknown>)["hostPurpose"] !== undefined) {
       return ipcRenderer.invoke(MOD_AUTHORITY_CHANNEL, decision) as Promise<unknown>;
