@@ -49,9 +49,8 @@ describe("a run can be interrupted", () => {
     // set and cancel the next one too.
     expect(hook).toMatch(/if \(interruptKey\) \{\s*interruptKey = false;\s*return "cancel";/);
     expect(hook).toContain('return "pause"');
-    // driveRest owns the rest lifecycle and pauses per turn itself; pausing the
-    // engine underneath it would strand the {hold} it has queued.
-    expect(hook).toMatch(/if \(state\.resting\) return "go";/);
+    // Core cancels rest through this hook, so rest must reach the same pause.
+    expect(hook).not.toMatch(/if \(state\.resting\) return "go";/);
   });
 
   it("pumps the next step when the loop pauses", () => {
@@ -101,12 +100,9 @@ describe("a run can be interrupted", () => {
     expect(resolver).toContain("enabled: () => !scoresOpen && modalDepth === 0 && !pumping");
   });
 
-  it("reports an interrupted rest the way the engine reports an interrupted run", () => {
+  it("leaves rest cancellation to the engine interrupt check", () => {
     const body = functionBody(MAIN, "driveRest");
-    // Only the keypress arm: the monster-in-view and damage disturbs are silent
-    // in the C (ui-game.c:663 is the only "Cancelled." site).
-    expect(body).toMatch(
-      /if \(interrupted && !dead\) say\(t\("main\.command\.cancelled", "Cancelled\."\)\);/,
-    );
+    expect(body).toContain('commandBuffer.push({ code: "rest", args: { count } })');
+    expect(body).not.toContain("onStopKey");
   });
 });

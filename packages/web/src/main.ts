@@ -122,8 +122,6 @@ import {
   sidebarModel,
   sidebarLayout,
   statusLineModel,
-  playerRestingIsSpecial,
-  playerRestingCompleteMet,
   PARITY_BASELINE,
   ENGINE_VERSION,
   createVisualsAnimator,
@@ -7029,55 +7027,10 @@ async function retireCmd(): Promise<void> {
 }
 
 // --- Rest (R, do_cmd_rest / textui_cmd_rest) ------------------------------
-// The full N-turn / conditional rest, replacing the single-turn hold stub
-// (gap 11.1). Faithful to cmd-cave.c:1619 do_cmd_rest and ui-command.c:191
-// textui_cmd_rest. The rest loop drives one game turn per iteration through the
-// live loop (advance), so process_world regenerates HP/SP and monsters act.
-//
-// RESTING STATE + THE CORE REGEN SEAMS: player_is_resting /
-// player_resting_can_regenerate (loop.ts) gate rest's x2 regen bonus and the
-// noise/scent-update suppression. WP-9 left those seams dormant (return false);
-// they must read a live resting counter off GameState. This command sets/tracks
-// that counter (state.resting) each turn; the seam reads are a core lock and are
-// listed as WIRING-NEEDED (loop.ts + context.ts) in the WP-11 report. Until the
-// orchestrator applies that wiring the rest still runs to completion faithfully,
-// only without the x2 speed-up.
-
-// REST_ special counts (player-util.h:53-55) and the regen threshold (:61).
+// REST_ special counts (player-util.h:53-55).
 const REST_COMPLETE = -2; // '&' rest until fully recovered / nothing to do
 const REST_ALL_POINTS = -1; // '*' rest until HP and SP are both full
 const REST_SOME_POINTS = -3; // '!' rest until HP or SP is full
-const REST_REQUIRED_FOR_REGEN = 5;
-// player_resting_repeat_count (player-util.c:1523): the last count entered, so
-// re-issuing rest with n == 1 repeats it.
-let restRepeatCount = 0;
-
-/* player_resting_is_special (player-util.c:1382) is core's now (game/context.ts,
- * beside state.resting) - this file used to carry a third copy of it. The REST_
- * constants above stay local because restingCompleteSpecial below reads them by
- * name. */
-const restingIsSpecial = playerRestingIsSpecial;
-
-/**
- * GameState carries a live resting counter for the loop.ts regen seams. The
- * field is a core lock (context.ts, WP-9/WP-10 territory); this local shape
- * lets the web command set it type-safely today and is byte-compatible with the
- * WIRING-NEEDED core addition. { count } mirrors upkeep->resting; { turnsRested }
- * mirrors the file-static player_turns_rested.
- */
-interface RestingState {
-  count: number;
-  turnsRested: number;
-}
-type StateWithRest = typeof state & { resting?: RestingState };
-
-/**
- * player_resting_complete_special (player-util.c:1495): decide whether a
- * conditional rest is finished. Returns true when resting should stop.
- */
-function restingCompleteSpecial(count: number): boolean {
-  return playerRestingCompleteMet(state, count);
-}
 
 /**
  * A monster actually in view interrupts rest, gated by disturb_near - matching
@@ -7125,116 +7078,14 @@ async function restCmd(): Promise<void> {
     if (!Number.isFinite(turns) || turns <= 0) return;
     n = Math.min(turns, 9999);
   }
-  await driveRest(n);
+  driveRest(n);
 }
 
-/**
- * do_cmd_rest (cmd-cave.c:1619) driven turn by turn. Each iteration is one call
- * to do_cmd_rest: player_resting_step_turn (spend a turn, decrement the count,
- * bump the rested counter) then process_world via advance(); the loop continues
- * while player_is_resting, mirroring the engine's cmdq_push(CMD_REST) self-
- * continuation. disturb() equivalents (a visible monster, damage taken, a
- * level/death transition) cancel the rest, matching player_resting_cancel.
- */
-async function driveRest(nArg: number): Promise<void> {
-  let n = nArg;
-  const p = state.actor.player;
-
-  // Sanity: only the specified negative values are valid (cmd-cave.c:1628).
-  if (n < 0 && !restingIsSpecial(n)) return;
-
-  // First-turn upkeep (cmd-cave.c:1632-1642): remember an entered count, or
-  // reuse the remembered one when repeating (n == 1).
-  if (n > 1) restRepeatCount = n;
-  else if (n === 1) n = restRepeatCount;
-
-  // player_resting_set_count + the "stop if told to" guard (cmd-cave.c:1645).
-  if (n === 0 || (n < 0 && !restingIsSpecial(n))) return;
-
-  // cmd-cave.c:1662-1664: every self-continuation of a SPECIAL rest ('&', '*',
-  // '!') calls player_set_resting_repeat_count(player, 0), so a conditional rest
-  // wipes the remembered count. Since n never changes across a special rest's
-  // turns, doing it once here is equivalent to upstream's per-turn clear - and
-  // it happens even when the rest ends on its very first turn, because upstream
-  // reaches that branch whenever n is special regardless of the count.
-  if (restingIsSpecial(n)) restRepeatCount = 0;
-
-  const rest: RestingState = { count: Math.min(n, 9999), turnsRested: 0 };
-  (state as StateWithRest).resting = rest;
-
-  // Any keypress interrupts the rest (upstream flushes input -> disturb). The
-  // main key handler is gated by the modal wrapper, so this capturing listener
-  // is what catches the stop key while resting.
-  let interrupted = false;
-  const onStopKey = (ev: KeyboardEvent): void => {
-    ev.preventDefault();
-    ev.stopImmediatePropagation();
-    interrupted = true;
-  };
-  inputEvents.addEventListener("keydown", onStopKey, true);
-  // No message: upstream announces a rest ONLY through prt_state's "Rest" field
-  // in the status column (ui-display.c:957), which core's stateRuns now lights
-  // up off state.resting. The invented "Resting... (press any key to stop)" line
-  // that used to sit here was never cleared when the rest ended, so it outlived
-  // both a completed and a disturbed rest - and being an invented string, no
-  // census could see it.
-  render();
-
-  try {
-    for (;;) {
-      // Interruptions before spending the turn (a keypress, a monster already
-      // in view, or the world moved the player off the level): disturb().
-      if (dead || interrupted || anyVisibleMonster()) {
-        // Only the keypress arm reports it: "Cancelled." comes from
-        // check_for_player_interrupt (ui-game.c:663), and the monster /
-        // damage disturbs are silent. Said here rather than through the engine
-        // hook because this loop, not the engine, drives the rest (WP-11).
-        if (interrupted && !dead) say(t("main.command.cancelled", "Cancelled."));
-        break;
-      }
-
-      const hpBefore = p.chp;
-      const spBefore = p.csp;
-
-      // player_resting_step_turn (player-util.c:1472): decrement the timed
-      // count, bump the rested counter; the seams read these during advance().
-      if (rest.count > 0) rest.count -= 1;
-      // Upstream bumps TWO counters here (player-util.c:1487-1488) and this loop
-      // bumped one. player_turns_rested is the x2-regen gate that resets per
-      // rest; player->resting_turn is the lifetime total the character sheet's
-      // "Resting" line shows, and it is reset only at birth. Without this the
-      // sheet read 0 for every character forever. PORT_TODO 3.13.
-      rest.turnsRested += 1;
-      state.restingTurn = (state.restingTurn ?? 0) + 1;
-
-      // Take the turn: one hold action drives one player turn plus the world
-      // catching up (process_world regenerates; monsters act).
-      commandBuffer.push({ code: "hold" });
-      advance();
-
-      if (dead || state.generateLevel) break;
-
-      // Damage taken this turn disturbs the rest (take_hit's disturb()).
-      if (p.chp < hpBefore || p.csp < spBefore) break;
-
-      // A monster that just came into view disturbs the rest.
-      if (anyVisibleMonster()) break;
-
-      // Conditional-rest completion (player_resting_complete_special).
-      if (restingIsSpecial(rest.count) && restingCompleteSpecial(rest.count)) break;
-
-      // Timed rest exhausted (player_resting_count == 0, not special).
-      if (rest.count === 0 && !restingIsSpecial(rest.count)) break;
-
-      // Yield so the render/animation loop can paint between turns.
-      await new Promise<void>((r) => setTimeout(r, 0));
-    }
-  } finally {
-    inputEvents.removeEventListener("keydown", onStopKey, true);
-    delete (state as StateWithRest).resting;
-    void REST_REQUIRED_FOR_REGEN; // seam threshold; read by loop.ts (WIRING-NEEDED)
-    render();
-  }
+/** Rest uses the command queue so CMD_REPEAT remembers the player's request. */
+function driveRest(count: number): void {
+  if (anyVisibleMonster()) return;
+  commandBuffer.push({ code: "rest", args: { count } });
+  advance();
 }
 
 // --- High scores (task #28: score.c / ui-score.c) -------------------------
@@ -8794,15 +8645,15 @@ async function showFloorPileScreen(pile: GameObject[]): Promise<void> {
 // Feed player commands to the loop from a small buffer; runGameLoop pulls
 // through state.nextCommand and returns INPUT when the buffer empties.
 const commandBuffer: PlayerCommand[] = [];
-// CMD_REPEAT memory (cmd-core.c:247-258): the last non-repeat command handed to
-// the loop, so 'n' / ^V can re-dispatch it with its stored args (direction,
+// CMD_REPEAT memory (cmd-core.c:247-258): the last non-background, non-repeat
+// command handed to the loop, so 'n' / ^V can re-dispatch it with its stored args (direction,
 // item, target). Recorded as the loop consumes commands so it survives the
 // async prompt each shell command runs before pushing.
 let lastRepeatCmd: PlayerCommand | null = null;
 state.nextCommand = (): PlayerCommand | null => {
   const cmd = commandBuffer.shift() ?? null;
   if (cmd) emitPlayerCommand(cmd, "play", cmd.code === "repeat" ? lastRepeatCmd : null);
-  if (cmd && cmd.code !== "repeat") lastRepeatCmd = cmd;
+  if (cmd && cmd.code !== "repeat" && !cmd.background) lastRepeatCmd = cmd;
   return cmd;
 };
 
@@ -8853,11 +8704,6 @@ let caretPending = false;
 const keyRepeatTracker = createKeyRepeatTracker();
 setModKeyRepeatControl(() => keyRepeatTracker.last());
 state.checkInterrupt = (): InterruptResponse => {
-  /* The resting arm of the C's gate is answered by driveRest, which owns the
-   * rest lifecycle in this port (WP-11) and already yields - and pauses - once
-   * per rest turn. Pausing here as well would strand the {hold} it has queued
-   * in commandBuffer and double-count that turn. */
-  if (state.resting) return "go";
   if (interruptKey) {
     interruptKey = false;
     return "cancel";
@@ -11517,8 +11363,8 @@ function storeAtPlayer(): Store | null {
 
 /**
  * Re-enter the loop on the next macrotask to take the next step of a
- * self-continuing command (a run, a pathfind, an auto-repeated dig). The engine
- * already holds the continuation on its cmdQueue, so this consumes nothing and
+ * self-continuing command (a run, a rest, a pathfind, an auto-repeated dig).
+ * The engine already holds the continuation on its cmdQueue, so this consumes nothing and
  * decides nothing - it exists because the browser can only deliver the keypress
  * that ABORTS a run (check_for_player_interrupt, ui-game.c:645) when the event
  * loop turns. Upstream redraws every step of a run too (Term_fresh in

@@ -99,6 +99,8 @@ A controller can act in an open store. The host asks it for a decision at phase 
 
 `ui.commands.register(id, verb, run, options?)` registers a command a bound key or the command menu can run. Pass `{ direction: true }` and the game asks for a direction first, with the prompt the open, close and tunnel commands use; `run` receives `{ dir }` with the keypad digit 1 to 9, and Escape runs nothing. A key bound with `ui.keys.bind` to such a command's id reaches it that way, so a command that needs a direction, such as spiking a door, has a key. Without the option `run` receives no direction. Pass `{ turn: true }` as well and the key runs the command inside the player's turn: `run` returns `{ energy }` (0 to 1000, 100 is one standard turn) and the game spends it, so the monsters answer. Without `turn` the return value is ignored and the command costs nothing.
 
+Player commands with a nonzero `background` value do not replace the web repeat target. Web rest requests use Core's rest action and continuation queue, so `n` after `R 50` repeats the rest, including when a mod marks continuations with `background: 1`. Core's rest rules and RNG remain unchanged.
+
 A turn command can declare a host operation when the mod has the `classicSearch` policy and `registry:command`. The legal `hostOperation` names are `"classic-search"` and `"toggle-classic-search"`, and both require `turn: true`. The host runs the operation synchronously in either runtime and spends its energy in the player turn. It never calls the mod callback and never returns a discovery result. The same policy and grant gate continuous mode, and the mod needs no permission for hidden state. For example:
 
 ```ts

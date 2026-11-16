@@ -28,19 +28,10 @@ describe("WP-11 rest command (do_cmd_rest / textui_cmd_rest)", () => {
     expect(MAIN_TS).toMatch(/Math\.min\(turns, 9999\)/);
   });
 
-  it("drives the resting-state seam on GameState (loop.ts WIRING)", () => {
-    // player_is_resting / player_resting_can_regenerate read state.resting.
-    expect(MAIN_TS).toMatch(/StateWithRest\).resting = rest/);
-    expect(MAIN_TS).toMatch(/REST_REQUIRED_FOR_REGEN = 5/);
-    // player_resting_step_turn: decrement the count, bump the rested counter.
-    expect(MAIN_TS).toMatch(/rest\.count -= 1/);
-    expect(MAIN_TS).toMatch(/rest\.turnsRested \+= 1/);
-    // PORT_TODO 3.13: upstream bumps TWO counters here (player-util.c:1487-1488)
-    // and this loop bumped one. turnsRested is the per-rest x2-regen gate;
-    // state.restingTurn is the lifetime total the sheet's "Resting" line reads,
-    // and it is the ONLY writer - char-sheet.ts derives from it but nothing else
-    // increments it, so without this ratchet the write can be deleted silently.
-    expect(MAIN_TS).toMatch(/state\.restingTurn = \(state\.restingTurn \?\? 0\) \+ 1/);
+  it("uses Core rest so the counters have one owner", () => {
+    expect(MAIN_TS).toContain('commandBuffer.push({ code: "rest", args: { count } })');
+    expect(MAIN_TS).not.toContain("rest.turnsRested += 1");
+    expect(MAIN_TS).not.toContain("let restRepeatCount");
   });
 
   it("binds 'R' to the rest command (cmd_action ui-game.c:142)", () => {

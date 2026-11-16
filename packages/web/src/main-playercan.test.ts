@@ -70,19 +70,10 @@ describe("player_can_refuel_prereq gates 'F' at the key (player-util.c:1287)", (
 });
 
 describe("special-rest repeat-count reset (cmd-cave.c:1662-1664)", () => {
-  it("driveRest clears restRepeatCount for every special ('&'/'*'/'!') rest", () => {
-    const fn = src.slice(src.indexOf("async function driveRest"));
+  it("delegates the repeat count to Core rest", () => {
+    const fn = src.slice(src.indexOf("function driveRest"));
     const body = fn.slice(0, fn.indexOf("\n}\n"));
-    expect(body).toMatch(
-      /if \(restingIsSpecial\(n\)\) restRepeatCount = 0;/,
-    );
-    // Must run before the rest object is built and driven, matching every
-    // upstream turn of a special rest resetting it (resting_count stays
-    // negative for special rests, so the C always takes that branch).
-    const resetIdx = body.indexOf("restRepeatCount = 0");
-    const restObjIdx = body.indexOf("const rest: RestingState");
-    expect(resetIdx).toBeGreaterThan(-1);
-    expect(restObjIdx).toBeGreaterThan(-1);
-    expect(resetIdx).toBeLessThan(restObjIdx);
+    expect(body).toContain('commandBuffer.push({ code: "rest", args: { count } })');
+    expect(src).not.toContain("let restRepeatCount");
   });
 });

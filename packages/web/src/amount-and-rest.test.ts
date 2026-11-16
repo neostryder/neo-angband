@@ -15,8 +15,87 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import ts from "@typescript/typescript6";
+import { createDefaultRegistry, LOOP_STATUS, restAction, runGameLoop, TMD, type PlayerCommand } from "@rpgm-tools/neo-angband-core";
+import { makeState } from "../../core/src/game/harness.js";
 
 const MAIN = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
+
+describe("web rest and repeat memory", () => {
+  const source = ts.createSourceFile("main.ts", MAIN, ts.ScriptTarget.Latest, true);
+  const fn = (name: string): string => source.statements.find(
+    (s): s is ts.FunctionDeclaration => ts.isFunctionDeclaration(s) && s.name?.text === name,
+  )!.getText(source);
+  const provider = source.statements.find((s) => s.getText(source).startsWith("state.nextCommand ="))!.getText(source);
+
+  function harness(background: boolean) {
+    const state = makeState();
+    state.actor.player.timed[TMD.FOOD] = 5000;
+    const registry = createDefaultRegistry();
+    state.checkInterrupt = () => "pause";
+    registry.register("rest", (s, cmd) => {
+      const energy = restAction(s, cmd);
+      if (background) for (const continuation of s.cmdQueue ?? []) continuation.background = 1;
+      return energy;
+    });
+    const commandBuffer: PlayerCommand[] = [];
+    const advance = (): void => {
+      let status = runGameLoop(state, registry);
+      while (status === LOOP_STATUS.PAUSE) status = runGameLoop(state, registry);
+    };
+    const deps = {
+      state, commandBuffer, advance, emitPlayerCommand: () => {},
+      anyVisibleMonster: () => false, repeatPrevAllowed: () => true,
+      repeatDirSlots: () => [],
+    };
+    const emitted = ts.transpileModule(
+      `let lastRepeatCmd = null;
+${provider}
+${fn("driveRest")}
+${fn("repeatLastCommand")}
+return { rest: driveRest, repeat: repeatLastCommand, remembered: () => lastRepeatCmd };`,
+      { compilerOptions: { target: ts.ScriptTarget.ESNext } },
+    ).outputText;
+    const runtime = new Function(...Object.keys(deps), emitted)(...Object.values(deps)) as {
+      rest: (count: number) => void;
+      repeat: () => Promise<void>;
+      remembered: () => PlayerCommand | null;
+    };
+    return { state, runtime, commandBuffer, advance };
+  }
+
+  it.each([false, true])("repeats R 50 with background marking %s", async (background) => {
+    const h = harness(background);
+    await h.runtime.rest(50);
+    expect(h.state.restingTurn).toBe(50);
+    expect(h.runtime.remembered()?.code).toBe("rest");
+    await h.runtime.repeat();
+    expect(h.state.restingTurn).toBe(100);
+    expect(h.state.resting).toBeUndefined();
+    expect(h.state.cmdQueue ?? []).toEqual([]);
+  });
+
+  it.each([-1, -2, -3])("clears the remembered count after special rest %s", (count) => {
+    const h = harness(false);
+    h.runtime.rest(50);
+    h.runtime.rest(count);
+    expect(h.state.restRepeatCount).toBe(0);
+    expect(h.state.restingTurn).toBe(51);
+    h.runtime.rest(1);
+    expect(h.state.restingTurn).toBe(51);
+  });
+
+  it.each([1, 2])("skips background %s commands and still repeats ordinary commands", async (background) => {
+    const h = harness(false);
+    const original: PlayerCommand = { code: "hold" };
+    h.commandBuffer.push(original, { code: "noop", background });
+    h.advance();
+    expect(h.runtime.remembered()).toBe(original);
+    const before = h.state.actor.totalEnergy;
+    await h.runtime.repeat();
+    expect(h.state.actor.totalEnergy).toBe(before + h.state.z.moveEnergy);
+  });
+});
 
 /** The body of a top-level `function`/`async function` declaration, by name. */
 function functionBody(src: string, name: string): string {
@@ -128,38 +207,23 @@ describe("resting is announced by prt_state, not by a message", () => {
     expect(src).not.toMatch(/\bmessage\s*=/);
   });
 
-  it("still reports the interrupt upstream reports", () => {
-    /* "Cancelled." is real (check_for_player_interrupt, ui-game.c:663); the
-     * monster and damage disturbs are silent. Dropping the invented line must
-     * not take this one with it. */
-    expect(body).toContain('say(t("main.command.cancelled", "Cancelled."))');
+  it("lets Core check rest interrupts through the continuation pump", () => {
+    const provider = MAIN.slice(MAIN.indexOf("state.checkInterrupt ="), MAIN.indexOf("\n};", MAIN.indexOf("state.checkInterrupt =")));
+    expect(provider).not.toContain('if (state.resting) return "go"');
+    expect(provider).toContain('return "cancel"');
+    expect(provider).toContain('return "pause"');
   });
 
-  it("clears state.resting when the rest ends, so the field goes away", () => {
-    expect(body).toMatch(/delete \(state as StateWithRest\)\.resting/);
-  });
-
-  it("keeps state.resting live for the whole loop (the field's only source)", () => {
-    /* stateRuns reads state.resting through playerIsResting; assigning it before
-     * the loop and deleting it in the finally is what makes the status field
-     * appear and disappear at the right moments. */
-    const assign = body.indexOf("(state as StateWithRest).resting = rest");
-    const clear = body.indexOf("delete (state as StateWithRest).resting");
-    expect(assign).toBeGreaterThan(-1);
-    expect(clear).toBeGreaterThan(assign);
-  });
-
-  it("has exactly one player_resting_is_special, core's", () => {
-    /* There were three bodies of it: this file's, loop.ts's and display.ts's
-     * inline -1/-2/-3 tests. */
-    expect(MAIN).toMatch(/const restingIsSpecial = playerRestingIsSpecial;/);
-    expect(MAIN).not.toMatch(/function restingIsSpecial\(/);
+  it("leaves rest counters and cleanup to the Core action", () => {
+    expect(body).toContain('commandBuffer.push({ code: "rest", args: { count } })');
+    expect(body).not.toContain("state.resting");
+    expect(body).not.toContain('code: "hold"');
   });
 });
 
 /**
- * anyVisibleMonster (#225): resting's own monster-disturb check, gating every
- * turn of driveRest. It used to check MFLAG.VISIBLE, which telepathy sets at
+ * anyVisibleMonster (#225): resting's own monster-disturb check, gating the
+ * start of driveRest. It used to check MFLAG.VISIBLE, which telepathy sets at
  * unlimited range regardless of actual line of sight, and it never consulted
  * disturb_near at all - unlike known.ts's updateMon and monster-turn.ts's
  * monsterTurn, the only other two monster-visibility disturbs in the
