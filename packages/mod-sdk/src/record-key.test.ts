@@ -53,10 +53,8 @@ const EXPECTED_KEYED_FILES = [
 
 /**
  * The files this table made addressable at all. Before it existed, a per-record
- * op against any of them was silently dropped, so NOTHING in these files ever
- * had a working ref. That matters below: every legacy alias in the shipped pack
- * lives in one of these files, which is why dropping a shadowing alias costs no
- * ref anybody could have written.
+ * op against any of them was silently dropped. Legacy aliases occur only in
+ * this declared set; the census below checks that scope.
  */
 const ONCE_UNADDRESSABLE = EXPECTED_KEYED_FILES;
 
@@ -148,9 +146,8 @@ describe("RECORD_KEY_SPECS", () => {
   });
 
   it("leaves NO record of the shipped pack unaddressable", () => {
-    /* THE ONE THAT MATTERS. A key declared per FILE is not the same as every
-     * RECORD being reachable, and the difference used to be 73 records - 61 of
-     * ego_item's 107 among them, so "of Acid" could not be patched at all.
+    /* A key declared per file does not make every record reachable: repeated
+     * names need a ref that distinguishes their records.
      *
      * Reachable means: some ref resolves to this record ALONE. That is exactly
      * what the loader requires, so this measures the property a mod author
@@ -255,9 +252,8 @@ describe("RECORD_KEY_SPECS", () => {
     expect(keeps).toContain("ego_item: of *Slay Animal* -> of-slay-animal");
     expect(keeps).toHaveLength(11);
 
-    /* AND THE DROPS COST NOTHING. Every file carrying a legacy alias is one this
-     * key table made addressable in the first place, so no ref an author could
-     * have written against an older engine is among them. */
+    /* The alias census covers the files with explicit key specs. It does not
+     * establish whether an older mod used a dropped alias. */
     const files = new Set([...drops, ...keeps].map((row) => row.split(":")[0] as string));
     expect([...files].filter((f) => !ONCE_UNADDRESSABLE.includes(f))).toEqual([]);
   });

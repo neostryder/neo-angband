@@ -79,19 +79,6 @@ export type EngineVerdict =
 const OK: EngineVerdict = { ok: true };
 
 /**
- * Does `engineVersion` satisfy the pack's declared `engine` range?
- *
- * An ABSENT range is allowed, and that is not laxity: `engine` is optional on
- * PackManifest, most packs are pure data that no engine release breaks, and a pack
- * that declines to guess at future compatibility is making a reasonable choice. An
- * EMPTY OR MALFORMED range is not the same thing - the author meant to say
- * something and said something unreadable - so it is refused as an author error
- * rather than quietly treated as absent.
- *
- * Pure, and takes the version as an argument rather than importing it, so a test
- * can drive any build and so mod-sdk stays independent of core.
- */
-/**
  * Whether a NEWER game could satisfy this range, when the current one does not.
  *
  * WHY THIS IS NOT PART OF THE VERDICT. `engineVerdict` deliberately refuses to say
@@ -137,6 +124,15 @@ export function newerGameCouldRun(range: string, engineVersion: string): boolean
   return false;
 }
 
+/**
+ * Does `engineVersion` satisfy the pack's declared `engine` range?
+ *
+ * An absent range is allowed. An empty or malformed range is an author error:
+ * a code pack is blocked, while a data pack loads with a warning.
+ *
+ * Pure, and takes the version as an argument rather than importing it, so a test
+ * can drive any build and so mod-sdk stays independent of core.
+ */
 export function engineVerdict(
   manifest: Pick<PackManifest, "engine" | "modApi">,
   engineVersion: string,

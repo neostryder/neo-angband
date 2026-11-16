@@ -489,7 +489,7 @@ export const MOD_REQUIREMENTS: readonly Requirement[] = [
  * Deliberately gives back a report rather than throwing: an author wants the whole
  * list at once, and the installer wants to refuse with the reason. A rule that throws
  * unexpectedly is caught and reported as that rule failing, because one broken check
- * must not stop the other nine from being useful.
+ * must not stop the remaining checks from being useful.
  */
 export function checkMod(mod: ModUnderTest): CheckReport {
   const errors: Finding[] = [];

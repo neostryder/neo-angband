@@ -721,8 +721,8 @@ function composeKeeping(
        * because some pack's `records` for it are not name-keyed, and such a pack
        * is by definition a provider - so today providerId is never "" here. The
        * equivalent case for a COMPOSABLE file (a mod patches a file nobody
-       * supplies records for) is loud already: composePacks throws
-       * "patch target ... does not exist". This branch is kept, cordoned and
+       * supplies records for) is reported through composePacks' onRefuse callback.
+       * This branch is kept, cordoned and
        * documented rather than deleted, because if the classification ever
        * changes its absence would be a silent drop - the exact failure this file
        * exists to prevent. Covered by loader.test.ts only through the composable

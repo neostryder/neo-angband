@@ -402,17 +402,6 @@ export type Capability = string;
 export type PluginRuntime = "in-process" | "worker";
 
 /**
- * One graphics mode a `tiles`-facet pack contributes.
- *
- * This was read loosely off the raw JSON for a long time and was NOT in the
- * validated schema, which the moddability measurement recorded as a gap
- * (docs/modding/MOD_REACH.md). The consequence was specific rather than
- * theoretical: a typo in `grafID` or `path` produced no error anywhere - the entry
- * was silently skipped, and a mod author saw a Graphics row that simply never
- * appeared. Declaring it here means the manifest is refused at the edge, with the
- * mod's id and the offending field named.
- */
-/**
  * What a mod's repository contributes to its installed folder.
  *
  * Paths are relative to the repository root AND to the mod folder - the two are
@@ -435,6 +424,17 @@ export interface PackPayload {
   archives?: string[];
 }
 
+/**
+ * One graphics mode a `tiles`-facet pack contributes.
+ *
+ * This was read loosely off the raw JSON for a long time and was NOT in the
+ * validated schema, which the moddability measurement recorded as a gap
+ * (docs/modding/MOD_REACH.md). The consequence was specific rather than
+ * theoretical: a typo in `grafID` or `path` produced no error anywhere - the entry
+ * was silently skipped, and a mod author saw a Graphics row that simply never
+ * appeared. Declaring it here means the manifest is refused at the edge, with the
+ * mod's id and the offending field named.
+ */
 export interface PackTilePack {
   /**
    * The list.txt serial number this mode renders as. A `tilesheet` pack must claim
@@ -604,7 +604,7 @@ export interface PackManifest {
    */
   workerEntry?: string;
   /**
-   * Player-toggleable flags this pack owns (see PackRule). The bundled qol /
+   * Player-toggleable flags this pack owns (see PackRule). The qol /
    * bug-fixes mods use this to declare their fixes/tweaks for the in-app "Fixes
    * & tweaks" menu; the host resolves (choice ?? default), hands each mod its own
    * slice when it calls that mod's hooks.ts, and records the result on
@@ -1325,16 +1325,6 @@ function validateCompat(value: unknown, id: string, sectionIds: ReadonlySet<stri
 const TILE_ENGINES: readonly string[] = ["tilesheet", "linoleum"];
 
 /**
- * Validate the optional `tilePacks` array (PackTilePack[]); throws ManifestError.
- *
- * `path` is checked for being MOD-RELATIVE, and that check is the point rather than
- * tidiness. It used to be a site-root-relative URL base, which only a bundled mod
- * could ever get right; a manifest carrying the old form would resolve to
- * `mods/<id>/mods/<id>/...` and 404 into ASCII with nothing said. An absolute path, a
- * scheme, or a `..` escape is refused for the same reason a pack's code files are
- * read by pack-relative path: the host decides where a mod's bytes live.
- */
-/**
  * `payload`: two optional string arrays, at least one of them non-empty.
  *
  * An empty or all-empty payload is rejected rather than treated as "fall back to
@@ -1377,6 +1367,16 @@ function validatePayload(value: unknown, id: string): void {
   }
 }
 
+/**
+ * Validate the optional `tilePacks` array (PackTilePack[]); throws ManifestError.
+ *
+ * `path` is checked for being MOD-RELATIVE, and that check is the point rather than
+ * tidiness. It used to be a site-root-relative URL base, which only a bundled mod
+ * could ever get right; a manifest carrying the old form would resolve to
+ * `mods/<id>/mods/<id>/...` and 404 into ASCII with nothing said. An absolute path, a
+ * scheme, or a `..` escape is refused for the same reason a pack's code files are
+ * read by pack-relative path: the host decides where a mod's bytes live.
+ */
 function validateTilePacks(value: unknown, id: string): void {
   if (value === undefined) return;
   if (!Array.isArray(value)) {

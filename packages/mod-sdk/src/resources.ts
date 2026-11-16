@@ -49,9 +49,8 @@ import { parseDocument } from "./json/index.js";
  * The RESOURCE, never the mod. This is ratified decision 18 read through to its
  * conclusion: the engine range labels data and gates code, because data cannot
  * misbehave and code can. A resource is data of the least dangerous sort - a
- * picture, a sample, a page of text - so taking a mod's records away because its
- * splash art is a JPEG this build cannot decode would be a punishment with no
- * offence behind it.
+ * picture, a sample, a page of text - so taking a mod's records away because a
+ * sound file cannot be decoded would punish unrelated content.
  *
  * But nor is it merely reported, and that is the difference from the record
  * check in validate.ts. A record with a doubtful field still composes and the
@@ -113,7 +112,7 @@ export interface ResourceKindSpec {
    * time - a `.mp4` declared as `art` is a typo, not a format negotiation.
    */
   readonly extensions: readonly string[];
-  /** Whether an entry of this kind must name a `slot`, must not, or may. */
+  /** This rule requires or forbids a `slot` on entries of this kind. */
   readonly slot: "required" | "forbidden";
   /** One line for a message, naming what this kind is in a player's terms. */
   readonly describe: string;

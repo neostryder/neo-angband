@@ -173,6 +173,14 @@ export interface RegionSurface {
   hideCursor(): void;
 }
 
+export interface RegionPointer {
+  /** Region-local: (0, 0) is this region's top-left cell. */
+  readonly col: number;
+  readonly row: number;
+  /** A click or touch, or a right-click or long-press. */
+  readonly kind: "tap" | "context";
+}
+
 /**
  * A rectangle of your own on the player's screen.
  *
@@ -208,14 +216,6 @@ export interface RegionSurface {
  * wildcard ranges over which of the game's regions changes hands, and adding
  * one of your own is a different sentence for the player to agree to.
  */
-export interface RegionPointer {
-  /** Region-local: (0, 0) is this region's top-left cell. */
-  readonly col: number;
-  readonly row: number;
-  /** A click or touch, or a right-click or long-press. */
-  readonly kind: "tap" | "context";
-}
-
 export interface RegionDeclaration {
   /**
    * Your name for it, unique among YOUR regions. The host prefixes your mod id,

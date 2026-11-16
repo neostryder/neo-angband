@@ -1,119 +1,23 @@
 /**
- * Per-record identity for the record files whose identity is NOT a unique
- * string `name`.
+ * Per-record identity for files whose records lack a unique string `name`.
  *
- * CURRENT STATE, FIRST, BECAUSE THIS COMMENT USED TO MISLEAD. Every record file
- * is addressable per record today: 24 by a unique `name` and 20 by the explicit
- * specs in this file. `history` was the one exception until 2026-10-03, when it
- * gained its (chart, roll) key below. Two independent reviewers read
- * the older wording, took the "the other 20 files do not fit it" paragraph below
- * for the present tense, and filed the same non-existent P1 ("20 files silently
- * discard patch/replace/remove, including object, ego_item, vault, trap, store,
- * brand, slay, projection, constants"). Those nine are precisely the files this
- * table fixes. If you are about to report that bug, run record-key.test.ts.
+ * Explicit key specs keep patches tied to the fields that identify a record,
+ * rather than guessing from its display text. Files without a spec use `name`.
  *
- * AND "ADDRESSABLE PER FILE" IS NOT "EVERY RECORD ADDRESSABLE" (measured
- * 2026-08-08). Declaring a key per file left 73 individual records that NO ref
- * could name, because two or more of them claimed the same key: 61 of
- * `ego_item`'s 107 - more than half the file - plus 10 in `object` and 2 in
- * `vault`. A mod could not patch "of Acid" at all. That residue had two
- * completely different causes, and separating them is what let both be fixed
- * without inventing an identity:
+ * `keySlug` preserves "*" and "+" as "star" and "plus" so greater forms keep
+ * distinct keys. Repeated ego names also need an item-type discriminator;
+ * `recordRefKeys` offers both the base key and the discriminated key.
  *
- *  - INFORMATION THE SLUG THREW AWAY. `slugify` drops `*` and `+`, so
- *    "*Healing*" and "Healing" - two genuinely different objects, upstream's
- *    convention for the greater form - arrived as one key. Nothing was
- *    ambiguous about the data; the KEY was lossy. `keySlug` below spells the
- *    marks out ("star", "plus") instead of dropping them. That alone accounts
- *    for every collision in `object` and `vault` and for 16 of `ego_item`'s.
- *  - GENUINELY REPEATED NAMES. `ego_item` ships "of Acid" twice, distinguished
- *    only by which item types it applies to. No amount of care with the name
- *    separates them, so a DISCRIMINATOR is declared: extra paths appended after
- *    a "#", used only to tell same-named records apart. For `ego_item` that is
- *    the item types it applies to, which is not a guess - it is upstream's own
- *    identity for an ego, `lookup_ego_item(name, tval, sval)` in obj-util.c.
+ * The loader keeps a legacy slug as an alias unless it shadows a primary key.
+ * Older refs can therefore stop naming their former record when that key now
+ * belongs to another record. A ref with multiple claimants is unaddressable,
+ * while the records remain in the game and the loader reports the refused op.
  *
- * Result: 0 unaddressable records in the shipped pack, asserted in both
- * directions by record-key.test.ts.
+ * `history` uses chart and roll as its key and keeps whole-file replacement
+ * semantics because record order determines which history entry is chosen.
  *
- * NOTHING THAT USED TO RESOLVE STOPPED RESOLVING. A record answers to SEVERAL
- * refs, not one (`recordRefKeys` plus `legacyRecordKey`), and the old lossy slug
- * is kept as an alias. The alias is dropped where it would shadow another
- * record's primary key: "*Healing*"'s legacy alias IS "healing", which is plain
- * "Healing"'s primary, and a record's own history must not cost a different
- * record its name.
- *
- * THAT IS 8 RECORDS, NOT ONE, AND THE RULE IS CONDITIONAL ON CORE'S DATA. This
- * comment said "exactly one case" for a day, naming *Healing*, because nobody
- * counted. Measured over the shipped pack: 19 records carry a legacy alias, 8
- * lose it - 5 in `object` (*Enchant Armour*, *Remove Curse*, *Acquirement*,
- * *Healing*, *Enlightenment*), 2 in `ego_item` (of *Slay Orc*, of *Slay Troll*)
- * and 1 in `vault` (Little eruption+). It is NOT "a starred record loses its
- * alias": *Destruction* keeps both of its, as scroll and as staff, because core
- * ships no plain "Destruction" for it to shadow; *Slay Animal* keeps its for the
- * same reason but *Slay Orc* does not. The census is asserted row by row in
- * record-key.test.ts so the number cannot drift back into prose.
- *
- * And the 8 cost nothing: all 19 aliases live in files THIS TABLE made
- * addressable, so none of them was ever a ref an author could have written.
- *
- * WHY THIS EXISTS
- *
- * composePacks (compose.ts) USED TO key every record by
- * `packRef(pack, slugify(name))`. That is the right identity for the 24 upstream
- * record files whose records carry a unique `name` - monster, object_property,
- * terrain and so on - and it is what made `patches` / `replaces` /
- * `fieldPatches` / `removes` work there.
- *
- * As of 2026-08-08 composePacks keys by `recordRefKeys` from this file instead,
- * so the other 20 fit it too and 41 of the 44 files merge per record. What that
- * bought is the thing a name key could not do at all: ADDING a record to
- * `object`, `ego_item` or `vault`, which before was a whole-file replacement
- * that discarded every one of core's.
- *
- * The other 20 files did not fit it, for two measured reasons (counts taken over
- * packages/content/pack on 2026-07-29). This is the problem statement, not the
- * status:
- *
- *  - 14 files have no string `name` at all. Their identity lives somewhere else:
- *    `code` (brand, slay, chest_trap, projection), the tval half of a composite
- *    (`object_base`), the upstream `name:<name>:<desc>` line (trap), an index
- *    (pain, names), a plain other field (store, ui_knowledge, body, world,
- *    flavor, hints), or nowhere at all because the file is a single config
- *    singleton (constants, visuals).
- *  - 6 files DO have `name` but core's own data slugs two records to the same
- *    ref, mostly because slugify drops `*` and `+`: object has 5 such pairs
- *    ("Acquirement" / "*Acquirement*"), vault 1 ("Little eruption" /
- *    "Little eruption+"), and brand / slay / chest_trap name several records
- *    after the element rather than the variant. ego_item is the genuine case:
- *    "of Acid" exists twice, distinguished only by which item types it applies
- *    to - which are the very fields a mod would patch, so they cannot be part of
- *    its identity.
- *
- * Before this file existed, a per-record op against any of those 20 was
- * SILENTLY DROPPED (loader.ts stripped the whole contribution before compose saw
- * it). This table is what makes 19 of them addressable, and it is deliberately
- * an EXPLICIT declaration rather than a heuristic: guessing a key would trade a
- * silent drop for a silent mis-merge, which is worse. Every entry below was
- * verified unique over the shipped core pack (see record-key.test.ts, which
- * reads the real pack and fails if a declared key stops being unique).
- *
- * `history` was absent until 2026-10-03, on the reasoning that a record is
- * `{chart:{chart,next,roll}, phrase}` and a mod could change any part of it.
- * That left history.txt's phrases the one piece of gamedata no content patch
- * could correct. The identity upstream itself uses is (chart, roll): get_history
- * walks one chart's entries and takes the first whose cumulative `roll` reaches
- * the die, so a roll threshold appears once per chart (a repeat could never be
- * chosen), and `chart` is the node every `next` link names. Neither is the
- * phrase or the link, which are what a correction or a rewiring changes. The key
- * is declared `wholeFile`, because a chart's meaning is its records' ORDER: an
- * added record appended after core's would sit past the roll-100 entry where
- * get_history can never reach it.
- *
- * AMBIGUITY IS NAMED, NEVER GUESSED. A key that two records in the same file
- * claim (object's 5 pairs, ego_item's 25) makes that one ref unaddressable; the
- * records stay in the game and any op naming the ref becomes a reported problem.
- * The rest of the file remains addressable per record.
+ * record-key.test.ts checks the declared files and measures record reachability
+ * against the shipped pack.
  */
 
 import { slugify } from "./manifest.js";
@@ -283,9 +187,8 @@ function atPathThroughArrays(
  * non-alphanumeric run to a "-", which erases the two marks Angband uses to mean
  * "the greater form of this": "*Healing*" and "Little eruption+" arrived
  * indistinguishable from "Healing" and "Little eruption". Spelling the marks out
- * keeps the distinction inside an author-typeable ref. The old form is still
- * accepted as an alias (legacyRecordKey), so this widens what resolves rather
- * than moving it.
+ * keeps the distinction inside an author-typeable ref. The loader accepts the
+ * old form from legacyRecordKey only where it does not shadow a primary key.
  */
 function keySlug(value: string): string {
   return slugify(value.replace(/\*/g, " star ").replace(/\+/g, " plus "));
