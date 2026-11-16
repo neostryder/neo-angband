@@ -213,9 +213,12 @@ describe("startup mode and the production loader", () => {
       globalThis.window = page;
       globalThis.document = page.document;
       let arms = 0;
+      const measurements = new Map();
+      const history = new Set();
       globalThis.neoDesktop = {
-        recordMeasuredMod: () => true,
-        useMeasuredMod: () => "fixture-" + ++arms,
+        recordMeasuredMod: (id, digest) => { measurements.set(id, digest); history.add(JSON.stringify([id, digest])); return true; },
+        useMeasuredMod: (id, digest, cleanupOnly) =>
+          (cleanupOnly ? history.has(JSON.stringify([id, digest])) : measurements.get(id) === digest) ? "fixture-" + ++arms : null,
       };
       const setting = ${JSON.stringify(setting)};
       let saved = setting;
@@ -265,10 +268,27 @@ describe("startup mode and the production loader", () => {
       const granted = await api.desktopInstallation("good", bridge);
       api.invalidateModConsent("good");
       await api.desktopInstallation("good", bridge);
-      api.setConsentBindings(new Map([["good", "replacement"]]));
+      bytes.set("good/plugin.js", new TextEncoder().encode(sources.get("good") + " // replacement"));
+      await api.prepareModPayloads({ packs, assetUrl: async (id, file) => id + "/" + file }, () => tier,
+        async url => bytes.get(url));
+      api.defaultModStore().setDecisions("good", { granted: ["backup:folder"], refused: [], binding: api.consentBinding("good") }, "1.0.0");
+      const lateDecisions = [];
+      let finishConsent;
+      const lateBridge = { consent: decision => {
+        lateDecisions.push(decision);
+        return decision.release ? Promise.resolve({ ok: true }) : new Promise(resolve => { finishConsent = resolve; });
+      } };
+      const pending = api.desktopInstallation("good", lateBridge);
+      await Promise.resolve();
+      bytes.set("good/plugin.js", new TextEncoder().encode(sources.get("good") + " // replaced again"));
+      await api.prepareModPayloads({ packs, assetUrl: async (id, file) => id + "/" + file }, () => tier,
+        async url => bytes.get(url));
+      finishConsent({ ok: true, installation: "b".repeat(64), modId: "good", digest: lateDecisions[0].digest });
+      const lateReleased = await pending === null && lateDecisions.filter(d => d.release === true).length === 2 &&
+        lateDecisions.every(d => (typeof d.measuredToken === "string") === (setting === true));
       const consentKept = quiet === null && granted !== null && decisions[0].quiet === true &&
         decisions.some(d => d.revoke === true) && decisions.some(d => d.release === true) &&
-        decisions.every(d => (typeof d.measuredToken === "string") === (setting === true));
+        decisions.every(d => (typeof d.measuredToken === "string") === (setting === true)) && lateReleased;
       console.log(JSON.stringify({ enabled: api.modCompartmentsEnabled, frozen: Object.isFrozen(Object.prototype),
         plugins: report.plugins.map(p => p.id), problems: report.problems.map(p => p.id),
         samePage: report.plugins[0]?.plugin.scope === globalThis, urlCalls, rawPanel, consentKept }));

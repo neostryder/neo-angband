@@ -47,8 +47,8 @@ const installations = new Map<DesktopConsentBridge, Map<string, InstallationStat
 
 function withMeasuredIdentity(id: string, digest: string, decision: Record<string, unknown>): Record<string, unknown> {
   if (!modCompartmentsEnabled) return decision;
-  const desktop = (globalThis as { neoDesktop?: { useMeasuredMod?(modId: string, digest: string): string | null } }).neoDesktop;
-  const measuredToken = desktop?.useMeasuredMod?.(id, digest);
+  const desktop = (globalThis as { neoDesktop?: { useMeasuredMod?(modId: string, digest: string, cleanupOnly?: boolean): string | null } }).neoDesktop;
+  const measuredToken = desktop?.useMeasuredMod?.(id, digest, decision["release"] === true || decision["revoke"] === true);
   return typeof measuredToken === "string" ? { ...decision, measuredToken } : decision;
 }
 

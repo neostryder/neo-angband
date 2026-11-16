@@ -167,6 +167,30 @@ describe("preload rejection", () => {
     });
     expect(await desktop.consent({ modId: "qol", digest: measured, grants: [], destinations: [], measuredToken: token })).toEqual({ ok: false });
   });
+
+  it("allows only cleanup for a replaced measured payload", async () => {
+    await import("./preload.js");
+    const desktop = preload.globals["neoDesktop"] as {
+      configureModCompartments(enabled: boolean): void;
+      recordMeasuredMod(modId: string, digest: string): boolean;
+      useMeasuredMod(modId: string, digest: string, cleanupOnly?: boolean): string | null;
+      consent(decision: unknown): Promise<unknown>;
+    };
+    desktop.configureModCompartments(true);
+    const oldDigest = "a".repeat(64);
+    desktop.recordMeasuredMod("qol", oldDigest);
+    desktop.recordMeasuredMod("qol", "b".repeat(64));
+    expect(desktop.useMeasuredMod("qol", oldDigest)).toBeNull();
+    expect(desktop.useMeasuredMod("unknown", oldDigest, true)).toBeNull();
+    const cleanup = desktop.useMeasuredMod("qol", oldDigest, true);
+    expect(typeof cleanup).toBe("string");
+    await desktop.consent({ modId: "qol", digest: oldDigest, release: true, measuredToken: cleanup });
+    expect(preload.invoke).toHaveBeenCalledWith("neo-mod-authority", { modId: "qol", digest: oldDigest, release: true });
+    preload.invoke.mockClear();
+    const grant = desktop.useMeasuredMod("qol", oldDigest, true);
+    expect(await desktop.consent({ grants: ["backup:folder"], destinations: [], measuredToken: grant })).toEqual({ ok: false });
+    expect(preload.invoke).not.toHaveBeenCalled();
+  });
 });
 
 describe("native confirmation", () => {

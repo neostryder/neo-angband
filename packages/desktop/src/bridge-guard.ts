@@ -14,6 +14,7 @@ export const MOD_AUTHORITY_CHANNEL = "neo-mod-authority";
 export interface MeasuredCaller {
   readonly modId: string;
   readonly digest: string;
+  readonly cleanupOnly?: boolean;
 }
 
 /**
@@ -25,6 +26,8 @@ export function applyMeasuredConsent(arg: unknown, caller: MeasuredCaller | null
   if (!arg || typeof arg !== "object" || Array.isArray(arg)) return null;
   const a = arg as Record<string, unknown>;
   if (a["hostPurpose"] !== undefined) return null;
+  if (caller.cleanupOnly && (a["release"] !== true && a["revoke"] !== true ||
+    Object.keys(a).some((key) => !["modId", "digest", "release", "revoke", "measuredToken"].includes(key)))) return null;
   const next: Record<string, unknown> = { ...a, modId: caller.modId, digest: caller.digest };
   delete next["measuredToken"];
   return next;

@@ -57,6 +57,7 @@ function platformInfo(): HostBridgeInfo {
 
 const info = platformInfo();
 const measuredMods = new Map<string, string>();
+const measuredHistory = new Set<string>();
 const measuredTokens = new Map<string, MeasuredCaller>();
 let measuredTicket = 0;
 let modCompartments: boolean | undefined;
@@ -164,6 +165,7 @@ contextBridge.exposeInMainWorld("neoDesktop", {
   recordMeasuredMod(modId: string, digest: string): boolean {
     if (typeof modId !== "string" || !/^[a-f0-9]{64}$/u.test(digest)) return false;
     measuredMods.set(modId, digest);
+    measuredHistory.add(JSON.stringify([modId, digest]));
     return true;
   },
 
@@ -172,11 +174,12 @@ contextBridge.exposeInMainWorld("neoDesktop", {
   },
 
   /** The token binds a consent call to the host's retained measurement. */
-  useMeasuredMod(modId: string, digest: string): string | null {
-    if (measuredMods.get(modId) !== digest) return null;
+  useMeasuredMod(modId: string, digest: string, cleanupOnly = false): string | null {
+    // A replaced payload can still have an installation or a native prompt to release.
+    if (cleanupOnly ? !measuredHistory.has(JSON.stringify([modId, digest])) : measuredMods.get(modId) !== digest) return null;
     measuredTicket += 1;
     const token = `${measuredTicket}-${globalThis.crypto?.randomUUID?.() ?? measuredTicket}`;
-    measuredTokens.set(token, { modId, digest });
+    measuredTokens.set(token, { modId, digest, ...(cleanupOnly ? { cleanupOnly: true } : {}) });
     return token;
   },
 
