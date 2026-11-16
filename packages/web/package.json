@@ -16,11 +16,13 @@
     "sync-tiles": "node scripts/sync-tiles.mjs"
   },
   "dependencies": {
+    "@endo/module-source": "1.5.0",
     "@rpgm-tools/neo-angband-content": "workspace:*",
     "@rpgm-tools/neo-angband-core": "workspace:*",
     "@rpgm-tools/neo-angband-linoleum": "workspace:*",
     "@rpgm-tools/neo-angband-mod-sdk": "workspace:*",
-    "fflate": "^0.8.3"
+    "fflate": "^0.8.3",
+    "ses": "2.3.0"
   },
   "devDependencies": {
     "@types/pngjs": "^6.0.5",

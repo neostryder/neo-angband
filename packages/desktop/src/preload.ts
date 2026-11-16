@@ -40,7 +40,7 @@ import {
   UPDATE_PROGRESS_CHANNEL,
 } from "./bridge-channel.js";
 import type { HostBridgeInfo } from "./bridge-channel.js";
-import { MOD_AUTHORITY_CHANNEL, capLogBatch, hostFsCallIsSafe, hostFsFailure, updateCallIsSafe } from "./bridge-guard.js";
+import { MOD_AUTHORITY_CHANNEL, applyMeasuredConsent, capLogBatch, hostFsCallIsSafe, hostFsFailure, updateCallIsSafe, type MeasuredCaller } from "./bridge-guard.js";
 
 /** Ask the main process what the platform is, once, at preload time. */
 function platformInfo(): HostBridgeInfo {
@@ -56,6 +56,9 @@ function platformInfo(): HostBridgeInfo {
 }
 
 const info = platformInfo();
+const measuredMods = new Map<string, string>();
+const measuredTokens = new Map<string, MeasuredCaller>();
+let measuredTicket = 0;
 
 contextBridge.exposeInMainWorld("neoDesktop", {
   isDesktop: true,
@@ -152,9 +155,38 @@ contextBridge.exposeInMainWorld("neoDesktop", {
     return ipcRenderer.invoke(BACKUP_CHANNEL, op, arg) as Promise<unknown>;
   },
 
+  /**
+   * The renderer host records a digest it measured. A later call cannot be the
+   * first writer of a different digest for the same mod during this page load;
+   * replacement is allowed so a rediscovery can publish the new bytes.
+   */
+  recordMeasuredMod(modId: string, digest: string): boolean {
+    if (typeof modId !== "string" || !/^[a-f0-9]{64}$/u.test(digest)) return false;
+    measuredMods.set(modId, digest);
+    return true;
+  },
+
+  /** Arm one consent call. The token is the only way to name a mod on this bridge. */
+  useMeasuredMod(modId: string, digest: string): string | null {
+    if (measuredMods.get(modId) !== digest) return null;
+    measuredTicket += 1;
+    const token = `${measuredTicket}-${globalThis.crypto?.randomUUID?.() ?? measuredTicket}`;
+    measuredTokens.set(token, { modId, digest });
+    return token;
+  },
+
   /** The main process confirms new authority natively before issuing a handle. */
   consent(decision: unknown): Promise<unknown> {
-    return ipcRenderer.invoke(MOD_AUTHORITY_CHANNEL, decision) as Promise<unknown>;
+    if (decision && typeof decision === "object" && !Array.isArray(decision) &&
+      (decision as Record<string, unknown>)["hostPurpose"] !== undefined) {
+      return ipcRenderer.invoke(MOD_AUTHORITY_CHANNEL, decision) as Promise<unknown>;
+    }
+    const token = decision && typeof decision === "object" ? (decision as Record<string, unknown>)["measuredToken"] : undefined;
+    const caller = typeof token === "string" ? measuredTokens.get(token) ?? null : null;
+    if (typeof token === "string") measuredTokens.delete(token);
+    const next = applyMeasuredConsent(decision, caller);
+    if (!next) return Promise.resolve({ ok: false });
+    return ipcRenderer.invoke(MOD_AUTHORITY_CHANNEL, next) as Promise<unknown>;
   },
 
   /**

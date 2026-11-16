@@ -15,6 +15,11 @@ interface Payload {
 
 let payloads: ReadonlyMap<string, Payload> = new Map();
 
+function publishMeasuredMod(id: string, digest: string): void {
+  const desktop = (globalThis as { neoDesktop?: { recordMeasuredMod?(modId: string, digest: string): boolean } }).neoDesktop;
+  try { desktop?.recordMeasuredMod?.(id, digest); } catch { /* A browser tab has no desktop bridge. */ }
+}
+
 export function modPayloadDigest(id: string): string | null {
   return payloads.get(id)?.digest ?? null;
 }
@@ -136,6 +141,7 @@ export async function prepareModPayloads(
         const binding = await bounded(sha256Hex(new TextEncoder().encode(JSON.stringify([id, digest, tierOf(id).execution, [...new Set(pack.manifest.capabilities ?? [])].sort()])), subtle));
         const prior = payloads.get(id);
         next.set(id, prior?.digest === digest ? prior : { files, digest, repository: pack.manifest.repository ?? null, urls: new Map(), codeUrls: new Map() });
+        publishMeasuredMod(id, digest);
         bindings.set(id, binding);
       } catch {
         // A partial payload cannot authorize any code or permission.

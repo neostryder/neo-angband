@@ -44,14 +44,20 @@ interface InstallationState {
 
 const installations = new Map<DesktopConsentBridge, Map<string, InstallationState>>();
 
+function withMeasuredIdentity(id: string, digest: string, decision: Record<string, unknown>): Record<string, unknown> {
+  const desktop = (globalThis as { neoDesktop?: { useMeasuredMod?(modId: string, digest: string): string | null } }).neoDesktop;
+  const measuredToken = desktop?.useMeasuredMod?.(id, digest);
+  return typeof measuredToken === "string" ? { ...decision, measuredToken } : decision;
+}
+
 onModConsentChange((id) => {
   for (const [bridge, records] of installations) {
     const record = records.get(id);
     if (!record) continue;
     record.epoch.valid = false;
     records.delete(id);
-    void bridge.consent?.({ modId: id, digest: record.digest,
-      ...(consentBinding(id) !== record.binding ? { release: true } : { revoke: true }) }).catch(() => undefined);
+    void bridge.consent?.(withMeasuredIdentity(id, record.digest, { modId: id, digest: record.digest,
+      ...(consentBinding(id) !== record.binding ? { release: true } : { revoke: true }) })).catch(() => undefined);
   }
 });
 
@@ -86,11 +92,11 @@ export async function desktopInstallation(id: string, bridge: DesktopConsentBrid
     try {
       const previous = await prior?.result;
       if (!epoch.valid) return null;
-      const answer = installationAnswer(await bridge.consent!({ modId: id, digest, grants, destinations: hosts,
+      const answer = installationAnswer(await bridge.consent!(withMeasuredIdentity(id, digest, { modId: id, digest, grants, destinations: hosts,
         ...(quiet ? { quiet: true } : {}),
-        ...(previous ? { installation: previous.installation } : {}) }));
+        ...(previous ? { installation: previous.installation } : {}) })));
       if (!epoch.valid || consentBinding(id) !== binding || modPayloadDigest(id) !== digest) {
-        if (answer) await bridge.consent!({ modId: id, digest, release: true });
+        if (answer) await bridge.consent!(withMeasuredIdentity(id, digest, { modId: id, digest, release: true }));
         return null;
       }
       if (!answer && quiet && records.get(id) === state) records.delete(id);

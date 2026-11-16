@@ -137,7 +137,7 @@ function loadPackRecords<T>(name: string): T[] {
 function loadModCode(options: Parameters<typeof loadCode>[0]) {
   setConsentBindings(new Map(options.packs.map((pack) => [pack.manifest.id, "measured-fixture"])));
   vi.spyOn(snapshots, "modPayloadUrl").mockImplementation(async (id, file) => options.codeUrl?.(id, file) ?? null);
-  return loadCode({ tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }), ...options });
+  return loadCode({ importer: (url) => import(/* @vite-ignore */ url), tier: () => ({ trust: "first-party", execution: "in-process", capabilityTier: "first-party", seams: [], marksSave: [], why: "verified fixture" }), ...options });
 }
 
 afterEach(() => { vi.restoreAllMocks(); setConsentBindings(new Map()); });

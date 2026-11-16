@@ -3,7 +3,18 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { capLogBatch, confirmHostAction, desktopConsentReport, hostFsCallIsSafe, hostFsFailure, isSafeHostLeaf, updateCallIsSafe } from "./bridge-guard.js";
+import { applyMeasuredConsent, capLogBatch, confirmHostAction, desktopConsentReport, hostFsCallIsSafe, hostFsFailure, isSafeHostLeaf, updateCallIsSafe } from "./bridge-guard.js";
+
+describe("measured mod consent", () => {
+  it("replaces a caller-supplied identity with the host measurement and drops the token", () => {
+    const caller = { modId: "qol", digest: "a".repeat(64) };
+    expect(applyMeasuredConsent({ modId: "victim", digest: "b".repeat(64), grants: ["backup:folder"], destinations: [], measuredToken: "t" }, caller))
+      .toEqual({ modId: "qol", digest: "a".repeat(64), grants: ["backup:folder"], destinations: [] });
+    expect(applyMeasuredConsent({ modId: "qol", digest: "a".repeat(64), grants: [], destinations: [] }, null)).toBeNull();
+    expect(applyMeasuredConsent({ hostPurpose: "mod-profile-sync" }, caller)).toBeNull();
+    expect(applyMeasuredConsent({ modId: "qol" }, { modId: "qol", digest: "nope" })).toBeNull();
+  });
+});
 
 describe("host feature consent reports", () => {
   it("keeps host identity and capabilities under main-process control", () => {
@@ -112,6 +123,28 @@ describe("preload rejection", () => {
     expect(preload.send).not.toHaveBeenCalled();
     expect(preload.invoke).not.toHaveBeenCalled();
     expect(preload.sendSync).not.toHaveBeenCalled();
+  });
+
+  it("sends the host measurement instead of the mod id in the consent argument", async () => {
+    await import("./preload.js");
+    const desktop = preload.globals["neoDesktop"] as {
+      consent(decision: unknown): Promise<unknown>;
+      recordMeasuredMod(modId: string, digest: string): boolean;
+      useMeasuredMod(modId: string, digest: string): string | null;
+    };
+    const measured = "a".repeat(64);
+    preload.invoke.mockClear();
+    expect(await desktop.consent({ modId: "victim", digest: "b".repeat(64), grants: ["backup:folder"], destinations: [] })).toEqual({ ok: false });
+    expect(preload.invoke).not.toHaveBeenCalled();
+    expect(desktop.recordMeasuredMod("qol", measured)).toBe(true);
+    const token = desktop.useMeasuredMod("qol", measured);
+    expect(desktop.useMeasuredMod("qol", "b".repeat(64))).toBeNull();
+    preload.invoke.mockResolvedValueOnce({ ok: true });
+    await desktop.consent({ modId: "victim", digest: "b".repeat(64), grants: ["backup:folder"], destinations: [], measuredToken: token });
+    expect(preload.invoke).toHaveBeenCalledWith("neo-mod-authority", {
+      modId: "qol", digest: measured, grants: ["backup:folder"], destinations: [],
+    });
+    expect(await desktop.consent({ modId: "qol", digest: measured, grants: [], destinations: [], measuredToken: token })).toEqual({ ok: false });
   });
 });
 

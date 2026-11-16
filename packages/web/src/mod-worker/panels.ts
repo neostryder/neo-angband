@@ -1,6 +1,7 @@
 import { MOD_PERMISSION_TEXT } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModWorkerPanel, ModWorkerPanelNode, ModWorkerPanelPatch, WorkerJson } from "./protocol";
 import { panelDescription, panelPatch } from "./panel-schema";
+import { membraneTarget } from "../mod-dom-facade.js";
 import { closeTopModPanel, createModUi, modPresentationSuspended as modPanelsSuspended, onModPanelSuspension, topModPanelId } from "../panel-runtime";
 import { addControlDomOwner, inputEvents } from "../input-door";
 import type { ModPanel } from "../mod-plugin";
@@ -94,15 +95,16 @@ export function createModWorkerPanelRenderer(doc: Document = document): ModWorke
         close(); return;
       }
       const controls = [...root.querySelectorAll<HTMLElement>("button:not(:disabled),input:not(:disabled),a[href]")];
+      const focused = membraneTarget(host?.root.activeElement ?? doc.activeElement);
       if (["Tab", "ArrowDown", "ArrowUp", "ArrowLeft", "ArrowRight", "2", "4", "6", "8"].includes(event.key)) {
         if (!controls.length) return;
         event.preventDefault();
         event.stopImmediatePropagation();
-        const index = controls.indexOf((host?.root.activeElement ?? doc.activeElement) as HTMLElement);
+        const index = controls.indexOf(focused as HTMLElement);
         const step = ["ArrowUp", "ArrowLeft", "4", "8"].includes(event.key) || event.shiftKey ? -1 : 1;
         controls[(index + step + controls.length) % controls.length]!.focus();
       } else if (event.key === "Enter") {
-        const control = host?.root.activeElement ?? doc.activeElement;
+        const control = focused;
         if (control instanceof HTMLElement && control.matches("button,a[href],input[type=checkbox]")) {
           event.preventDefault(); event.stopImmediatePropagation(); control.click();
         }

@@ -1,3 +1,4 @@
+import "./mod-lockdown";
 import { TileModeState } from "./tile-mode-state";
 import { controlProfile } from "./control-profile";
 import { controlSurface, cancelAction, keyAction, directionActions, stopControlInput } from "./control-surface";

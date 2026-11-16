@@ -8,7 +8,27 @@
  */
 
 const UPDATE_TAG = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,254}$/u;
+const MEASURED_DIGEST = /^[a-f0-9]{64}$/u;
 export const MOD_AUTHORITY_CHANNEL = "neo-mod-authority";
+
+export interface MeasuredCaller {
+  readonly modId: string;
+  readonly digest: string;
+}
+
+/**
+ * The page can name any mod in a consent call. The preload substitutes the caller
+ * the host armed, and drops the token before the main process sees the report.
+ */
+export function applyMeasuredConsent(arg: unknown, caller: MeasuredCaller | null): Record<string, unknown> | null {
+  if (!caller || !MEASURED_DIGEST.test(caller.digest)) return null;
+  if (!arg || typeof arg !== "object" || Array.isArray(arg)) return null;
+  const a = arg as Record<string, unknown>;
+  if (a["hostPurpose"] !== undefined) return null;
+  const next: Record<string, unknown> = { ...a, modId: caller.modId, digest: caller.digest };
+  delete next["measuredToken"];
+  return next;
+}
 
 /**
  * Turn a page's consent request into an authority report, or null to refuse it.
