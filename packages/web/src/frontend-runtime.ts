@@ -293,9 +293,9 @@ class FrontendViews implements InstalledFrontend {
   }
 
   cycle(): void {
-    this.chosen = true;
     const views = this.views;
     if (views.length < 2) return;
+    this.chosen = true;
     const next = views[(views.findIndex((view) => view.id === this.active) + 1) % views.length]!;
     if (!this.release()) return;
     this.activate(next.id);

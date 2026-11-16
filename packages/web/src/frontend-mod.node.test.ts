@@ -28,6 +28,7 @@ import {
   frontendWorldFrameSink,
   installFrontend,
   registerWorkerFrontendView,
+  watchFrontendViews,
 } from "./frontend-runtime";
 import { activeModCode, loadModCode, PLUGIN_FILE, resetModCode, setModCode } from "./mod-code";
 import { modPluginContext } from "./mod-context";
@@ -229,6 +230,17 @@ describe("a disk-loaded frontend plugin", () => {
     installed.cycle();
     expect(installed.id).toBe("core");
     expect(glyph.present).not.toHaveBeenCalled();
+  });
+  it("selects a later Worker view after an inert glyph-only cycle", () => {
+    const installed = installFrontend([coreFrontendCandidate({ present() {} })], (id) => modPluginContext(id, {}), () => {});
+    const stop = watchFrontendViews(installed, () => {});
+    installed.cycle();
+    const unregister = registerWorkerFrontendView({
+      id: "incoming", manifest: { id: "incoming", name: "Incoming", version: "1", shape: "plugin", capabilities: ["display:replace"] },
+      current: () => true, plugin: { frontend: () => ({ present() {} }) },
+    });
+    try { expect(installed.id).toBe("incoming"); }
+    finally { unregister(); stop(); }
   });
   it("follows the shipped disk loader into a safely owned live WorldFrame", async () => {
     (globalThis as FrontendGlobal).__neoFrontendFrames = [];
