@@ -426,6 +426,9 @@ export interface DiscountRollContext {
 /** Returns a discount PERCENTAGE (0, or one of the rolled tiers). */
 export type DiscountRollHandler = (ctx: DiscountRollContext) => number;
 
+/** False rejects a random stock candidate without changing dungeon allocation. */
+export type StoreAllocationFilter = (kind: ObjectKind) => boolean;
+
 /**
  * Store behaviour a mod can add to, override or wrap.
  *
@@ -441,6 +444,15 @@ export class StoreBehaviourRegistry {
   private readonly mass = new Map<number, MassProduceHandler>();
   private readonly buy = new Map<number | typeof ANY_STORE, WillBuyHandler>();
   private discount: DiscountRollHandler | null = null;
+  private allocationFilter: StoreAllocationFilter | null = null;
+
+  registerAllocationFilter(handler: StoreAllocationFilter): void {
+    this.allocationFilter = handler;
+  }
+
+  allocationFilterHandler(): StoreAllocationFilter | null {
+    return this.allocationFilter;
+  }
 
   /** Install (or replace) the stack rule for a tval. */
   registerMassProduce(tval: number, handler: MassProduceHandler): void {
@@ -788,6 +800,8 @@ export function storeCreateRandom(ctx: StoreMaintContext, store: Store): boolean
 
     /* No chests in stores. */
     if (!kind || tvalIsChest(kind.tval)) continue;
+    /* Filtered candidates use the same bounded retry loop as black_market_ok. */
+    if (ctx.behaviour?.allocationFilterHandler()?.(kind) === false) continue;
 
     const obj = objectPrep(rng, reg, constants, kind, level, "randomise");
     /* depth 0: store stock is generated at the player's town depth, so no

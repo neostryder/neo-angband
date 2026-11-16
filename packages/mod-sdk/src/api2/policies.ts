@@ -35,6 +35,9 @@ import type {
   Api2HelpTextSite,
 } from "./hooks.js";
 
+/** Object content keys use the same spelling as content.lookup. */
+export type Api2StoreAllocationExcludePolicy = readonly { readonly file: "object"; readonly key: string }[];
+
 /** How a rule's `find` text matches: the whole text, anywhere in it (every occurrence), or its start. */
 export type Api2TextMatch = "exact" | "substring" | "prefix";
 
@@ -254,6 +257,7 @@ export interface Api2Policies {
   readonly levelRevisitTracking?: boolean;
   /** The discount a store gives on the stock it makes. */
   readonly storeDiscountRoll?: Api2DiscountRollPolicy;
+  readonly storeAllocationExclude?: Api2StoreAllocationExcludePolicy;
   readonly valueFloor?: Api2ValueFloorPolicy;
   /** Tiles for monsters and objects the tile pack does not draw. */
   readonly tileMap?: readonly Api2TileRule[];
@@ -329,6 +333,7 @@ export interface Api2PolicyRegistrations {
   walkBlockedByDiggable?: Api2WalkBlockedByDiggablePolicy;
   /** Installed as the stores' discount roll. */
   discountRoll?: Api2DiscountRoll;
+  storeAllocationExclude?: Api2StoreAllocationExcludePolicy;
   valueFloor?: Api2ValueFloorPolicy;
   /** Installed as the game's projection radius seam. */
   projectionRadiusClamp?: true;
@@ -1031,6 +1036,26 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
         for (const tier of tiers) if (roll.oneIn(tier.oneIn)) return tier.percent;
         return 0;
       };
+    },
+  },
+  {
+    name: "storeAllocationExclude",
+    capability: "registry:store",
+    summary: "Excludes selected object kinds from random store stock, including the black market.",
+    target: { registration: "storeAllocationExclude" },
+    check(value) {
+      if (!Array.isArray(value) || value.length > 256) return "storeAllocationExclude lists at most 256 object selectors";
+      for (const selector of value as unknown[]) {
+        if (!isRecord(selector)) return "storeAllocationExclude selectors are objects";
+        const extra = unknownField("storeAllocationExclude", selector, ["file", "key"]);
+        if (extra) return extra;
+        if (selector["file"] !== "object" || typeof selector["key"] !== "string" || selector["key"].length < 1 || selector["key"].length > 160 || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(selector["key"])) return "storeAllocationExclude needs object content keys of 1 to 160 plain characters";
+      }
+      return null;
+    },
+    apply(value, out) {
+      const selectors = value as Api2StoreAllocationExcludePolicy;
+      if (selectors.length) out.registrations.storeAllocationExclude = selectors.map((selector) => ({ ...selector }));
     },
   },
   {

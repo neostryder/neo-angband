@@ -691,6 +691,7 @@ describe("policy tables that install registrations", () => {
     historyDisplay: [{ find: "a", replace: "b" }], objectListOrder: ["dy"], saveNoiseScent: true,
     shapeLearnObviousFlagsDirectly: true, cursedLightRadius: true, completeRestEffects: ["AMNESIA"],
     storeDiscountRoll: { tiers: [{ oneIn: 1, percent: 20 }] },
+    storeAllocationExclude: [{ file: "object", key: "staff--attunement" }],
     tileMap: [{ monster: 2, like: 1 }], projectionRadiusClamp: true, levelRevisitTracking: true,
     monsterArcheryFrequency: { greaterThan: 25 }, forceFromBlastCenter: true, forgetUnlitImpassableTerrain: true, monsterLoreCompleteness: true, monsterOwnDropThefts: true,
     valueFloor: { kind: "valueFloor", tvals: [10, 11], appliesTo: "egoOrPositiveToA", comparison: "cheapestPlainSameTvalWithStrictlyGreaterAc", price: "objectValueReal" },
@@ -718,7 +719,7 @@ describe("policy tables that install registrations", () => {
     const plugin = api2Plugin({ api: "^2.0.0", policies: () => tables },
       () => ({ grants: capabilities("tables", ["registry:store"]) }));
     expect(Object.keys(load("tables", plugin).hooks ?? {})).toEqual([]);
-    expect(Object.keys(api2PluginRegistrations(plugin, "tables", { loud: true }) ?? {})).toEqual(["discountRoll"]);
+    expect(Object.keys(api2PluginRegistrations(plugin, "tables", { loud: true }) ?? {})).toEqual(["discountRoll", "storeAllocationExclude"]);
   });
 
   const definition = defineApi2Mod({
@@ -747,6 +748,22 @@ describe("policy tables that install registrations", () => {
     const expected = Array.from({ length: 20 }, () => (twin.oneIn(2) ? 30 : twin.oneIn(3) ? 60 : 0));
     const handler = stores.discountRollHandler();
     expect(Array.from({ length: 20 }, () => handler?.({ rng, cost: 100 }))).toEqual(expected);
+  });
+  it("combines store exclusions and releases each inactive contribution", () => {
+    const stores = new StoreBehaviourRegistry();
+    let first = true;
+    let second = true;
+    installApi2PolicyRegistrations({ storeAllocationExclude: [{ file: "object", key: "staff--attunement" }] }, { stores, tiles: null }, () => first);
+    installApi2PolicyRegistrations({ storeAllocationExclude: [{ file: "object", key: "rod--attunement" }] }, { stores, tiles: null }, () => second);
+    const staff = { name: "Attunement", tval: TV.STAFF } as Parameters<NonNullable<ReturnType<StoreBehaviourRegistry["allocationFilterHandler"]>>>[0];
+    const rod = { ...staff, tval: TV.ROD };
+    expect(stores.allocationFilterHandler()!(staff)).toBe(false);
+    expect(stores.allocationFilterHandler()!(rod)).toBe(false);
+    first = false;
+    expect(stores.allocationFilterHandler()!(staff)).toBe(true);
+    expect(stores.allocationFilterHandler()!(rod)).toBe(false);
+    second = false;
+    expect(stores.allocationFilterHandler()!(rod)).toBe(true);
   });
 
   it("answers as if nothing were installed once the mod is no longer active", () => {

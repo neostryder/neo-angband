@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { bindConstants } from "../constants.js";
 import { FEAT, OF, TV } from "../generated/index.js";
@@ -79,6 +80,46 @@ function context(): { ctx: StoreMaintContext; stores: Store[] } {
 }
 
 describe("store maintenance (store.c store_reset/store_maint)", () => {
+  it("keeps seeded stock and the random stream identical without allocation filters", () => {
+    const snapshot = (withRegistry: boolean) => {
+      const { ctx, stores } = context();
+      if (withRegistry) {
+        ctx.behaviour = new StoreBehaviourRegistry();
+        registerCoreStoreBehaviour(ctx.behaviour);
+      }
+      storeReset(ctx);
+      return JSON.stringify({ stock: stores.map((store) => store.stock.map((obj) => ({
+        kind: obj.kind.kidx, number: obj.number, pval: obj.pval, toH: obj.toH, toD: obj.toD, toA: obj.toA,
+        modifiers: obj.modifiers, flags: [...obj.flags], ego: obj.ego?.eidx, timeout: obj.timeout,
+      }))), rng: ctx.rng.getState() });
+    };
+    const baseline = snapshot(false);
+    expect(snapshot(true)).toBe(baseline);
+    expect(createHash("sha256").update(baseline).digest("hex")).toBe("54558366b8c7034f39705571a82dc8bdabbfbec653c08c7b9b84161369f6018a");
+  });
+  it.each([FEAT.STORE_MAGIC, FEAT.STORE_BLACK])("redraws excluded allocation kinds in store %s within the six attempts", (feat) => {
+    const { ctx, stores } = context();
+    const store = stores.find((entry) => entry.feat === feat)!;
+    const excluded = reg.kinds.find((kind) => kind.tval === TV.STAFF && kind.cost >= 10)!;
+    const allowed = reg.kinds.find((kind) => kind.tval === TV.ROD && kind.cost >= 10)!;
+    let draws = 0;
+    store.normalTable = [excluded, allowed];
+    if (feat === FEAT.STORE_BLACK) ctx.deps.alloc.getObjNum = () => ++draws === 1 ? excluded : allowed;
+    else ctx.rng.randint0 = (n) => n === 2 ? (++draws === 1 ? 0 : 1) : 0;
+    ctx.behaviour = new StoreBehaviourRegistry();
+    registerCoreStoreBehaviour(ctx.behaviour);
+    ctx.behaviour.registerAllocationFilter((kind) => kind !== excluded);
+    expect(storeCreateRandom(ctx, store)).toBe(true);
+    expect(draws).toBeGreaterThanOrEqual(2);
+    expect(store.stock.some((obj) => obj.kind === excluded)).toBe(false);
+    expect(store.stock.some((obj) => obj.kind === allowed)).toBe(true);
+    store.stock.length = 0;
+    ctx.behaviour.registerAllocationFilter(() => false);
+    draws = 0;
+    expect(storeCreateRandom(ctx, store)).toBe(false);
+    expect(draws).toBe(6);
+    expect(store.stock).toHaveLength(0);
+  });
   /*
    * history_lose_artifact (store.c:1087 inside store_delete_random, and :1303
    * in the black-market purge). Store generation never makes an artifact, so

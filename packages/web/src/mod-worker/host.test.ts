@@ -33,6 +33,8 @@ import {
   startGame,
   saveGame,
   ObjRegistry,
+  StoreBehaviourRegistry,
+  TV,
   Rng,
   bindConstants,
   objectPrep,
@@ -45,6 +47,7 @@ import {
   type GamePack,
   type GameState,
   type Monster,
+  type ObjectKind,
   type ModNet,
   type ModNetResponse,
   type StartedGame,
@@ -1383,6 +1386,7 @@ describe("a Worker mod's hooks", () => {
     historyDisplay: [{ find: "a", replace: "b" }], objectListOrder: ["dy"], saveNoiseScent: true,
     shapeLearnObviousFlagsDirectly: true, cursedLightRadius: true, completeRestEffects: ["AMNESIA"],
     storeDiscountRoll: { tiers: [{ oneIn: 1, percent: 20 }] },
+    storeAllocationExclude: [{ file: "object", key: "staff--attunement" }],
     tileMap: [{ monster: 2, like: 1 }], projectionRadiusClamp: true, levelRevisitTracking: true,
     monsterArcheryFrequency: { greaterThan: 25 }, forceFromBlastCenter: true,
     forgetUnlitImpassableTerrain: true, monsterLoreCompleteness: true, monsterOwnDropThefts: true,
@@ -1420,7 +1424,7 @@ describe("a Worker mod's hooks", () => {
       { grants: ["registry:store"], onHooks: (policies, _notify, found) => { hooks = Object.keys(policies); registrations = found; } });
     await wired.session.ready;
     expect(hooks).toEqual([]);
-    expect(Object.keys(registrations)).toEqual(["discountRoll"]);
+    expect(Object.keys(registrations)).toEqual(["discountRoll", "storeAllocationExclude"]);
   });
 
   it("applies its policy tables synchronously, answering neutrally until the Worker is ready", async () => {
@@ -1542,6 +1546,30 @@ describe("a Worker mod's hooks", () => {
       const option = { name: "birth_randarts", description: "Random artifacts", value: true, defaultValue: false };
       expect(hooks?.birthOptionAnnotation?.(option) ?? null).toEqual(consent ? policies.birthOptionAnnotations![0] : null);
       expect(hooks?.birthConfirmOptions?.({ options: [option] }) ?? false).toBe(consent);
+    }
+  });
+  it.each([true, false])("uses the same store object selectors with consent %s in both runtimes", async (consent) => {
+    const policies: Api2Policies = { storeAllocationExclude: [{ file: "object", key: "staff--attunement" }, { file: "object", key: "rod--attunement" }] };
+    const definition: Api2ModDefinition = { api: API, policies: () => policies };
+    let registrations: Api2PolicyRegistrations = {};
+    const granted = consent ? ["registry:store"] : [];
+    const wired = wire(definition, { grants: granted, onHooks: (_hooks, _notify, found) => { registrations = found; } });
+    await wired.session.ready;
+    const grants = CapabilitySet.fromManifest({ id: "stock", name: "Stock", version: "1.0.0", shape: "plugin", capabilities: granted });
+    const plugin = api2Plugin(definition, () => ({ grants }));
+    plugin.hooks!(modPluginContext("stock", {}, undefined, {}, { capabilities: grants }));
+    const { api2PluginRegistrations } = await import("../mod-api2-shim");
+    for (const declaration of [registrations, api2PluginRegistrations(plugin, "stock", {}) ?? {}]) {
+      let active = true;
+      const stores = new StoreBehaviourRegistry();
+      installApi2PolicyRegistrations(declaration, { stores, tiles: null }, () => active);
+      const allowed = (tval: number, name: string) => stores.allocationFilterHandler()?.({ tval, name } as ObjectKind) ?? true;
+      expect(allowed(TV.STAFF, "Attunement")).toBe(!consent);
+      expect(allowed(TV.ROD, "Attunement")).toBe(!consent);
+      expect(allowed(TV.WAND, "Attunement")).toBe(true);
+      expect(allowed(TV.STAFF, "Other")).toBe(true);
+      active = false;
+      expect(allowed(TV.STAFF, "Attunement")).toBe(true);
     }
   });
 });

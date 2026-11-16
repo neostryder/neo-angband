@@ -257,6 +257,8 @@ describe("createModRegistryHost - capability gating", () => {
     expect(() => host.profiles.list()).toThrow(/registry:profile/);
     expect(() => host.blows.names()).toThrow(/registry:blow/);
     expect(() => host.stores.massProduceTvals()).toThrow(/registry:store/);
+    expect(() => host.stores.setAllocationFilter(() => false)).toThrow(/registry:store/);
+    expect(() => host.stores.allocationFilterHandler()).toThrow(/registry:store/);
     expect(() => host.menus.handlerFor("core:game-menu")).toThrow(/registry:menu/);
     expect(() => host.tiles.register(() => undefined)).toThrow(/registry:tiles/);
   });
@@ -547,6 +549,10 @@ describe("createModRegistryHost - the store facade", () => {
     expect(t._stores.massProduceFor(999)).not.toBeNull();
     host.stores.setWillBuy(42, () => true);
     expect(t._stores.willBuyFor(42)).not.toBeNull();
+    const filter = () => false;
+    host.stores.setAllocationFilter(filter);
+    expect(t._stores.allocationFilterHandler()).toBe(filter);
+    expect(host.stores.allocationFilterHandler()).toBe(filter);
   });
 });
 

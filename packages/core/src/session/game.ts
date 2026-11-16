@@ -3742,11 +3742,11 @@ export function startGame(pack: GamePack, opts: StartGameOptions = {}): StartedG
     resolveInitialStoreDiscounts = (): void => {
       if (resolved) return;
       resolved = true;
-      if (state.storeBehaviour?.discountRollHandler() === null) return;
+      if (state.storeBehaviour?.discountRollHandler() === null && state.storeBehaviour.allocationFilterHandler() === null) return;
       /* Re-run only town stock from the original pre-store RNG state. The main
        * stream keeps the state used to create the rest of this already-live
-       * game, while the recreated shelves now take the registered discount
-       * branch before storeCarry can merge their stacks. */
+       * game, while the recreated shelves take the registered allocation and
+       * discount rules before storeCarry can merge their stacks. */
       const townRng = new Rng(1);
       townRng.setState(townRngState);
       state.stores = createTownStores(

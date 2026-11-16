@@ -104,6 +104,20 @@ describe("the return to town spends the accrued days (store.c:1422)", () => {
 });
 
 describe("fresh-town store behaviour registered by a plugin", () => {
+  it("rebuilds initial random stock for a filter without changing the main stream", () => {
+    const game = startGame(pack, { seed: 21, depth: 0 });
+    const { state } = game;
+    const excluded = state.stores!.find((store) => store.feat === FEAT.STORE_BLACK)!.stock[0]!.kind;
+    const rng = state.rng.getState();
+    const host = createModRegistryHost({ stores: state.storeBehaviour! }, { has: (capability) => capability === "registry:store" });
+    host.stores.setAllocationFilter((kind) => kind !== excluded);
+    game.resolveInitialStoreDiscounts();
+    expect(state.stores!.find((store) => store.feat === FEAT.STORE_BLACK)!.stock.some((obj) => obj.kind === excluded)).toBe(false);
+    expect(state.rng.getState()).toEqual(rng);
+    const stock = stockOf(state);
+    game.resolveInitialStoreDiscounts();
+    expect(stockOf(state)).toBe(stock);
+  });
   it("resolves a registered discount into the real initial stock and listing price", () => {
     const game = startGame(pack, { seed: 21, depth: 0 });
     const { state } = game;

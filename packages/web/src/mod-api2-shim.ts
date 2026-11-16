@@ -14,12 +14,13 @@
  * job lives in API 2, or why it has no API 2 form.
  */
 
-import type { ControllerKeyPress, DiscountRollHandler, GameObject, ModHooks, PlayerTileProvider, ModPluginContext, TvalValueAdjustContext, TvalValueAdjustHandler } from "@rpgm-tools/neo-angband-core";
-import { MOD_HOOK_FOLDS, inputToken, movementTunnelTest, objectValueReal, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, TV, type CaveCmdDeps, type GameState, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
+import type { ControllerKeyPress, DiscountRollHandler, GameObject, ModHooks, PlayerTileProvider, ModPluginContext, StoreAllocationFilter, TvalValueAdjustContext, TvalValueAdjustHandler } from "@rpgm-tools/neo-angband-core";
+import { MOD_HOOK_FOLDS, inputToken, movementTunnelTest, objectValueReal, prefErrorPolicy, setPrefErrorPolicy, tokenIsCurrent, tunnelAux, tvalFindName, TV, type CaveCmdDeps, type GameState, type PlayerCommand, type PrefErrorPolicy } from "@rpgm-tools/neo-angband-core";
 import {
   api2PolicyEffects,
   apiRangeVerdict,
   checkApi2Policies,
+  recordKey,
   type Api2HookName,
   type Api2Hooks,
   type Api2ModDefinition,
@@ -228,6 +229,8 @@ export interface Api2PolicyTargets {
     readonly cancelInput: (escapeCount: number) => void;
   };
   readonly stores: {
+    registerAllocationFilter?(handler: StoreAllocationFilter): void;
+    allocationFilterHandler?(): StoreAllocationFilter | null;
     registerDiscountRoll(handler: DiscountRollHandler): void;
     discountRollHandler?(): DiscountRollHandler | null;
   } | null;
@@ -452,6 +455,15 @@ export function installApi2PolicyRegistrations(
     state.isIgnored = (object: GameObject) => active() && shouldIgnoreByPolicy(ignoreRules, object) ? true : prior?.(object) ?? false;
   }
   const roll = registrations.discountRoll;
+  const excluded = registrations.storeAllocationExclude;
+  if (excluded && targets.stores?.registerAllocationFilter) {
+    const keys = new Set(excluded.map((selector) => selector.key));
+    const prior = targets.stores.allocationFilterHandler?.();
+    targets.stores.registerAllocationFilter((kind) => {
+      if (prior?.(kind) === false) return false;
+      return !active() || !keys.has(recordKey("object", { type: tvalFindName(kind.tval), name: kind.name }) ?? "");
+    });
+  }
   if (roll && targets.stores) {
     const prior = targets.stores.discountRollHandler?.();
     targets.stores.registerDiscountRoll((ctx) => (active() ? roll({ cost: ctx.cost, oneIn: (n) => ctx.rng.oneIn(n) }) : prior?.(ctx) ?? 0));

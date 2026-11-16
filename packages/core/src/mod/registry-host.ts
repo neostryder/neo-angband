@@ -142,6 +142,7 @@ import { blowEffect } from "../combat/mon-melee.js";
 import type {
   DiscountRollHandler,
   MassProduceHandler,
+  StoreAllocationFilter,
   StoreBehaviourRegistry,
   WillBuyHandler,
 } from "../store/store.js";
@@ -612,6 +613,9 @@ export interface BlowFacade {
  * buy-list logic.
  */
 export interface StoreFacade {
+  /** A random stock veto; false retries within store_create_random's six attempts. */
+  setAllocationFilter(handler: StoreAllocationFilter): void;
+  allocationFilterHandler(): StoreAllocationFilter | null;
   /** Install (or replace) the stack rule for a tval (mass_produce). */
   setMassProduce(tval: number, handler: MassProduceHandler): void;
   /** The stack rule currently installed for a tval, or null. */
@@ -1465,6 +1469,14 @@ export function createModRegistryHost(
       },
     },
     stores: {
+      setAllocationFilter(handler): void {
+        requireCap(capabilities, "store");
+        requireTarget(targets.stores, "store").registerAllocationFilter(handler);
+      },
+      allocationFilterHandler(): StoreAllocationFilter | null {
+        requireCap(capabilities, "store");
+        return requireTarget(targets.stores, "store").allocationFilterHandler();
+      },
       setMassProduce(tval, handler): void {
         requireCap(capabilities, "store");
         requireTarget(targets.stores, "store").registerMassProduce(tval, handler);

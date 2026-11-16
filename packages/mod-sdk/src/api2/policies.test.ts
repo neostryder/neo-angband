@@ -16,6 +16,16 @@ import {
 } from "./policies.js";
 
 describe("checkApi2Policies", () => {
+  it("validates object selectors for store allocation and requires the store grant", () => {
+    const policy = { storeAllocationExclude: [{ file: "object", key: "staff--attunement" }] } as const;
+    expect(checkApi2Policies(policy)).toBeNull();
+    expect(api2PolicyEffects(policy).registrations.storeAllocationExclude).toEqual(policy.storeAllocationExclude);
+    expect(api2PolicyEffects(policy, () => false).registrations).toEqual({});
+    expect(api2PolicyEffects({ storeAllocationExclude: [] }).registrations).toEqual({});
+    for (const value of [true, [{ file: "monster", key: "kobold" }], [{ file: "object", key: "" }], [{ file: "object", key: "x\ny" }], [{ file: "object", key: "x", extra: true }], Array(257).fill({ file: "object", key: "x" })]) {
+      expect(checkApi2Policies({ storeAllocationExclude: value })).not.toBeNull();
+    }
+  });
   it("validates birth row annotations and gates both birth policies", () => {
     const policies = { birthOptionAnnotations: [{ name: "birth_randarts", mark: "R", hint: "Random artifacts." }], birthConfirmOptions: true };
     expect(checkApi2Policies(policies)).toBeNull();
@@ -320,6 +330,7 @@ describe("API2_POLICY_KINDS", () => {
       historyDisplay: "registry:message", objectListOrder: "registry:tval", saveNoiseScent: "registry:monster",
       shapeLearnObviousFlagsDirectly: "registry:rune", cursedLightRadius: "registry:ui-entry", completeRestEffects: "registry:command",
       storeDiscountRoll: "registry:store", valueFloor: "registry:tval", tileMap: "registry:tiles",
+      storeAllocationExclude: "registry:store",
       projectionRadiusClamp: "registry:projection", levelRevisitTracking: "registry:monster", monsterArcheryFrequency: "registry:monster", forceFromBlastCenter: "registry:projection", forgetUnlitImpassableTerrain: "registry:projection", monsterLoreCompleteness: "registry:monster", monsterOwnDropThefts: "registry:monster",
     });
   });
@@ -330,7 +341,7 @@ describe("API2_POLICY_KINDS", () => {
     for (const kind of API2_POLICY_KINDS) {
       expect(kind.summary.length).toBeGreaterThan(0);
       if ("hook" in kind.target) expect(API2_HOOK_NAMES).toContain(kind.target.hook);
-      else expect(["statusTerrainFromMemory", "loadRehydration", "experienceUpdates", "flagIntersectionResult", "classicSearch", "missileCritFromState", "forcedDescentStairs", "randartSetSize", "trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
+      else expect(["statusTerrainFromMemory", "loadRehydration", "experienceUpdates", "flagIntersectionResult", "classicSearch", "missileCritFromState", "forcedDescentStairs", "randartSetSize", "trapAllocation", "monsterOwnDropThefts", "monsterLoreCompleteness", "forgetUnlitImpassableTerrain", "forceFromBlastCenter", "monsterArcheryFrequency", "discountRoll", "storeAllocationExclude", "tileFiller", "walkBlockedByDiggable", "prefErrors", "startingOptions", "ignore", "displayOptions", "purgeInput", "valueFloor", "projectionRadiusClamp", "levelRevisitTracking"]).toContain(kind.target.registration);
     }
   });
 

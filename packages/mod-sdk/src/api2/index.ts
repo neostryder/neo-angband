@@ -93,6 +93,7 @@ export type {
   Api2CursedLightRadiusPolicy,
   Api2DiscountRoll,
   Api2DiscountRollPolicy,
+  Api2StoreAllocationExcludePolicy,
   Api2MonsterArcheryFrequencyPolicy,
   Api2DisplayOptionsPolicy,
   Api2PurgeInputPolicy,
