@@ -85,7 +85,9 @@ describe("the three claims it must never make", () => {
   it("says the panic save IS delivered when the host reports signals", () => {
     /* The point of reading live capabilities: this line changes without the page
      * being edited. */
-    expect(text(ctx({ caps: { ...TAB, signals: true } }))).toContain("now delivered");
+    const delivered = text(ctx({ caps: { ...TAB, signals: true } }));
+    expect(delivered).toContain("Panic save: now delivered.");
+    expect(delivered).not.toMatch(/does not|not delivered/u);
   });
 });
 

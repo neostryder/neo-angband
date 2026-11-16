@@ -67,7 +67,7 @@ export interface ModFolderPicker {
   pick(): Promise<string | null>;
   /** Re-grant read permission for the saved folder. */
   reconnect(): Promise<boolean>;
-  /** Stop using the saved folder (the bundled mods remain). */
+  /** The folder choice is forgotten without deleting its files. */
   forget(): Promise<void>;
   /** The saved folder's name, when one is remembered. */
   savedName(): Promise<string | null>;

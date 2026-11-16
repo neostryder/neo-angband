@@ -111,14 +111,14 @@ export function noFolderPickerLines(): ScreenLine[] {
     {
       text: t(
         "modsScreen.noPicker.body4",
-        "mod on offer arrives that way - checked against a digest that",
+        "mod on offer arrives that way. The game records its repository",
       ),
       color: C_FG,
     },
     {
       text: t(
         "modsScreen.noPicker.body5",
-        "ships inside the game, so a tampered download never runs.",
+        "and blocks replacements from a different repository.",
       ),
       color: C_FG,
     },

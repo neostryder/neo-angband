@@ -14,10 +14,6 @@ import { type HostFolder } from "../host-folder";
  * is in it, and what could not be read. On one without, it says so - which is
  * the same honesty the old "Install from URL" row had, arrived at from the other
  * side now that the directory actually works.
- *
- * Neither surface has a runtime code loader, so neither can fetch and RUN a mod
- * from a URL. A folder you copied in is a different thing: its records are data,
- * composed at load time by the same pipeline the bundled mods use.
  */
 export async function showModSources(
   term: GridSurface & GridPointerInput,
@@ -99,14 +95,14 @@ export async function showModSources(
       {
         text: t(
           "modsScreen.sources.installed.body2",
-          "a folder, so there is no path to show. Each was checked against a",
+          "a folder, so there is no path to show. The game records",
         ),
         color: C_FG,
       },
       {
         text: t(
           "modsScreen.sources.installed.body3",
-          "digest before a byte of it was unpacked, and the mod manager names",
+          "file digests for later checks, and the mod manager names",
         ),
         color: C_FG,
       },
@@ -165,7 +161,7 @@ export async function showModSources(
         ),
         color: C_FG,
       },
-      { text: t("modsScreen.sources.folder.addBody3", "exactly the layout a bundled mod has."), color: C_FG },
+      { text: t("modsScreen.sources.folder.addBody3", "with file names such as monster.json or object.json."), color: C_FG },
       { text: "", color: C_FG },
       {
         text: t("modsScreen.sources.folder.loadOrderBody1", "load-order.json in that folder is owned by an external mod"),
@@ -356,7 +352,7 @@ export async function manageModFolder(
       t("modsScreen.manageFolder.stopUsing", 'Stop using "{name}"', { name: savedName }),
       "forget",
       C_DIM,
-      t("modsScreen.manageFolder.stopUsingHint", "The bundled mods stay; nothing on your disk is touched."),
+      t("modsScreen.manageFolder.stopUsingHint", "Your installed mods stay; nothing on your disk is touched."),
     );
   }
   add(
@@ -394,7 +390,7 @@ export async function manageModFolder(
           color: C_FG,
         },
         {
-          text: t("modsScreen.manageFolder.usingBody2", "you turn it on - the same as a bundled one."),
+          text: t("modsScreen.manageFolder.usingBody2", "you turn it on."),
           color: C_FG,
         },
       ]);

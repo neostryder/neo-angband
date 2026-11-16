@@ -93,9 +93,9 @@ describe("noFolderPickerLines", () => {
 
   it("names the route that DOES work in this browser", () => {
     expect(text).toContain("Recommended mods...");
-    /* And says why it is safe, because "download from the internet" is the part a
-     * cautious player would otherwise stop at. */
-    expect(text).toMatch(/digest/iu);
+    expect(text).toMatch(/records its repository/iu);
+    expect(text).toMatch(/blocks replacements from a different repository/iu);
+    expect(text).not.toMatch(/digest|tampered download never runs/iu);
   });
 
   it("says plainly that nothing is missing", () => {
