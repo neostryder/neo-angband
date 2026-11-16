@@ -16310,7 +16310,7 @@ const workerGrants = (loaded: LoadedModWorker): readonly string[] => unifiedCapa
         flags,
         engine: ENGINE_VERSION,
         newCharacter: sessionFacts.newCharacter ?? false,
-        controllerArmed: context.controllerArmed === true,
+        controllerArmed: context.controllerArmed === true || reloadStorage.getItem(AUTOPLAYER_JUST_CONFIRMED_KEY) === autoplayerConfirmationKey(loaded.id),
         net: context.net !== undefined,
         api: (options) => createApi2Host(context, { grants: capabilities, panels: workerPanelRenderer, ...options, execution: "worker" }),
         readAsset: async (path) => {

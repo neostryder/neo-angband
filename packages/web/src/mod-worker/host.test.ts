@@ -2029,7 +2029,36 @@ it("reports character arming across a Ctrl-Z save reload to a Worker without eng
   }
   expect(seen).toEqual([false, false, true, true]);
   const main = readFileSync(new URL("../main.ts", import.meta.url), "utf8");
-  expect(main).toContain("controllerArmed: context.controllerArmed === true,");
+  expect(main).toContain("controllerArmed: context.controllerArmed === true || reloadStorage.getItem(AUTOPLAYER_JUST_CONFIRMED_KEY) === autoplayerConfirmationKey(loaded.id),");
+});
+
+it("arms only the confirming Worker when the character save did not land", async () => {
+  const main = readFileSync(new URL("../main.ts", import.meta.url), "utf8");
+  const expression = main.match(/^\s*controllerArmed: (.+),$/mu)![1]!;
+  const grants = ["input:controller", "input:intent", "state:interaction.read"];
+  const game = startGame(pack, { seed: SEED, depth: DEPTH });
+  const saved = structuredClone(saveGame(game));
+  game.state.actor.player.noscore |= NOSCORE.BORG;
+  const restored = loadGame(pack, saved);
+  const context = modPluginContext("probe", {}, restored.state);
+  expect(context.controllerArmed).not.toBe(true);
+  const confirmationKey = "neo-angband-autoplayer-just-confirmed";
+  const values = new Map<string, string>();
+  const reloadStorage = { getItem: (key: string) => values.get(key) ?? null };
+  const seen: boolean[] = [];
+  for (const [confirmation, expected] of [["probe:binding", true], ["other:binding", false], ["probe:old-binding", false], [null, false]] as const) {
+    values.clear();
+    if (confirmation !== null) values.set(confirmationKey, confirmation);
+    const controllerArmed = new Function("context", "reloadStorage", "AUTOPLAYER_JUST_CONFIRMED_KEY", "autoplayerConfirmationKey", "loaded", `return ${expression};`)(
+      context, reloadStorage, confirmationKey, (id: string) => `${id}:binding`, { id: "probe" },
+    ) as boolean;
+    const wired = wire({ api: API, armed: ({ armed }) => { seen.push(armed); return armed; }, controller: () => undefined },
+      { grants, controllerArmed, api: hostApi({ game: restored, grants }) });
+    await wired.session.ready;
+    expect(wired.session.controllerArmed()).toBe(expected);
+    expect(values.get(confirmationKey) ?? null).toBe(confirmation);
+  }
+  expect(seen).toEqual([true, false, false, false]);
 });
 
 it("runs a declarative Worker title action through the host's row", async () => {
