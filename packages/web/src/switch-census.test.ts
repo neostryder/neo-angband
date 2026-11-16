@@ -387,9 +387,10 @@ describe("the switch census", () => {
      * mod-loadout-snapshot mechanism, superseded by player/testing profiles),
      * dropping this chain to 8, #76's stash-view row put it back to 9, #87's
      * Save a Delve / Load a Delve rows moved it to 11, #158's sync-folder
-     * row moved it to 12, and the Mod performance row to 13 - still the same
+     * row moved it to 12, the Mod performance row to 13, and Mod compartments
+     * to 14 - still the same
      * row throughout, and the arm count is what moved. */
-    expect(keys.has("IF_CHAIN|packages/web/src/mod-manager/classic-manager.ts|13")).toBe(true);
+    expect(keys.has("IF_CHAIN|packages/web/src/mod-manager/classic-manager.ts|14")).toBe(true);
   });
 
   it("has no CANDIDATE left, which is what the alpha gate asked for", () => {
