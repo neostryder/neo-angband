@@ -2,7 +2,7 @@
 
 API 2 is the set of calls a mod's code gets from the game: what it can read, what it can do, and what it hears. Every call returns plain data, a permission the player turned down comes back as a result you can check, and reads show the game as the player knows it. The types are in `@rpgm-tools/neo-angband-mod-sdk`, and the in-process host is in the web package (`packages/web/src/mod-api2-host.ts`).
 
-The mod API has its own version number, which is not the game's. This game implements API 2.4.0, and a mod's `api` range is checked against that number alone, so a new game version can ship with the same API.
+The mod API has its own version number, which is not the game's. This game implements API 2.5.0, and a mod's `api` range is checked against that number alone, so a new game version can ship with the same API.
 
 Status: the types, the version check, the in-process host, the Worker broker and the folder loader are built. The loader runs an in-process API 2 mod wrapped as a plugin (`api2Plugin` in `packages/web/src/mod-api2-shim.ts`), runs a Worker mod through the broker (see In a Worker), and runs API 1 plugins unchanged.
 
@@ -35,7 +35,7 @@ export default defineApi2Mod({
 
 ## Versions
 
-`api` is a semver range over the API's own version, `MOD_API2_VERSION` (now `2.4.0`). The game's version is for diagnostics only. The minor number rises when the API gains a call. The major number rises when an existing call changes or goes away, so `>=2.0.0 <3.0.0` (`MOD_API2_DEFAULT_RANGE`) is the range to declare.
+`api` is a semver range over the API's own version, `MOD_API2_VERSION` (now `2.5.0`). The game's version is for diagnostics only. The minor number rises when the API gains a call. The major number rises when an existing call changes or goes away, so `>=2.0.0 <3.0.0` (`MOD_API2_DEFAULT_RANGE`) is the range to declare.
 
 A loader calls `apiRangeVerdict(range)` before importing any mod code. It returns `{ ok: true }`, or `ok: false` with a `code` and a `why` sentence naming both versions. The code is `malformed` when the range is missing or does not parse. It is `too-new` when every version the range names has a higher major number than this game's API, so the mod needs a newer game, and `too-old` when every one has a lower major number, so the mod needs an update. Any other miss is `outside`, such as `>=2.5.0 <3.0.0` on a game with API 2.3.0.
 
@@ -85,6 +85,8 @@ Mod API 2.2.0 adds the policies `completeRestEffects`, `cursedLightRadius`, `mon
 Mod API 2.3.0 adds the policies `forcedDescentStairs`, `missileCritFromState`, `classicSearch`, `messagePauseAfter`, `runEndLine`, and `birthConfirmNote`, the hooks `messagePauseAfter`, `runEndLine`, `birthOptionHighlight`, and `birthConfirmNote`, the `hostOperation` command option, the classified `help` page on help views, the `ATTUNE` effect name, and remembered shop stock in `simulateLoadout`. A mod that relies on any of them declares ">=2.3.0 <3.0.0".
 
 Mod API 2.4.0 adds `context.settings`, the `{ marker: "LIGHT_CURSE" }` form of `cursedLightRadius` with the `light-curse` content marker, and the policies `flagIntersectionResult`, `experienceUpdates`, and `loadRehydration`. A mod that relies on any of them declares `">=2.4.0 <3.0.0"`.
+
+Mod API 2.5.0 adds the policy `statusTerrainFromMemory`. A mod that relies on it declares `">=2.5.0 <3.0.0"`.
 ### The controller
 
 The manifest checker reports `input:controller` through the existing undeclared-capability diagnostic when an API 2 or legacy controller declaration leaves it out. After a Ctrl-Z confirmation, the immediate reload arms the matching in-process controller, with the same consent binding as Worker controllers.
@@ -99,7 +101,7 @@ A controller can act in an open store. The host asks it for a decision at phase 
 
 `ui.commands.register(id, verb, run, options?)` registers a command a bound key or the command menu can run. Pass `{ direction: true }` and the game asks for a direction first, with the prompt the open, close and tunnel commands use; `run` receives `{ dir }` with the keypad digit 1 to 9, and Escape runs nothing. A key bound with `ui.keys.bind` to such a command's id reaches it that way, so a command that needs a direction, such as spiking a door, has a key. Without the option `run` receives no direction. Pass `{ turn: true }` as well and the key runs the command inside the player's turn: `run` returns `{ energy }` (0 to 1000, 100 is one standard turn) and the game spends it, so the monsters answer. Without `turn` the return value is ignored and the command costs nothing.
 
-Player commands with a nonzero `background` value do not replace the web repeat target. Web rest requests use Core's rest action and continuation queue, so `n` after `R 50` repeats the rest, including when a mod marks continuations with `background: 1`. Core's rest rules and RNG remain unchanged.
+A player command with a nonzero `background` value does not replace what the repeat key repeats. In the browser and desktop shell, rest runs through Core's rest action and its continuation queue, so `n` after `R 50` repeats the rest, including when a mod marks rest continuations with `background: 1`. Core's rest rules and random numbers are unchanged.
 
 A turn command can declare a host operation when the mod has the `classicSearch` policy and `registry:command`. The legal `hostOperation` names are `"classic-search"` and `"toggle-classic-search"`, and both require `turn: true`. The host runs the operation synchronously in either runtime and spends its energy in the player turn. It never calls the mod callback and never returns a discovery result. The same policy and grant gate continuous mode, and the mod needs no permission for hidden state. For example:
 
@@ -246,7 +248,7 @@ With the load-rehydration policy, new saves record the last noise source and its
 
 `flagIntersectionResult: "removedBits"` selects upstream 0347703f7 for the value that flag-intersection calls return. To use it, pass a `FlagSetContext` with `flagIntersectionResult` to `flagInter(a, b, context)`, `flagsMask(bits, context, ...flags)`, `new FlagSet(sizeOrBits, context)`, or `FlagSet.forFlags(maxFlag, context)`. The host policy hook supplies that member, and an in-process caller can pass its session hooks directly. `inter`, `mask`, and `clone` keep the receiving set's context, and a live context can follow policy changes. A utility call without a context returns the 4.2.6 inequality result. The mutation and the RNG stay the same, and no process-wide setting is involved.
 
-`statusTerrainFromMemory: true` builds the terrain status from remembered terrain and traps, applying the remembered feature's mimic. Unknown terrain produces no terrain or trap text, including leftover trap memory. The policy uses `registry:ui-entry` because it controls status display information. Both runtimes install the same host rule, folded `any-yes`. An absent or false policy keeps the original status text and RNG.
+`statusTerrainFromMemory: true` builds the status line's terrain entry from remembered terrain and remembered traps, and shows a remembered feature as the feature it mimics. When the terrain is unknown, the entry shows no terrain and no trap text, even if trap memory is left over. The policy needs capability `registry:ui-entry` because it changes what the status display shows. Both runtimes, in-process and Worker, install the same host rule, and declarations fold `any-yes`. Absent or false keeps the original status text and random numbers.
 
 `missileCritFromState: true` takes missile critical inputs, including bow and throw skills, from the computed inspection state instead of the live player state. The host applies the rule in both runtimes, and declarations fold `any-yes`. The policy changes item information only, and O-combat and combat rolls keep their rules. An absent or false policy keeps the original text and RNG. The stock bow and throw skill coefficients are zero.
 

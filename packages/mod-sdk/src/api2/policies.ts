@@ -200,7 +200,7 @@ export interface Api2Policies {
   readonly forcedDescentStairs?: boolean;
   /** True uses computed state inputs for missile criticals in item information. */
   readonly missileCritFromState?: boolean;
-  /** True uses remembered terrain, traps, and feature mimics in the status line. */
+  /** True uses remembered terrain, traps, and feature mimics for the status line's terrain entry. */
   readonly statusTerrainFromMemory?: boolean;
   /** True enables host-owned classic search commands and continuous search mode. */
   readonly classicSearch?: boolean;
@@ -956,7 +956,7 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   registrationSwitch("monsterLoreCompleteness", "Uses upstream lore masks, completeness checks, and first-sight learning.", "registry:monster"),
   registrationSwitch("forgetUnlitImpassableTerrain", "Forgets remembered impassable terrain without light, except with UNLIGHT.", "registry:projection"),
   registrationSwitch("classicSearch", "Enables host-owned classic searches and continuous search mode.", "registry:command"),
-  registrationSwitch("statusTerrainFromMemory", "Uses remembered terrain, traps, and feature mimics in the status line.", "registry:ui-entry"),
+  registrationSwitch("statusTerrainFromMemory", "Uses remembered terrain, traps, and feature mimics for the status line's terrain entry.", "registry:ui-entry"),
   registrationSwitch("missileCritFromState", "Uses computed state for missile critical inputs in item information.", "registry:effect-info"),
   registrationSwitch("forcedDescentStairs", "Prevents new up stairs under forced descent and keeps seeded connectors.", "registry:room"),
   registrationSwitch("forceFromBlastCenter", "Applies FORCE thrust from the blast centre, including coincident targets.", "registry:projection"),

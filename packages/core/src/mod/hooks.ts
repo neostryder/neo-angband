@@ -337,7 +337,7 @@ export interface ModHooks {
   forcedDescentStairs?: () => boolean;
   /** object-info.ts: computed missile critical inputs stay with their supplied state. */
   missileCritFromState?: () => boolean;
-  /** True uses remembered terrain, traps, and feature mimics in the status line. */
+  /** display.ts: true uses remembered terrain, traps, and feature mimics for the status line's terrain entry. */
   statusTerrainFromMemory?: () => boolean;
   /** player-turn.ts: the host runs classic search and its continuous mode. */
   classicSearch?: () => boolean;

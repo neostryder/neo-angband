@@ -58,7 +58,7 @@ Game behaviour living in `switch` statements with nothing to register into is no
 | `experienceUpdates` | `player/exp.ts`, `adjustLevel`, from session `ExpDeps` | Skip derived updates when the current level is unchanged | Experience and maximum-level bookkeeping; any actual level change |
 | `loadRehydration` | `session/game.ts`, at the end of `loadGame`, and learned curse views | Recover learned object knowledge and rebuild missing noise from saved history | Dead characters, unknown runes, saved heatmaps, or missing historical sources |
 | `classicSearch` | `game/player-turn.ts`, continuous mode speed, regeneration, and status | Enable classic searches that the host runs from declared turn commands | Hidden state never leaves the host; passive search outside continuous mode keeps 4.2.6 rules |
-| `statusTerrainFromMemory` | `game/display.ts` | Use remembered terrain, traps, and feature mimics in the status line | Unknown terrain and leftover trap memory stay hidden |
+| `statusTerrainFromMemory` | `game/display.ts` | Show remembered terrain, traps, and mimicked features in the status line's terrain entry | Unknown terrain and leftover trap memory stay hidden |
 | `missileCritFromState` | `obj/object-info.ts` | Use computed state inputs for missile criticals in item information | Combat rolls, O-combat, and the live player state |
 | `forcedDescentStairs` | `gen/generate.ts`, `gen/util.ts`, `gen/room.ts`, `game/effect-terrain.ts` | Prevent new up stairs under forced descent | Seeded reciprocal connectors, which stay in place |
 | `monsterOwnDropThefts` | `mon/steal.ts`, reached from `game/steal.ts` | Count stolen own drops with 16-bit saturation | Item provenance or lore writes in a Worker |

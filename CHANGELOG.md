@@ -50,6 +50,7 @@ still calls itself.
 
 ### Added
 
+- [Visible] [Modding-API] **Mods can make the status line show remembered terrain.** With `statusTerrainFromMemory` (capability `registry:ui-entry`) set to true, the status line's terrain entry follows later upstream and uses remembered terrain and remembered traps, with a remembered feature shown as the feature it mimics, so a secret door shows as granite wall. When the player does not know the terrain underfoot, the status line shows no terrain and no trap, even if old trap memory is left over. Absent or false keeps the original status text, built from the true terrain.
 - [Visible] [Modding-API] **Mods can choose which timed effects a complete rest waits out.** The `completeRestEffects` policy (capability `registry:command`) takes a list of up to 64 timed-effect names that replaces the game's ten standard effects. An empty list means no timed effect blocks a complete rest, and null or an absent policy keeps the standard ten. The policy is folded last-answer, so the last mod in load order wins.
 - [Visible] [Modding-API] **Mods can make cursed light sources give no light.** With `cursedLightRadius` (capability `registry:ui-entry`) set to true, a wielded item with an active curse or the sticky flag gives no light. Absent or false keeps the original behavior, where a cursed light still shines.
 - [Visible] [Modding-API] **Mods can set how often archer monsters shoot before keeping their distance.** `monsterArcheryFrequency: { greaterThan: N }` (capability `registry:monster`, N from 0 to 100) sets the archery frequency a monster with archery spells must exceed before it prefers to keep its distance, using a strict bound. Without the policy the original test applies (frequency below 4).
@@ -79,10 +80,11 @@ still calls itself.
 
 ### Changed
 
-- [Visible] [Modding-API] **The game implements mod API 2.4.0, up from 2.1.0 in the last release.** A mod declaring `">=2.0.0 <3.0.0"` loads as before. A mod that needs a 2.2.0, 2.3.0, or 2.4.0 addition declares that version as its lower bound, for example `">=2.4.0 <3.0.0"`, so an older game refuses it with a version message instead of ignoring the declaration.
+- [Visible] [Modding-API] **The game implements mod API 2.5.0, up from 2.1.0 in the last release.** A mod declaring `">=2.0.0 <3.0.0"` loads as before. A mod that needs a 2.2.0, 2.3.0, 2.4.0, or 2.5.0 addition declares that version as its lower bound, for example `">=2.5.0 <3.0.0"`, so an older game refuses it with a version message instead of ignoring the declaration.
 
 ### Fixed
 
+- [Visible] [Parity] **The repeat key `n` now repeats a counted rest.** After resting with a count, such as `R` then 50, `n` repeats the rest as the original does, where before it repeated a single turn of holding still because the browser and desktop shell ran rest as a series of hold commands instead of the game's own rest action. A command a mod marks as background no longer replaces what `n` repeats.
 - [Visible] [UI] **The desktop app now remembers the profile sync folder and each mod's backup folder across updates.** Before this fix, every update made you pick the folder again and started a new subfolder, so old backups stayed behind and two computers on different app builds never shared sync files. On first use after updating, the game adopts your existing folders and renames the old subfolder when it is safe to do so, without deleting any files. An updated mod still needs your approval before it can use the folder. (neostryder/neo-angband#498)
 - [Visible] [Modding-API] **The `wield` command now honors `args.slot` for a ring when it names an empty ring slot.** Previously, when another ring slot was also empty, the ring went to the hand the game would have picked.
 - [Internal] [Save-Compat] **Saves with out-of-range player experience now fail to load with a clear error.** This covers maximum experience below 0 or above the game's cap, current experience below 0 or above the maximum, and experience that is not a whole number. Such saves previously loaded a broken character.

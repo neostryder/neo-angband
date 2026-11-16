@@ -7081,7 +7081,7 @@ async function restCmd(): Promise<void> {
   driveRest(n);
 }
 
-/** Rest uses the command queue so CMD_REPEAT remembers the player's request. */
+/** Queue Core's rest command so CMD_REPEAT remembers the player's rest request. */
 function driveRest(count: number): void {
   if (anyVisibleMonster()) return;
   commandBuffer.push({ code: "rest", args: { count } });

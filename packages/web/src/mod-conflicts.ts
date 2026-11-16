@@ -278,7 +278,7 @@ function hookDescription(hook: keyof ModHooks): string {
     monsterLoreCompleteness: "the point at which monster lore counts as complete",
     forgetUnlitImpassableTerrain: "forgetting impassable terrain you stand on without light",
     classicSearch: "host-owned classic searching and continuous search mode",
-    statusTerrainFromMemory: "whether the terrain status uses player memory",
+    statusTerrainFromMemory: "whether the status line's terrain comes from what the player remembers",
     missileCritFromState: "the state used for missile criticals in item descriptions",
     forcedDescentStairs: "whether forced descent prevents new up stairs",
     forceFromBlastCenter: "the spot a blast pushes its targets away from",
