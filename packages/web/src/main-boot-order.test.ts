@@ -12,6 +12,31 @@ import { recordControllerUse } from "./mod-controller-record";
 
 const mainSource = readFileSync(new URL("./main.ts", import.meta.url), "utf8");
 
+describe("end-screen turn tail", () => {
+  it.each(["death", "retirement", "winner"])("leaves the %s modal as the last drawing", (ending) => {
+    const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
+    const advance = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "continueAdvance")!;
+    const branch = advance.body!.statements.find((statement): statement is ts.IfStatement =>
+      ts.isIfStatement(statement) && statement.expression.getText(source) === "status === LOOP_STATUS.DEAD")!;
+    const modal = branch.thenStatement.getText(source).indexOf("void openModal(");
+    const tail = branch.thenStatement.getText(source).slice(modal);
+    const draws: string[] = [];
+    const emitted = ts.transpileModule(`function tick(dead) { if (dead) { ${tail.slice(0, tail.lastIndexOf("}"))} } render(); } return tick;`, {
+      compilerOptions: { target: ts.ScriptTarget.ESNext },
+    }).outputText;
+    const tick = new Function("openModal", "showTombstone", "runDeathMenu", "diedFrom", "render", emitted)(
+      (paint: () => void) => paint(), () => { draws.push(ending); return new Promise(() => undefined); },
+      () => undefined, ending, () => draws.push("map"),
+    ) as (dead: boolean) => void;
+    tick(true);
+    expect(draws).toEqual([ending]);
+    draws.length = 0;
+    tick(false);
+    expect(draws).toEqual(["map"]);
+  });
+});
+
 function controllerHarness(command: () => unknown = () => null, save: () => void = () => undefined) {
   const source = ts.createSourceFile("main.ts", mainSource, ts.ScriptTarget.Latest, true);
   const install = source.statements.find((statement): statement is ts.FunctionDeclaration => ts.isFunctionDeclaration(statement) && statement.name?.text === "finishAutoplayerInstall")!;

@@ -11866,6 +11866,7 @@ function continueAdvance(
       await showTombstone(diedFrom);
       await runDeathMenu();
     });
+    return; // The end-screen modal owns the rest of this turn's tail.
   } else if (status === LOOP_STATUS.LEVEL_CHANGE) {
     // on_new_level (game-world.c:1027-1031): EVENT_MESSAGE_FLUSH *then*
     // EVENT_NEW_LEVEL_DISPLAY. The stair message ("You enter a maze of down
