@@ -36,7 +36,8 @@ export function bitmapGlyphBox(fontW: number, fontH: number, cellW: number, cell
   if (cellW < fontW || cellH < fontH || scale < 1) return { scale: 0, x: 0, y: 0, w: cellW, h: cellH };
   const w = fontW * scale;
   const h = fontH * scale;
-  // Whole device pixels keep fractional display ratios from blurring the font.
+  // Round offsets to whole device pixels so fractional display ratios do not
+  // blur the font.
   return { scale, x: Math.floor((deviceW - w) / 2) / dpr, y: Math.floor((deviceH - h) / 2) / dpr, w: w / dpr, h: h / dpr };
 }
 
@@ -1035,9 +1036,9 @@ export class GlyphTerm
 
   /** Responsive grid (reflow opt-in): the pre-REND-1 behavior. */
   private fitReflow(w: number, h: number): void {
-    // The requested cell size remains the grid pitch so fitting bitmap glyphs
-    // cannot move map coordinates or tiles. The declared phone floor must fit
-    // the viewport even when the requested size is too large.
+    // The grid pitch stays at the requested cell size, so fitting bitmap glyphs
+    // cannot move map coordinates or tiles. The declared phone floor must still
+    // fit the viewport when the requested size is too large.
     if (this.font) {
       const requested = Math.max(8, this.options.fontPx);
       const widthLimit = (w / this.options.minCols) * (this.font.h / this.font.w);

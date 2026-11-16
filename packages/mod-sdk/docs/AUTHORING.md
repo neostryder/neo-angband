@@ -335,7 +335,7 @@ browser's database. The host composes your path with your mod's own resolver.
 | `art` | one screen of `{colour}...{/}` markup | per `slot` |
 | `locale` | one language, `slot` being its BCP 47 tag | per `slot` |
 
-The terminal centers bitmap glyphs at the largest whole device-pixel scale that fits each cell, with smoothing off. Cells smaller than the font's native glyph size keep the stretched fallback. This placement does not change grid geometry or tile rendering.
+The terminal centers bitmap glyphs in each cell at the largest whole device-pixel scale that fits, with smoothing off. If a cell is smaller than the font's native glyph size, the glyph is stretched to fill it instead. Grid geometry and tile rendering stay the same either way.
 
 Four things that will otherwise cost you an afternoon:
 
