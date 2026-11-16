@@ -191,6 +191,9 @@ describe("startup mode and the production loader", () => {
           export { prepareModPayloads } from "./mod-code-snapshot";
           export { validateManifest } from "@rpgm-tools/neo-angband-mod-sdk";
           export { createModUi } from "./panel-runtime";
+          export { desktopInstallation } from "./host-electron";
+          export { setModStorage, defaultModStore } from "./mod-store";
+          export { consentBinding, setConsentBindings, invalidateModConsent } from "./mod-consent-binding";
         `,
         resolveDir: fileURLToPath(new URL("./", import.meta.url)),
       },
@@ -209,6 +212,11 @@ describe("startup mode and the production loader", () => {
       const page = new JSDOM("<!doctype html><body></body>", { url: "https://game.invalid" }).window;
       globalThis.window = page;
       globalThis.document = page.document;
+      let arms = 0;
+      globalThis.neoDesktop = {
+        recordMeasuredMod: () => true,
+        useMeasuredMod: () => "fixture-" + ++arms,
+      };
       const setting = ${JSON.stringify(setting)};
       let saved = setting;
       Object.defineProperty(globalThis, "localStorage", { configurable: true, get() {
@@ -227,7 +235,7 @@ describe("startup mode and the production loader", () => {
       ]);
       const ids = setting === true ? [...sources.keys()] : ["good"];
       const packs = ids.map(id => ({
-        manifest: api.validateManifest({ id, name: id, version: "1.0.0", shape: "plugin", modApi: 1 }),
+        manifest: api.validateManifest({ id, name: id, version: "1.0.0", shape: "plugin", modApi: 1, capabilities: ["backup:folder"] }),
         code: ["plugin.js"], files: {}, assets: [],
       }));
       const bytes = new Map();
@@ -240,19 +248,35 @@ describe("startup mode and the production loader", () => {
       let urlCalls = 0;
       URL.createObjectURL = () => { urlCalls++; return "data:text/javascript," + encodeURIComponent(sources.get("good")); };
       const report = await api.loadModCode({ packs, codeUrl: async () => { throw new Error("unmeasured URL"); },
-        enabled: () => true, consented: () => [], tier: () => tier });
+        enabled: () => true, consented: () => ["backup:folder"], tier: () => tier });
       console.error(JSON.stringify(report.problems));
       const panel = api.createModUi("good").openPanel({ id: "probe" });
       const rawPanel = panel.root.ownerDocument === page.document;
       panel.close();
+      const values = new Map();
+      api.setModStorage({ getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) });
+      api.defaultModStore().setDecisions("good", { granted: ["backup:folder"], refused: [], binding: api.consentBinding("good") }, "1.0.0");
+      const decisions = [];
+      const bridge = { consent: async decision => {
+        decisions.push(decision);
+        return decision.quiet ? { ok: false } : { ok: true, installation: "a".repeat(64), modId: "good", digest: decision.digest };
+      } };
+      const quiet = await api.desktopInstallation("good", bridge, [], true);
+      const granted = await api.desktopInstallation("good", bridge);
+      api.invalidateModConsent("good");
+      await api.desktopInstallation("good", bridge);
+      api.setConsentBindings(new Map([["good", "replacement"]]));
+      const consentKept = quiet === null && granted !== null && decisions[0].quiet === true &&
+        decisions.some(d => d.revoke === true) && decisions.some(d => d.release === true) &&
+        decisions.every(d => (typeof d.measuredToken === "string") === (setting === true));
       console.log(JSON.stringify({ enabled: api.modCompartmentsEnabled, frozen: Object.isFrozen(Object.prototype),
         plugins: report.plugins.map(p => p.id), problems: report.problems.map(p => p.id),
-        samePage: report.plugins[0]?.plugin.scope === globalThis, urlCalls, rawPanel }));
+        samePage: report.plugins[0]?.plugin.scope === globalThis, urlCalls, rawPanel, consentKept }));
     `], { encoding: "utf8", windowsHide: true, timeout: 60000 });
     expect(child.status, child.stderr).toBe(0);
     expect(JSON.parse(child.stdout.trim()), child.stderr).toEqual(setting === true
-      ? { enabled: true, frozen: true, plugins: ["good", "last"], problems: ["throwing", "awaiting"], samePage: false, urlCalls: 0, rawPanel: false }
-      : { enabled: false, frozen: false, plugins: ["good"], problems: [], samePage: true, urlCalls: 1, rawPanel: true });
+      ? { enabled: true, frozen: true, plugins: ["good", "last"], problems: ["throwing", "awaiting"], samePage: false, urlCalls: 0, rawPanel: false, consentKept: true }
+      : { enabled: false, frozen: false, plugins: ["good"], problems: [], samePage: true, urlCalls: 1, rawPanel: true, consentKept: true });
   }, 70000);
 });
 
