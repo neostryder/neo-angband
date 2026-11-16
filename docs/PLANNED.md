@@ -304,7 +304,7 @@ An API 1 plugin's code runs in the game's page with `ctx.core`, `ctx.state`, `ct
 
 An API 1 plugin cannot be moved into that Worker as it stands. Its `hooks(ctx)` returns functions that the turn loop calls synchronously, `register(host, ctx)` changes live state, and a message port carries copies of data, never functions, DOM nodes or object identity. A plugin that wants isolation has to be rewritten against mod API 2, whose calls take and return plain data (`docs/modding/MIGRATING_TO_API2.md`).
 
-The Mods screen offers "Mod compartments" on desktop and web. It is off by default and takes effect after restart. When enabled, SES gives each in-process mod separate globals and a DOM facade filters page bridges and reserved storage. Startup and mod calls take longer. Live engine objects still cross this boundary, so compartments do not give API 1 plugins the isolation of Worker mods.
+The Mods screen on desktop and web has a "Mod compartments" setting, off by default and applied after restart. When it is on, SES gives each in-process mod its own globals, and panel mods reach the page only through a filtering facade that blocks page bridges and reserved storage. Compartments cost startup time and slow mod calls. They do not close this item because live game objects still pass into a compartment, so an API 1 plugin still lacks the isolation a Worker mod has.
 
 ### A save written under session-only content is loadable but not reproducible
 

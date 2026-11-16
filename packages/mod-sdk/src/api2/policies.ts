@@ -564,7 +564,7 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   {
     name: "birthOptionAnnotations",
     capability: "registry:ui-entry",
-    summary: "Marks birth option rows and explains the focused option.",
+    summary: "Marks birth option rows and explains the selected one.",
     target: { hook: "birthOptionAnnotation" },
     check(value) {
       if (!Array.isArray(value) || value.length > 64) return "birthOptionAnnotations lists at most 64 rows";
@@ -589,7 +589,7 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   {
     name: "birthConfirmOptions",
     capability: "registry:ui-entry",
-    summary: "Reviews every changed birth option with its effective default before play.",
+    summary: "Lists every changed birth option with its default before play.",
     target: { hook: "birthConfirmOptions" },
     check: (value) => typeof value === "boolean" ? null : "birthConfirmOptions is true or false",
     apply(value, out) { if (value === true) out.hooks.birthConfirmOptions = () => true; },
@@ -1041,7 +1041,7 @@ export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
   {
     name: "storeAllocationExclude",
     capability: "registry:store",
-    summary: "Excludes selected object kinds from random store stock, including the black market.",
+    summary: "Keeps chosen object kinds out of random store stock, including the black market.",
     target: { registration: "storeAllocationExclude" },
     check(value) {
       if (!Array.isArray(value) || value.length > 256) return "storeAllocationExclude lists at most 256 object selectors";

@@ -1674,7 +1674,7 @@ function paintConfirmOnTerminal(
   return new Promise<ConfirmResult>((resolve) => {
     const { cols, rows } = term.size();
     const reviewLines = options.flatMap((option) => {
-      const text = `${option.name}: ${option.value ? "yes" : "no"} (default: ${option.defaultValue ? "yes" : "no"})`;
+      const text = `${option.description}: ${option.value ? "yes" : "no"} (default: ${option.defaultValue ? "yes" : "no"})`;
       const width = Math.max(1, cols - 1);
       return Array.from({ length: Math.ceil(text.length / width) }, (_, i) => text.slice(i * width, (i + 1) * width));
     });
@@ -1693,7 +1693,7 @@ function paintConfirmOnTerminal(
         term.clear();
         reviewLines.slice(page, page + pageSize).forEach((line, i) => term.print(0, i, line, PB_FG));
         term.print(0, rows - 1, (page + pageSize < reviewLines.length
-          ? "[Any key for more birth options, ESC to step back, S to start over]"
+          ? t("birth.confirm.morePrompt", "['ESC' to step back, 'S' to start over, or any other key for more options]")
           : prompt).slice(0, cols - 1), PB_FG);
         return;
       }

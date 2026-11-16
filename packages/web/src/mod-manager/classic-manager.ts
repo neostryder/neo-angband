@@ -329,7 +329,7 @@ export async function runModManager(
         t("modsScreen.run.compartments", "[{mark}] Mod compartments", { mark: deps.modCompartments.get() ? "x" : " " }),
         "compartments",
         C_FG,
-        t("modsScreen.run.compartmentsHint", "Mods use separate globals and filtered DOM access. This slows startup and takes effect after restart."),
+        t("modsScreen.run.compartmentsHint", "Each in-process mod runs with its own globals and filtered access to the page. This makes startup slower and takes effect after the game restarts."),
       );
     }
     if (dirty) {

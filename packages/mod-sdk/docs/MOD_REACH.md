@@ -77,8 +77,8 @@ Game behaviour living in `switch` statements with nothing to register into is no
 | `messagePauseAfter` | Any yes requests a pause after a message; absent keeps the final page pending. |
 | `runEndLine` | Last non-null answer adds one plain line to end screens and dumps; absent adds none. |
 | `birthOptionHighlight` | Every listener receives the full highlighted birth option before terminal clipping. |
-| `birthOptionAnnotation` | Last non-null answer supplies a short row mark and a focused hint; the host bounds and paints both. |
-| `birthConfirmOptions` | Any true answer requests every changed birth option and its effective default before play. |
+| `birthOptionAnnotation` | Add a short mark to a birth option row and a hint for the selected row, with the last non-null answer winning and the host limiting and painting both |
+| `birthConfirmOptions` | On any true answer, have the host list every changed birth option and its default before play |
 | `birthConfirmNote` | Last non-null answer adds a note the player dismisses before play; absent adds no step. |
 | `helpText` | Chained text for classified raw help groups; null or absent preserves original rows. |
 | `messageText` | `packages/web/src/main.ts` (host, not core) | Restate message text | What a message MEANS - restating only, by contract |
