@@ -23,7 +23,8 @@ import { createAgentView } from "./perceive.js";
 import { createAgentActions } from "./act.js";
 import { AgentCapabilityError, installController } from "./controller.js";
 import { subscribeEvents } from "./events.js";
-import { GameEvents } from "../events.js";
+import { GameEvents, type MissileEventData } from "../events.js";
+import { itemView } from "./entity-views.js";
 import { describeObject } from "../game/describe.js";
 import { newKnownMap, squareKnowPile, squareSensePile } from "../game/known.js";
 import { getLore } from "../mon/lore.js";
@@ -130,6 +131,22 @@ describe("known floor reads", () => {
     /* floorItems names the unknown flavour too (#369); with no flavour table
        installed there is no flavour index to give. */
     expect(view.floorItems(grid.x, grid.y)[0]).toMatchObject({ kindKey: "flavor:none", label: "Smoky", aware: false, sval: -1, floorIndex: 0 });
+  });
+
+  it("carries only the known item projection in a missile event", () => {
+    const { state, grid, obj } = floorState();
+    state.isAware = () => false;
+    state.hasFlavor = () => true;
+    state.flavorText = () => "Smoky";
+    const bus = new GameEvents();
+    let received: MissileEventData | undefined;
+    subscribeEvents(bus, grant("event:missile")).on("missile", (_type, event) => { received = event; });
+    bus.emit("missile", { obj: itemView(0, obj, state, {}), seen: true, ...grid });
+    expect(received?.obj).toMatchObject({ kindKey: "flavor:none", label: "Smoky", aware: false, sval: -1 });
+    expect(received?.obj).not.toBe(obj);
+    expect(received?.obj).not.toHaveProperty("kind");
+    expect(received?.obj).not.toHaveProperty("kindId");
+    expect(received?.obj).not.toHaveProperty("known");
   });
 
   it("keeps remembered stack properties after unseen changes and removal", () => {

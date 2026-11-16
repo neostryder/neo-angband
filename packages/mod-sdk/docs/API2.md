@@ -163,6 +163,8 @@ An event arrives only when the player could know about it. `combat-outcome` repo
 
 A `null` payload is a notice that something changed: read the view for the new value. Level generation, bolts, missiles and explosions have no API 2 event, since they show things the player did not see.
 
+Core's `MissileEventData.obj` is an `ItemView`, the same known-only projection the agent views use. A future missile emitter must build it with `itemView` before dispatch, so an unidentified flavor stays unknown and the raw game object never enters the event. API 2 does not forward missile events.
+
 `events.on` answers `refused` with `unknown-event` for a name not in this table, `not-granted` without `event:<name>`, and `unavailable` before a game is running. The listener gets the payload alone.
 
 ## Hooks

@@ -38,6 +38,7 @@ import type {
   DungeonLevelEventData,
   HealEventData,
   MessageEventData,
+  MissileEventData,
   MotionEventData,
   PerceivedActor,
 } from "../events.js";
@@ -100,6 +101,7 @@ const agreement: Record<string, true> = {
 
   /* Events the host translates from: the fields it reads exist with these types. */
   messageEvent: true satisfies Fits<Pick<MessageEventData, "type">, Pick<Sdk.Api2MessageEvent, "type">>,
+  missileItem: true satisfies Both<MissileEventData["obj"], ItemView>,
   levelEvent: true satisfies Both<DungeonLevelEventData, Sdk.Api2LevelEvent>,
   combatEvent: true satisfies Fits<Pick<CombatOutcomeEventData, "kind" | "hit" | "died" | "grid">, Pick<Sdk.Api2CombatEvent, "kind" | "hit" | "died" | "grid">>,
   motionEvent: true satisfies Fits<Pick<MotionEventData, "from" | "to" | "kind">, Pick<Sdk.Api2MotionEvent, "from" | "to" | "kind">>,

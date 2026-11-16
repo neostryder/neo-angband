@@ -10,6 +10,7 @@
  */
 
 import type { Loc } from "./loc.js";
+import type { ItemView } from "./agent/types.js";
 
 /** EVENT_MESSAGE / EVENT_INITSTATUS payloads. */
 export interface MessageEventData {
@@ -63,9 +64,9 @@ export interface BoltEventData {
   x: number;
 }
 
-/** EVENT_MISSILE payload. The object type is refined once objects land. */
+/** EVENT_MISSILE requires the known item projection because subscribers can be mods. */
 export interface MissileEventData {
-  obj: unknown;
+  obj: ItemView;
   seen: boolean;
   y: number;
   x: number;
