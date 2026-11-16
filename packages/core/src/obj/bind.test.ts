@@ -39,11 +39,11 @@ const pack = loadPack();
 const reg = new ObjRegistry(pack);
 
 describe("light-curse content marker", () => {
-  it.each(["object", "curse"] as const)("binds %s markers without changing shipped records", (file) => {
+  it.each(["object", "curse", "artifact", "egoItem"] as const)("binds %s markers without changing shipped records", (file) => {
     const marked = structuredClone(pack);
     Object.assign(marked[file].records[0]!, { "light-curse": true });
     const bound = new ObjRegistry(marked);
-    const records = (registry: ObjRegistry) => file === "object" ? registry.kinds : registry.curses;
+    const records = (registry: ObjRegistry) => ({ object: registry.kinds, curse: registry.curses, artifact: registry.artifacts, egoItem: registry.egos })[file];
     expect(records(bound).filter((record) => record?.lightCurse === true)).toHaveLength(1);
     expect(records(reg).every((record) => !record || !("lightCurse" in record))).toBe(true);
     Object.assign(marked[file].records[0]!, { "light-curse": "true" });

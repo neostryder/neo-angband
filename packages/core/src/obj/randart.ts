@@ -204,6 +204,7 @@ export function copyArtifact(src: Artifact, dst: Artifact): void {
  */
 export function cloneArtifact(src: Artifact): Artifact {
   return {
+    ...(src.lightCurse === undefined ? {} : { lightCurse: src.lightCurse }),
     name: src.name,
     text: src.text,
     aidx: src.aidx,

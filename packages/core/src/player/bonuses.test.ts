@@ -11,7 +11,7 @@ import { ELEM, OBJ_MOD, OF, PF, STAT, TMD, TV } from "../generated/index.js";
 import { objectNew } from "../obj/object.js";
 import type { CurseData, GameObject } from "../obj/object.js";
 import { newElemInfo, zeroRv } from "../obj/types.js";
-import type { Curse, CurseObject, ObjectKind } from "../obj/types.js";
+import type { Artifact, Curse, CurseObject, EgoItem, ObjectKind } from "../obj/types.js";
 import type { KnownBonusView } from "../obj/known-object.js";
 import { FlagSet } from "../bitflag.js";
 import { Rng } from "../rng.js";
@@ -358,7 +358,7 @@ function ringSlot(p: Player): number {
 }
 
 describe("calcLight (player-calcs.c:1598-1645)", () => {
-  it.each(["kind", "active curse", "inactive curse", "unrelated curse", "sticky", "plain"])("selects only a light-curse marker on %s", (site) => {
+  it.each(["kind", "artifact", "ego", "unmarked artifact", "unmarked ego", "active curse", "inactive curse", "unrelated curse", "sticky", "plain"])("selects only a light-curse marker on %s", (site) => {
     const p = bornWithStats("Human", "Warrior", HUMAN_WARRIOR_STATS);
     const eq = emptyEquipment(p);
     const obj = objectNew({} as ObjectKind);
@@ -368,16 +368,23 @@ describe("calcLight (player-calcs.c:1598-1645)", () => {
     eq[lightSlot(p)] = obj;
     const curses = curseTableWith(newCurseTemplate());
     if (site === "kind") obj.kind = { ...obj.kind, lightCurse: true };
+    if (site.includes("artifact")) obj.artifact = { ...(site === "artifact" ? { lightCurse: true } : {}) } as Artifact;
+    if (site.includes("ego")) obj.ego = { ...(site === "ego" ? { lightCurse: true } : {}) } as EgoItem;
+    if (["artifact", "ego"].includes(site)) obj.curses = [{ power: 0, timeout: 0 }, { power: 4, timeout: 0 }];
     if (site.includes("curse")) {
       obj.curses = [{ power: 0, timeout: 0 }, { power: site === "inactive curse" ? 0 : 4, timeout: 0 }];
       if (site !== "unrelated curse") curses[1] = { ...curses[1]!, lightCurse: true };
     }
     if (site === "sticky") obj.flags.on(OF.STICKY);
-    const marked = ["kind", "active curse"].includes(site);
+    const marked = ["kind", "artifact", "ego", "active curse"].includes(site);
     expect(calcBonuses(p, { equipment: eq, curses }).curLight).toBe(2);
     expect(calcBonuses(p, { equipment: eq, curses, cursedLightRadius: { marker: "LIGHT_CURSE" } }).curLight).toBe(marked ? 0 : 2);
     expect(calcBonuses(p, { equipment: eq, curses, cursedLightRadius: { marker: "LIGHT_CURSE" }, knownOnly: () => ({ flags: new FlagSet(OF_SIZE), elInfo: newElemInfo(), toA: 0, toH: 0, toD: 0 }) }).curLight).toBe(marked ? 0 : 2);
-    expect(calcBonuses(p, { equipment: eq, curses, cursedLightRadius: true }).curLight).toBe(["active curse", "unrelated curse", "sticky"].includes(site) ? 0 : 2);
+    expect(calcBonuses(p, { equipment: eq, curses, cursedLightRadius: false }).curLight).toBe(2);
+    expect(calcBonuses(p, { equipment: eq, curses, cursedLightRadius: true }).curLight).toBe(["artifact", "ego", "active curse", "unrelated curse", "sticky"].includes(site) ? 0 : 2);
+    obj.curses = null;
+    expect(calcBonuses(p, { equipment: eq, curses, cursedLightRadius: { marker: "LIGHT_CURSE" } }).curLight).toBe(["kind", "artifact", "ego"].includes(site) ? 0 : 2);
+    expect(calcBonuses(p, { equipment: eq, curses, cursedLightRadius: true }).curLight).toBe(site === "sticky" ? 0 : 2);
   });
 
   it("keeps curLight 0 for an unarmed player with no light source", () => {

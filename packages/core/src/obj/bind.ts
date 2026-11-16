@@ -1174,6 +1174,7 @@ export class ObjRegistry {
         });
       }
       const ego: EgoItem = {
+        ...lightCurseMarker("ego_item", rec),
         name: rec.name,
         text: joinLines(rec.desc),
         eidx: this.egos.length,
@@ -1414,6 +1415,7 @@ export class ObjRegistry {
         }
       }
       const art: Artifact = {
+        ...lightCurseMarker("artifact", rec),
         name: rec.name,
         text: joinLines(rec.desc),
         aidx: this.artifacts.length,

@@ -103,6 +103,14 @@ function fingerprint(arts: (Artifact | null)[]): string {
  * the identical set both times and fails here.
  */
 describe("randart set size", () => {
+  it.each([1, 4])("keeps artifact light-curse markers in a %sx generated set", (sizeMultiplier) => {
+    const reg = makeReg();
+    for (const art of reg.artifacts) if (art) art.lightCurse = true;
+    const arts = doRandart(reg, constants, 378, false, undefined, { sizeMultiplier });
+    expect(arts.filter(Boolean).length).toBeGreaterThan(0);
+    expect(arts.every((art) => !art || art.lightCurse === true)).toBe(true);
+  });
+
   it("keeps the seeded default set byte-identical", () => {
     const arts = doRandart(makeReg(), constants, 378, false);
     expect(createHash("sha256").update(JSON.stringify(arts)).digest("hex")).toBe("b154f0fbcb656d6c374a3935bcbe6574817518fc678954a962c176530b7963d7");

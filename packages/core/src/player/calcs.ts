@@ -693,7 +693,7 @@ function curseUnknown(elemCount: number): KnownBonusView {
 /** An active curse, or the sticky flag stock items use in place of a curse record. */
 function cursedLightGivesNone(obj: GameObject, selector: CalcBonusesOptions["cursedLightRadius"], curses: CalcBonusesOptions["curses"]): boolean {
   if (typeof selector === "object") {
-    if (obj.kind.lightCurse) return true;
+    if (obj.kind.lightCurse || obj.artifact?.lightCurse || obj.ego?.lightCurse) return true;
     return obj.curses?.some((curse, index) => curse.power > 0 && curses?.[index]?.lightCurse === true) ?? false;
   }
   if (obj.flags.has(OF.STICKY)) return true;

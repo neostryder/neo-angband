@@ -215,6 +215,7 @@ export interface ObjectKindRecordJson {
 }
 
 export interface EgoRecordJson {
+  "light-curse"?: boolean;
   name: string;
   info?: { cost: number; rating: number };
   alloc?: { common: number; minmax: string };
@@ -235,6 +236,7 @@ export interface EgoRecordJson {
 }
 
 export interface ArtifactRecordJson {
+  "light-curse"?: boolean;
   name: string;
   "base-object": { tval: string; sval: string };
   graphics?: { glyph: string; color: string };
@@ -422,6 +424,7 @@ export interface ObjectKind extends ModExtensible {
 
 /** struct ego_item. */
 export interface EgoItem extends ModExtensible {
+  lightCurse?: true;
   name: string;
   text: string;
   eidx: number;
@@ -463,6 +466,7 @@ export interface EgoItem extends ModExtensible {
 
 /** struct artifact. */
 export interface Artifact extends ModExtensible {
+  lightCurse?: true;
   /** A resized set keeps fractional rarity without changing the standard roll. */
   allocationScale?: number;
   name: string;
