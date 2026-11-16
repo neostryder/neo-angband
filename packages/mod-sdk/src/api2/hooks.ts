@@ -47,6 +47,15 @@ export interface Api2BirthConfirmFacts {
   readonly birthOptions: Readonly<Record<string, boolean>>;
 }
 
+export interface Api2BirthOptionAnnotation {
+  readonly mark?: string;
+  readonly hint?: string;
+}
+
+export interface Api2BirthConfirmOptionsFacts {
+  readonly options: readonly Api2BirthOptionHighlight[];
+}
+
 /** Where a piece of screen text sits (ModHooks.screenText). */
 export interface Api2ScreenTextSite {
   /** The screen's stable id, such as `core:help-symbols`, or `core:prompt`. */
@@ -181,6 +190,8 @@ export interface Api2Hooks {
   /** Null preserves the original rows; a string opts a raw paragraph into host wrapping. */
   helpText?(text: string, site: Api2HelpTextSite): string | null;
   birthOptionHighlight?(option: Api2BirthOptionHighlight): void;
+  birthOptionAnnotation?(option: Api2BirthOptionHighlight): Api2BirthOptionAnnotation | null;
+  birthConfirmOptions?(choice: Api2BirthConfirmOptionsFacts): boolean;
   birthConfirmNote?(choice: Api2BirthConfirmFacts): string | null;
   /** Restate a message before it is shown. Chained in load order. */
   messageText?(raw: string): string;
@@ -231,6 +242,8 @@ export type Api2HookName = keyof Api2Hooks;
 export const API2_HOOK_NAMES: readonly Api2HookName[] = Object.freeze([
   "helpText",
   "birthOptionHighlight",
+  "birthOptionAnnotation",
+  "birthConfirmOptions",
   "birthConfirmNote",
   "messageText",
   "messagePauseAfter",

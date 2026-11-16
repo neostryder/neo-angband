@@ -681,6 +681,16 @@ describe("MOD_HOOK_FOLDS describes what composeModHooks actually does", () => {
       no: (log, tag) => ({ birthOptionHighlight: () => { log.push(tag); } }),
       run: (h) => h.birthOptionHighlight?.({ name: "birth_randarts", description: "Random artifacts", value: false, defaultValue: false }),
     },
+    birthOptionAnnotation: {
+      yes: (log, tag) => ({ birthOptionAnnotation: () => { log.push(tag); return { mark: tag }; } }),
+      no: (log, tag) => ({ birthOptionAnnotation: () => { log.push(tag); return null; } }),
+      run: (h) => h.birthOptionAnnotation?.({ name: "birth_randarts", description: "Random artifacts", value: false, defaultValue: false }),
+    },
+    birthConfirmOptions: {
+      yes: (log, tag) => ({ birthConfirmOptions: () => { log.push(tag); return true; } }),
+      no: (log, tag) => ({ birthConfirmOptions: () => { log.push(tag); return false; } }),
+      run: (h) => h.birthConfirmOptions?.({ options: [] }),
+    },
     birthConfirmNote: {
       yes: (log, tag) => ({ birthConfirmNote: () => { log.push(tag); return tag; } }),
       no: (log, tag) => ({ birthConfirmNote: () => { log.push(tag); return null; } }),

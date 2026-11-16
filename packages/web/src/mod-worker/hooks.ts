@@ -81,6 +81,8 @@ function pendingHooks(id: string): ModHooks {
     messagePauseAfter: (raw) => hooks()?.messagePauseAfter?.(raw) ?? false,
     runEndLine: (report) => hooks()?.runEndLine?.(report) ?? null,
     birthOptionHighlight: forward(entry, "birthOptionHighlight"),
+    birthOptionAnnotation: (option) => hooks()?.birthOptionAnnotation?.(option) ?? null,
+    birthConfirmOptions: (choice) => hooks()?.birthConfirmOptions?.(choice) ?? false,
     birthConfirmNote: (choice) => hooks()?.birthConfirmNote?.(choice) ?? null,
     screenText: (raw, site) => hooks()?.screenText?.(raw, site) ?? raw,
     characterBackground: (text) => hooks()?.characterBackground?.(text) ?? text,

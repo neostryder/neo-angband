@@ -97,6 +97,7 @@
 import { inputEvents } from "./input-door";
 import {
   OPTION_ENTRIES,
+  DEFAULT_OVERRIDES,
   DEFAULT_HITPOINT_WARN,
   DEFAULT_DELAY_FACTOR,
   DEFAULT_LAZYMOVE_DELAY,
@@ -334,6 +335,7 @@ export function optionToggleScreen(
   /** The live rogue_like_commands option; see menuNav. Defaults false. */
   roguelike = false,
   onHighlight?: import("@rpgm-tools/neo-angband-core").ModHooks["birthOptionHighlight"],
+  annotation?: import("@rpgm-tools/neo-angband-core").ModHooks["birthOptionAnnotation"],
 ): Promise<void> {
   const handle = pushRegion(screenRegionSpec(), host.size());
   const term = regionSurface(host, handle.cells);
@@ -363,14 +365,22 @@ export function optionToggleScreen(
     const paint = (): void => {
       const { cols, rows: termRows } = term.size();
       const highlighted = rows[cursor];
+      const facts = (row: OptionRow) => Object.freeze({
+        name: row.name, description: row.description, value: row.value,
+        defaultValue: DEFAULT_OVERRIDES[row.name as keyof typeof DEFAULT_OVERRIDES] ?? OPTION_ENTRIES.find((entry) => entry.name === row.name)?.normal ?? row.value,
+      });
       if (highlighted && onHighlight) onHighlight(Object.freeze({
         name: highlighted.name, description: highlighted.description, value: highlighted.value,
-        defaultValue: OPTION_ENTRIES.find((entry) => entry.name === highlighted.name)?.normal ?? highlighted.value,
+        defaultValue: facts(highlighted).defaultValue,
       }));
+      const clean = (value: unknown, limit: number): string => typeof value === "string"
+        ? value.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").slice(0, limit).trim() : "";
+      const annotations = annotation ? rows.map((row) => annotation(facts(row))) : [];
+      const hint = clean(annotations[cursor]?.hint, 120);
       term.clear();
       term.print(0, 0, title.slice(0, cols - 1), TITLE);
       term.print(0, 1, prompt.slice(0, cols - 1), DIM);
-      const bodyRows = Math.max(1, termRows - bodyTop - 1);
+      const bodyRows = Math.max(1, termRows - bodyTop - (hint ? 2 : 1));
       if (cursor < top) top = cursor;
       if (cursor >= top + bodyRows) top = cursor - bodyRows + 1;
       for (let r = 0; r < bodyRows; r++) {
@@ -389,7 +399,8 @@ export function optionToggleScreen(
         // the SAME character that jumps to the row, and a read-only page shows
         // none at all (MN_NO_TAGS, L341).
         const tag = readOnly ? "   " : `${TOGGLE_TAGS[i] ?? " "}) `;
-        const line = `${tag}${desc}: ${value}  (${row.name})`;
+        const mark = clean(annotations[i]?.mark, 8);
+        const line = `${tag}${mark ? `[${mark}] ` : ""}${desc}: ${value}  (${row.name})`;
         const color = row.locked ? LOCKED : i === cursor ? CURSOR : FG;
         term.print(0, bodyTop + r, line.slice(0, cols - 1), color);
       }
@@ -397,6 +408,7 @@ export function optionToggleScreen(
         term.setCursor?.(0, bodyTop + (cursor - top));
       }
       term.print(0, termRows - 1, footer.slice(0, cols - 1), DIM);
+      if (hint) term.print(0, termRows - 2, hint.slice(0, cols - 1), DIM);
     };
     const finish = (): void => {
       inputEvents.removeEventListener("keydown", onKey, true);
@@ -623,6 +635,7 @@ export async function runBirthOptionsEditor(
   term: GridSurface & GridPointerInput,
   store: Record<string, boolean>,
   onHighlight?: import("@rpgm-tools/neo-angband-core").ModHooks["birthOptionHighlight"],
+  annotation?: import("@rpgm-tools/neo-angband-core").ModHooks["birthOptionAnnotation"],
 ): Promise<void> {
   const rows: OptionRow[] = OPTION_ENTRIES.filter((e) => e.type === "BIRTH").map(
     (e) => ({
@@ -656,6 +669,7 @@ export async function runBirthOptionsEditor(
      * choices, so the option they just set (if any) is the live value. */
     store["rogue_like_commands"] ?? false,
     onHighlight,
+    annotation,
   );
 }
 

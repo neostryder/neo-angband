@@ -312,11 +312,27 @@ export interface KnownArtifactFind {
   readonly artifactIndex: number;
 }
 
+export interface BirthOptionFacts {
+  readonly name: string;
+  readonly description: string;
+  readonly value: boolean;
+  readonly defaultValue: boolean;
+}
+
+export interface BirthOptionAnnotation {
+  readonly mark?: string;
+  readonly hint?: string;
+}
+
 export interface ModHooks {
   /** Raw help groups before layout. The host reflows paragraphs only when declared. */
   helpText?: (text: string, site: HelpTextSite) => string | null;
   /** The birth editor reports full option prose before clipping it for the terminal. */
   birthOptionHighlight?: (option: { readonly name: string; readonly description: string; readonly value: boolean; readonly defaultValue: boolean }) => void;
+  /** The host paints a short mark on each row and a hint for the focused row. */
+  birthOptionAnnotation?: (option: BirthOptionFacts) => BirthOptionAnnotation | null;
+  /** True asks the host to review all changed birth options before play. */
+  birthConfirmOptions?: (choice: { readonly options: readonly BirthOptionFacts[] }) => boolean;
   /** A plain note the host asks the player to dismiss before starting; null declines. */
   birthConfirmNote?: (choice: { readonly name: string; readonly raceName: string; readonly className: string; readonly birthOptions: Readonly<Record<string, boolean>> }) => string | null;
   /** steal_monster_item, through game/steal.ts: own-drop provenance and 16-bit saturation. */
@@ -884,6 +900,8 @@ export type ModHookFold =
 export const MOD_HOOK_FOLDS: Readonly<Record<keyof ModHooks, ModHookFold>> = {
   helpText: "chained",
   birthOptionHighlight: "all-observe",
+  birthOptionAnnotation: "last-answer",
+  birthConfirmOptions: "any-yes",
   birthConfirmNote: "last-answer",
   monsterOwnDropThefts: "any-yes",
   loadRehydration: "any-yes",
@@ -1169,6 +1187,8 @@ export function guardModHooks(
   const text = hooks.messageText;
   if (hooks.helpText) out.helpText = (text, site) => guard("helpText", () => hooks.helpText!(text, site), null);
   if (hooks.birthOptionHighlight) out.birthOptionHighlight = (option) => guard("birthOptionHighlight", () => hooks.birthOptionHighlight!({ ...option }), undefined);
+  if (hooks.birthOptionAnnotation) out.birthOptionAnnotation = (option) => guard("birthOptionAnnotation", () => hooks.birthOptionAnnotation!(Object.freeze({ ...option })), null);
+  if (hooks.birthConfirmOptions) out.birthConfirmOptions = (choice) => guard("birthConfirmOptions", () => hooks.birthConfirmOptions!(choice), false);
   if (hooks.birthConfirmNote) out.birthConfirmNote = (choice) => guard("birthConfirmNote", () => hooks.birthConfirmNote!(choice), null);
   if (hooks.runEndLine) out.runEndLine = (report) => guard("runEndLine", () => hooks.runEndLine!({ ...report }), null);
   if (hooks.messagePauseAfter) {
@@ -1469,6 +1489,13 @@ export function composeModHooks(
     return answered ? text : null;
   };
   const highlighted = list.map((c) => c.birthOptionHighlight).filter(isFn);
+  const annotations = list.map((c) => c.birthOptionAnnotation).filter(isFn).reverse();
+  if (annotations.length) out.birthOptionAnnotation = (option) => {
+    for (const fn of annotations) { const answer = fn(option); if (answer != null) return answer; }
+    return null;
+  };
+  const confirmOptions = list.map((c) => c.birthConfirmOptions).filter(isFn);
+  if (confirmOptions.length) out.birthConfirmOptions = (choice) => confirmOptions.some((fn) => fn(choice) === true);
   if (highlighted.length) out.birthOptionHighlight = (option) => { for (const fn of highlighted) fn(option); };
   const confirmNotes = list.map((c) => c.birthConfirmNote).filter(isFn).reverse();
   if (confirmNotes.length) out.birthConfirmNote = (choice) => {

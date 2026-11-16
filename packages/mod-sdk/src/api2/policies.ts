@@ -185,6 +185,8 @@ export type Api2CursedLightRadiusPolicy = boolean | { readonly marker: "LIGHT_CU
 
 /** The policy tables a mod may declare. Every member is optional. */
 export interface Api2Policies {
+  readonly birthOptionAnnotations?: readonly { readonly name: string; readonly mark?: string; readonly hint?: string }[];
+  readonly birthConfirmOptions?: boolean;
   readonly loadRehydration?: { readonly objectKnowledge: true; readonly noise: "restoreOrRebuild" };
   readonly experienceUpdates?: "levelChangeOnly";
   readonly flagIntersectionResult?: "removedBits";
@@ -554,6 +556,39 @@ const LIST_KEYS: readonly string[] = ["dy", "-dy", "dx", "-dx"];
  * policies.test.ts, and list it under Policy tables in docs/modding/API2.md.
  */
 export const API2_POLICY_KINDS: readonly Api2PolicyKind[] = Object.freeze([
+  {
+    name: "birthOptionAnnotations",
+    capability: "registry:ui-entry",
+    summary: "Marks birth option rows and explains the focused option.",
+    target: { hook: "birthOptionAnnotation" },
+    check(value) {
+      if (!Array.isArray(value) || value.length > 64) return "birthOptionAnnotations lists at most 64 rows";
+      for (const row of value as unknown[]) {
+        if (!isRecord(row)) return "birthOptionAnnotations rows are objects";
+        const extra = unknownField("birthOptionAnnotations", row, ["name", "mark", "hint"]);
+        if (extra) return extra;
+        if (typeof row["name"] !== "string" || !/^birth_[a-z_]+$/u.test(row["name"]) || row["name"].length > 64) return "birthOptionAnnotations names a birth option";
+        for (const [key, limit] of [["mark", 8], ["hint", 120]] as const) {
+          const text = row[key];
+          if (text !== undefined && (typeof text !== "string" || text.length < 1 || text.length > limit || /[\p{Cc}\p{Zl}\p{Zp}]/u.test(text))) return `birthOptionAnnotations.${key} is plain text of 1 to ${String(limit)} characters`;
+        }
+        if (row["mark"] === undefined && row["hint"] === undefined) return "birthOptionAnnotations rows need a mark or hint";
+      }
+      return null;
+    },
+    apply(value, out) {
+      const rows = value as NonNullable<Api2Policies["birthOptionAnnotations"]>;
+      if (rows.length) out.hooks.birthOptionAnnotation = (option) => rows.findLast((row) => row.name === option.name) ?? null;
+    },
+  },
+  {
+    name: "birthConfirmOptions",
+    capability: "registry:ui-entry",
+    summary: "Reviews every changed birth option with its effective default before play.",
+    target: { hook: "birthConfirmOptions" },
+    check: (value) => typeof value === "boolean" ? null : "birthConfirmOptions is true or false",
+    apply(value, out) { if (value === true) out.hooks.birthConfirmOptions = () => true; },
+  },
   {
     name: "loadRehydration",
     capability: "registry:rune",

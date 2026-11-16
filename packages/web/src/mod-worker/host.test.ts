@@ -1376,6 +1376,7 @@ describe("a Worker mod's hooks", () => {
     messagePauseAfter: ["You feel that"],
     runEndLine: ["A quiet end."],
     birthConfirmNote: "Review your birth choices.",
+    birthOptionAnnotations: [{ name: "birth_randarts", mark: "R" }], birthConfirmOptions: true,
     helpText: [{ find: "old prose", replace: "new prose", where: { kind: "paragraph" } }],
     characterBackground: [{ find: "a", replace: "b" }], objectInfoText: [{ find: "a", replace: "b" }],
     effectIntro: [{ find: "a", replace: "b" }], historyAdd: [{ find: "a", replace: "b" }],
@@ -1525,6 +1526,23 @@ describe("a Worker mod's hooks", () => {
     workerModHooks("probe")?.birthOptionHighlight?.(option);
     await vi.waitFor(() => expect(seen).toEqual([option]));
     expect(workerModHooks("probe")?.birthConfirmNote?.({ name: "Fred", raceName: "Human", className: "Warrior", birthOptions: {} })).toBe("Review your birth choices.");
+  });
+  it.each([true, false])("uses the same birth annotations and review with consent %s in both runtimes", async (consent) => {
+    const policies: Api2Policies = {
+      birthOptionAnnotations: [{ name: "birth_randarts", mark: "R", hint: "Random artifacts." }], birthConfirmOptions: true,
+    };
+    const definition: Api2ModDefinition = { api: API, policies: () => policies };
+    const granted = consent ? ["registry:ui-entry"] : [];
+    const wired = wire(definition, { grants: granted });
+    await wired.session.ready;
+    const grants = CapabilitySet.fromManifest({ id: "birth", name: "Birth", version: "1.0.0", shape: "plugin", capabilities: granted });
+    const plugin = api2Plugin(definition, () => ({ grants }));
+    const native = plugin.hooks!(modPluginContext("birth", {}, undefined, {}, { capabilities: grants }));
+    for (const hooks of [workerModHooks("probe"), native]) {
+      const option = { name: "birth_randarts", description: "Random artifacts", value: true, defaultValue: false };
+      expect(hooks?.birthOptionAnnotation?.(option) ?? null).toEqual(consent ? policies.birthOptionAnnotations![0] : null);
+      expect(hooks?.birthConfirmOptions?.({ options: [option] }) ?? false).toBe(consent);
+    }
   });
 });
 

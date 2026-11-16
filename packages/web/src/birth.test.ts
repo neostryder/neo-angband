@@ -220,6 +220,79 @@ function memHost(files: Map<string, string>): HostIo {
 }
 
 describe("runBirth: faithful stage order (no sex stage)", () => {
+  it("paints row marks and a hint with effective birth defaults", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(110);
+    const seen: { name: string; value: boolean; defaultValue: boolean }[] = [];
+    const done = runBirth(term, RACES, CLASSES, {
+      rng: new Rng(1),
+      birthOptionAnnotation: (option) => {
+        seen.push(option);
+        return { mark: "CAT", hint: "Review this option." };
+      },
+      birthOptions: { birth_no_selling: false },
+    });
+    press(win, "="); await tick();
+    expect(term.snapshot().join("\n")).toContain("[CAT]");
+    expect(term.snapshot().join("\n")).toContain("Review this option.");
+    expect(seen.find((option) => option.name === "birth_no_selling")).toMatchObject({ value: false, defaultValue: false });
+    press(win, "Escape"); await tick();
+    press(win, "Escape");
+    expect(await done).toBeNull();
+  });
+  it("reviews every changed birth option with its effective default beyond the note limit", async () => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(110);
+    const entries = OPTION_ENTRIES.filter((entry) => entry.type === "BIRTH");
+    const values = Object.fromEntries(entries.map((entry) => [entry.name, entry.name === "birth_no_selling" ? true : !entry.normal]));
+    let finished = false;
+    const done = runBirth(term, RACES, CLASSES, {
+      rng: new Rng(1), birthOptions: values,
+      birthConfirmOptions: (choice) => {
+        expect(choice.options).toHaveLength(entries.length);
+        expect(choice.options.find((option) => option.name === "birth_no_selling")).toMatchObject({ value: true, defaultValue: false });
+        return true;
+      },
+    }).then((choice) => { finished = true; return choice; });
+    for (const key of ["a", "a", "a", "Enter", "Enter", "a"]) { press(win, key); await tick(); }
+    const text = term.snapshot().join("\n");
+    for (const entry of entries) expect(text).toContain(entry.name);
+    expect(text).toContain("default: no");
+    expect(finished).toBe(false);
+    press(win, " ");
+    expect((await done)?.birthOptions).toMatchObject(values);
+  });
+  it.each(["Escape", "S", " "])("keeps the full review paged and honors %s", async (key) => {
+    const win = makeFakeWindow();
+    (globalThis as { window?: unknown }).window = win;
+    const term = makeTerm(80, 5);
+    const entries = OPTION_ENTRIES.filter((entry) => entry.type === "BIRTH");
+    const values = Object.fromEntries(entries.map((entry) => [entry.name, entry.name === "birth_no_selling" ? true : !entry.normal]));
+    let finished = false;
+    const done = runBirth(term, RACES, CLASSES, { rng: new Rng(1), birthOptions: values, birthConfirmOptions: () => true })
+      .then((choice) => { finished = true; return choice; });
+    for (const pressKey of ["a", "a", "a", "Enter", "Enter", "a"]) { press(win, pressKey); await tick(); }
+    const pages = [term.snapshot().join("\n")];
+    while (term.snapshot().join("\n").includes("Any key for more")) {
+      press(win, " "); await tick();
+      expect(finished).toBe(false);
+      pages.push(term.snapshot().join("\n"));
+    }
+    for (const entry of entries) expect(pages.join("\n")).toContain(entry.name);
+    expect(pages.length).toBeGreaterThan(1);
+    press(win, key); await tick();
+    if (key === " ") expect((await done)?.birthOptions).toMatchObject(values);
+    else {
+      expect(finished).toBe(false);
+      if (key === "Escape") {
+        for (const pressKey of ["Enter", "a", "S"]) { press(win, pressKey); await tick(); }
+        press(win, "Escape");
+      } else press(win, "Escape");
+      expect(await done).toBeNull();
+    }
+  });
   it.each(["Escape", "S"])("keeps %s active at the added note step", async (key) => {
     const win = makeFakeWindow();
     (globalThis as { window?: unknown }).window = win;

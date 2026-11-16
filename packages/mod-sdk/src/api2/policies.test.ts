@@ -16,6 +16,20 @@ import {
 } from "./policies.js";
 
 describe("checkApi2Policies", () => {
+  it("validates birth row annotations and gates both birth policies", () => {
+    const policies = { birthOptionAnnotations: [{ name: "birth_randarts", mark: "R", hint: "Random artifacts." }], birthConfirmOptions: true };
+    expect(checkApi2Policies(policies)).toBeNull();
+    const hooks = api2PoliciesToHooks(policies);
+    expect(hooks.birthOptionAnnotation?.({ name: "birth_randarts", description: "", value: true, defaultValue: false })).toMatchObject({ mark: "R" });
+    expect(hooks.birthOptionAnnotation?.({ name: "birth_no_selling", description: "", value: false, defaultValue: false })).toBeNull();
+    expect(hooks.birthConfirmOptions?.({ options: [] })).toBe(true);
+    expect(api2PolicyEffects(policies, () => false).hooks).toEqual({});
+    expect(api2PoliciesToHooks({ birthConfirmOptions: false })).toEqual({});
+    for (const row of [{ name: "other", mark: "R" }, { name: "birth_randarts" }, { name: "birth_randarts", mark: "x".repeat(9) }, { name: "birth_randarts", hint: "x".repeat(121) }, { name: "birth_randarts", mark: "a\nb" }, { name: "birth_randarts", hint: true }]) {
+      expect(checkApi2Policies({ birthOptionAnnotations: [row] })).not.toBeNull();
+    }
+    expect(checkApi2Policies({ birthConfirmOptions: "yes" })).toContain("true or false");
+  });
   it.each(["statusTerrainFromMemory", "forcedDescentStairs", "missileCritFromState", "classicSearch"] as const)("checks %s and installs only the granted true switch", (name) => {
     expect(checkApi2Policies({ [name]: 1 })).toContain(`${name} is true or false`);
     expect(api2PolicyEffects({ [name]: true }).registrations).toEqual({ [name]: true });
@@ -298,6 +312,8 @@ describe("API2_POLICY_KINDS", () => {
       messagePauseAfter: "registry:message",
       runEndLine: "registry:ui-entry",
       birthConfirmNote: "registry:ui-entry",
+      birthOptionAnnotations: "registry:ui-entry",
+      birthConfirmOptions: "registry:ui-entry",
       helpText: "registry:ui-entry",
       messageText: "registry:message", screenText: "registry:ui-entry", characterBackground: "registry:message",
       objectInfoText: "registry:effect-info", effectIntro: "registry:effect-info", historyAdd: "registry:message",

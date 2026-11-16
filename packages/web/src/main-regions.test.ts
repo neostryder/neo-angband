@@ -240,7 +240,7 @@ const TERM_CLEAR_REGIONS: Readonly<Record<string, readonly string[]>> = {
    * why `historyStage`'s callback now takes the surface instead of closing over
    * the terminal. */
   "birth.ts": [
-    "paintConfirmOnTerminal",
+    "paintConfirmOnTerminal > paint",
     "drawBirthSheet",
     "paintBirthMenuOnTerminal > paint",
     "paintPointBuyOnTerminal > paint",

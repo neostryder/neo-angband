@@ -304,6 +304,8 @@ function hookDescription(hook: keyof ModHooks): string {
     runEndLine: "the extra line on end screens and character dumps",
     helpText: "the wording and paragraph flow of raw help pages",
     birthOptionHighlight: "being told which birth option is highlighted",
+    birthOptionAnnotation: "the marks and hints on birth option rows",
+    birthConfirmOptions: "reviewing changed birth options before play",
     birthConfirmNote: "the note acknowledged before starting a character",
     screenText: "the wording of help pages, screens and prompts",
     characterBackground: "the wording of your character's background",

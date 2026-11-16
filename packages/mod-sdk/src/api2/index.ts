@@ -73,6 +73,8 @@ export type {
   Api2Options,
   Api2RunEndFacts,
   Api2BirthOptionHighlight,
+  Api2BirthOptionAnnotation,
+  Api2BirthConfirmOptionsFacts,
   Api2BirthConfirmFacts,
   Api2HelpTextBlock,
   Api2HelpTextSite,

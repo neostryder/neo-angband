@@ -106,10 +106,12 @@ function plain<T>(value: T): T {
  * The core hooks an API 2 hook set stands for. A hook the mod leaves out stays
  * absent, so it costs nothing and composes as no contribution at all.
  */
-export function api2ToModHooks(hooks: Api2Hooks): ModHooks {
+export function api2ToModHooks(hooks: Api2Hooks, granted: (capability: string) => boolean = () => true): ModHooks {
   const out: ModHooks = {};
   if (hooks.helpText) out.helpText = (text, site) => hooks.helpText!(text, plain(site));
   if (hooks.birthOptionHighlight) out.birthOptionHighlight = (option) => hooks.birthOptionHighlight!(plain(option));
+  if (hooks.birthOptionAnnotation && granted("registry:ui-entry")) out.birthOptionAnnotation = (option) => hooks.birthOptionAnnotation!(plain(option));
+  if (hooks.birthConfirmOptions && granted("registry:ui-entry")) out.birthConfirmOptions = (choice) => hooks.birthConfirmOptions!(plain(choice));
   if (hooks.birthConfirmNote) out.birthConfirmNote = (choice) => hooks.birthConfirmNote!(plain(choice));
   if (hooks.messagePauseAfter) out.messagePauseAfter = (raw) => hooks.messagePauseAfter!(raw);
   if (hooks.runEndLine) out.runEndLine = (report) => hooks.runEndLine!(plain(report));
@@ -626,7 +628,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
       }
       active = declaredHooks(merged);
       const fromApi2: ModHooks = merged ? {
-        ...api2ToModHooks(merged),
+        ...api2ToModHooks(merged, (capability) => options().grants.has(capability)),
         ...api2PolicyModHooks(pluginPolicies.get(plugin)?.registrations ?? {}, () => !stopped && generation === installedGeneration),
       } : {};
       const native = engine && engineHooksOf ? nativeHooks(engineHooksOf({ ...context, engine }), fromApi2) : {};

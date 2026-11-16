@@ -71,6 +71,8 @@ import { setActiveCellTap, type GridPointerInput, type GridSurface } from "./ter
 import { UI_TEXT, UI_DIM } from "./ui-colors";
 import {
   BIRTH_STAT_BASE,
+  DEFAULT_OVERRIDES,
+  OPTION_ENTRIES,
   MAX_BIRTH_POINTS,
   STAT_MAX,
   SKILL,
@@ -175,6 +177,8 @@ export interface BirthDeps {
 
 export interface BirthOpts {
   birthOptionHighlight?: import("@rpgm-tools/neo-angband-core").ModHooks["birthOptionHighlight"];
+  birthOptionAnnotation?: import("@rpgm-tools/neo-angband-core").ModHooks["birthOptionAnnotation"];
+  birthConfirmOptions?: import("@rpgm-tools/neo-angband-core").ModHooks["birthConfirmOptions"];
   birthConfirmNote?: import("@rpgm-tools/neo-angband-core").ModHooks["birthConfirmNote"];
   /**
    * Shared game RNG for random birth choices (ui-birth.c randint0 at L465/678/
@@ -1607,15 +1611,17 @@ function confirmCharacter(
   sheet: PreviewSheet | null,
   fallbackTitle: string,
   note?: () => string | null,
+  review?: () => readonly import("@rpgm-tools/neo-angband-core").BirthOptionFacts[],
 ): Promise<ConfirmResult> {
   const addNote = async (result: ConfirmResult): Promise<ConfirmResult> => {
     if (result !== "begin") return result;
     const answer = note?.();
     const text = typeof answer === "string" ? answer.replace(/[\p{Cc}\p{Zl}\p{Zp}]/gu, " ").slice(0, 160).trim() : "";
-    if (!text) return result;
+    const options = review?.() ?? [];
+    if (!text && options.length === 0) return result;
     const handle = pushRegion(screenRegionSpec(), host.size());
     try {
-      return await paintConfirmOnTerminal(regionSurface(host, handle.cells), sheet, text);
+      return await paintConfirmOnTerminal(regionSurface(host, handle.cells), sheet, text, options);
     } finally {
       popRegion(handle);
     }
@@ -1663,32 +1669,53 @@ function paintConfirmOnTerminal(
   term: GridSurface & GridPointerInput,
   sheet: PreviewSheet | null,
   note?: string,
+  options: readonly import("@rpgm-tools/neo-angband-core").BirthOptionFacts[] = [],
 ): Promise<ConfirmResult> {
   return new Promise<ConfirmResult>((resolve) => {
     const { cols, rows } = term.size();
-    if (sheet) drawBirthSheet(term, sheet);
-    else term.clear();
-    if (note) {
+    const reviewLines = options.flatMap((option) => {
+      const text = `${option.name}: ${option.value ? "yes" : "no"} (default: ${option.defaultValue ? "yes" : "no"})`;
       const width = Math.max(1, cols - 1);
-      for (let i = 0; i < Math.ceil(note.length / width) && i < rows - 1; i++) term.print(0, i, note.slice(i * width, (i + 1) * width), PB_FG);
+      return Array.from({ length: Math.ceil(text.length / width) }, (_, i) => text.slice(i * width, (i + 1) * width));
+    });
+    if (reviewLines.length && note) {
+      const width = Math.max(1, cols - 1);
+      reviewLines.unshift(...Array.from({ length: Math.ceil(note.length / width) }, (_, i) => note.slice(i * width, (i + 1) * width)), "");
     }
-    // get_confirm_command (ui-birth.c:1548-1555): this exact prompt, centred on
-    // the last row. No scrolling and no menu - the whole sheet is already on
-    // screen, and any key that is not ESC or 'S' begins the game.
+    let page = 0;
+    const pageSize = Math.max(1, rows - 1);
     const prompt = t(
       "birth.confirm.prompt",
       "['ESC' to step back, 'S' to start over, or any other key to continue]",
     );
-    term.print(
-      Math.max(0, Math.floor(cols / 2 - prompt.length / 2)),
-      rows - 1,
-      prompt.slice(0, cols - 1),
-      PB_FG,
-    );
+    const paint = (): void => {
+      if (reviewLines.length) {
+        term.clear();
+        reviewLines.slice(page, page + pageSize).forEach((line, i) => term.print(0, i, line, PB_FG));
+        term.print(0, rows - 1, (page + pageSize < reviewLines.length
+          ? "[Any key for more birth options, ESC to step back, S to start over]"
+          : prompt).slice(0, cols - 1), PB_FG);
+        return;
+      }
+      if (sheet) drawBirthSheet(term, sheet);
+      else term.clear();
+      if (note) {
+        const width = Math.max(1, cols - 1);
+        for (let i = 0; i < Math.ceil(note.length / width) && i < rows - 1; i++) term.print(0, i, note.slice(i * width, (i + 1) * width), PB_FG);
+      }
+      term.print(
+        Math.max(0, Math.floor(cols / 2 - prompt.length / 2)),
+        rows - 1,
+        prompt.slice(0, cols - 1),
+        PB_FG,
+      );
+    };
     const controls = controlSurface.push({
+      // The review shares the confirmation keys so back and restart keep their meaning.
       kind: "check", label: "Begin the adventure?",
       replies: [keyAction("Begin", "Enter"), keyAction("Start over", "S"), cancelAction()],
     });
+    paint();
     const finish = (value: ConfirmResult): void => {
       controls.dispose();
       inputEvents.removeEventListener("keydown", onKey, true);
@@ -1704,11 +1731,13 @@ function paintConfirmOnTerminal(
       /* 'S'/'s' -> BIRTH_RESET (L1559-1560): start the character over. */
       if (ev.key === "S" || ev.key === "s") return finish("restart");
       if (ev.key === "Escape") return finish("back");
+      if (page + pageSize < reviewLines.length) { page += pageSize; paint(); return; }
       finish("begin");
     };
     inputEvents.addEventListener("keydown", onKey, true);
     // Touch: tapping the prompt row is "any other key" (begin).
     setActiveCellTap(term, () => {
+      if (page + pageSize < reviewLines.length) { page += pageSize; paint(); return; }
       finish("begin");
     });
   });
@@ -1780,7 +1809,7 @@ export async function runBirth(
     for (;;) {
       const res = await birthMenu(term, hint, frozen, active, roguelikeAtBirth);
       if (res.kind === "options") {
-        await runBirthOptionsEditor(term, birthOptions, opts.birthOptionHighlight);
+        await runBirthOptionsEditor(term, birthOptions, opts.birthOptionHighlight, opts.birthOptionAnnotation);
         continue;
       }
       return res;
@@ -2076,7 +2105,7 @@ export async function runBirth(
           case "options":
             // textui_birth_quickstart (ui-birth.c:127-128): '=' opens
             // do_cmd_options_birth and the loop re-shows this same screen.
-            await runBirthOptionsEditor(term, birthOptions, opts.birthOptionHighlight);
+            await runBirthOptionsEditor(term, birthOptions, opts.birthOptionHighlight, opts.birthOptionAnnotation);
             break;
           case "accept":
             // 'Y': cmdq_push(CMD_ACCEPT_CHARACTER); BIRTH_COMPLETE
@@ -2412,6 +2441,14 @@ export async function runBirth(
             cls: className,
           }),
           () => opts.birthConfirmNote?.(Object.freeze({ name: finalName, raceName, className, birthOptions: Object.freeze({ ...birthOptions }) })) ?? null,
+          () => {
+            if (!opts.birthConfirmOptions) return [];
+            const options = Object.freeze(OPTION_ENTRIES.filter((entry) => entry.type === "BIRTH").map((entry) => {
+              const defaultValue = DEFAULT_OVERRIDES[entry.name] ?? entry.normal;
+              return Object.freeze({ name: entry.name, description: entry.description, value: birthOptions[entry.name] ?? defaultValue, defaultValue });
+            }).filter((option) => option.value !== option.defaultValue));
+            return opts.birthConfirmOptions(Object.freeze({ options })) === true ? options : [];
+          },
         );
         if (result === "restart") {
           /* BIRTH_RESET (ui-birth.c L1560-1561): discard every choice and start
