@@ -118,20 +118,29 @@ function key(k: string): UiInput {
 }
 
 describe("main.ts's keymap resolver accepts a named trigger key (#62, #63)", () => {
-  it("dispatches the cycle key without rebuilding the world or entering a turn", () => {
+  it.each([0, 1])("dispatches the cycle key only below the modal guard at depth %i", (modalDepth) => {
     let branch: ts.IfStatement | undefined;
+    let handler: ts.ArrowFunction | undefined;
     const visit = (node: ts.Node): void => {
       if (ts.isIfStatement(node) && node.expression.getText(source) === 'ev.key === "F6"') branch = node;
+      if (ts.isArrowFunction(node) && ts.isBlock(node.body) && node.body.getText(source).includes("installedFrontend.cycle()")) handler = node;
       ts.forEachChild(node, visit);
     };
     visit(source);
     expect(branch).toBeDefined();
-    const emitted = ts.transpileModule(branch!.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2023 } }).outputText;
+    expect(handler).toBeDefined();
+    const body = handler!.body as ts.Block;
+    const cycleStatement = body.statements.find((statement) => statement.pos <= branch!.pos && statement.end >= branch!.end)!;
+    const code = mainSource.slice(body.statements[0]!.getStart(source), cycleStatement.end);
+    const emitted = ts.transpileModule(code, { compilerOptions: { target: ts.ScriptTarget.ES2023 } }).outputText;
     const cycle = vi.fn();
     const preventDefault = vi.fn();
-    new Function("ev", "installedFrontend", emitted)({ key: "F6", preventDefault }, { cycle });
-    expect(cycle).toHaveBeenCalledOnce();
-    expect(preventDefault).toHaveBeenCalledOnce();
+    new Function("ev", "installedFrontend", "modalDepth", "logKeypress", "keyRepeatTracker", "state",
+      `let caretPending = false; const scoresOpen = false, pumping = false, dead = false; ${emitted}`)(
+      { key: "F6", preventDefault }, { cycle }, modalDepth, () => {}, { classify() {} }, {},
+    );
+    expect(cycle).toHaveBeenCalledTimes(modalDepth === 0 ? 1 : 0);
+    expect(preventDefault).toHaveBeenCalledTimes(modalDepth === 0 ? 1 : 0);
   });
   it("lets the player remap F6 and bind another key to the cycle action", () => {
     keymapAdd("orig", "F6", "i");
