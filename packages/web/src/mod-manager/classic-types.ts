@@ -67,7 +67,7 @@ export interface ModFolderPicker {
   pick(): Promise<string | null>;
   /** Re-grant read permission for the saved folder. */
   reconnect(): Promise<boolean>;
-  /** The folder choice is forgotten without deleting its files. */
+  /** Clearing the folder choice leaves its files on disk. */
   forget(): Promise<void>;
   /** The saved folder's name, when one is remembered. */
   savedName(): Promise<string | null>;

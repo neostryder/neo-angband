@@ -24,7 +24,7 @@
  *
  * ERRORS ARE ANSWERS. A refused command returns text saying why, never a thrown
  * transport error: an agent that gets a protocol failure has no way to recover,
- * while one told "there is no monster to the east" can try something else.
+ * while one that reads "there is no monster to the east" can try something else.
  * `callTool` also catches argument errors and returns them as `isError` results.
  */
 
@@ -276,10 +276,10 @@ const ENTRIES: Entry[] = [
       name: "map",
       title: "Draw the map",
       description:
-        "An ASCII map around the character. @ marks you; unknown squares are blank. " +
-        "Terrain, traps, items and monsters use the game's live glyphs. The legend " +
-        "identifies visible monsters and floor piles by character and coordinates. " +
-        "The map takes no game time.",
+        "An ASCII map around the character, with @ for you and blank squares where nothing is known. " +
+        "Terrain, traps, items, and monsters use the game's live glyphs. The legend " +
+        "lists visible monsters and floor piles by character and coordinates. " +
+        "Drawing the map takes no game time.",
       mutates: false,
       inputSchema: {
         type: "object",

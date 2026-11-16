@@ -1,23 +1,18 @@
 /**
- * Per-record identity for files whose records lack a unique string `name`.
- *
- * Explicit key specs keep patches tied to the fields that identify a record,
- * rather than guessing from its display text. Files without a spec use `name`.
- *
- * `keySlug` preserves "*" and "+" as "star" and "plus" so greater forms keep
- * distinct keys. Repeated ego names also need an item-type discriminator;
- * `recordRefKeys` offers both the base key and the discriminated key.
- *
- * The loader keeps a legacy slug as an alias unless it shadows a primary key.
- * Older refs can therefore stop naming their former record when that key now
- * belongs to another record. A ref with multiple claimants is unaddressable,
- * while the records remain in the game and the loader reports the refused op.
- *
- * `history` uses chart and roll as its key and keeps whole-file replacement
- * semantics because record order determines which history entry is chosen.
- *
- * record-key.test.ts checks the declared files and measures record reachability
- * against the shipped pack.
+ * This file gives each record an identity in files whose records have no unique
+ * string `name`. A file with an explicit key spec ties patches to the fields
+ * that identify a record instead of guessing from its display text, and a file
+ * without a spec uses `name`. `keySlug` turns "*" and "+" into "star" and "plus"
+ * so greater forms keep distinct keys. Ego names repeat, so they also need an
+ * item-type discriminator, and `recordRefKeys` offers both the base key and the
+ * discriminated key. The loader keeps a legacy slug as an alias unless it
+ * shadows a primary key, so an older ref can stop naming its former record when
+ * that key now belongs to another record. A ref with more than one claimant is
+ * unaddressable: the records stay in the game, and the loader reports the
+ * refused op. `history` keys on chart and roll and keeps whole-file replacement,
+ * because record order decides which history entry is chosen. record-key.test.ts
+ * checks the declared files and measures record reachability against the
+ * shipped pack.
  */
 
 import { slugify } from "./manifest.js";
@@ -179,16 +174,15 @@ function atPathThroughArrays(
 }
 
 /**
- * The slug used for a record's identity, distinct from `slugify` and
- * deliberately so.
- *
- * `slugify` builds the refs mods already write and is the ABI for the 24
- * name-composed files; it is not changed here. But it collapses every
- * non-alphanumeric run to a "-", which erases the two marks Angband uses to mean
- * "the greater form of this": "*Healing*" and "Little eruption+" arrived
- * indistinguishable from "Healing" and "Little eruption". Spelling the marks out
- * keeps the distinction inside an author-typeable ref. The loader accepts the
- * old form from legacyRecordKey only where it does not shadow a primary key.
+ * Returns the slug used for a record's identity. It is separate from `slugify`,
+ * which builds the refs mods already write, is the ABI for the 24 name-composed
+ * files, and stays unchanged here. `slugify` collapses every non-alphanumeric
+ * run to a "-", and that erases the two marks Angband uses to mean "the greater
+ * form of this", so "*Healing*" and "Little eruption+" came through
+ * indistinguishable from "Healing" and "Little eruption". This slug spells the
+ * marks out as "star" and "plus" to keep the distinction inside a ref an author
+ * can type. The loader accepts the old form from legacyRecordKey only where
+ * that form does not shadow a primary key.
  */
 function keySlug(value: string): string {
   return slugify(value.replace(/\*/g, " star ").replace(/\+/g, " plus "));

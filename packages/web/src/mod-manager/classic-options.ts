@@ -477,7 +477,8 @@ export const AUTOPLAYER_SPEED_MS: Record<AutoplayerSpeed, number> = {
 };
 
 /**
- * The autoplayer speed sub-screen: four tiers, current one marked, same shape
+ * The autoplayer speed sub-screen lists four tiers in the same layout and marks
+ * the current one
  * as every other named-choice picker on this screen. Reached from the row
  * manageModOptions shows beside a mod's own rule that hands back a controller,
  * only while that mod actually holds the one autoplayer slot.
@@ -518,7 +519,7 @@ export async function pickAutoplayerSpeed(
           {
             text: t(
               "modsScreen.autoplayer.urlNote",
-              "The four speeds take effect at once, with no reload.",
+              "Each of the four speeds applies immediately, without a reload.",
             ),
             color: C_DIM,
           },

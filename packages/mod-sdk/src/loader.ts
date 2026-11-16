@@ -717,15 +717,14 @@ function composeKeeping(
     }
 
     if (providerId === "") {
-      /* SAFETY NET, not a live path. A file is only classified passthrough
-       * because some pack's `records` for it are not name-keyed, and such a pack
-       * is by definition a provider - so today providerId is never "" here. The
-       * equivalent case for a COMPOSABLE file (a mod patches a file nobody
-       * supplies records for) is reported through composePacks' onRefuse callback.
-       * This branch is kept, cordoned and
-       * documented rather than deleted, because if the classification ever
-       * changes its absence would be a silent drop - the exact failure this file
-       * exists to prevent. Covered by loader.test.ts only through the composable
+      /* A file is classified passthrough only when some pack's `records` for it
+       * are not name-keyed, and such a pack is by definition a provider, so
+       * providerId is never "" here today. The matching case for a composable
+       * file, where a mod patches a file that no pack supplies records for, is
+       * reported through composePacks' onRefuse callback. The branch stays, with
+       * this comment, because if the classification ever changes, deleting it
+       * would turn this case into a silent drop, the failure this file exists
+       * to prevent. loader.test.ts covers it only through the composable
        * counterpart. */
       for (const p of ordered) {
         const contrib = p.files[f];

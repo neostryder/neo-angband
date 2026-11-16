@@ -139,12 +139,12 @@ export function installLines(ctx: InstallContext): InstallLine[] {
   out.push(body("same catalogue, the same Borg, wizard mode and cheat options. The"));
   out.push(body("game is not cut down in a browser and not extended on a desktop."));
   out.push(gap);
-  out.push(dim("The desktop shell opens one terminal window."));
-  out.push(dim("Panic saves when the process is killed depend on signal support:"));
+  out.push(dim("The desktop shell opens a single terminal window."));
+  out.push(dim("A panic save when the process is killed needs signal support:"));
   out.push(
     dim(
       `  Panic save: ${
-        ctx.caps.signals ? "now delivered" : "not delivered"
+        ctx.caps.signals ? "signals delivered" : "signals not delivered"
       }.`,
     ),
   );

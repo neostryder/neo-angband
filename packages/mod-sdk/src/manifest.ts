@@ -425,15 +425,13 @@ export interface PackPayload {
 }
 
 /**
- * One graphics mode a `tiles`-facet pack contributes.
- *
- * This was read loosely off the raw JSON for a long time and was NOT in the
- * validated schema, which the moddability measurement recorded as a gap
- * (docs/modding/MOD_REACH.md). The consequence was specific rather than
- * theoretical: a typo in `grafID` or `path` produced no error anywhere - the entry
- * was silently skipped, and a mod author saw a Graphics row that simply never
- * appeared. Declaring it here means the manifest is refused at the edge, with the
- * mod's id and the offending field named.
+ * One graphics mode that a `tiles`-facet pack contributes. For a long time this
+ * was read loosely off the raw JSON and was missing from the validated schema,
+ * a gap the moddability measurement recorded in docs/modding/MOD_REACH.md. A typo
+ * in `grafID` or `path` produced no error anywhere: the entry was skipped, and
+ * the mod author saw a Graphics row that never appeared. With the entry
+ * declared here, a bad manifest is refused at the edge, with the mod's id and
+ * the offending field named.
  */
 export interface PackTilePack {
   /**
@@ -1368,14 +1366,13 @@ function validatePayload(value: unknown, id: string): void {
 }
 
 /**
- * Validate the optional `tilePacks` array (PackTilePack[]); throws ManifestError.
- *
- * `path` is checked for being MOD-RELATIVE, and that check is the point rather than
- * tidiness. It used to be a site-root-relative URL base, which only a bundled mod
- * could ever get right; a manifest carrying the old form would resolve to
- * `mods/<id>/mods/<id>/...` and 404 into ASCII with nothing said. An absolute path, a
- * scheme, or a `..` escape is refused for the same reason a pack's code files are
- * read by pack-relative path: the host decides where a mod's bytes live.
+ * Validates the optional `tilePacks` array (PackTilePack[]) and throws ManifestError.
+ * The check that `path` is mod-relative is the reason this validator exists.
+ * `path` used to be a site-root-relative URL base, which only a bundled mod could
+ * get right, and a manifest carrying the old form would resolve to
+ * `mods/<id>/mods/<id>/...` and 404 into ASCII with no message. An absolute path,
+ * a scheme, or a `..` escape is refused for the same reason a pack's code files
+ * are read by pack-relative path: the host decides where a mod's bytes live.
  */
 function validateTilePacks(value: unknown, id: string): void {
   if (value === undefined) return;

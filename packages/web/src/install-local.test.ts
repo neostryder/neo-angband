@@ -86,7 +86,7 @@ describe("the three claims it must never make", () => {
     /* The point of reading live capabilities: this line changes without the page
      * being edited. */
     const delivered = text(ctx({ caps: { ...TAB, signals: true } }));
-    expect(delivered).toContain("Panic save: now delivered.");
+    expect(delivered).toContain("Panic save: signals delivered.");
     expect(delivered).not.toMatch(/does not|not delivered/u);
   });
 });

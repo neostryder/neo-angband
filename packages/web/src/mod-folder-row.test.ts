@@ -94,7 +94,7 @@ describe("noFolderPickerLines", () => {
   it("names the route that DOES work in this browser", () => {
     expect(text).toContain("Recommended mods...");
     expect(text).toMatch(/records its repository/iu);
-    expect(text).toMatch(/blocks replacements from a different repository/iu);
+    expect(text).toMatch(/blocks any replacement that comes from a different repository/iu);
     expect(text).not.toMatch(/digest|tampered download never runs/iu);
   });
 

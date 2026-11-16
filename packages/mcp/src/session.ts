@@ -11,10 +11,10 @@
  *
  * HOW A TURN WORKS. `runGameLoop` asks `state.nextCommand()` whenever the game
  * needs input and returns LOOP_STATUS.INPUT when it gets null (game/loop.ts).
- * `installController` binds a controller into exactly that seam. `perform(command)`
- * arms a ONE-SHOT command, runs the loop, and returns when the loop asks for the
- * next one - which is the same boundary a human keypress sits at. Several game
- * turns can pass inside one `perform()` (resting, a monster's turn, level feelings);
+ * `installController` binds a controller into that seam. `perform(command)` arms
+ * a one-shot command, runs the loop, and returns when the loop asks for the next
+ * command, at the same boundary where a human keypress sits. Several game turns
+ * can pass inside one `perform()` (resting, a monster's turn, level feelings);
  * that is upstream's behaviour, and the drained messages are how you see it.
  *
  * NONDETERMINISM IS DECLARED, not hidden. An AI on the other end of a socket is
@@ -78,7 +78,7 @@ export interface ActResult {
 export class SessionError extends Error {}
 
 /**
- * One game. Call `perform(command)` and read `view` until the player dies.
+ * A single game. Call `perform(command)` and read `view` until the player dies.
  *
  * Not reusable across games: `newGame` on the owning server replaces the whole
  * object, because a GameState carries a level, a registry and an RNG that are
@@ -89,7 +89,7 @@ export class GameSession {
   readonly startedAt: number;
   private readonly game: StartedGame;
   private readonly agent: AgentSession;
-  /** The controller clears the command armed by `perform`. */
+  /** The controller clears the command that `perform` armed. */
   private pending: AgentCommand | null = null;
   private lastTurn: number;
   private nondeterministicTripped = false;

@@ -213,8 +213,8 @@ function grantCovers(grant: ParsedCapability, request: ParsedCapability): boolea
 
 /**
  * The capabilities a plugin was granted, built from its manifest. Facades
- * hold one of these per loaded plugin and call `check()` before honoring
- * requests that require a capability.
+ * Hold one of these for each loaded plugin and call `check()` before honoring
+ * any request that needs a capability.
  */
 export class CapabilitySet {
   private readonly grants: readonly ParsedCapability[];
@@ -256,9 +256,9 @@ export class CapabilitySet {
   }
 
   /**
-   * True if a grant covers `cap`, including the "state:*.read", "registry:*",
-   * "network:*" and "ui:*.replace" wildcards. Truth capabilities require an
-   * exact grant. This throws CapabilityError if `cap` is not recognized.
+   * True if a grant covers `cap`, counting the "state:*.read", "registry:*",
+   * "network:*", and "ui:*.replace" wildcards. Truth capabilities need an exact
+   * grant. An unrecognized `cap` throws CapabilityError.
    */
   has(cap: string): boolean {
     const request = parseCapability(cap);

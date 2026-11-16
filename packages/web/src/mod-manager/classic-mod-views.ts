@@ -118,7 +118,7 @@ export function noFolderPickerLines(): ScreenLine[] {
     {
       text: t(
         "modsScreen.noPicker.body5",
-        "and blocks replacements from a different repository.",
+        "and blocks any replacement that comes from a different repository.",
       ),
       color: C_FG,
     },

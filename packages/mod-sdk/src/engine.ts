@@ -125,13 +125,11 @@ export function newerGameCouldRun(range: string, engineVersion: string): boolean
 }
 
 /**
- * Does `engineVersion` satisfy the pack's declared `engine` range?
- *
- * An absent range is allowed. An empty or malformed range is an author error:
- * a code pack is blocked, while a data pack loads with a warning.
- *
- * Pure, and takes the version as an argument rather than importing it, so a test
- * can drive any build and so mod-sdk stays independent of core.
+ * Checks whether `engineVersion` satisfies the pack's declared `engine` range.
+ * An absent range passes. An empty or malformed range is an author error: a
+ * code pack is blocked, and a data pack loads with a warning. The function is
+ * pure and takes the version as an argument instead of importing it, so a test
+ * can drive any build and mod-sdk stays independent of core.
  */
 export function engineVerdict(
   manifest: Pick<PackManifest, "engine" | "modApi">,

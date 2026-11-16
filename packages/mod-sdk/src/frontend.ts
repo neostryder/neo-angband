@@ -182,39 +182,26 @@ export interface RegionPointer {
 }
 
 /**
- * A rectangle of your own on the player's screen.
- *
- * `place()` RUNS ON EVERY LAYOUT CHANGE, so the contract on it is narrow on
- * purpose: RETURN A RECTANGLE AND DO NO WORK. It must not paint, must not read
- * the game, and must not throw. A resize can arrive between any two keystrokes,
- * and an exception here is not just your region's problem - it is caught, but
- * the cost is that your region is faulted out of the stack until the next
- * relayout, and the player sees furniture disappear with no idea why.
- *
- * `paint()` is where the drawing goes, and it is called once per frame with a
- * surface clipped to whatever `place()` last returned.
- *
- * POINTER INPUT IS POSITIONAL. `input()` hears only about cells this region
- * drew, in the same region-local coordinates that `paint()` uses. Keyboard
- * input is not offered: a region that took keys would be a second answer to
- * what a player command means.
- *
- * THERE IS NO LIST OF KEYS YOU WANT, and its absence is a decision rather than
- * an omission. A region that declared the keys it wanted would be a second
- * answer to "what does this key do" standing beside `registry:command`, and the
- * result of two answers is a mod that silently takes `i` away from the player.
- * Commands are added as commands.
- *
- * ORDER IS BANDS, NOT A NUMBER. Within your band the later-loaded mod is on
- * top, which is the same last-in-load-order rule that already decides the front
- * end, the HUD, the menus and the screens. A free numeric z-index was
- * considered and declined: it is a coordination problem with no coordinator,
- * every mod picks a large number, and the first one to out-bid the mod manager
- * takes away the player's way to turn it off.
- *
- * Requires `ui:region.create`. Note that `ui:*.replace` does NOT grant it - the
- * wildcard ranges over which of the game's regions changes hands, and adding
- * one of your own is a different sentence for the player to agree to.
+ * A rectangle the mod owns on the player's screen. `place()` runs on every
+ * layout change, and a resize can arrive between any two keystrokes, so
+ * `place()` may only return a rectangle: it must not paint, read the game, or
+ * throw. If it throws, the exception is caught, but the region is faulted out of
+ * the stack until the next relayout, and the player sees it disappear with no
+ * explanation. Drawing goes in `paint()`, which is called once per frame with a
+ * surface clipped to the rectangle `place()` last returned. Pointer input is
+ * positional: `input()` hears only about cells this region drew, in the same
+ * region-local coordinates `paint()` uses. A region gets no keyboard input and
+ * has no list of keys it wants, because `registry:command` decides what a key or
+ * player command means, and a second source would let a mod silently take `i`
+ * away from the player. Add commands as commands. Stacking order is by band,
+ * with no numeric z-index. Within a band the later-loaded mod is on top, the
+ * same last-in-load-order rule that decides the front end, the HUD, the menus,
+ * and the screens. A numeric z-index has no coordinator: every mod would pick a
+ * large number, and the first to out-bid the mod manager would take away the
+ * player's way to turn it off. Requires `ui:region.create`. `ui:*.replace` does
+ * not grant it, because that wildcard covers which of the game's regions
+ * changes hands, and adding a region of the mod's own is a separate thing for
+ * the player to agree to.
  */
 export interface RegionDeclaration {
   /**

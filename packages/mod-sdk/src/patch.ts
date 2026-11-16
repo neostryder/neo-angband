@@ -5,7 +5,7 @@
  * simple, but two mods touching one record always look like they collide even
  * when they change unrelated fields. The field-level model fixes that. A patch
  * is an ordered list of field operations - `set`, `merge`, `addFlag`,
- * `removeFlag`, `add`, `mul`, `append`, `removeValue` - each addressing a
+ * `removeFlag`, `add`, `mul`, `append`, and `removeValue`, each addressing a
  * dot-path into the record.
  * Patches from different packs apply in load order; two packs that touch
  * DIFFERENT fields compose with zero conflict, and only a genuine same-field
@@ -356,8 +356,9 @@ export interface ComposedPatch {
 /**
  * Compose several packs' field patches over a base record, applying them in
  * the given (load) order and reporting same-field collisions. A field conflicts
- * when distinct packs write it and any write uses set, merge, add, mul or
- * removeValue. Writes using only addFlag, removeFlag or append do not conflict.
+ * when distinct packs write it and any of those writes uses set, merge, add,
+ * mul, or removeValue. Writes that use only addFlag, removeFlag, or append do
+ * not conflict.
  */
 export function composeFieldPatches(
   base: JsonRecord,

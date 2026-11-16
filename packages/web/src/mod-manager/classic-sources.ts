@@ -95,7 +95,7 @@ export async function showModSources(
       {
         text: t(
           "modsScreen.sources.installed.body2",
-          "a folder, so there is no path to show. The game records",
+          "a folder, so no path is available to show. The game records",
         ),
         color: C_FG,
       },
@@ -352,7 +352,7 @@ export async function manageModFolder(
       t("modsScreen.manageFolder.stopUsing", 'Stop using "{name}"', { name: savedName }),
       "forget",
       C_DIM,
-      t("modsScreen.manageFolder.stopUsingHint", "Your installed mods stay; nothing on your disk is touched."),
+      t("modsScreen.manageFolder.stopUsingHint", "Your installed mods stay, and nothing on your disk changes."),
     );
   }
   add(
