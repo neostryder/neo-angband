@@ -265,4 +265,6 @@ export interface WorldFrame {
 
 export interface WorldFrameSink {
   present(frame: WorldFrame): void;
+  /** The host cannot hide display elements a sink owns. */
+  suspend?(): void;
 }

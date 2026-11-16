@@ -132,6 +132,7 @@ export interface BuildWorldFrameParams {
  */
 export interface WorldFrameSink {
   present(frame: WorldFrame): void;
+  suspend?(): void;
 }
 
 /**

@@ -276,12 +276,13 @@ export interface ModPlugin {
   /**
    * Replace the map renderer with a sink for the live `WorldFrame` stream.
    *
-   * The host selects exactly one declaration before invoking it: the LAST
-   * enabled mod in load order wins. Earlier frontends are not constructed, so
-   * they cannot mount UI or retain game data after losing. Return `undefined`
+   * The host registers a view under the manifest's proper name and constructs
+   * its sink only when selected. The last loaded view starts active unless the
+   * install has a saved preference. The factory returns `undefined`
    * to decline, which leaves the faithful glyph renderer active. The sink gets
    * a frozen, structurally owned snapshot on every real map repaint; it may
    * retain that frame, but cannot retain or mutate the player's live grid.
+   * A sink's suspend() releases its display when the player cycles views.
    *
    * Requires the `display:replace` capability in the manifest, and the player's
    * consent to it. Not a `registry:` domain, and not covered by `registry:*`: a
@@ -290,10 +291,8 @@ export interface ModPlugin {
    * that declares this member without asking is reported by name and the game
    * keeps drawing.
    *
-   * CORE'S OWN RENDERER DECLARES THIS TOO, as candidate zero of the same list
-   * (frontend-runtime.ts). It is not a fallback the selection falls through to;
-   * it is what wins when no mod outranks it, and what a faulting replacement
-   * hands the map back to.
+   * Core's own renderer is candidate zero and stays in the cycle because every
+   * view needs a recovery target when its drawing fails.
    *
    * This is a front-end seam, not a registry capability. It replaces display
    * only; input remains at the host's one input door until a later input-binding

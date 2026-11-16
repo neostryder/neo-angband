@@ -196,19 +196,7 @@ export function layerSlots(inputs: ConflictInputs): ContestedSlot[] {
     ),
   );
 
-  /* FRONTEND. The last enabled declaration owns the one display slot; lower
-   * candidates are never invoked, so a loser cannot leave a hidden root behind. */
-  slots.push(
-    ...contestedSlots(
-      "frontend",
-      "single-slot",
-      inputs.frontends.map((id) => ({
-        key: "frontend",
-        what: "a replacement map front end",
-        claim: { packId: id } as Claim,
-      })),
-    ),
-  );
+  // Front ends have separate views, so their registrations discard no work.
 
   /* HUD, one slot PER REGION. Same last-load-wins rule as the front end, applied
    * three times, so a mod drawing the vitals and a mod drawing the status line

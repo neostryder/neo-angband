@@ -27,6 +27,7 @@ import {
   CORE_FRONTEND_ID,
   frontendWorldFrameSink,
   installFrontend,
+  registerWorkerFrontendView,
 } from "./frontend-runtime";
 import { activeModCode, loadModCode, PLUGIN_FILE, resetModCode, setModCode } from "./mod-code";
 import { modPluginContext } from "./mod-context";
@@ -42,6 +43,7 @@ import {
 } from "./ui-stack";
 import { projectLiveWorld, type LiveWorldRead, type ResolvedGlyph } from "./world-render-data";
 import { glyphWorldFrameSink, type WorldFrame } from "./world-view";
+import { readSetting, writeSetting } from "./settings-store";
 
 const ids = ["early-view", "late-view", "ungated-view"] as const;
 /** What the player approved for each fixture, verbatim from its manifest. */
@@ -145,6 +147,89 @@ function reads(
 }
 
 describe("a disk-loaded frontend plugin", () => {
+  it("uses install load order when Worker and in-process views coexist", () => {
+    const candidate = (id: string) => ({ id, manifest: { id, name: `${id} proper name`, version: "1", shape: "plugin" as const, capabilities: ["display:replace"] },
+      plugin: { frontend: () => ({ present() {} }) } });
+    const unregister = registerWorkerFrontendView({ ...candidate("worker"), current: () => true });
+    try {
+      const installed = installFrontend([coreFrontendCandidate({ present() {} }), candidate("native")],
+        (id) => modPluginContext(id, {}), () => {}, null, ["worker", "core", "native"]);
+      expect(installed.id).toBe("native");
+      expect(installed.views.map((view) => view.id)).toEqual(["core", "worker", "native"]);
+    } finally { unregister(); }
+  });
+  it("cycles named views and hands the incoming view the current geometry immediately", () => {
+    const calls: string[] = [];
+    const frames: WorldFrame[] = [];
+    const candidates = ["first", "second"].map((id) => ({
+      id,
+      manifest: { id, name: `${id} proper name`, version: "1.0.0", shape: "plugin" as const, capabilities: ["display:replace"] },
+      plugin: { frontend: () => ({ present: (frame: WorldFrame) => { calls.push(id); frames.push(frame); }, suspend: () => calls.push(`hide ${id}`) }) },
+    }));
+    const installed = installFrontend(
+      [coreFrontendCandidate({ present: () => calls.push("glyph") }), ...candidates],
+      (id) => modPluginContext(id, {}),
+      () => {},
+    );
+    const sink = frontendWorldFrameSink(installed, () => {});
+    const regions = { map: { name: "map" as const, cells: { col: 4, row: 3, cols: 2, rows: 1 }, pixels: { x: 40, y: 30, width: 20, height: 10 } } };
+    const frame = projectLiveWorld({ ...reads({ x: 1, y: 0 }), regions }, sink);
+    expect(installed.views.map((view) => view.name)).toEqual(["Neo Angband", "first proper name", "second proper name"]);
+    installed.cycle();
+    installed.cycle();
+    installed.cycle();
+    expect(calls).toEqual(["second", "hide second", "glyph", "first", "hide first", "second"]);
+    expect(frames.at(-1)).toEqual(frame);
+    expect(installed.id).toBe("second");
+  });
+
+  it("skips a throwing view, releases its display and resumes glyphs with one notice", () => {
+    const painted: string[] = [];
+    const faults: string[] = [];
+    const suspend = vi.fn();
+    const installed = installFrontend([
+      coreFrontendCandidate({ present: () => painted.push("glyph") }),
+      { id: "broken", manifest: { id: "broken", name: "Broken View", version: "1", shape: "plugin", capabilities: ["display:replace"] },
+        plugin: { frontend: () => ({ present() { throw new Error("paint failed"); }, suspend }) } },
+    ], (id) => modPluginContext(id, {}), (id, message) => faults.push(`${id}: ${message}`));
+    const sink = frontendWorldFrameSink(installed, () => {});
+    projectLiveWorld(reads({ x: 1, y: 0 }), sink);
+    expect(installed.id).toBe("core");
+    expect(installed.views.map((view) => view.id)).toEqual(["core"]);
+    installed.cycle();
+    expect(suspend).toHaveBeenCalledOnce();
+    expect(painted).toEqual(["glyph"]);
+    expect(faults).toEqual(["broken: frontend display failed; the glyph front end has resumed"]);
+  });
+
+  it("remembers the active view per install across a reload, including glyphs", () => {
+    const values = new Map<string, string>();
+    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
+    writeSetting(storage, "tileMode", 2);
+    const create = () => installFrontend([
+      coreFrontendCandidate({ present() {} }),
+      ...["first", "second"].map((id) => ({ id, manifest: { id, name: `${id} name`, version: "1", shape: "plugin" as const, capabilities: ["display:replace"] },
+        plugin: { frontend: () => ({ present() {}, suspend() {} }) } })),
+    ], (id) => modPluginContext(id, {}), () => {}, storage);
+    const first = create();
+    first.cycle();
+    expect(create().id).toBe("core");
+    first.cycle();
+    expect(create().id).toBe("first");
+    expect(readSetting(storage, "activeView")).toBe("first");
+    expect(readSetting(storage, "tileMode")).toBe(2);
+    writeSetting(storage, "activeView", "removed-view");
+    expect(create().id).toBe("core");
+  });
+
+  it("keeps a sole glyph view's cycle inert and preserves its sink", () => {
+    const glyph = { present: vi.fn() };
+    const installed = installFrontend([coreFrontendCandidate(glyph)], (id) => modPluginContext(id, {}), () => {});
+    expect(frontendWorldFrameSink(installed, () => {})).toBe(installed.recovery);
+    installed.cycle();
+    expect(installed.id).toBe("core");
+    expect(glyph.present).not.toHaveBeenCalled();
+  });
   it("follows the shipped disk loader into a safely owned live WorldFrame", async () => {
     (globalThis as FrontendGlobal).__neoFrontendFrames = [];
     const { disk, code } = await bootDiskFrontendCode();

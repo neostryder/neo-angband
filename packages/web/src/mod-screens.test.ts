@@ -656,14 +656,13 @@ const EVERY_CONFLICT: ConflictInputs = {
   screens: ["frost", "runes"],
 };
 
-/** The nine contested sentences, in the order the pane has always printed them. */
+/** The contested sentences follow the pane's slot order. */
 const CONTESTED_ROWS = [
   "frost and runes both set kobold.speed",
   'Frost Realms and Rune Magic all change the "Adam Bolt" graphics mode; Rune Magic wins because it loads last.',
   "Frost Realms and Rune Magic all handle what happens when you walk into diggable rock; only Rune Magic runs because it loads last - the rest never get asked.",
   'Frost Realms and Rune Magic all change the "shared.flag" setting; Rune Magic wins because it loads last.',
   "Frost Realms and Rune Magic each provide an autoplayer that takes over your keyboard, and there is room for one; Rune Magic takes it and the others do nothing.",
-  "Frost Realms and Rune Magic each provide a replacement map front end, and there is room for one; Rune Magic takes it and the others do nothing.",
   "Frost Realms and Rune Magic each provide a replacement vitals panel, and there is room for one; Rune Magic takes it and the others do nothing.",
   "Frost Realms and Rune Magic each provide a replacement way of asking the game's menus, and there is room for one; Rune Magic takes it and the others do nothing.",
   "Frost Realms and Rune Magic each provide a replacement way of showing the game's full screens, and there is room for one; Rune Magic takes it and the others do nothing.",

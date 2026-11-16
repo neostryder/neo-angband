@@ -25,6 +25,7 @@ const validator = json.object({
   logLevel: json.optional(json.string),
   /** The graphics mode's grafID; absent means text. */
   tileMode: json.optional(nonNegativeInt),
+  activeView: json.optional(json.string),
   /** The control profile: desktop or touch. */
   controlProfile: json.optional(json.string),
   /** Mods from third-party sources may be installed. */

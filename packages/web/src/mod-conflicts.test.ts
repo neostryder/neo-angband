@@ -238,10 +238,9 @@ describe("player tile: mods providing the player's own tile", () => {
 });
 
 describe("frontend: two mods each replacing the map", () => {
-  it("is reported as one last-load-wins display slot", () => {
+  it("keeps separate views out of the conflict report", () => {
     const slots = layerSlots(inputs({ frontends: ["first", "last"] }));
-    expect(slots).toHaveLength(1);
-    expect(slots[0]).toMatchObject({ layer: "frontend", winner: "last" });
+    expect(slots).toEqual([]);
   });
 
   it("does not report an uncontested replacement", () => {

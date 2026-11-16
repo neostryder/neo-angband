@@ -1,24 +1,10 @@
 /**
- * The one front-end slot.
- *
- * THE DEFAULT GOES THROUGH THE SAME DOOR. Core's glyph renderer is candidate
- * zero in the same list, declaring `frontend` and `display:replace` exactly as a
- * mod does, and it wins by the ordinary last-in-load-order rule when no mod
- * declares one. That is the whole point of phase 5: if the seam could not
- * express the front end the game already ships, "a mod can replace the front
- * end" would be a claim about a shape nobody had ever built through it. It also
- * deletes the branch this file used to carry - there is no null selection and no
- * fallback parameter threaded through the render path, because there is always
- * exactly one selected front end.
- *
- * Front ends are deliberately selected before they are invoked: a lower-loaded
- * plugin must not mount a screen or retain game data when a later plugin wins.
- * Candidate zero is the exception, and only because it is the RECOVERY target -
- * a replacement that faults hands the map back to it mid-session, so it has to
- * have been constructed before it is needed.
+ * The host owns named views. Core is always available as the recovery target.
+ * Lazy construction keeps an inactive plugin from mounting display elements.
  */
 
 import { modHealth } from "./mod-health";
+import { readSetting, writeSetting, type SettingsWriter } from "./settings-store";
 import { CapabilitySet, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModPlugin, ModPluginContext } from "./mod-plugin";
 import {
@@ -26,6 +12,7 @@ import {
   snapshotWorldFrame,
   type RestatableWorldFrameSink,
   type WorldFrameSink,
+  type WorldFrame,
 } from "./world-view";
 
 /** Candidate zero's id: the game's own glyph renderer, as a front end. */
@@ -47,10 +34,56 @@ export interface FrontendPlugin {
   /** Read for `capabilities` only; the loader has already validated it. */
   readonly manifest: PackManifest;
   readonly plugin: Pick<ModPlugin, "frontend">;
+  readonly current?: () => boolean;
+}
+
+const workerViews = new Map<string, FrontendPlugin>();
+const viewListeners = new Set<() => void>();
+
+/** The host supplies identity because Worker data cannot rename a mod. */
+export function registerWorkerFrontendView(candidate: FrontendPlugin): () => void {
+  workerViews.set(candidate.id, candidate);
+  for (const listener of viewListeners) listener();
+  return () => {
+    if (workerViews.get(candidate.id) !== candidate) return;
+    workerViews.delete(candidate.id);
+    for (const listener of viewListeners) listener();
+  };
+}
+
+export function failWorkerFrontendView(id: string, error: unknown): void {
+  for (const listener of workerFaultListeners) listener(id, error);
+}
+
+const workerFaultListeners = new Set<(id: string, error: unknown) => void>();
+
+function orderedViews(candidates: readonly FrontendPlugin[], order?: readonly string[]): readonly FrontendPlugin[] {
+  if (!order) return candidates;
+  const rank = new Map(order.map((id, index) => [id, index + 1]));
+  rank.set(CORE_FRONTEND_ID, 0);
+  const after = order.length + 1;
+  return [...candidates].sort((left, right) => (rank.get(left.id) ?? after) - (rank.get(right.id) ?? after));
+}
+
+/** The shell owns the subscription lifetime across a reload. */
+export function watchFrontendViews(frontend: InstalledFrontend, changed: () => void): () => void {
+  if (!(frontend instanceof FrontendViews)) return () => {};
+  const update = () => { frontend.updateWorkers(); changed(); };
+  const fail = (id: string, error: unknown) => frontend.workerFailed(id, error);
+  viewListeners.add(update);
+  workerFaultListeners.add(fail);
+  update();
+  return () => {
+    viewListeners.delete(update);
+    workerFaultListeners.delete(fail);
+    frontend.suspend();
+  };
 }
 
 export interface InstalledFrontend {
   readonly id: string;
+  readonly views: readonly { readonly id: string; readonly name: string }[];
+  cycle(): void;
   readonly sink: WorldFrameSink;
   /**
    * Candidate zero's sink - what resumes when a replacement faults. Equal to
@@ -93,7 +126,7 @@ export function coreFrontendCandidate(sink: WorldFrameSink): FrontendPlugin {
  * pixels), not assumed from the two being written to look alike.
  */
 export function coreOnlyFrontend(sink: WorldFrameSink): InstalledFrontend {
-  return { id: CORE_FRONTEND_ID, sink, recovery: sink };
+  return { id: CORE_FRONTEND_ID, sink, recovery: sink, views: [{ id: CORE_FRONTEND_ID, name: "Neo Angband" }], cycle() {} };
 }
 
 /** True when this candidate declares a front end AND is allowed to hold one. */
@@ -122,10 +155,7 @@ function eligible(
 }
 
 /**
- * The candidates actually competing for the slot, for the contested-claim
- * report. A refused claim is NOT a contender: it is reported as that mod's own
- * fault, and listing it here as well would tell the player two mods are
- * fighting over the display when only one of them can hold it.
+ * These registrations coexist, so diagnostics do not treat them as contested slots.
  */
 export function frontendClaimants(
   candidates: readonly FrontendPlugin[],
@@ -168,6 +198,7 @@ function construct(
      * structurally identical and this adapter keeps the runtime boundary local. */
     return {
       present: (frame) => modHealth().run(candidate.id, "frontend present", () => sink.present(frame)),
+      ...(sink.suspend ? { suspend: () => modHealth().run(candidate.id, "frontend suspend", () => sink.suspend!(), { always: true }) } : {}),
     };
   } catch (error) {
     reportFault(candidate.id, "frontend() failed, so the glyph front end stays active", error);
@@ -176,9 +207,8 @@ function construct(
 }
 
 /**
- * Select and install the front end. Total by construction: candidate zero is
- * core's own and it is always constructed, both because it may win and because
- * it is what a faulting replacement falls back to.
+ * The initial preference follows load order so existing installs keep their
+ * display. Core remains available because mod drawing can fail.
  *
  * Throws only if the caller supplied no candidate zero, which is a host bug
  * rather than a mod's - there is no map to draw and nothing to report it with.
@@ -187,6 +217,8 @@ export function installFrontend(
   candidates: readonly FrontendPlugin[],
   contextFor: (id: string) => ModPluginContext,
   reportFault: (id: string, message: string, error: unknown) => void,
+  storage?: SettingsWriter | null,
+  order?: readonly string[],
 ): InstalledFrontend {
   const core = candidates[0];
   if (!core || core.id !== CORE_FRONTEND_ID) {
@@ -194,12 +226,158 @@ export function installFrontend(
   }
   const recovery = construct(core, contextFor, reportFault);
   if (!recovery) throw new RangeError("installFrontend: the core front end declined its own slot");
-  const selected = selectedFrontendPlugin(candidates, reportFault);
-  if (!selected || selected.id === CORE_FRONTEND_ID) {
-    return { id: CORE_FRONTEND_ID, sink: recovery, recovery };
+  const available = orderedViews([...candidates, ...workerViews.values()].filter((candidate) => eligible(candidate, reportFault)), order);
+  const saved = readSetting(storage, "activeView");
+  const initial = available.find((candidate) => candidate.id === saved) ??
+    (saved === undefined ? available.at(-1) : core)!;
+  const host = new FrontendViews(available, recovery, contextFor, reportFault, storage, order);
+  host.activate(initial.id);
+  return host;
+}
+
+/** A display preference never enters the character or the turn loop. */
+class FrontendViews implements InstalledFrontend {
+  private readonly sinks = new Map<string, WorldFrameSink>();
+  private readonly failed = new Set<string>();
+  private active = CORE_FRONTEND_ID;
+  private last: WorldFrame | undefined;
+  private chosen = false;
+  readonly stream: FrontendMapStream;
+
+  constructor(
+    private candidates: readonly FrontendPlugin[],
+    readonly recovery: WorldFrameSink,
+    private readonly contextFor: (id: string) => ModPluginContext,
+    private readonly reportFault: (id: string, message: string, error: unknown) => void,
+    private readonly storage?: SettingsWriter | null,
+    private readonly order?: readonly string[],
+  ) {
+    this.sinks.set(CORE_FRONTEND_ID, recovery);
+    this.stream = {
+      present: (frame) => {
+        this.last = snapshotWorldFrame(frame);
+        this.draw();
+      },
+      restate: (stack) => {
+        if (!this.last) return;
+        this.last = snapshotWorldFrame({ ...this.last, stack });
+        if (this.active !== CORE_FRONTEND_ID) this.draw();
+      },
+    };
   }
-  const sink = construct(selected, contextFor, reportFault);
-  return sink ? { id: selected.id, sink, recovery } : { id: CORE_FRONTEND_ID, sink: recovery, recovery };
+
+  get id(): string { return this.active; }
+  get sink(): WorldFrameSink { return this.sinks.get(this.active)!; }
+  get views(): InstalledFrontend["views"] {
+    return this.candidates.filter((candidate) => !this.failed.has(candidate.id) && (candidate.current?.() ?? true))
+      .map((candidate) => ({ id: candidate.id, name: candidate.manifest.name }));
+  }
+
+  activate(id: string): void {
+    const candidate = this.candidates.find((candidate) => candidate.id === id);
+    if (!candidate || this.failed.has(id)) return;
+    let sink = this.sinks.get(id);
+    if (!sink) {
+      sink = construct(candidate, this.contextFor, this.reportFault) ?? undefined;
+      if (!sink) {
+        this.failed.add(id);
+        this.active = CORE_FRONTEND_ID;
+        this.remember();
+        this.draw();
+        return;
+      }
+      this.sinks.set(id, sink);
+    }
+    this.active = id;
+    this.draw();
+  }
+
+  cycle(): void {
+    this.chosen = true;
+    const views = this.views;
+    if (views.length < 2) return;
+    const next = views[(views.findIndex((view) => view.id === this.active) + 1) % views.length]!;
+    if (!this.release()) return;
+    this.activate(next.id);
+    this.remember();
+  }
+
+  private remember(): void { writeSetting(this.storage, "activeView", this.active); }
+
+  updateWorkers(): void {
+    const preceding = this.candidates.filter((candidate) => candidate.current !== undefined);
+    this.candidates = orderedViews([...this.candidates.filter((candidate) => candidate.current === undefined), ...workerViews.values()], this.order);
+    for (const candidate of preceding) {
+      if (workerViews.get(candidate.id) === candidate) continue;
+      if (this.active === candidate.id) {
+        this.release();
+        this.active = CORE_FRONTEND_ID;
+        this.draw();
+      }
+      this.sinks.delete(candidate.id);
+    }
+    const preferred = readSetting(this.storage, "activeView");
+    const incoming = [...workerViews.values()].find((candidate) => candidate.id === preferred) ??
+      (!this.chosen && preferred === undefined ? this.candidates.at(-1) : undefined);
+    if (incoming && incoming.id !== this.active && !this.failed.has(incoming.id) && this.release()) this.activate(incoming.id);
+  }
+
+  workerFailed(id: string, error: unknown): void {
+    if (id !== this.active) return;
+    this.fail(error);
+    modHealth().recordFault(id, "frontend present", error);
+  }
+
+  suspend(): void { this.release(); }
+
+  private release(): boolean {
+    if (this.active === CORE_FRONTEND_ID) return true;
+    try {
+      this.hide();
+      return true;
+    } catch (error) {
+      this.fail(error);
+      return false;
+    }
+  }
+
+  private hide(): void {
+    if (this.sink.suspend) this.sink.suspend();
+    else if (this.last) {
+      // Older sinks hide when the host publishes a covering screen.
+      const map = this.last.regions?.map.cells;
+      const { regions: _regions, ...frame } = this.last;
+      this.sink.present(snapshotWorldFrame({ ...frame,
+        stack: [...(this.last.stack ?? []), { id: "core:view-switch", layer: "system",
+          cells: map ?? { col: 0, row: 0, cols: Number.MAX_SAFE_INTEGER, rows: Number.MAX_SAFE_INTEGER } }] }));
+    }
+  }
+
+  private fail(error: unknown): void {
+    const id = this.active;
+    this.failed.add(id);
+    try { this.hide(); } catch { /* A broken cleanup must leave recovery reachable. */ }
+    this.active = CORE_FRONTEND_ID;
+    this.remember();
+    this.reportFault(id, "frontend display failed; the glyph front end has resumed", error);
+    if (this.last) this.recovery.present(this.last);
+  }
+
+  private draw(): void {
+    if (!this.last) return;
+    if (this.active !== CORE_FRONTEND_ID && this.candidates.find((candidate) => candidate.id === this.active)?.current?.() === false) {
+      this.fail(new Error("the view is no longer authorized"));
+      return;
+    }
+    try {
+      if (this.candidates.find((candidate) => candidate.id === this.active)?.current) this.recovery.present(this.last);
+      this.sink.present(this.last);
+    }
+    catch (error) {
+      if (this.active === CORE_FRONTEND_ID) throw error;
+      this.fail(error);
+    }
+  }
 }
 
 /**
@@ -207,12 +385,9 @@ export function installFrontend(
  * display - the ability to show it a changed region stack with no repaint
  * behind it (#261).
  *
- * `restate` IS OPTIONAL, AND ITS ABSENCE IS THE ANSWER FOR CORE. Core's renderer
- * repaints the map from `render()` and from nowhere else; restating it would
- * paint the dungeon over whichever screen had just opened, which is the defect
- * the notification exists to stop with core committing it instead of the mod. So
- * the unmodded path is handed core's own sink exactly as before - same object,
- * no snapshot, no wrapper, and no `restate` to call.
+ * Core must not repaint on a stack notification because it would cover the
+ * screen that just opened. The view host only caches those notifications while
+ * core is active, so an incoming mod still receives the current stack.
  */
 export type FrontendMapStream = WorldFrameSink & Partial<Pick<RestatableWorldFrameSink, "restate">>;
 
@@ -222,14 +397,15 @@ export type FrontendMapStream = WorldFrameSink & Partial<Pick<RestatableWorldFra
  * core's renderer for the rest of the session rather than stranding the player
  * on a blank screen.
  *
- * Core's own selection costs nothing here: `sink === recovery`, so the frame is
- * neither snapshotted nor wrapped, and the unmodded paint path is the one it
- * always was.
+ * A core-only caller can retain the direct sink. The shell requests cached
+ * frames even with no mods so a later Worker registration has a frame to draw.
  */
 export function frontendWorldFrameSink(
   frontend: InstalledFrontend,
   reportFault: (id: string, message: string, error: unknown) => void,
+  rememberCore = false,
 ): FrontendMapStream {
+  if (frontend instanceof FrontendViews && (rememberCore || frontend.views.length > 1)) return frontend.stream;
   if (frontend.sink === frontend.recovery) return frontend.recovery;
   let active = true;
   return restatableWorldFrameSink({
