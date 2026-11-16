@@ -1400,7 +1400,7 @@ describe("API 2 engine and content", () => {
 });
 
 describe("API 2 controller decisions", () => {
-  it("reports character arming before and after a Ctrl-Z save reload without engine access", () => {
+  it.each(["first-party", "public"] as const)("reports character arming before and after a Ctrl-Z save reload without engine access for %s mods", (tier) => {
     const game = startGame(pack, { seed: SEED, depth: DEPTH });
     const caps = capabilities("probe", ["input:controller", "input:intent", "state:interaction.read"]);
     const seen: boolean[] = [];
@@ -1408,7 +1408,7 @@ describe("API 2 controller decisions", () => {
       expect(context.engine).toBeUndefined();
       seen.push(context.armed);
       return context.armed;
-    }, controller: () => undefined }, () => ({ grants: caps, tier: "first-party" }));
+    }, controller: () => undefined }, () => ({ grants: caps, tier, developerInProcess: true }));
     const probe = (current: StartedGame) => {
       const ctx = modPluginContext("probe", {}, current.state, {}, { capabilities: caps });
       expect(createApi2Host(ctx, { grants: caps }).meta.controllerArmed).toBe((current.state.actor.player.noscore & NOSCORE.BORG) !== 0);
@@ -1503,9 +1503,14 @@ describe("API 2 controller decisions", () => {
   it("keeps arming separate from ownership and requires declared controller consent", () => {
     const definition = { api: ">=2.0.0 <3.0.0", armed: ({ armed }: { armed: boolean }) => armed, controller: () => undefined };
     expect(controller(definition).decide).toBeUndefined();
-    expect(controller({ ...definition, armed: () => true }, "public").decide).toBeUndefined();
-    const allowed = controller({ ...definition, armed: () => true }, "public", ["input:controller"]);
+    const armed = vi.fn(() => true);
+    const denied = controller({ ...definition, armed }, "public");
+    expect(denied.decide).toBeUndefined();
+    expect(armed).not.toHaveBeenCalled();
+    denied.plugin.uninstall?.();
+    const allowed = controller({ ...definition, armed }, "public", ["input:controller"]);
     expect(allowed.decide).toBeTypeOf("function");
+    expect(armed).toHaveBeenCalledOnce();
     allowed.plugin.uninstall?.();
     const { plugin, decide } = controller({ ...definition, armed: () => true });
     expect(decide).toBeTypeOf("function");
