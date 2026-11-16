@@ -3,6 +3,18 @@ import type { GridSurface, GridPointerInput } from "../term";
 import type { ModManagerDeps } from "./classic-types";
 import { classicManager } from "./classic-service";
 import { drawPendingManagementConfirmation } from "./classic-confirmation";
+import { applyModChanges, enableMod } from "./classic-actions";
+import { enabledTileModIds } from "./classic-manager";
+
+export async function enablePendingLook(term: GridSurface & GridPointerInput, deps: ModManagerDeps): Promise<void> {
+  const pending = deps.look?.read().pending;
+  if (!pending) return;
+  const mod = deps.listCatalog().find((row) => row.id === pending.modId);
+  if (!mod || mod.missing || mod.enabled) return;
+  const tiles = enabledTileModIds(deps);
+  deps.look?.snapshot();
+  if (await enableMod(term, deps, mod)) await applyModChanges(term, deps, tiles, true);
+}
 
 export async function runLookChoice(term: GridSurface & GridPointerInput, deps: ModManagerDeps): Promise<void> {
   if (!deps.look) return;

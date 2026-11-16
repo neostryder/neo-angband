@@ -20,6 +20,29 @@ function fixture() {
 }
 
 describe("look state", () => {
+  it("names an installed but disabled mod and offers to enable it", () => {
+    const { look } = fixture();
+    look.choose("Neo");
+    const options = look.titleOptions({ ...manifest, name: "AnybandUI Custom" }, false);
+    expect(options).toEqual({ look: "Vanilla", lookPending: "AnybandUI Custom is turned off", lookEnable: "AnybandUI Custom" });
+    const rows = titleRows({ ...options, canLoad: false, canOpen: false, canQuit: false, canInstall: false, canUpdate: false, updateReady: false });
+    expect(rows.find((row) => row.choice === "enable-look")?.label).toBe("(E)nable AnybandUI Custom");
+    expect(titleKeyChoice("e", rows, false)).toBe("enable-look");
+  });
+
+  it("keeps the download message only for a missing install", () => {
+    const { look } = fixture();
+    look.choose("Neo");
+    expect(look.titleOptions(undefined, false)).toEqual({ look: "Vanilla", lookPending: "Neo Angband is waiting for AnybandUI to download" });
+  });
+
+  it("shows no pending message or enable action for the active Neo look", () => {
+    const { look } = fixture();
+    look.choose("Neo");
+    look.complete(manifest, true);
+    expect(look.titleOptions(manifest, true)).toEqual({ look: "Neo" });
+  });
+
   it("snapshots the latest Vanilla setting when a pending preset becomes ready", () => {
     const { look, mods } = fixture();
     mods.setSettingValue("anybandui", "contrast", 20);

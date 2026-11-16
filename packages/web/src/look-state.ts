@@ -1,5 +1,6 @@
 import { lookFormat, parseDocument, serializeDocument, type LookState, type PackManifest } from "@rpgm-tools/neo-angband-mod-sdk";
 import type { ModStore, StorageLike } from "./mod-store";
+import type { TitleOptions } from "./news";
 
 export const LOOK_STORAGE_KEY = "neo-angband:look";
 export const NEO_PENDING_TEXT = "Neo Angband is waiting for AnybandUI to download";
@@ -10,6 +11,15 @@ export function vanillaLook(): LookState {
 
 export class LookStore {
   constructor(private readonly storage: StorageLike | null, private readonly mods: ModStore) {}
+
+  titleOptions(manifest: Pick<PackManifest, "id" | "name"> | undefined, enabled = this.mods.isEnabled("anybandui")): Pick<TitleOptions, "look" | "lookPending" | "lookEnable"> {
+    const state = this.read();
+    if (!state.pending) return { look: state.active };
+    if (manifest?.id === state.pending.modId && !enabled) {
+      return { look: state.active, lookPending: `${manifest.name} is turned off`, lookEnable: manifest.name };
+    }
+    return { look: state.active, ...(!manifest ? { lookPending: NEO_PENDING_TEXT } : {}) };
+  }
 
   read(): LookState {
     try {

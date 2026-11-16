@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LookStore } from "../look-state";
 import { buildCatalog, ModStore } from "../mod-store";
-import { runLookChoice } from "./classic-look";
+import { enablePendingLook, runLookChoice } from "./classic-look";
 import type { ModManagerDeps } from "./classic-types";
 import type { GridSurface, GridPointerInput } from "../term";
 import { selectFromMenu } from "../overlay";
@@ -20,9 +20,32 @@ function fixture() {
   return { deps, look };
 }
 
-afterEach(() => { vi.unstubAllGlobals(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.mocked(selectFromMenu).mockReset(); });
 
 describe("Core look choice", () => {
+  it("enables the pending look through the manager and reloads from the title", async () => {
+    const f = fixture();
+    const manifest = { id: "anybandui", name: "AnybandUI", version: "1.0.0", shape: "content" as const, lookPreset: { look: "Neo" as const, settings: {} } };
+    f.deps.listCatalog = () => buildCatalog({ content: [manifest], sandbox: [], trusted: [], enabled: f.deps.store.getEnabled(), consents: {} });
+    f.look.choose("Neo");
+    await enablePendingLook({} as GridSurface & GridPointerInput, f.deps);
+    expect(f.deps.store.isEnabled("anybandui")).toBe(true);
+    expect(f.look.read()).toMatchObject({ active: "Neo", pending: null });
+    expect(f.deps.requestReload).toHaveBeenCalledExactlyOnceWith(undefined);
+  });
+
+  it("keeps the pending look and does not reload when enablement is refused", async () => {
+    const f = fixture();
+    const manifest = { id: "anybandui", name: "AnybandUI", version: "1.0.0", shape: "content" as const, affectsGameplay: true, lookPreset: { look: "Neo" as const, settings: {} } };
+    f.deps.listCatalog = () => buildCatalog({ content: [manifest], sandbox: [], trusted: [], enabled: f.deps.store.getEnabled(), consents: {} });
+    f.look.choose("Neo");
+    vi.mocked(selectFromMenu).mockResolvedValueOnce(null);
+    await enablePendingLook({} as GridSurface & GridPointerInput, f.deps);
+    expect(f.deps.store.isEnabled("anybandui")).toBe(false);
+    expect(f.look.read().pending).not.toBeNull();
+    expect(f.deps.requestReload).not.toHaveBeenCalled();
+  });
+
   it("offers both looks and records the first Vanilla choice", async () => {
     const f = fixture();
     vi.mocked(selectFromMenu).mockResolvedValueOnce(0);

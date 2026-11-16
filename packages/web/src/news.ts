@@ -294,12 +294,13 @@ export function titleLines(): readonly TitleLine[] {
  * FIRST rather than in File-menu order, because with more than one profile it is
  * the row that decides which profile's roster every other row below it acts on.
  */
-export type TitleChoice = "profile" | "new" | "open" | "load" | "mods" | "look" | "quit" | "install" | "update" | `mod:${number}`;
+export type TitleChoice = "profile" | "new" | "open" | "load" | "mods" | "look" | "enable-look" | "quit" | "install" | "update" | `mod:${number}`;
 
 /** Which title rows are live, mirroring main-win.c's EnableMenuItem calls. */
 export interface TitleOptions {
   readonly look?: "Vanilla" | "Neo";
   readonly lookPending?: string;
+  readonly lookEnable?: string;
   readonly modRows?: readonly { readonly choice: `mod:${number}`; readonly label: string; readonly key?: string }[];
   /** A living character can be resumed. */
   canLoad: boolean;
@@ -378,6 +379,7 @@ export function titleRows(opts: TitleOptions): TitleRow[] {
     { choice: "mods", key: "m", label: t("news.title.mods", "(M)ods"), enabled: true },
   ];
   if (opts.look) rows.push({ choice: "look", key: "l", label: `(L)ook: ${opts.look === "Neo" ? "Neo Angband" : opts.look}`, enabled: true });
+  if (opts.lookEnable) rows.push({ choice: "enable-look", key: "e", label: `(E)nable ${opts.lookEnable}`, enabled: true });
   /* Before Quit, because Quit is last in the File menu and this is not a File
    * menu item at all - putting it after Quit would read as though upstream had
    * one there. */
@@ -394,6 +396,7 @@ export function titleRows(opts: TitleOptions): TitleRow[] {
   }
   rows.push({ choice: "quit", key: "q", label: t("news.title.quit", "(Q)uit"), enabled: opts.canQuit });
   const reserved = new Set(["p", "n", "o", "r", "m", "l", "i", "u", "q"]);
+  if (opts.lookEnable) reserved.add("e");
   for (const row of opts.modRows ?? []) {
     const key = row.key?.toLowerCase() ?? "";
     const available = key !== "" && !reserved.has(key);
@@ -663,20 +666,25 @@ export function showTitleScreen(
     const paint = (): void => {
       const { cols, rows: height } = term.size();
       linkSpans = paintTitleArt(term);
-      if (opts.lookPending) term.print(0, 22, opts.lookPending.slice(0, cols).padEnd(cols), UI_DIM);
       /* The prompt line, on upstream's own row. The project information is part
        * of the painted screen above (titleLines), so there is one place where the
        * layout is decided and one place to check it against the row budget. */
-      const coreRows = rows.filter((row) => !row.choice.startsWith("mod:"));
+      const coreRows = rows.filter((row) => !row.choice.startsWith("mod:") && row.choice !== "enable-look");
+      const enableRow = rows.find((row) => row.choice === "enable-look");
       const modRows = rows.filter((row) => row.choice.startsWith("mod:"));
       promptRow = Math.max(0, Math.min(height - modRows.length - 1, 23));
-      linkSpans = linkSpans.filter((span) => span.row < promptRow);
+      const statusRow = Math.max(0, promptRow - 1);
+      const enableStart = Math.max(0, cols - (enableRow?.label.length ?? 0));
+      linkSpans = linkSpans.filter((span) => span.row < (opts.lookPending ? statusRow : promptRow));
       spans = [
         ...titleRowSpans(coreRows, cols).map((span) => ({ ...span, y: promptRow })),
+        ...(enableRow ? [{ row: enableRow, start: enableStart, end: cols, y: statusRow }] : []),
         ...modRows.flatMap((row, index) => titleRowSpans([row], cols).map((span) => ({ ...span, y: promptRow + index + 1 }))),
       ];
       const white = colorToCss(COLOUR_WHITE);
       for (const y of new Set(spans.map((span) => span.y))) term.print(0, y, " ".repeat(cols), white);
+      const statusWidth = enableRow ? Math.max(0, enableStart - 1) : cols;
+      if (opts.lookPending) term.print(0, statusRow, opts.lookPending.slice(0, statusWidth).padEnd(statusWidth), UI_DIM);
       for (const span of spans) {
         if (span.start >= cols) continue;
         term.print(

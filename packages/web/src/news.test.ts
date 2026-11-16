@@ -257,6 +257,17 @@ const rowText = (grid: { ch: string }[][], y: number): string =>
     .join("")
     .replace(/\s+$/u, "");
 
+describe("the pending look action", () => {
+  it("shows the disabled status and enable action without clipping the title menu", () => {
+    const grid = renderTitle({ look: "Vanilla", lookPending: "AnybandUI is turned off", lookEnable: "AnybandUI", canUpdate: true });
+    expect(rowText(grid, 22)).toContain("AnybandUI is turned off");
+    expect(rowText(grid, 22)).toContain("(E)nable AnybandUI");
+    expect(rowText(grid, 23)).toContain("(L)ook: Vanilla");
+    expect(rowText(grid, 23)).toContain("(U)pdate");
+    expect(rowText(grid, 23)).toContain("(Q)uit");
+  });
+});
+
 /** A blank 80x24 grid and a term stub that draws into it. */
 function gridTerm(): {
   grid: { ch: string; fg: string }[][];

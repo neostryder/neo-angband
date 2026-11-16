@@ -622,8 +622,8 @@ import { setBootPhase } from "./presentation-phase";
 import type { BuildOverviewParams, LevelOverview, Overview, OverviewGlyph } from "./mapview";
 import { runBirth } from "./birth";
 import { paintTitleArt, setSplashArt, showTitleScreen } from "./news";
-import { LookStore, NEO_PENDING_TEXT } from "./look-state";
-import { runLookChoice } from "./mod-manager/classic-look";
+import { LookStore } from "./look-state";
+import { enablePendingLook, runLookChoice } from "./mod-manager/classic-look";
 import { captureModList, ModListStore, ModSaveGuard, retainMissingModList, savedModReferences } from "./mod-manager/mod-lists";
 import { prepareSaveModList } from "./mod-manager/classic-mod-list";
 import { modSaveApprovalFormat } from "@rpgm-tools/neo-angband-mod-sdk";
@@ -13494,8 +13494,7 @@ async function maybeTitle(): Promise<TitleChoice | null> {
       showTitleScreen(
         term,
         {
-          look: lookStore.read().active,
-          ...(lookStore.read().pending ? { lookPending: NEO_PENDING_TEXT } : {}),
+          ...lookStore.titleOptions(modManifestFor("anybandui"), enabledModIds().includes("anybandui")),
           canLoad: living || resumedActive,
           canOpen: listRoster().length > 0,
           canQuit: desktopQuitAvailable(),
@@ -15490,10 +15489,10 @@ async function bootMenus(): Promise<void> {
       await openModal(() => openModManager({ resume: false }));
       continue;
     }
-    if (choice === "look") {
+    if (choice === "look" || choice === "enable-look") {
       const deps = await modManagerDeps();
-      deps.requestReload = () => reloadAfterModChange({ resume: false });
-      await openModal(() => runLookChoice(term, deps));
+      deps.requestReload = (opts) => reloadAfterModChange({ ...opts, resume: false });
+      await openModal(() => withUnfilteredSystemScreen(() => withHostManagementScreen(() => choice === "enable-look" ? enablePendingLook(term, deps) : runLookChoice(term, deps))));
       continue;
     }
     if (choice === "install") {
