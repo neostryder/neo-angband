@@ -54,6 +54,8 @@ import { api2Plugin, api2RandartSetSize, installApi2PolicyRegistrations, removeA
 import { createApi2Host } from "../mod-api2-host";
 import { modPluginContext } from "../mod-context";
 import { setModSettingSource } from "../mod-settings-values";
+import { birthStartOptions, decodeBirthContinuation, encodeBirthContinuation } from "../birth-continuation";
+import { loadGamePack } from "../pack";
 import { TRUTH_MAP, TRUTH_MONSTERS, resetModTiers, setModGrants } from "../mod-tier";
 import { recordTruthUse, setTruthSaveWriter } from "../mod-truth-consent";
 import { browserKeydown } from "../input-door";
@@ -1657,6 +1659,46 @@ describe("a host-owned walk declaration", () => {
 });
 
 describe("randart size during composition", () => {
+  it.each(["process", "worker"])("reads stored settings at the first %s policy evaluation and generates the 4x birth set", async (runtime) => {
+    const source = readFileSync(new URL("../main.ts", import.meta.url), "utf8");
+    const beforeBoot = source.slice(0, source.indexOf("const game = bootGame();"));
+    const setup = beforeBoot.match(/const modSettingDecls = loadEnabledModSettings\(\);[\s\S]*?\}, reportDisplayFault\);/u)?.[0] ?? "";
+    const values = new Map<string, string>();
+    const store = new ModStore({ getItem: (key) => values.get(key) ?? null, setItem: (key, value) => { values.set(key, value); }, removeItem: (key) => { values.delete(key); } });
+    store.setSettingValue("probe", "multiplier", 4);
+    store.setSettingValue("probe", "undeclared", 99);
+    const declarations = new Map([["probe", [{ id: "multiplier", title: "Multiplier", description: "Artifact count", min: 1, max: 4, step: 1, default: 1, requiresReload: true }]]]);
+    const seen: unknown[] = [];
+    const definition: Api2ModDefinition = { api: API, policies: (context) => {
+      seen.push(context.settings);
+      return { randartSetSize: { multiplier: Number(context.settings["multiplier"] ?? 1) } };
+    } };
+    const grants = CapabilitySet.fromManifest({ id: "probe", name: "Probe", version: "1.0.0", shape: "plugin", capabilities: ["registry:randart-size"] });
+    const plugin = api2Plugin(definition, () => ({ grants }));
+    setModSettingSource(null);
+    try {
+      new Function("loadEnabledModSettings", "setModSettingSource", "defaultModStore", "reportDisplayFault", "lookStore", setup)(
+        () => declarations, setModSettingSource, () => store, vi.fn(), { recordSetting: vi.fn() });
+      if (runtime === "process") plugin.hooks!(modPluginContext("probe", {}, undefined, {}, { capabilities: grants }));
+      else await wire(definition, { grants: ["registry:randart-size"] }).session.ready;
+      const size = api2RandartSetSize();
+      const options = { seed: 378, depth: 2, optionOverrides: { birth_randarts: true } };
+      const birthPack = loadGamePack();
+      const game = startGame(birthPack, { ...options, ...(size ? { randartSetSize: size } : {}) });
+      expect(game.booted.registries.objects.artifacts.filter(Boolean)).toHaveLength(543);
+      expect(seen).toEqual([{ multiplier: 4 }]);
+      expect(game.randartSetSize).toEqual({ multiplier: 4, modId: "probe" });
+      const continuation = decodeBirthContinuation(encodeBirthContinuation(378, new Rng(378).getState(), { ...size!, binding: "payload-378" }));
+      setModSettingSource(null);
+      const reloaded = startGame(birthPack, { ...options, ...birthStartOptions(9001, continuation, (id, binding) => id === "probe" && binding === "payload-378") });
+      expect(reloaded.booted.registries.objects.artifacts.filter(Boolean)).toHaveLength(543);
+      expect(reloaded.randartSetSize).toEqual(game.randartSetSize);
+    } finally {
+      plugin.uninstall!();
+      setModSettingSource(null);
+    }
+  });
+
   it.each([["process", "probe"], ["probe", "process"]])("uses %s then %s order across runtimes and releases the stopped winner", async (first, second) => {
     setApi2PolicyLoadOrder([first!, second!]);
     const grants = CapabilitySet.fromManifest({ id: "process", name: "Process", version: "1.0.0", shape: "plugin", capabilities: ["registry:randart-size"] });

@@ -1199,6 +1199,19 @@ let modTransactionNotice: string | null = null;
   });
   if (safeReason) log.info("mods", `safe mode: every mod is off for this session (${safeReason})`);
 
+  /* The enabled set is fixed for the page's life (a change reloads), so the
+   * declarations are read once; the player's values are read through the store.
+   * Hook and policy factories need them before character generation. */
+  const modSettingDecls = loadEnabledModSettings();
+  setModSettingSource({
+    declared: (modId) => modSettingDecls.get(modId) ?? [],
+    stored: (modId) => defaultModStore().getSettingValues()[modId] ?? {},
+    write: (modId, settingId, value) => {
+      defaultModStore().setSettingValue(modId, settingId, value);
+      lookStore.recordSetting(modId, settingId, value);
+    },
+  }, reportDisplayFault);
+
   /* And their CODE. Until this existed, a folder could contribute records and
    * never a line of behaviour - the whole SDK (patches, conflicts, the five
    * capability-gated registries) was reachable only from mods compiled INTO the
@@ -7342,17 +7355,6 @@ setModProfilesControl((id, caps) => createModProfiles(id, caps, {
     reloadAfterModChange({ resume: false });
   },
 }));
-/* The enabled set is fixed for the page's life (a change reloads), so the
- * declarations are read once; the player's values are read through the store. */
-const modSettingDecls = loadEnabledModSettings();
-setModSettingSource({
-  declared: (modId) => modSettingDecls.get(modId) ?? [],
-  stored: (modId) => defaultModStore().getSettingValues()[modId] ?? {},
-  write: (modId, settingId, value) => {
-    defaultModStore().setSettingValue(modId, settingId, value);
-    lookStore.recordSetting(modId, settingId, value);
-  },
-}, reportDisplayFault);
 setSharedValueFaultReporter(reportDisplayFault);
 setModSavesControl(createModSaves({
   onChange: onRosterChange,
