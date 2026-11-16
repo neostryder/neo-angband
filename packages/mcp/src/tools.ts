@@ -24,9 +24,8 @@
  *
  * ERRORS ARE ANSWERS. A refused command returns text saying why, never a thrown
  * transport error: an agent that gets a protocol failure has no way to recover,
- * while one told "there is no monster to the east" can try something else. The
- * only exceptions are argument shapes the schema should have caught, which are
- * bugs in the client.
+ * while one told "there is no monster to the east" can try something else.
+ * `callTool` also catches argument errors and returns them as `isError` results.
  */
 
 import { message, type GameSession } from "./session.js";
@@ -277,11 +276,10 @@ const ENTRIES: Entry[] = [
       name: "map",
       title: "Draw the map",
       description:
-        "An ASCII map around the character, with a legend naming every monster and item on " +
-        "it. Glyphs: @ you, . floor, # wall, + closed door, ' open door, < up stairs, " +
-        "> down stairs, ^ trap, % vein, * vein with treasure, ~ lava, : rubble, 1-8 shop " +
-        "entrances, a space for a square you have never seen. Digits and letters elsewhere " +
-        "are legend labels. Takes no game time.",
+        "An ASCII map around the character. @ marks you; unknown squares are blank. " +
+        "Terrain, traps, items and monsters use the game's live glyphs. The legend " +
+        "identifies visible monsters and floor piles by character and coordinates. " +
+        "The map takes no game time.",
       mutates: false,
       inputSchema: {
         type: "object",

@@ -4,10 +4,9 @@
  * This is the "intuitive" half of the server, and it is not decoration. A tool
  * that returned raw `CellView` objects for a 198x66 level would hand a client
  * 13068 JSON objects to reason about; a tool that returns a small ASCII map with
- * a legend hands it a picture. Both are offered - `observe` gives the numbers,
- * `render` gives the picture - because the two failure modes are different: JSON
- * is unreadable at scale, and a rendering is a lossy interpretation. Nothing here
- * decides anything for the client.
+ * a legend hands it a picture. The `map` tool draws the board; `status` and
+ * `look` describe the game and individual squares. The
+ * `neo-angband://game/current` resource combines status and map text.
  *
  * GLYPH CHOICE, and this file used to make it up. It carried a hand-written
  * `FEAT_GLYPHS` map - 25 feature indices, each with the character it "should"
