@@ -54,6 +54,7 @@ import {
   type ModApi2,
 } from "@rpgm-tools/neo-angband-mod-sdk";
 import { modHealth } from "../mod-health";
+import { failWorkerFrontendView } from "../frontend-runtime";
 import { modHolds } from "../mod-tier";
 import { consentBinding } from "../mod-consent-binding";
 import { modPanelsSuspended } from "../panel-runtime";
@@ -263,7 +264,9 @@ export function startModWorker(worker: ModWorkerLike, deps: ModWorkerHostDeps): 
         /* The neutral answer is the caller's: this rejection. Every answer still
          * outstanding from this epoch is superseded with it. */
         supersede();
-        reject(new WorkerTimeoutError(`the mod did not answer ${site} within ${String(deadline)} ms`));
+        const error = new WorkerTimeoutError(`the mod did not answer ${site} within ${String(deadline)} ms`);
+        failWorkerFrontendView(deps.id, error);
+        reject(error);
       }, deadline);
       asks.set(askId, { epoch: askedIn, sent: now(), site, timeout, resolve, reject });
       post({ type: "ask", ...envelope(), askId, question });

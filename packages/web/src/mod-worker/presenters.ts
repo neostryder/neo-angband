@@ -293,9 +293,15 @@ export function createWorkerPresenters(options: {
     let root: HTMLDivElement | undefined;
     let generation = 0;
     let expiry: ReturnType<typeof setTimeout> | undefined;
-    const clear = () => { root?.remove(); root = undefined; clearTimeout(expiry); };
+    const clear = () => { root?.remove(); root = undefined; };
+    const cancel = () => { clear(); clearTimeout(expiry); expiry = undefined; };
+    const renew = () => {
+      clearTimeout(expiry);
+      expiry = setTimeout(() => { cancel(); failWorkerFrontendView(options.id, new Error("the view stopped answering the game and lost its claim on the screen")); }, 100 + 250);
+    };
     const tick = async (): Promise<void> => {
-      if (!selected || !current() || !visible() || modPresentationSuspended() || options.display.snapshot().mode !== "play") { clear(); return; }
+      if (!selected || !current() || !visible() || modPresentationSuspended() || options.display.snapshot().mode !== "play") { cancel(); return; }
+      if (expiry === undefined) renew();
       if (busy || Date.now() - requestedAt < 100) return;
       requestedAt = Date.now();
       busy = true;
@@ -333,7 +339,7 @@ export function createWorkerPresenters(options: {
         clear();
         root = next;
         doc.body.append(next);
-        expiry = setTimeout(() => { clear(); failWorkerFrontendView(options.id, new Error("the view stopped answering the game and lost its claim on the screen")); }, 250);
+        renew();
       } catch (error) {
         clear();
         if (selected && generation === serial && current() && visible() && !modPresentationSuspended()) failWorkerFrontendView(options.id, error);
@@ -342,7 +348,7 @@ export function createWorkerPresenters(options: {
     };
     const invalidate = () => { generation += 1; clear(); };
     const offFrame = options.display.onFrame?.(invalidate);
-    const off = onModPanelSuspension((hidden) => { if (hidden) invalidate(); });
+    const off = onModPanelSuspension((hidden) => { if (hidden) { invalidate(); cancel(); } });
     const timer = setInterval(() => { void tick(); }, 100);
     const unregister = registerWorkerFrontendView({
       id: options.id,
@@ -350,10 +356,10 @@ export function createWorkerPresenters(options: {
       current,
       plugin: { frontend: () => ({
         present: () => { selected = true; void tick(); },
-        suspend: () => { selected = false; requestedAt = -Infinity; generation += 1; clear(); },
+        suspend: () => { selected = false; requestedAt = -Infinity; generation += 1; cancel(); },
       }) },
     });
-    return () => { selected = false; generation += 1; unregister(); clearInterval(timer); offFrame?.(); off(); clear(); };
+    return () => { selected = false; generation += 1; unregister(); clearInterval(timer); offFrame?.(); off(); cancel(); };
   };
   return {
     replace(method: string, callbackId: number | null, epochCurrent: () => boolean): void {

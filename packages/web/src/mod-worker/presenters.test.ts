@@ -31,8 +31,9 @@ import { Rng, startGame } from "@rpgm-tools/neo-angband-core";
 import { createBirthSession } from "../birth-session";
 import { offerBirth } from "../birth-runtime";
 import { loadGamePack } from "../pack";
-import { coreFrontendCandidate, frontendWorldFrameSink, installFrontend, watchFrontendViews } from "../frontend-runtime";
+import { coreFrontendCandidate, frontendWorldFrameSink, installFrontend, registerWorkerFrontendView, watchFrontendViews } from "../frontend-runtime";
 import { setModNameLookup } from "../mod-problems";
+import { modHealth } from "../mod-health";
 
 type Handler = (value: unknown, id: string) => unknown;
 type Replace = (describe: Handler | null, select?: Handler) => Promise<{ ok: boolean }>;
@@ -76,7 +77,8 @@ async function fixture(grants: string[], handler: Handler = () => description, s
   const display = { snapshot: () => snapshot, onFrame: (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn); } } as unknown as ModDisplay;
   setModNameLookup((id) => id === "probe" ? "Probe" : undefined);
   const faults = vi.fn();
-  const frontend = installFrontend([coreFrontendCandidate({ present() {} })], (id) => modPluginContext(id, {}), faults);
+  const glyph = vi.fn();
+  const frontend = installFrontend([coreFrontendCandidate({ present: glyph })], (id) => modPluginContext(id, {}), faults);
   let mapSink = frontendWorldFrameSink(frontend, () => {});
   cleanups.push(watchFrontendViews(frontend, () => {
     mapSink = frontendWorldFrameSink(frontend, () => {});
@@ -134,7 +136,7 @@ async function fixture(grants: string[], handler: Handler = () => description, s
     await vi.advanceTimersByTimeAsync(100);
     return undefined;
   };
-  return { api, session, sent, received, replace, raw, offer, authorize, snapshot, listeners, frontend, faults, setStuck: () => { stuck = true; },
+  return { api, session, sent, received, replace, raw, offer, authorize, snapshot, listeners, frontend, faults, glyph, setStuck: () => { stuck = true; },
     changeSession: () => { Object.defineProperty(hostContext, "state", { value: {}, configurable: true }); } };
 }
 
@@ -198,12 +200,25 @@ describe("serialized Worker presenters", () => {
     await flush(); await registered;
     const offered = f.offer(method);
     await flush();
-    await vi.advanceTimersByTimeAsync(251);
+    f.glyph.mockClear();
+    await vi.advanceTimersByTimeAsync(method === "display.replace" ? 151 : 251);
     expect(document.body.children).toHaveLength(0);
+    if (method === "display.replace") {
+      expect(f.frontend.id).toBe("core");
+      expect(f.frontend.views).toEqual([{ id: "core", name: "Neo Angband" }]);
+      expect(f.faults).toHaveBeenCalledOnce();
+      expect(f.glyph).toHaveBeenCalledOnce();
+    }
     resolve(method === "display.replace" ? commands : description);
     await flush();
     expect(f.session.staleCount()).toBeGreaterThan(0);
     expect(document.body.children).toHaveLength(0);
+    if (method === "display.replace") {
+      await vi.advanceTimersByTimeAsync(500);
+      expect(f.frontend.id).toBe("core");
+      expect(f.faults).toHaveBeenCalledOnce();
+      expect(f.glyph).toHaveBeenCalledOnce();
+    }
     await offered;
   });
 
@@ -400,8 +415,86 @@ describe("serialized Worker presenters", () => {
     const root = document.querySelector<HTMLElement>("[aria-label='Probe map']")!;
     expect(root.childElementCount).toBe(1); expect(root.textContent).toBe("<"); expect(root.inert).toBe(true);
     expect(root.style.left).toBe("130px"); expect(root.style.width).toBe("500px"); expect(root.style.zIndex).toBe("10");
-    f.setStuck(); await vi.advanceTimersByTimeAsync(251);
+    f.glyph.mockClear();
+    const fault = vi.spyOn(modHealth(), "recordFault");
+    f.setStuck(); await vi.advanceTimersByTimeAsync(351);
     expect(document.body.children).toHaveLength(0);
+    expect(f.frontend.id).toBe("core");
+    expect(f.frontend.views).toEqual([{ id: "core", name: "Neo Angband" }]);
+    expect(f.faults).toHaveBeenCalledOnce();
+    expect(f.glyph).toHaveBeenCalledOnce();
+    expect(fault).toHaveBeenCalledOnce();
+    f.frontend.cycle();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(f.frontend.id).toBe("core");
+    expect(f.faults).toHaveBeenCalledOnce();
+    expect(fault).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a describe selected while its reply is inside the host deadline", async () => {
+    let resolve!: (value: unknown) => void;
+    const describe = vi.fn<Handler>().mockReturnValueOnce(commands)
+      .mockImplementation(() => new Promise((done) => { resolve = done; }));
+    const f = await fixture(["display:replace"], describe);
+    const registered = f.replace("display.replace"); await flush(); await registered;
+    await vi.advanceTimersByTimeAsync(300);
+    expect(describe).toHaveBeenCalledTimes(2);
+    expect(f.frontend.id).toBe("probe");
+    resolve(commands); await flush();
+    expect(document.querySelector("[aria-label='Probe map']")).not.toBeNull();
+    expect(f.faults).not.toHaveBeenCalled();
+  });
+
+  it("restores a listed glyph view at the describe deadline with another view available", async () => {
+    let resolve!: (value: unknown) => void;
+    const f = await fixture(["display:replace"], () => new Promise((done) => { resolve = done; }));
+    cleanups.push(registerWorkerFrontendView({
+      id: "other", manifest: { id: "other", name: "Other", version: "1", shape: "plugin", capabilities: ["display:replace"] },
+      current: () => true, plugin: { frontend: () => ({ present() {} }) },
+    }));
+    const registered = f.replace("display.replace"); await flush(); await registered;
+    f.glyph.mockClear();
+    const fault = vi.spyOn(modHealth(), "recordFault");
+    await vi.advanceTimersByTimeAsync(251);
+    expect(f.frontend.id).toBe("core");
+    expect(f.frontend.views.map((view) => view.id)).toEqual(["core", "other"]);
+    expect(f.frontend.views.find((view) => view.id === f.frontend.id)!.name).toBe("Neo Angband");
+    expect(f.glyph).toHaveBeenCalledOnce();
+    expect(f.faults).toHaveBeenCalledWith("probe", "this mod's map view failed and the Neo Angband view is back", expect.any(Error));
+    expect(f.faults).toHaveBeenCalledOnce();
+    expect(fault).toHaveBeenCalledOnce();
+    resolve(commands); await flush();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(f.frontend.id).toBe("core");
+    expect(f.faults).toHaveBeenCalledOnce();
+    expect(fault).toHaveBeenCalledOnce();
+  });
+
+  it("fails a view once when repaints prevent its first frame from landing", async () => {
+    const f = await fixture(["display:replace"], () => new Promise((resolve) => {
+      setTimeout(() => resolve(commands), 20);
+    }));
+    f.glyph.mockImplementation(() => {
+      queueMicrotask(() => { for (const listener of f.listeners) listener(); });
+    });
+    const fault = vi.spyOn(modHealth(), "recordFault");
+    const registered = f.replace("display.replace"); await flush(); await registered;
+    f.glyph.mockClear();
+    const repaint = setInterval(() => { for (const listener of f.listeners) listener(); }, 10);
+    await vi.advanceTimersByTimeAsync(351);
+    clearInterval(repaint);
+    expect(document.querySelector("[aria-label='Probe map']")).toBeNull();
+    expect(f.frontend.id).toBe("core");
+    expect(f.frontend.views).toEqual([{ id: "core", name: "Neo Angband" }]);
+    expect(f.faults).toHaveBeenCalledOnce();
+    expect(f.faults).toHaveBeenCalledWith("probe", "this mod's map view failed and the Neo Angband view is back", expect.any(Error));
+    expect(fault).toHaveBeenCalledOnce();
+    expect(f.glyph).toHaveBeenCalledOnce();
+    f.frontend.cycle();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(f.frontend.id).toBe("core");
+    expect(f.faults).toHaveBeenCalledOnce();
+    expect(fault).toHaveBeenCalledOnce();
   });
 
   it("skips invalid Worker drawing and reports the fault", async () => {
