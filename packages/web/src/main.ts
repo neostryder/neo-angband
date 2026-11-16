@@ -1,4 +1,4 @@
-import "./mod-lockdown";
+import { initializeModIsolation, modCompartmentsEnabled } from "./mod-lockdown";
 import { TileModeState } from "./tile-mode-state";
 import { controlProfile } from "./control-profile";
 import { controlSurface, cancelAction, keyAction, directionActions, stopControlInput } from "./control-surface";
@@ -950,6 +950,8 @@ import { decideImport } from "./transfer-gate";
 import { storageLines, type StorageTone } from "./storage-page";
 import { convertLegacySettings, readSetting, writeSetting } from "./settings-store";
 import { coreUsage, setCoreUsageRecording } from "./mod-core-usage";
+
+if (modCompartmentsEnabled) await initializeModIsolation();
 
 /* A dev build records which ctx.core names each mod reads, from before the first
  * mod context is built; __neo.coreUsage() reads the list back. A player's build
