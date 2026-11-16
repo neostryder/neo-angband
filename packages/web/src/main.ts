@@ -3165,8 +3165,8 @@ function reportFrontendFault(id: string, problem: string, error: unknown): void 
   setTimeout(() => {
     const name = modDisplayName(id);
     void openModal(() => showTextScreen(term, "View unavailable", [
-      { text: name === undefined ? "A view failed. The glyph view has resumed." : `${name} failed. The glyph view has resumed.` },
-      { text: "The game skipped this view until the next reload. You can review it on the Mods screen." },
+      { text: name === undefined ? "A view failed, so the game switched back to the Neo Angband view." : `${name} failed, so the game switched back to the Neo Angband view.` },
+      { text: "This view stays off until the game reloads. You can review it on the Mods screen." },
     ], "[ Press ESC to continue ]"));
   }, 0);
 }

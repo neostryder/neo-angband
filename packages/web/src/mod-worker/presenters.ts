@@ -333,7 +333,7 @@ export function createWorkerPresenters(options: {
         clear();
         root = next;
         doc.body.append(next);
-        expiry = setTimeout(() => { clear(); failWorkerFrontendView(options.id, new Error("the view did not renew its frame lease")); }, 250);
+        expiry = setTimeout(() => { clear(); failWorkerFrontendView(options.id, new Error("the view stopped answering the game and lost its claim on the screen")); }, 250);
       } catch (error) {
         clear();
         if (selected && generation === serial && current() && visible() && !modPresentationSuspended()) failWorkerFrontendView(options.id, error);

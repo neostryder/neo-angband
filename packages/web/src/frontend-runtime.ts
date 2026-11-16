@@ -359,7 +359,7 @@ class FrontendViews implements InstalledFrontend {
     try { this.hide(); } catch { /* A broken cleanup must leave recovery reachable. */ }
     this.active = CORE_FRONTEND_ID;
     this.remember();
-    this.reportFault(id, "frontend display failed; the glyph front end has resumed", error);
+    this.reportFault(id, "this mod's map view failed and the Neo Angband view is back", error);
     if (this.last) this.recovery.present(this.last);
   }
 
@@ -418,7 +418,7 @@ export function frontendWorldFrameSink(
         frontend.sink.present(snapshotWorldFrame(frame));
       } catch (error) {
         active = false;
-        reportFault(frontend.id, "frontend display failed; the glyph front end has resumed", error);
+        reportFault(frontend.id, "this mod's map view failed and the Neo Angband view is back", error);
         frontend.recovery.present(frame);
       }
     },

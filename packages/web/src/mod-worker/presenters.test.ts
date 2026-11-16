@@ -409,7 +409,7 @@ describe("serialized Worker presenters", () => {
     const registered = f.replace("display.replace"); await flush(); await registered;
     expect(f.frontend.id).toBe("core");
     expect(f.frontend.views).toEqual([{ id: "core", name: "Neo Angband" }]);
-    expect(f.faults).toHaveBeenCalledWith("probe", "frontend display failed; the glyph front end has resumed", expect.any(Error));
+    expect(f.faults).toHaveBeenCalledWith("probe", "this mod's map view failed and the Neo Angband view is back", expect.any(Error));
     f.frontend.cycle();
     expect(document.querySelector("[aria-label='Probe map']")).toBeNull();
   });

@@ -141,8 +141,8 @@ export function gameMenuEntries(opts: { canQuit?: boolean; activeView?: string }
     ...(opts.activeView === undefined ? [] : [{
       action: "cycle-view" as const,
       item: {
-        label: t("menu.game.cycle-view.label", "Cycle view"),
-        hint: `${t("menu.game.cycle-view.hint", "Next view (F6). Current view:")} ${opts.activeView}`,
+        label: t("menu.game.cycle-view.label", "Switch view"),
+        hint: `${t("menu.game.cycle-view.hint", "Switch to the next view (F6). Current view:")} ${opts.activeView}`,
       },
     }]),
     {

@@ -199,7 +199,7 @@ describe("a disk-loaded frontend plugin", () => {
     installed.cycle();
     expect(suspend).toHaveBeenCalledOnce();
     expect(painted).toEqual(["glyph"]);
-    expect(faults).toEqual(["broken: frontend display failed; the glyph front end has resumed"]);
+    expect(faults).toEqual(["broken: this mod's map view failed and the Neo Angband view is back"]);
   });
 
   it("remembers the active view per install across a reload, including glyphs", () => {
