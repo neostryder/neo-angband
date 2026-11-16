@@ -31,6 +31,8 @@ import { Rng, startGame } from "@rpgm-tools/neo-angband-core";
 import { createBirthSession } from "../birth-session";
 import { offerBirth } from "../birth-runtime";
 import { loadGamePack } from "../pack";
+import { coreFrontendCandidate, frontendWorldFrameSink, installFrontend, watchFrontendViews } from "../frontend-runtime";
+import { setModNameLookup } from "../mod-problems";
 
 type Handler = (value: unknown, id: string) => unknown;
 type Replace = (describe: Handler | null, select?: Handler) => Promise<{ ok: boolean }>;
@@ -72,6 +74,14 @@ async function fixture(grants: string[], handler: Handler = () => description, s
     viewport: { origin: { x: 0, y: 0 }, size: { width: 50, height: 20 }, screenOrigin: { x: 13, y: 1 } }, level: { width: 100, height: 100 }, layout: "left",
     regions: { map: { name: "map", cells: { col: 13, row: 1, cols: 50, rows: 20 }, pixels: { x: 130, y: 20, width: 500, height: 400 } } } };
   const display = { snapshot: () => snapshot, onFrame: (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn); } } as unknown as ModDisplay;
+  setModNameLookup((id) => id === "probe" ? "Probe" : undefined);
+  const faults = vi.fn();
+  const frontend = installFrontend([coreFrontendCandidate({ present() {} })], (id) => modPluginContext(id, {}), faults);
+  let mapSink = frontendWorldFrameSink(frontend, () => {});
+  cleanups.push(watchFrontendViews(frontend, () => {
+    mapSink = frontendWorldFrameSink(frontend, () => {});
+    mapSink.present({ viewport: snapshot.viewport, cells: [], regions: snapshot.regions } as import("../world-view").WorldFrame);
+  }));
   let proxy: Proxy | undefined;
   const received: ModWorkerToHost[] = [];
   const sent: HostToModWorker[] = [];
@@ -124,7 +134,7 @@ async function fixture(grants: string[], handler: Handler = () => description, s
     await vi.advanceTimersByTimeAsync(100);
     return undefined;
   };
-  return { api, session, sent, received, replace, raw, offer, authorize, snapshot, listeners, setStuck: () => { stuck = true; },
+  return { api, session, sent, received, replace, raw, offer, authorize, snapshot, listeners, frontend, faults, setStuck: () => { stuck = true; },
     changeSession: () => { Object.defineProperty(hostContext, "state", { value: {}, configurable: true }); } };
 }
 
@@ -386,11 +396,22 @@ describe("serialized Worker presenters", () => {
   it("clips glyphs to the map and restores the underlying display when the Worker stalls", async () => {
     const f = await fixture(["display:replace"], () => [...commands, { ...commands[0], col: -1 }, { ...commands[0], col: 50 }, { ...commands[0], row: 20 }]);
     const registered = f.replace("display.replace"); await flush(); await registered;
-    const root = document.querySelector<HTMLElement>("[aria-label='probe map']")!;
+    expect(f.frontend.views).toEqual([{ id: "core", name: "Neo Angband" }, { id: "probe", name: "Probe" }]);
+    const root = document.querySelector<HTMLElement>("[aria-label='Probe map']")!;
     expect(root.childElementCount).toBe(1); expect(root.textContent).toBe("<"); expect(root.inert).toBe(true);
     expect(root.style.left).toBe("130px"); expect(root.style.width).toBe("500px"); expect(root.style.zIndex).toBe("10");
     f.setStuck(); await vi.advanceTimersByTimeAsync(251);
     expect(document.body.children).toHaveLength(0);
+  });
+
+  it("skips invalid Worker drawing and reports the fault", async () => {
+    const f = await fixture(["display:replace"], () => [{ col: 0, row: 0, glyph: "too long", color: "normal" }]);
+    const registered = f.replace("display.replace"); await flush(); await registered;
+    expect(f.frontend.id).toBe("core");
+    expect(f.frontend.views).toEqual([{ id: "core", name: "Neo Angband" }]);
+    expect(f.faults).toHaveBeenCalledWith("probe", "frontend display failed; the glyph front end has resumed", expect.any(Error));
+    f.frontend.cycle();
+    expect(document.querySelector("[aria-label='Probe map']")).toBeNull();
   });
 
   it.each(methods)("suspends %s for permission and controller showModal dialogs", async (method, capability) => {
@@ -405,7 +426,7 @@ describe("serialized Worker presenters", () => {
     for (const ask of [() => drawModPermissionConsent([{ mod, caps: [capability] }]), () => drawModControllerConsent("probe", "Probe")]) {
       const consent = ask(); await flush();
       expect(document.querySelector("dialog[open]")).not.toBeNull();
-      expect(document.querySelector("[role=region],[aria-label='probe map']")).toBeNull();
+      expect(document.querySelector("[role=region],[aria-label='Probe map']")).toBeNull();
       expect(document.querySelector("[aria-label='Game presenter controls']")).toBeNull();
       const count = f.sent.filter((message) => message.type === "ask").length;
       await vi.advanceTimersByTimeAsync(150);

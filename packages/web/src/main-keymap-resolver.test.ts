@@ -17,7 +17,7 @@
 
 import { readFileSync } from "node:fs";
 import ts from "@typescript/typescript6";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearKeymaps,
   decodeActionTokens,
@@ -118,6 +118,28 @@ function key(k: string): UiInput {
 }
 
 describe("main.ts's keymap resolver accepts a named trigger key (#62, #63)", () => {
+  it("dispatches the cycle key without rebuilding the world or entering a turn", () => {
+    let branch: ts.IfStatement | undefined;
+    const visit = (node: ts.Node): void => {
+      if (ts.isIfStatement(node) && node.expression.getText(source) === 'ev.key === "F6"') branch = node;
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    expect(branch).toBeDefined();
+    const emitted = ts.transpileModule(branch!.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2023 } }).outputText;
+    const cycle = vi.fn();
+    const preventDefault = vi.fn();
+    new Function("ev", "installedFrontend", emitted)({ key: "F6", preventDefault }, { cycle });
+    expect(cycle).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+  it("lets the player remap F6 and bind another key to the cycle action", () => {
+    keymapAdd("orig", "F6", "i");
+    keymapAdd("orig", "v", "[F6]");
+    const { resolver } = buildResolver();
+    expect(resolver(key("F6"))).toEqual([key("i")]);
+    expect(resolver(key("v"))).toEqual([key("F6")]);
+  });
   afterEach(() => clearKeymaps());
   it("runs an API 2 command bound by id without expanding its name into game keys", async () => {
     const caps = CapabilitySet.fromManifest({ id: "probe", name: "Probe", version: "1.0.0", shape: "plugin", facets: ["plugin"], modApi: 1, capabilities: ["registry:command"] });

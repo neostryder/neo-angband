@@ -30,6 +30,7 @@ export type GameMenuAction =
   | "save"
   | "options"
   | "graphics"
+  | "cycle-view"
   | "mods"
   | "help"
   | "report"
@@ -63,7 +64,7 @@ export function gameMenuFooter(): string {
  * the program used to be the same row, which is how "Save and exit" came to close
  * the app; separating them left the desktop build with no discoverable way out at
  * all, since a tab's close button has no equivalent there. */
-export function gameMenuEntries(opts: { canQuit?: boolean } = {}): GameMenuEntry[] {
+export function gameMenuEntries(opts: { canQuit?: boolean; activeView?: string } = {}): GameMenuEntry[] {
   const entries: GameMenuEntry[] = [
     {
       action: "resume",
@@ -137,6 +138,13 @@ export function gameMenuEntries(opts: { canQuit?: boolean } = {}): GameMenuEntry
         ),
       },
     },
+    ...(opts.activeView === undefined ? [] : [{
+      action: "cycle-view" as const,
+      item: {
+        label: t("menu.game.cycle-view.label", "Cycle view"),
+        hint: `${t("menu.game.cycle-view.hint", "Next view (F6). Current view:")} ${opts.activeView}`,
+      },
+    }]),
     {
       action: "mods",
       item: {

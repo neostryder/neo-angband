@@ -520,6 +520,16 @@ describe("an API 2 definition through the shim", () => {
     const publicPlugin = api2Plugin(definition, () => ({ grants: caps, tier: "public", firstParty: { presentation: true } }));
     expect(publicPlugin.menu).toBeUndefined();
   });
+  it("registers an API 2 first-party front end through the named-view seam", () => {
+    const sink = { present() {}, suspend() {} };
+    const definition = defineApi2Mod({ api: "^2.0.0", presentation: { frontend: () => sink } });
+    expect(checkApi2Definition(definition)).toBeNull();
+    const caps = capabilities("modern", ["display:replace"]);
+    const ctx = modPluginContext("modern", {}, undefined, {}, { capabilities: caps });
+    const plugin = api2Plugin(definition, () => ({ grants: caps, tier: "first-party", firstParty: { presentation: true } }));
+    expect(plugin.frontend?.(ctx)).toBe(sink);
+    expect(api2Plugin(definition, () => ({ grants: caps, tier: "public" })).frontend).toBeUndefined();
+  });
   it("passes the API 1 validator, hooks through core's fold and starts with the API 2 domains", async () => {
     let started: ModApi2 | undefined;
     const definition = defineApi2Mod({

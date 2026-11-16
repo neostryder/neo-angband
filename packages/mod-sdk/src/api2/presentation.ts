@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import type { ScreenRegions } from "../frontend.js";
+import type { ScreenRegions, WorldFrameSink } from "../frontend.js";
 import type { HudOwnership } from "../hud.js";
 import type { MenuPresenter } from "../menu.js";
 import type { ScreenPresenter } from "../screen.js";
@@ -277,6 +277,7 @@ export interface Api2KeyRepeat {
 export type Api2BootPhase = "title" | "birth" | "play";
 
 export interface Api2Presenters {
+  frontend?(mod: import("./domains.js").ModApi2): WorldFrameSink | undefined;
   birth?(mod: import("./domains.js").ModApi2): Api2BirthPresenter | undefined;
   menu?(mod: import("./domains.js").ModApi2): MenuPresenter | undefined;
   screen?(mod: import("./domains.js").ModApi2): ScreenPresenter | undefined;

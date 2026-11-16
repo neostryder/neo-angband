@@ -70,7 +70,7 @@ export function checkApi2Definition(candidate: unknown): string | null {
   }
   if (d.presentation !== undefined) {
     if (d.presentation === null || typeof d.presentation !== "object") return "presentation is not an object";
-    for (const member of ["menu", "screen", "hud", "birth"] as const) {
+    for (const member of ["menu", "screen", "hud", "birth", "frontend"] as const) {
       if (d.presentation[member] !== undefined && typeof d.presentation[member] !== "function") return `presentation.${member} is not a function`;
     }
   }
@@ -83,7 +83,7 @@ export function checkApi2Definition(candidate: unknown): string | null {
     return "titleActions must declare an id, label and handler";
   }
   if (d.hooks === undefined && d.policies === undefined && d.start === undefined && d.controller === undefined &&
-    !d.presentation?.menu && !d.presentation?.screen && !d.presentation?.hud && !d.presentation?.birth && !d.birth && !d.actions?.length && !d.titleActions?.length) {
+    !d.presentation?.menu && !d.presentation?.screen && !d.presentation?.hud && !d.presentation?.birth && !d.presentation?.frontend && !d.birth && !d.actions?.length && !d.titleActions?.length) {
     return "an API 2 mod declares hooks, policies, start, controller or a combination";
   }
   return null;
@@ -585,7 +585,7 @@ export function api2Plugin(definition: Api2ModDefinition, options: () => Api2Plu
     hosts.add(mod);
     return mod;
   };
-  for (const member of ["menu", "screen", "hud"] as const) {
+  for (const member of ["menu", "screen", "hud", "frontend"] as const) {
     const presenter = definition.presentation?.[member];
     if (!presenter) continue;
     Object.defineProperty(plugin, member, {

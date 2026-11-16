@@ -99,6 +99,12 @@ afterEach(() => {
 const ASCII = /^[\x20-\x7e]*$/u;
 
 describe("gameMenuEntries (the Escape menu structure)", () => {
+  it("names the current view on the cycle row only when views are available", () => {
+    expect(gameMenuEntries().find((entry) => entry.action === "cycle-view")).toBeUndefined();
+    expect(gameMenuEntries({ activeView: "Blueprint View" }).find((entry) => entry.action === "cycle-view")?.item).toMatchObject({
+      label: "Cycle view", hint: "Next view (F6). Current view: Blueprint View", id: "core:game-menu:cycle-view",
+    });
+  });
   it("covers every required action with a hint, resume first, ASCII only", () => {
     const entries = gameMenuEntries();
     const actions = entries.map((e) => e.action);

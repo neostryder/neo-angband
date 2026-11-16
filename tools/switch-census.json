@@ -66,18 +66,18 @@
       "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24). A mod adding a menu row has no arm to land in."
     },
     {
+      "file": "packages/web/src/main.ts",
+      "cases": 20,
+      "hasDefault": true,
+      "kind": "SWITCH",
+      "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24). A mod adding a menu row has no arm to land in."
+    },
+    {
       "file": "packages/mcp/src/tools.ts",
       "cases": 19,
       "hasDefault": false,
       "kind": "ARRAY_LOOKUP",
       "verdict": "INTERNAL - ENTRIES, the MCP server's own frozen tool vocabulary; dispatchTool looks a call up by name via ENTRIES.find(...). Adding an MCP tool is a protocol change to the 19-tool frozen API, not something a mod does."
-    },
-    {
-      "file": "packages/web/src/main.ts",
-      "cases": 19,
-      "hasDefault": true,
-      "kind": "SWITCH",
-      "verdict": "UI - menu action routing, items[idx].action (MOD_REACH gap 18/24)."
     },
     {
       "file": "packages/web/src/main.ts",

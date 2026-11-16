@@ -1,4 +1,6 @@
 import type { ModDisplay } from "../mod-plugin";
+import { failWorkerFrontendView, registerWorkerFrontendView } from "../frontend-runtime";
+import { modDisplayName } from "../mod-problems";
 import type { InstalledMenu } from "../menu-runtime";
 import type { InstalledScreen } from "../screen-runtime";
 import type { MenuAnswer, MenuQuestion } from "../menu-view";
@@ -285,14 +287,17 @@ export function createWorkerPresenters(options: {
     return false;
   };
   const frame = (callbackId: number, current: () => boolean): (() => void) => {
+    let selected = false;
     let busy = false;
+    let requestedAt = -Infinity;
     let root: HTMLDivElement | undefined;
     let generation = 0;
     let expiry: ReturnType<typeof setTimeout> | undefined;
     const clear = () => { root?.remove(); root = undefined; clearTimeout(expiry); };
     const tick = async (): Promise<void> => {
-      if (!current() || !visible() || modPresentationSuspended() || options.display.snapshot().mode !== "play") { clear(); return; }
-      if (busy) return;
+      if (!selected || !current() || !visible() || modPresentationSuspended() || options.display.snapshot().mode !== "play") { clear(); return; }
+      if (busy || Date.now() - requestedAt < 100) return;
+      requestedAt = Date.now();
       busy = true;
       const serial = generation;
       const snapshot = options.display.snapshot();
@@ -300,11 +305,11 @@ export function createWorkerPresenters(options: {
         const value = await request(callbackId, crypto.randomUUID(), "describe", { grid: snapshot.grid, viewport: snapshot.viewport, map: snapshot.regions.map.cells }, current);
         const commands = gridCommands(value);
         const live = options.display.snapshot();
-        if (generation !== serial || live.mode !== "play" || JSON.stringify(snapshot) !== JSON.stringify(live)) { clear(); return; }
+        if (!selected || generation !== serial || live.mode !== "play" || JSON.stringify(snapshot) !== JSON.stringify(live)) { clear(); return; }
         const { pixels, cells } = live.regions.map;
         if (!pixels) { clear(); return; }
         const next = doc.createElement("div");
-        next.setAttribute("aria-label", `${options.id} map`);
+        next.setAttribute("aria-label", `${modDisplayName(options.id) ?? "Mod"} map`);
         next.style.cssText = "position:fixed;z-index:10;overflow:hidden;pointer-events:none;background:#000000;font-family:monospace"; // palette-exempt: fixed grid tokens cannot accept CSS.
         next.style.left = `${pixels.x}px`;
         next.style.top = `${pixels.y}px`;
@@ -328,16 +333,27 @@ export function createWorkerPresenters(options: {
         clear();
         root = next;
         doc.body.append(next);
-        expiry = setTimeout(clear, 250);
-      } catch { clear(); }
+        expiry = setTimeout(() => { clear(); failWorkerFrontendView(options.id, new Error("the view did not renew its frame lease")); }, 250);
+      } catch (error) {
+        clear();
+        if (selected && generation === serial && current() && visible() && !modPresentationSuspended()) failWorkerFrontendView(options.id, error);
+      }
       finally { busy = false; }
     };
     const invalidate = () => { generation += 1; clear(); };
     const offFrame = options.display.onFrame?.(invalidate);
     const off = onModPanelSuspension((hidden) => { if (hidden) invalidate(); });
     const timer = setInterval(() => { void tick(); }, 100);
-    void tick();
-    return () => { generation += 1; clearInterval(timer); offFrame?.(); off(); clear(); };
+    const unregister = registerWorkerFrontendView({
+      id: options.id,
+      manifest: { id: options.id, name: modDisplayName(options.id) ?? "Mod", version: "0.0.0", shape: "plugin", capabilities: ["display:replace"] },
+      current,
+      plugin: { frontend: () => ({
+        present: () => { selected = true; void tick(); },
+        suspend: () => { selected = false; requestedAt = -Infinity; generation += 1; clear(); },
+      }) },
+    });
+    return () => { selected = false; generation += 1; unregister(); clearInterval(timer); offFrame?.(); off(); clear(); };
   };
   return {
     replace(method: string, callbackId: number | null, epochCurrent: () => boolean): void {

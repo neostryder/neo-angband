@@ -288,6 +288,7 @@ import {
   coreOnlyFrontend,
   frontendWorldFrameSink,
   installFrontend,
+  watchFrontendViews,
   type FrontendMapStream,
   type InstalledFrontend,
 } from "./frontend-runtime";
@@ -3157,6 +3158,18 @@ function reportDisplayFault(id: string, problem: string, error: unknown): void {
  */
 let liveWorldSink: FrontendMapStream = frontendWorldFrameSink(coreFrontendSlot, reportDisplayFault);
 let liveHudSink: HudFrameSink = hudFrameSink(coreHudSlot, reportDisplayFault);
+let stopWatchingFrontendViews: () => void = () => {};
+
+function reportFrontendFault(id: string, problem: string, error: unknown): void {
+  reportDisplayFault(id, problem, error);
+  setTimeout(() => {
+    const name = modDisplayName(id);
+    void openModal(() => showTextScreen(term, "View unavailable", [
+      { text: name === undefined ? "A view failed. The glyph view has resumed." : `${name} failed. The glyph view has resumed.` },
+      { text: "The game skipped this view until the next reload. You can review it on the Mods screen." },
+    ], "[ Press ESC to continue ]"));
+  }, 0);
+}
 
 // The message log: every message the engine emits this session, for the top
 // status line and the scrollable history (Ctrl-P). state.msg is the core's
@@ -8132,7 +8145,9 @@ async function openGameMenu(): Promise<void> {
 
 /** One pass of the game menu. False means "stop showing it". */
 async function gameMenuOnce(onModAction: (run: () => Promise<void>) => void): Promise<boolean> {
-  const entries = gameMenuEntries({ canQuit: desktopQuitAvailable() });
+  const entries = gameMenuEntries({ canQuit: desktopQuitAvailable(),
+    ...(installedFrontend.views.length > 1 ? { activeView: installedFrontend.views.find((view) => view.id === installedFrontend.id)!.name } : {}),
+  });
   const pick = await selectFromMenu(
     term,
     "core:game-menu",
@@ -8189,6 +8204,9 @@ async function gameMenuOnce(onModAction: (run: () => Promise<void>) => void): Pr
       // not in '=' (do_cmd_options). The web analog lives here in the game menu.
       await runTileModePage(term, tileModeMenu);
       break;
+    case "cycle-view":
+      installedFrontend.cycle();
+      return false;
     case "mods":
       await openModManager();
       break;
@@ -12490,6 +12508,11 @@ inputEvents.addEventListener("keydown", (ev) => {
     return;
   }
   if (!ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+    if (ev.key === "F6") {
+      ev.preventDefault();
+      installedFrontend.cycle();
+      return;
+    }
     // TAB never moves focus off the game canvas (it is a roguelike command key).
     if (ev.key === "Tab") ev.preventDefault();
     // The full command table, faithful to ui-game.c's cmd_info arrays. Each row
@@ -13672,6 +13695,7 @@ function reloadAfterModChange(opts?: { showGraphics?: boolean; resume?: boolean 
   /* Back to candidate zero, not to nothing: the page has not re-composed yet
    * and the autosave below can still repaint, so the map needs an owner the
    * whole way down. A departing mod's sink must not be that owner. */
+  stopWatchingFrontendViews?.();
   installedFrontend = coreFrontendSlot;
   try {
     autosave(true); // keep the live hero before the page re-composes
@@ -16546,15 +16570,8 @@ for (const id of enabledModIds()) {
 game.resolveInitialStoreDiscounts();
 firstLevel.modsRegistered();
 
-/* The display slot is last-load-wins, unlike the autoplayer's historical
- * first-claim guard. Select BEFORE invoking: a lower front end never gets a
- * chance to mount anything when a later mod replaces it.
- *
- * CORE'S RENDERER IS CANDIDATE ZERO, in the same list and under the same rule.
- * It is not a fallback the selection falls through to - it is what wins when no
- * mod outranks it, and what a faulting replacement hands the map back to. A mod
- * must hold `display:replace` to be eligible at all; declaring frontend()
- * without it is reported against that mod and leaves core drawing. */
+/* Lazy view construction prevents inactive mods from mounting display elements.
+ * Core stays available because it is the recovery target for every view. */
 function displayCandidateContext(id: string): ModPluginContext {
   const loaded = activeModCode().plugins.find((plugin) => plugin.id === id);
   /* Candidate zero has no pack behind it, so there are no own-files and no
@@ -16589,9 +16606,14 @@ function displayCandidateContext(id: string): ModPluginContext {
 installedFrontend = installFrontend(
   [coreFrontend, ...activeModCode().plugins],
   displayCandidateContext,
-  reportDisplayFault,
+  reportFrontendFault,
+  localStorage,
+  enabledModIds(),
 );
-liveWorldSink = frontendWorldFrameSink(installedFrontend, reportDisplayFault);
+liveWorldSink = frontendWorldFrameSink(installedFrontend, reportDisplayFault, true);
+stopWatchingFrontendViews = watchFrontendViews(installedFrontend, () => {
+  liveWorldSink = frontendWorldFrameSink(installedFrontend, reportFrontendFault, true);
+});
 
 /* THE HUD, region by region. Same rule, applied three times: the last enabled
  * mod holding `ui:<region>.replace` draws that region, and everything nobody
