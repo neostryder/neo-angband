@@ -29,10 +29,15 @@ beforeAll(() => {
     import { pathToFileURL } from "node:url";
     const { JSDOM } = await import("jsdom");
     const require = createRequire(import.meta.url);
-    const { createModCompartment, initializeModCompartments } = require(${JSON.stringify(bundle)});
+    const moduleStart = performance.now();
+    const { createModCompartment, initializeModCompartments, domCompartmentGlobals } = require(${JSON.stringify(bundle)});
+    const moduleLoadMs = performance.now() - moduleStart;
     const core = await import(pathToFileURL(${JSON.stringify(hostModule)}));
     const records = new Map();
     const read = (path) => records.has(path) ? new TextEncoder().encode(records.get(path)) : null;
+    const lockdownStart = performance.now();
+    initializeModCompartments();
+    const lockdownMs = performance.now() - lockdownStart;
     const c = createModCompartment("first", read);
     initializeModCompartments();
     const forbidden = ["window", "document", "indexedDB", "localStorage", "neoHostFs", "neoDesktop", "fetch", "XMLHttpRequest", "WebSocket", "open", "Worker"];
@@ -42,6 +47,8 @@ beforeAll(() => {
     c.globalThis.secret = "first-only";
     const other = createModCompartment("second", read);
     const isolated = other.evaluate("typeof secret === 'undefined' && typeof globalThis.secret === 'undefined'");
+    const sharedWrappers = c.globalThis.setTimeout === other.globalThis.setTimeout &&
+      c.evaluate('[setTimeout, clearTimeout, setInterval, clearInterval, performance, performance.now, structuredClone].every(Object.isFrozen)');
     records.set("plugin.js", 'import { value } from "./lib/value.js"; export default { value, scope: globalThis };');
     records.set("lib/value.js", 'export const value = 42;');
     const loaded = c.importNow("plugin.js").default;
@@ -77,6 +84,9 @@ beforeAll(() => {
     page.indexedDB = { open(name) { opened.push(name); return { name }; }, deleteDatabase(name) { opened.push("del:" + name); return { name }; }, cmp() { return 0; }, databases() { return Promise.resolve([{ name: "neo-angband" }, { name: "other" }]); } };
     globalThis.window = page;
     globalThis.document = page.document;
+    const facadeStart = performance.now();
+    domCompartmentGlobals();
+    const facadeMs = performance.now() - facadeStart;
     const domed = createModCompartment("domed", read);
     const membrane = domed.evaluate(\`(() => {
       const el = document.createElement("div");
@@ -118,7 +128,22 @@ beforeAll(() => {
         clickContained: viewBridge === "contained",
       };
     })()\`);
-    console.log(JSON.stringify({ absent, pageSeparate: loaded.scope !== globalThis, frozen, isolated, measuredModule: loaded.value, rejected, timerRejected, hostEscape: escape === "ok" && written[1] === "compartment-probe.txt", rawDomEscape, sharedEscape, membrane, opened }));
+    const encoder = new TextEncoder();
+    const benchmarkFiles = new Map([
+      ["plugin.js", encoder.encode('import { value } from "./value.js"; ' + Array.from({ length: 256 }, (_, i) => 'export const v' + i + ' = value + ' + i + ';').join('\\n') + '\\nexport default { api: 1, hooks: () => ({}) };')],
+      ["value.js", encoder.encode('export const value = 42;')],
+    ]);
+    const mods = [];
+    for (let index = 0; index < 9; index++) {
+      const constructStart = performance.now();
+      const compartment = createModCompartment("bench-" + index, path => benchmarkFiles.get(path) ?? null);
+      const constructMs = performance.now() - constructStart;
+      const evaluateStart = performance.now();
+      compartment.importNow("plugin.js");
+      mods.push({ constructMs, evaluateMs: performance.now() - evaluateStart });
+    }
+    const timings = { moduleLoadMs, lockdownMs, facadeMs, bytesPerMod: [...benchmarkFiles.values()].reduce((size, bytes) => size + bytes.length, 0), mods };
+    console.log(JSON.stringify({ absent, pageSeparate: loaded.scope !== globalThis, frozen, isolated, sharedWrappers, measuredModule: loaded.value, rejected, timerRejected, hostEscape: escape === "ok" && written[1] === "compartment-probe.txt", rawDomEscape, sharedEscape, membrane, opened, timings }));
   `], { encoding: "utf8", windowsHide: true, timeout: 60000 });
   expect(child.status, child.stderr).toBe(0);
   result = JSON.parse(child.stdout.trim()) as Record<string, unknown>;
@@ -232,6 +257,13 @@ describe("startup mode and the production loader", () => {
 });
 
 describe("measured mod compartments", () => {
+  it("records startup phase timings in the isolated harness", () => {
+    const timings = result.timings as { mods: { constructMs: number; evaluateMs: number }[] };
+    expect(timings.mods).toHaveLength(9);
+    expect(timings.mods.every((mod) => Number.isFinite(mod.constructMs) && Number.isFinite(mod.evaluateMs))).toBe(true);
+    console.log("compartment timings " + JSON.stringify(timings));
+  });
+
   it("keeps the page globals out of the module", () => {
     expect(Object.values(result.absent as object).every(Boolean)).toBe(true);
     expect(result.pageSeparate).toBe(true);
@@ -243,6 +275,7 @@ describe("measured mod compartments", () => {
 
   it("separates private globals between mods", () => {
     expect(result.isolated).toBe(true);
+    expect(result.sharedWrappers).toBe(true);
   });
 
   it("links measured bytes and rejects arbitrary dynamic imports", () => {

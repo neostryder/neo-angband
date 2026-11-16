@@ -6,6 +6,7 @@ export { domCompartmentGlobals, membraneNode, membraneTarget } from "./mod-dom-f
 
 // Engine objects passed into a compartment stay live host objects. The DOM membrane does not cover them.
 let initialized = false;
+let sharedGlobals: Readonly<Record<string, unknown>> | undefined;
 
 export function initializeModCompartments(): void {
   if (initialized) return;
@@ -43,40 +44,50 @@ function resolveModule(specifier: string, referrer: string): string {
   return path;
 }
 
+function commonGlobals(): Readonly<Record<string, unknown>> {
+  if (sharedGlobals) return sharedGlobals;
+  const timer = (repeat: boolean) => Object.freeze((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]): ReturnType<typeof setTimeout> => {
+    if (typeof callback !== "function") throw new TypeError("mod timers need a function");
+    return repeat ? setInterval(() => callback(...args), delay) : setTimeout(() => callback(...args), delay);
+  });
+  // Shared wrappers must be frozen so one mod cannot attach state another mod can read.
+  sharedGlobals = Object.freeze({
+    Date,
+    Math,
+    setTimeout: timer(false),
+    clearTimeout: Object.freeze((handle: ReturnType<typeof setTimeout>) => clearTimeout(handle)),
+    setInterval: timer(true),
+    clearInterval: Object.freeze((handle: ReturnType<typeof setInterval>) => clearInterval(handle)),
+    performance: Object.freeze({ now: Object.freeze(() => performance.now()) }),
+    TextEncoder,
+    TextDecoder,
+    structuredClone: Object.freeze((value: unknown) => structuredClone(value)),
+  });
+  return sharedGlobals;
+}
+
 export function createModCompartment(
   id: string,
   read: (path: string) => Uint8Array | null,
 ): Compartment {
   initializeModCompartments();
   const modules = new Map<string, ModuleSource>();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   const source = (path: string): ModuleSource => {
     const cached = modules.get(path);
     if (cached) return cached;
     const bytes = read(path);
     if (!bytes) throw new TypeError(`mod module is not in the measured payload: ${path}`);
-    const record = new ModuleSource(new TextDecoder("utf-8", { fatal: true }).decode(bytes), `mod:${id}/${path}`);
+    const record = new ModuleSource(decoder.decode(bytes), `mod:${id}/${path}`);
     modules.set(path, record);
     return record;
-  };
-  const timer = (repeat: boolean) => (callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]): ReturnType<typeof setTimeout> => {
-    if (typeof callback !== "function") throw new TypeError("mod timers need a function");
-    return repeat ? setInterval(() => callback(...args), delay) : setTimeout(() => callback(...args), delay);
   };
   return new Compartment({
     __options__: true,
     name: `mod:${id}`,
     globals: {
       ...(domCompartmentGlobals() ?? {}),
-      Date,
-      Math,
-      setTimeout: timer(false),
-      clearTimeout: (handle: ReturnType<typeof setTimeout>) => clearTimeout(handle),
-      setInterval: timer(true),
-      clearInterval: (handle: ReturnType<typeof setInterval>) => clearInterval(handle),
-      performance: Object.freeze({ now: () => performance.now() }),
-      TextEncoder,
-      TextDecoder,
-      structuredClone: (value: unknown) => structuredClone(value),
+      ...commonGlobals(),
     },
     resolveHook: resolveModule,
     importHook: async (path: string) => source(path),
