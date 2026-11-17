@@ -56,8 +56,14 @@ describe("bitmap glyph placement", () => {
     expect([box.x, box.y, box.w, box.h].map((value) => value * 1.5)).toEqual([3, 3, 24, 39]);
   });
 
-  it("preserves the small-cell fallback on a high-density display", () => {
-    expect(bitmapGlyphBox(8, 13, 7, 20, 2)).toEqual({ scale: 0, x: 0, y: 0, w: 7, h: 20 });
+  it("draws a native-size glyph when the cell is smaller than the font in CSS pixels but not in device pixels", () => {
+    const box = bitmapGlyphBox(8, 13, 7, 20, 2);
+    expect(box.scale).toBe(1);
+    expect([box.x, box.y, box.w, box.h].map((value) => value * 2)).toEqual([3, 13, 8, 13]);
+  });
+
+  it("keeps the fallback when the cell is smaller than the font in device pixels", () => {
+    expect(bitmapGlyphBox(8, 13, 7, 20, 1)).toEqual({ scale: 0, x: 0, y: 0, w: 7, h: 20 });
   });
 
   it("keeps the fallback when native pixels do not fit after zooming out", () => {

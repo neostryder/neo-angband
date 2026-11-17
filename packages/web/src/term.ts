@@ -33,7 +33,7 @@ export function bitmapGlyphBox(fontW: number, fontH: number, cellW: number, cell
   const deviceW = Math.round(cellW * dpr);
   const deviceH = Math.round(cellH * dpr);
   const scale = Math.floor(Math.min(deviceW / fontW, deviceH / fontH));
-  if (cellW < fontW || cellH < fontH || scale < 1) return { scale: 0, x: 0, y: 0, w: cellW, h: cellH };
+  if (scale < 1) return { scale: 0, x: 0, y: 0, w: cellW, h: cellH };
   const w = fontW * scale;
   const h = fontH * scale;
   // Round offsets to whole device pixels so fractional display ratios do not
@@ -1036,9 +1036,7 @@ export class GlyphTerm
 
   /** Responsive grid (reflow opt-in): the pre-REND-1 behavior. */
   private fitReflow(w: number, h: number): void {
-    // The grid pitch stays at the requested cell size, so fitting bitmap glyphs
-    // cannot move map coordinates or tiles. The declared phone floor must still
-    // fit the viewport when the requested size is too large.
+    // In the responsive reflow layout with a bitmap font, the cell height is the requested font size in CSS pixels, reduced when needed so the declared minimum grid (`minCols` by `minRows`) fits the viewport, and the cell width follows the font's aspect ratio. The pitch can therefore shrink on a small viewport. The glyph is drawn separately at the largest whole-number scale that fits the cell, so the grid geometry never depends on the glyph scale.
     if (this.font) {
       const requested = Math.max(8, this.options.fontPx);
       const widthLimit = (w / this.options.minCols) * (this.font.h / this.font.w);
@@ -1412,6 +1410,7 @@ export class GlyphTerm
       const code = g.ch.codePointAt(0) ?? 0;
       const glyph = this.tintedGlyph(code, g.fg);
       if (glyph) {
+        // The glyph is centered at the largest integer scale that fits the cell and drawn nearest-neighbor. When the cell is smaller than one glyph in device pixels, the box falls back to the snapped cell rect `cw` by `ch`, so the glyph fills the same rect the background just filled and no seam comes back. Glyphs missing from the bitmap font are drawn with `fillText`.
         const box = bitmapGlyphBox(glyph.width, glyph.height, cw, ch, this.dpr());
         this.ctx.drawImage(glyph, px + box.x, py + box.y, box.w, box.h);
       } else {

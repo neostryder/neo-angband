@@ -13494,7 +13494,7 @@ async function maybeTitle(): Promise<TitleChoice | null> {
       showTitleScreen(
         term,
         {
-          ...lookStore.titleOptions(modManifestFor("anybandui"), enabledModIds().includes("anybandui")),
+          ...lookStore.titleOptions(modManifestFor("anybandui"), enabledModIds({ ignoreSafeLaunch: true }).includes("anybandui")),
           canLoad: living || resumedActive,
           canOpen: listRoster().length > 0,
           canQuit: desktopQuitAvailable(),
