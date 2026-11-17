@@ -244,7 +244,11 @@ it("serves packaged ASAR assets through Electron's filesystem", async () => {
       'console.log("linked assets refused");',
       '})().then(() => app.exit(0), error => { console.error(error); app.exit(1); });',
     ].join("\n"));
-    const run = spawnSync(electronPath, [...(process.platform === "linux" ? ["--no-sandbox"] : []), script], { cwd: base, encoding: "utf8", windowsHide: true, timeout: 30_000, env: { ...process.env, TEMP: base, TMP: base } });
+    // A Linux runner has neither a display nor the setuid sandbox, so Electron runs under xvfb without it.
+    const linux = process.platform === "linux";
+    const electronArgs = [...(linux ? ["--no-sandbox"] : []), script];
+    const [command, args] = linux && !process.env["DISPLAY"] ? ["xvfb-run", ["-a", electronPath, ...electronArgs]] : [electronPath, electronArgs];
+    const run = spawnSync(command, args, { cwd: base, encoding: "utf8", windowsHide: true, timeout: 30_000, env: { ...process.env, TEMP: base, TMP: base } });
     expect(run.error).toBeUndefined();
     expect(run.status, run.stderr).toBe(0);
     expect(run.stdout).toContain("normal packaged page");
