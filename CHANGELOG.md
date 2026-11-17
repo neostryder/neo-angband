@@ -48,6 +48,8 @@ still calls itself.
 
 ## [Unreleased]
 
+## [1.23.0-beta.5] - 2026-11-17
+
 ### Added
 - [Visible] [Modding-API] **Mods can annotate birth options and list changed options at the final confirmation.** The hook `birthOptionAnnotation`, or the policy `birthOptionAnnotations` (up to 64 rows), gives a birth option row a mark of up to 8 characters and a hint of up to 120 characters, shown on one line for the selected row. The hook or boolean policy `birthConfirmOptions` makes the final confirmation list every birth option the player changed from its default, with that default, before play starts, paging when the list is long. Both use capability `registry:ui-entry`, and the existing `birthConfirmNote` (160 characters) still works. (neostryder/neo-angband#392)
 - [Visible] [Modding-API] **Mods can keep chosen object kinds out of store stock.** The policy `storeAllocationExclude` (capability `registry:store`) names up to 256 object kinds by content key, for example `staff--attunement`, that never appear in any store's random stock, including the black market. A rejected kind uses up one of the six stock attempts and the store draws again, as the original does with black-market candidates. Fixed staples, items the player sold, and saved stock are unchanged, and absent or empty keeps stock and random numbers as before. (neostryder/neo-angband#389)
